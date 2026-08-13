@@ -14,7 +14,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # deepseek-harness 的构建依赖 node:sqlite（Node >= 22.5）
+          node-version: 22
           cache: npm
 
       - name: Install app dependencies
