@@ -12,3 +12,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+.pack-v2/
+.pack-tmp*/
