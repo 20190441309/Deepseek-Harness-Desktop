@@ -66,11 +66,20 @@ npm start
 
 ## 打包与发布
 
+本地打包：
+
 ```powershell
 npm run dist
 ```
 
 产物在 `dist/`：NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）+ 便携版。打包时会把 `vendor/deepseek-harness` 解引用复制进 `resources/`，并捆绑一个 `node.exe`——装完不依赖本机 Node 环境。安装包里的 Web UI 若想用官方 Web UI，需要 dsh 构建产物齐全（`apps/cli/lib/bin.js` + `apps/web/dist/index.html`）。
+
+### CI 打包（推荐）
+
+本地打包要把 1.4GB 的官方源码搬进安装包，很慢。用 GitHub Actions（`.github/workflows/release.yml`）在云端构建：
+
+- **手动构建**：Actions 页 → Build Windows Installer → Run workflow，安装包在 artifacts 里下载
+- **自动发布**：推送 `v*` 标签（如 `v0.1.0`）自动构建并发布 GitHub Release
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
 

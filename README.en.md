@@ -66,13 +66,22 @@ To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, th
 
 ## Packaging & releases
 
+Build locally:
+
 ```powershell
 npm run dist
 ```
 
 Output lands in `dist/`: an NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) plus a portable build. Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a `node.exe`, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
 
-Push a tag to GitHub Releases and the in-app update check will pick it up.
+### CI builds (recommended)
+
+Shipping the ~1.4 GB vendored harness into the installer makes local builds slow. Use the GitHub Actions workflow (`.github/workflows/release.yml`) instead:
+
+- **Manual build**: Actions page → Build Windows Installer → Run workflow; grab the installers from the artifacts
+- **Auto release**: pushing a `v*` tag (e.g. `v0.1.0`) builds and publishes a GitHub Release automatically
+
+Once a version is on GitHub Releases, the in-app update check picks it up.
 
 ## License
 
