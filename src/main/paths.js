@@ -1,0 +1,33 @@
+const path = require('path');
+const { app } = require('electron');
+
+function projectRoot() {
+  if (app.isPackaged) {
+    return path.dirname(app.getPath('exe'));
+  }
+  return path.join(__dirname, '..', '..');
+}
+
+function harnessRoot() {
+  return path.join(projectRoot(), 'vendor', 'deepseek-harness');
+}
+
+function rendererFile(name) {
+  return path.join(__dirname, '..', 'renderer', name);
+}
+
+function assetFile(name) {
+  return path.join(__dirname, '..', '..', 'assets', name);
+}
+
+function preloadFile() {
+  return path.join(__dirname, '..', 'preload', 'index.js');
+}
+
+module.exports = {
+  projectRoot,
+  harnessRoot,
+  rendererFile,
+  assetFile,
+  preloadFile,
+};

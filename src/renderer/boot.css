@@ -1,0 +1,219 @@
+:root {
+  --bg: #0b0d12;
+  --fg: #e8eef9;
+  --muted: #8b93a7;
+  --accent: #6ea8ff;
+  --line: rgba(232, 238, 249, 0.08);
+  --danger: #ff7b72;
+  --button-fg: #081018;
+  --caption-h: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.caption {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  height: var(--caption-h);
+  width: 100%;
+  -webkit-app-region: drag;
+}
+
+.stage {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(48px + var(--caption-h)) 32px 112px;
+}
+
+.mark {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  color: var(--accent);
+  animation: rise 700ms ease both;
+}
+
+.mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ring {
+  position: absolute;
+  inset: -12px;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+body[data-state="idle"] .ring,
+body[data-state="starting"] .ring,
+body[data-state="stopping"] .ring {
+  opacity: 0.65;
+  animation: spin 1.05s linear infinite;
+}
+
+body[data-state="error"] .mark {
+  color: var(--danger);
+}
+
+.brand {
+  margin: 28px 0 0;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  animation: rise 700ms ease 80ms both;
+}
+
+.status {
+  margin: 10px 0 0;
+  max-width: 36rem;
+  text-align: center;
+  color: var(--muted);
+  animation: rise 700ms ease 140ms both;
+}
+
+.status.ready {
+  color: var(--accent);
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.hint {
+  margin: 8px 0 0;
+  max-width: 36rem;
+  text-align: center;
+  color: #6f778b;
+  font-size: 13px;
+  animation: rise 700ms ease 180ms both;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 28px;
+  -webkit-app-region: no-drag;
+}
+
+.actions[hidden] {
+  display: none;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  background: var(--accent);
+  color: var(--button-fg);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--accent) 82%, white);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--fg);
+  font-weight: 500;
+  border: 1px solid var(--line);
+}
+
+button.ghost:hover {
+  background: rgba(232, 238, 249, 0.04);
+  border-color: rgba(232, 238, 249, 0.16);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.log {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 28px;
+  margin: 0;
+  padding: 12px 0 0;
+  list-style: none;
+  max-height: 7.5rem;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: #6f778b;
+}
+
+.log li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  animation: fade 280ms ease forwards;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark,
+  .brand,
+  .status,
+  .hint,
+  .ring,
+  .log li {
+    animation: none;
+    opacity: 1;
+  }
+
+  body[data-state="idle"] .ring,
+  body[data-state="starting"] .ring,
+  body[data-state="stopping"] .ring {
+    opacity: 0.35;
+  }
+}

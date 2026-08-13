@@ -1,0 +1,102 @@
+const { ipcMain, dialog, app, shell } = require('electron');
+const { loadConfig, saveConfig, publicConfig } = require('./config');
+const { getMainWindow, createSettingsWindow } = require('./window');
+const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
+const { listThemes, resolveTheme } = require('../shared/themes');
+const { applyAppTheme } = require('./chrome');
+const { applyPluginToggles, pluginAbout } = require('./plugins');
+
+function configLocale(config = loadConfig()) {
+  return config.locale === 'en' ? 'en' : 'zh';
+}
+
+function configPayload(config) {
+  return {
+    ...publicConfig(config),
+    apiKey: config.apiKey,
+    locale: configLocale(config),
+    theme: config.theme || 'midnight',
+    themes: listThemes(),
+    themeTokens: resolveTheme(config),
+    nodeDetected: resolveNodeBin(config),
+    dshDetected: (() => {
+      const source = sourceHarnessStatus();
+      if (source.present) {
+        return source.built ? `源码 ${source.root}` : `源码未构建 ${source.root}`;
+      }
+      return resolveDshBin(config);
+    })(),
+    pluginAbout: pluginAbout(),
+  };
+}
+
+function registerIpc({ dsh, startHarness }) {
+  ipcMain.handle('shell:get-state', () => dsh.snapshot());
+
+  ipcMain.handle('shell:get-config', () => configPayload(loadConfig()));
+
+  ipcMain.handle('shell:save-config', async (_event, patch) => {
+    const next = saveConfig(patch || {});
+    app.setLoginItemSettings({ openAtLogin: Boolean(next.openAtLogin) });
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'theme')) {
+      applyAppTheme();
+    }
+    if (
+      patch &&
+      (Object.prototype.hasOwnProperty.call(patch, 'pluginGenUi') ||
+        Object.prototype.hasOwnProperty.call(patch, 'pluginSubagent'))
+    ) {
+      try {
+        applyPluginToggles(next);
+      } catch (error) {
+        console.error('applyPluginToggles failed', error);
+      }
+    }
+    return configPayload(next);
+  });
+
+  ipcMain.handle('shell:open-external', async (_event, url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      throw new Error('Invalid URL');
+    }
+    await shell.openExternal(url);
+    return true;
+  });
+
+  ipcMain.handle('shell:pick-workspace', async () => {
+    const win = getMainWindow();
+    const result = await dialog.showOpenDialog(win || undefined, {
+      title: configLocale() === 'en' ? 'Choose workspace' : '选择工作区',
+      defaultPath: loadConfig().workspace,
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('shell:pick-file', async (_event, options = {}) => {
+    const win = getMainWindow();
+    const result = await dialog.showOpenDialog(win || undefined, {
+      title: options.title || (configLocale() === 'en' ? 'Choose file' : '选择文件'),
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('shell:restart', async () => {
+    await startHarness();
+    return dsh.snapshot();
+  });
+
+  ipcMain.handle('shell:open-settings', () => {
+    createSettingsWindow();
+    return true;
+  });
+}
+
+module.exports = { registerIpc };

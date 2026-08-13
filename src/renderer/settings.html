@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>设置</title>
+  <link rel="stylesheet" href="settings.css" />
+  <link rel="stylesheet" href="window-controls.css" />
+</head>
+<body>
+  <header class="caption">
+    <h1 data-i18n="title">设置</h1>
+    <div class="locale-switch" role="group" data-i18n-aria="localeLabel" aria-label="语言">
+      <button type="button" data-locale="zh" aria-pressed="true">中文</button>
+      <button type="button" data-locale="en" aria-pressed="false">English</button>
+    </div>
+  </header>
+  <div class="window-controls" data-minimize="false" data-maximize="false"></div>
+  <form id="form">
+    <p class="lead" data-i18n="lead">工作区默认为当前项目目录。主题即时生效；其余项保存后会重启 dsh web。</p>
+
+    <fieldset class="themes">
+      <span data-i18n="theme">主题</span>
+      <div class="swatches" id="themes" role="listbox" data-i18n-aria="theme" aria-label="主题"></div>
+    </fieldset>
+
+    <label>
+      <span data-i18n="workspace">工作区</span>
+      <div class="row">
+        <input id="workspace" name="workspace" spellcheck="false" />
+        <button type="button" class="ghost" id="browse-workspace" data-i18n="browse">浏览</button>
+      </div>
+    </label>
+
+    <label>
+      <span data-i18n="port">端口</span>
+      <input id="port" name="port" type="number" min="1" max="65535" />
+    </label>
+
+    <label>
+      <span data-i18n="apiKey">DeepSeek API Key</span>
+      <input id="apiKey" name="apiKey" type="password" autocomplete="off" />
+    </label>
+
+    <label>
+      <span data-i18n="baseUrl">API Base URL（可选）</span>
+      <input id="baseUrl" name="baseUrl" data-i18n-placeholder="baseUrlPlaceholder" placeholder="默认官方端点" spellcheck="false" />
+    </label>
+
+    <label class="check">
+      <input id="closeToTray" name="closeToTray" type="checkbox" />
+      <span data-i18n="closeToTray">关闭窗口时最小化到托盘</span>
+    </label>
+
+    <label class="check">
+      <input id="openAtLogin" name="openAtLogin" type="checkbox" />
+      <span data-i18n="openAtLogin">开机时启动</span>
+    </label>
+
+    <label class="check">
+      <input id="pluginGenUi" name="pluginGenUi" type="checkbox" />
+      <span data-i18n="pluginGenUi">生成式 UI</span>
+    </label>
+
+    <label class="check">
+      <input id="pluginSubagent" name="pluginSubagent" type="checkbox" />
+      <span data-i18n="pluginSubagent">子代理</span>
+    </label>
+
+    <details>
+      <summary data-i18n="advanced">高级</summary>
+      <label>
+        <span data-i18n="dshBin">dsh 可执行文件（可选）</span>
+        <div class="row">
+          <input id="dshBin" name="dshBin" spellcheck="false" data-i18n-placeholder="dshBinPlaceholder" placeholder="留空则自动 npx / PATH" />
+          <button type="button" class="ghost" id="browse-dsh" data-i18n="browse">浏览</button>
+        </div>
+      </label>
+      <label>
+        <span data-i18n="nodeBin">Node.js（可选）</span>
+        <div class="row">
+          <input id="nodeBin" name="nodeBin" spellcheck="false" data-i18n-placeholder="nodeBinPlaceholder" placeholder="留空则自动检测" />
+          <button type="button" class="ghost" id="browse-node" data-i18n="browse">浏览</button>
+        </div>
+      </label>
+      <p class="meta" id="detected"></p>
+    </details>
+
+    <section class="about">
+      <h2 data-i18n="aboutTitle">关于</h2>
+      <ul>
+        <li>
+          <div data-i18n="aboutApp">DeepSeek Harness GUI</div>
+          <p class="meta" data-i18n="aboutAppMeta">C:\ai\deepseek-harness-gui（无公开 Git 远程）</p>
+          <a href="https://github.com/deepseek-ai/deepseek-harness" target="_blank" rel="noreferrer noopener" data-i18n="aboutHarness">官方 Harness</a>
+        </li>
+        <li>
+          <a id="about-genui" href="https://github.com/omdsh-dev/dsh-genui" target="_blank" rel="noreferrer noopener" data-i18n="aboutGenUi">生成式 UI 插件</a>
+        </li>
+        <li>
+          <a id="about-subagent" href="https://github.com/HuanLinOTO/dsh-plugin-yet-another-subagent" target="_blank" rel="noreferrer noopener" data-i18n="aboutSubagent">子代理插件</a>
+        </li>
+      </ul>
+    </section>
+
+    <p class="message" id="message" hidden></p>
+    <div class="footer">
+      <button type="submit" id="save" data-i18n="save">保存并重启</button>
+    </div>
+  </form>
+  <script src="theme.js"></script>
+  <script src="window-controls.js"></script>
+  <script src="i18n.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,331 @@
+:root {
+  --bg: #0b0d12;
+  --fg: #e8eef9;
+  --muted: #8b93a7;
+  --accent: #6ea8ff;
+  --line: rgba(232, 238, 249, 0.1);
+  --field: #141821;
+  --button-fg: #081018;
+  --caption-h: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  height: var(--caption-h);
+  padding: 0 118px 0 16px;
+  width: 100%;
+  -webkit-app-region: drag;
+}
+
+.caption h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.locale-switch {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.locale-switch button {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.locale-switch button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  color: var(--accent);
+}
+
+form {
+  padding: 16px 28px 24px;
+  -webkit-app-region: no-drag;
+}
+
+.lead,
+.meta,
+.message {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lead {
+  margin: 0 0 24px;
+}
+
+.themes {
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+
+.themes > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.swatch {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: linear-gradient(135deg, var(--swatch-bg) 52%, var(--swatch-accent) 52%);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.swatch[aria-selected="true"] {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+label {
+  display: block;
+  margin: 0 0 16px;
+}
+
+label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input:not([type]) {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 0 10px;
+  font: inherit;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input:focus-visible {
+  outline: none;
+  border-color: rgba(110, 168, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.16);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.check span {
+  margin: 0;
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.check input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  display: grid;
+  place-content: center;
+  border: 1px solid rgba(232, 238, 249, 0.18);
+  border-radius: 6px;
+  background: var(--field);
+  cursor: pointer;
+}
+
+.check input::after {
+  content: "";
+  width: 8px;
+  height: 5px;
+  border: 1.5px solid var(--button-fg);
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg) scale(0);
+}
+
+.check input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.check input:checked::after {
+  transform: rotate(-45deg) scale(1);
+}
+
+.check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button[type="submit"] {
+  background: var(--accent);
+  color: var(--button-fg);
+  font-weight: 600;
+}
+
+button[type="submit"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, white);
+}
+
+button.ghost,
+button[type="button"]:not(.swatch) {
+  background: transparent;
+  color: var(--fg);
+  font-weight: 500;
+  border: 1px solid var(--line);
+}
+
+button.ghost:hover,
+button[type="button"]:not(.swatch):hover {
+  background: rgba(232, 238, 249, 0.04);
+  border-color: rgba(232, 238, 249, 0.18);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+details {
+  margin: 8px 0 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+summary:hover {
+  color: var(--fg);
+}
+
+.about {
+  margin: 8px 0 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.about h2 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.about ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about li {
+  margin: 0 0 10px;
+}
+
+.about li:last-child {
+  margin-bottom: 0;
+}
+
+.about a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about a:hover {
+  text-decoration: underline;
+}
+
+.about a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.about .meta {
+  margin: 2px 0 4px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.message {
+  min-height: 1.2em;
+}
+
+.message.error {
+  color: #ff7b72;
+}

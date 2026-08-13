@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DeepSeek Harness</title>
+  <link rel="stylesheet" href="boot.css" />
+  <link rel="stylesheet" href="window-controls.css" />
+</head>
+<body data-state="starting">
+  <div class="caption" aria-hidden="true"></div>
+  <div class="window-controls"></div>
+  <main class="stage">
+    <div class="mark" aria-hidden="true">
+      <span class="ring"></span>
+      <svg viewBox="0 0 256 256">
+        <circle cx="128" cy="128" r="78" fill="none" stroke="currentColor" stroke-width="14"/>
+        <path d="M86 128h84M128 86v84" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+        <circle cx="128" cy="128" r="18" fill="#E8EEF9"/>
+      </svg>
+    </div>
+    <p class="brand">DeepSeek Harness</p>
+    <p class="status" id="status" role="status">正在启动运行时</p>
+    <p class="hint" id="hint">正在启动本机 dsh web；关闭应用时会一并退出服务。</p>
+    <div class="actions" id="actions" hidden>
+      <button type="button" id="retry">重试</button>
+      <button type="button" class="ghost" id="settings">设置</button>
+    </div>
+    <ol class="log" id="log" aria-label="最近日志" aria-live="polite"></ol>
+  </main>
+  <script src="theme.js"></script>
+  <script src="window-controls.js"></script>
+  <script src="boot.js"></script>
+</body>
+</html>

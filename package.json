@@ -1,0 +1,66 @@
+{
+  "name": "deepseek-harness-gui",
+  "productName": "DeepSeek Harness",
+  "version": "0.1.0",
+  "description": "Electron desktop shell for DeepSeek Harness Web UI",
+  "author": "Tiffany",
+  "license": "MIT",
+  "main": "src/main/index.js",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/run-electron.js",
+    "setup:harness": "node scripts/setup-harness.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ai.deepseek.harness.gui",
+    "productName": "DeepSeek Harness",
+    "copyright": "MIT",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main/index.js"
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DeepSeek Harness"
+    },
+    "portable": {
+      "artifactName": "DeepSeek-Harness-Portable.exe"
+    }
+  }
+}
