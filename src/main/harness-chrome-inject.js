@@ -112,6 +112,22 @@
     return document.querySelector('[class*="logoRow"]');
   }
 
+  function findCenterCol() {
+    return document.querySelector('[class*="centerCol"]');
+  }
+
+  function isVisibleChrome(el) {
+    if (!(el instanceof HTMLElement)) {
+      return false;
+    }
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') {
+      return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.top <= 8 && r.height >= 24 && r.width >= 24;
+  }
+
   function reservedRight() {
     return EDGE + CONTROL_SIZE * 3 + CONTROL_GAP * 2 + CLUSTER;
   }
@@ -166,6 +182,14 @@
         background: #e81123;
         color: #fff;
       }
+      #${DRAG_ID} {
+        position: fixed;
+        top: 0;
+        z-index: 2147483644;
+        height: 56px;
+        background: transparent;
+        -webkit-app-region: drag;
+      }
       [${MARK}] {
         -webkit-app-region: drag;
       }
@@ -205,6 +229,20 @@
 
   function removeDragStrip() {
     document.getElementById(DRAG_ID)?.remove();
+  }
+
+  function placeDraftDragStrip() {
+    let strip = document.getElementById(DRAG_ID);
+    if (!strip) {
+      strip = document.createElement('div');
+      strip.id = DRAG_ID;
+      (document.body || document.documentElement).appendChild(strip);
+    }
+    const center = findCenterCol();
+    const left = center ? Math.max(0, Math.round(center.getBoundingClientRect().left)) : 0;
+    strip.style.left = `${left}px`;
+    strip.style.right = `${reservedRight()}px`;
+    return strip;
   }
 
   function clearMarks() {
@@ -256,20 +294,23 @@
   function measure() {
     ensureStyle();
     const host = ensureControls();
-    removeDragStrip();
     clearMarks();
 
     const sessionLog = findSessionLog();
-    const bar = findTopBar();
+    const foundBar = findTopBar();
+    const bar = isVisibleChrome(foundBar) ? foundBar : null;
     const logo = findLogoRow();
     const inset = placeControls(host, sessionLog);
     document.documentElement.style.setProperty('--dsh-wco-pad', `${inset}px`);
 
     let bg = opaqueBg(document.body);
     if (bar) {
+      removeDragStrip();
       bg = opaqueBg(bar);
       bar.setAttribute(MARK, 'main');
       markInteractive(bar);
+    } else {
+      placeDraftDragStrip();
     }
     if (logo) {
       logo.setAttribute(MARK, '');

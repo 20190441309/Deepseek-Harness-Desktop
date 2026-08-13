@@ -4,6 +4,9 @@ const detectedEl = document.getElementById('detected');
 const saveEl = document.getElementById('save');
 
 let lastConfig = null;
+let lastUpdate = null;
+let updateBusy = false;
+let updatePercent = 0;
 
 function t(key, vars) {
   return window.I18n ? window.I18n.t(key, vars) : key;
@@ -76,27 +79,74 @@ function renderDetected(config) {
   detectedEl.textContent = bits.join(' · ') || t('detectedNone');
 }
 
-function applyAbout(config) {
-  const about = config && config.pluginAbout;
-  const genui = document.getElementById('about-genui');
-  const subagent = document.getElementById('about-subagent');
-  if (genui && about && about.genui && about.genui.url) {
-    genui.href = about.genui.url;
-  }
-  if (subagent && about && about.subagent && about.subagent.url) {
-    subagent.href = about.subagent.url;
-  }
-}
-
 function applyLocale(next, config) {
   const locale = window.I18n.setLocale(next);
   if (config || lastConfig) {
     const source = config || lastConfig;
     renderThemes(source.themes, source.theme);
     renderDetected(source);
-    applyAbout(source);
+    renderAbout(source);
   }
   return locale;
+}
+
+function updateStatusText() {
+  const info = lastUpdate || {};
+  if (updateBusy && info.phase === 'download') {
+    return t('aboutUpdateDownloading', { percent: String(updatePercent) });
+  }
+  if (updateBusy && info.phase === 'install') {
+    return t('aboutUpdateInstalling');
+  }
+  if (updateBusy && info.phase === 'checking') {
+    return t('aboutUpdateChecking');
+  }
+  if (info.status === 'none') {
+    return t('aboutUpdateNone');
+  }
+  if (info.status === 'current') {
+    return t('aboutUpdateCurrent', { latest: info.latest || info.current || '' });
+  }
+  if (info.status === 'available') {
+    return t('aboutUpdateAvailable', { latest: info.latest || '' });
+  }
+  if (info.status === 'error') {
+    return t('aboutUpdateError', { message: info.message || '' });
+  }
+  if (info.launched) {
+    return t('aboutUpdateInstalling');
+  }
+  if (info.openedPage) {
+    return t('aboutUpdateOpenedPage');
+  }
+  return '';
+}
+
+function renderAbout(config) {
+  const source = config || lastConfig || {};
+  const versionEl = document.getElementById('about-version');
+  const statusEl = document.getElementById('about-update-status');
+  const checkEl = document.getElementById('check-update');
+  const installEl = document.getElementById('install-update');
+  const releasesEl = document.getElementById('about-releases');
+  const version = (lastUpdate && lastUpdate.current) || source.appVersion || '—';
+  if (versionEl) {
+    versionEl.textContent = t('aboutVersion', { version });
+  }
+  if (statusEl) {
+    statusEl.textContent = updateStatusText();
+  }
+  if (releasesEl) {
+    releasesEl.href = (lastUpdate && lastUpdate.releasesUrl) || source.releasesUrl
+      || 'https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases';
+  }
+  if (checkEl) {
+    checkEl.disabled = updateBusy;
+  }
+  if (installEl) {
+    const info = lastUpdate || {};
+    installEl.disabled = updateBusy || !(info.assetUrl || info.status === 'none' || info.status === 'available' || info.status === 'current');
+  }
 }
 
 async function hydrate() {
@@ -111,12 +161,14 @@ async function hydrate() {
   setValue('nodeBin', config.nodeBin);
   setChecked('closeToTray', config.closeToTray);
   setChecked('openAtLogin', config.openAtLogin);
-  setChecked('pluginGenUi', config.pluginGenUi);
-  setChecked('pluginSubagent', config.pluginSubagent);
-  applyAbout(config);
+  renderAbout(config);
   if (config.themeTokens && window.applyShellTheme) {
     window.applyShellTheme(config.themeTokens);
   }
+  checkForUpdate().catch((error) => {
+    lastUpdate = { status: 'error', message: error.message || String(error), current: config.appVersion };
+    renderAbout(config);
+  });
 }
 
 async function pickInto(method, id, options) {
@@ -206,8 +258,6 @@ form.addEventListener('submit', async (event) => {
       theme: document.querySelector('.swatch[aria-selected="true"]')?.dataset.theme || 'midnight',
       closeToTray: document.getElementById('closeToTray').checked,
       openAtLogin: document.getElementById('openAtLogin').checked,
-      pluginGenUi: document.getElementById('pluginGenUi').checked,
-      pluginSubagent: document.getElementById('pluginSubagent').checked,
       locale: window.I18n ? window.I18n.getLocale() : 'zh',
     });
     await invoke('restart');
@@ -217,6 +267,71 @@ form.addEventListener('submit', async (event) => {
     showMessage(error.message || String(error), true);
   }
 });
+
+async function checkForUpdate() {
+  updateBusy = true;
+  lastUpdate = { ...(lastUpdate || {}), phase: 'checking', current: lastConfig?.appVersion };
+  renderAbout();
+  try {
+    const info = await invoke('checkUpdate');
+    lastUpdate = info;
+    updateBusy = false;
+    renderAbout();
+    return info;
+  } catch (error) {
+    updateBusy = false;
+    lastUpdate = { status: 'error', message: error.message || String(error), current: lastConfig?.appVersion };
+    renderAbout();
+    throw error;
+  }
+}
+
+async function installLatest() {
+  updateBusy = true;
+  updatePercent = 0;
+  lastUpdate = { ...(lastUpdate || {}), phase: 'download' };
+  renderAbout();
+  try {
+    const info = await invoke('installUpdate');
+    lastUpdate = info;
+    updateBusy = false;
+    renderAbout();
+    if (info.launched) {
+      showMessage(t('aboutUpdateInstalling'));
+    } else if (info.openedPage) {
+      showMessage(t('aboutUpdateOpenedPage'));
+    }
+  } catch (error) {
+    updateBusy = false;
+    lastUpdate = { status: 'error', message: error.message || String(error), current: lastConfig?.appVersion };
+    renderAbout();
+    showMessage(error.message || String(error), true);
+  }
+}
+
+document.getElementById('check-update').addEventListener('click', () => {
+  checkForUpdate().catch((error) => {
+    showMessage(error.message || String(error), true);
+  });
+});
+
+document.getElementById('install-update').addEventListener('click', () => {
+  installLatest();
+});
+
+if (window.shell && typeof window.shell.onUpdateProgress === 'function') {
+  window.shell.onUpdateProgress((payload) => {
+    if (payload.phase === 'download') {
+      updatePercent = Number(payload.percent) || 0;
+      lastUpdate = { ...(lastUpdate || {}), phase: 'download' };
+    }
+    if (payload.phase === 'install') {
+      updatePercent = 100;
+      lastUpdate = { ...(lastUpdate || {}), phase: 'install' };
+    }
+    renderAbout();
+  });
+}
 
 hydrate().catch((error) => {
   showMessage(error.message || String(error), true);

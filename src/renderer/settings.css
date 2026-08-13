@@ -317,6 +317,24 @@ summary:hover {
   margin: 2px 0 4px;
 }
 
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.about-actions button.primary {
+  background: var(--accent);
+  color: var(--button-fg);
+  font-weight: 600;
+  border-color: transparent;
+}
+
+.about-actions button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, white);
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

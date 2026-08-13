@@ -47,9 +47,28 @@ function isUsableNode(bin) {
   return true;
 }
 
+function bundledNodeBin() {
+  try {
+    const { app } = require('electron');
+    if (!app.isPackaged) {
+      return null;
+    }
+    return firstExisting([
+      path.join(process.resourcesPath, 'node.exe'),
+      path.join(process.resourcesPath, 'node'),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 function resolveNodeBin(config) {
   if (isUsableNode(config.nodeBin)) {
     return config.nodeBin;
+  }
+  const bundled = bundledNodeBin();
+  if (isUsableNode(bundled)) {
+    return bundled;
   }
   const preferred = firstExisting([
     'C:\\Program Files\\nodejs\\node.exe',

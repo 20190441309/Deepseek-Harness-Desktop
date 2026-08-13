@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig, defaultWorkspace } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
-const { applyPluginToggles } = require('./plugins');
+const { stripDroppedPlugins } = require('./plugins');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { buildMenu } = require('./menu');
@@ -59,9 +59,9 @@ async function startHarness() {
     try {
       const target = await resolveLaunchTarget();
       try {
-        applyPluginToggles(loadConfig());
+        stripDroppedPlugins();
       } catch (error) {
-        dsh.log(`插件开关应用失败：${error.message}`, 'app');
+        dsh.log(`插件清理失败：${error.message}`, 'app');
       }
       const url = await dsh.start(target);
       const { workspace } = loadConfig();

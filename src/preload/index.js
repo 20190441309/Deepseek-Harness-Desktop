@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld('shell', {
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   restart: () => ipcRenderer.invoke('shell:restart'),
   openSettings: () => ipcRenderer.invoke('shell:open-settings'),
+  checkUpdate: () => ipcRenderer.invoke('shell:check-update'),
+  installUpdate: () => ipcRenderer.invoke('shell:install-update'),
+  onUpdateProgress: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:update-progress', listener);
+    return () => ipcRenderer.removeListener('shell:update-progress', listener);
+  },
   reportChrome: (metrics) => ipcRenderer.send('shell:chrome-metrics', metrics),
   windowAction: (action) => ipcRenderer.send('shell:window', action),
   getWindowState: () => ipcRenderer.invoke('shell:window-state'),

@@ -44,9 +44,9 @@ body {
 
 .mark {
   position: relative;
-  width: 72px;
-  height: 72px;
-  color: var(--accent);
+  width: 88px;
+  height: 88px;
+  color: var(--fg);
   animation: rise 700ms ease both;
 }
 

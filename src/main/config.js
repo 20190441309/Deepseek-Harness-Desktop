@@ -16,8 +16,6 @@ const DEFAULTS = {
   openDevTools: false,
   theme: 'midnight',
   locale: 'zh',
-  pluginGenUi: true,
-  pluginSubagent: true,
 };
 
 function configPath() {
@@ -62,8 +60,8 @@ function loadConfig() {
   if (config.locale !== 'en' && config.locale !== 'zh') {
     config.locale = DEFAULTS.locale;
   }
-  config.pluginGenUi = Boolean(config.pluginGenUi);
-  config.pluginSubagent = Boolean(config.pluginSubagent);
+  delete config.pluginSubagent;
+  delete config.pluginGenUi;
   return config;
 }
 
@@ -71,8 +69,8 @@ function saveConfig(next) {
   const current = loadConfig();
   const merged = { ...current, ...next };
   merged.locale = merged.locale === 'en' ? 'en' : 'zh';
-  merged.pluginGenUi = Boolean(merged.pluginGenUi);
-  merged.pluginSubagent = Boolean(merged.pluginSubagent);
+  delete merged.pluginSubagent;
+  delete merged.pluginGenUi;
   const { apiKey, baseUrl, ...publicConfig } = merged;
   writeJson(configPath(), publicConfig);
   writeJson(credentialsPath(), { apiKey: apiKey || '', baseUrl: baseUrl || '' });

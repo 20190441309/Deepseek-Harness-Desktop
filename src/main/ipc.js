@@ -4,7 +4,7 @@ const { getMainWindow, createSettingsWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
-const { applyPluginToggles, pluginAbout } = require('./plugins');
+const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -26,7 +26,9 @@ function configPayload(config) {
       }
       return resolveDshBin(config);
     })(),
-    pluginAbout: pluginAbout(),
+    appVersion: currentVersion(),
+    repoUrl: REPO_URL,
+    releasesUrl: RELEASES_PAGE,
   };
 }
 
@@ -40,17 +42,6 @@ function registerIpc({ dsh, startHarness }) {
     app.setLoginItemSettings({ openAtLogin: Boolean(next.openAtLogin) });
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'theme')) {
       applyAppTheme();
-    }
-    if (
-      patch &&
-      (Object.prototype.hasOwnProperty.call(patch, 'pluginGenUi') ||
-        Object.prototype.hasOwnProperty.call(patch, 'pluginSubagent'))
-    ) {
-      try {
-        applyPluginToggles(next);
-      } catch (error) {
-        console.error('applyPluginToggles failed', error);
-      }
     }
     return configPayload(next);
   });
@@ -96,6 +87,31 @@ function registerIpc({ dsh, startHarness }) {
   ipcMain.handle('shell:open-settings', () => {
     createSettingsWindow();
     return true;
+  });
+
+  ipcMain.handle('shell:check-update', () => checkUpdate());
+
+  ipcMain.handle('shell:install-update', async (event) => {
+    try {
+      return await installUpdate((payload) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('shell:update-progress', payload);
+        }
+      });
+    } catch (error) {
+      return {
+        status: 'error',
+        current: currentVersion(),
+        repoUrl: REPO_URL,
+        releasesUrl: RELEASES_PAGE,
+        htmlUrl: RELEASES_PAGE,
+        latest: '',
+        assetName: '',
+        assetUrl: '',
+        launched: false,
+        message: error.message || String(error),
+      };
+    }
   });
 }
 

@@ -3,7 +3,7 @@ const { app } = require('electron');
 
 function projectRoot() {
   if (app.isPackaged) {
-    return path.dirname(app.getPath('exe'));
+    return process.resourcesPath;
   }
   return path.join(__dirname, '..', '..');
 }

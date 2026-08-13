@@ -58,16 +58,6 @@
       <span data-i18n="openAtLogin">开机时启动</span>
     </label>
 
-    <label class="check">
-      <input id="pluginGenUi" name="pluginGenUi" type="checkbox" />
-      <span data-i18n="pluginGenUi">生成式 UI</span>
-    </label>
-
-    <label class="check">
-      <input id="pluginSubagent" name="pluginSubagent" type="checkbox" />
-      <span data-i18n="pluginSubagent">子代理</span>
-    </label>
-
     <details>
       <summary data-i18n="advanced">高级</summary>
       <label>
@@ -91,15 +81,18 @@
       <h2 data-i18n="aboutTitle">关于</h2>
       <ul>
         <li>
-          <div data-i18n="aboutApp">DeepSeek Harness GUI</div>
-          <p class="meta" data-i18n="aboutAppMeta">C:\ai\deepseek-harness-gui（无公开 Git 远程）</p>
+          <div data-i18n="aboutApp">Deepseek-Harness-Desktop</div>
+          <p class="meta" id="about-version"></p>
+          <p class="meta" data-i18n="aboutAppMeta">github.com/ChisaAlter/Deepseek-Harness-Desktop</p>
+          <p class="meta" id="about-update-status"></p>
+          <div class="about-actions">
+            <button type="button" class="ghost" id="check-update" data-i18n="aboutCheckUpdate">检测更新</button>
+            <button type="button" class="primary" id="install-update" data-i18n="aboutInstallUpdate" disabled>在线安装</button>
+          </div>
+          <p>
+            <a id="about-releases" href="https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases" target="_blank" rel="noreferrer noopener" data-i18n="aboutReleases">GitHub 发行版</a>
+          </p>
           <a href="https://github.com/deepseek-ai/deepseek-harness" target="_blank" rel="noreferrer noopener" data-i18n="aboutHarness">官方 Harness</a>
-        </li>
-        <li>
-          <a id="about-genui" href="https://github.com/omdsh-dev/dsh-genui" target="_blank" rel="noreferrer noopener" data-i18n="aboutGenUi">生成式 UI 插件</a>
-        </li>
-        <li>
-          <a id="about-subagent" href="https://github.com/HuanLinOTO/dsh-plugin-yet-another-subagent" target="_blank" rel="noreferrer noopener" data-i18n="aboutSubagent">子代理插件</a>
         </li>
       </ul>
     </section>

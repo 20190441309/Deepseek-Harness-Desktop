@@ -1,4 +1,5 @@
 node_modules/
+vendor/deepseek-harness/
 vendor/deepseek-harness/node_modules/
 vendor/deepseek-harness/apps/web/dist/
 dist/

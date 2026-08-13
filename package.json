@@ -1,5 +1,5 @@
 {
-  "name": "deepseek-harness-gui",
+  "name": "deepseek-harness-desktop",
   "productName": "DeepSeek Harness",
   "version": "0.1.0",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
@@ -35,8 +35,11 @@
     "extraMetadata": {
       "main": "src/main/index.js"
     },
+    "electronDist": "node_modules/electron/dist",
+    "afterPack": "./scripts/after-pack.js",
     "win": {
       "icon": "assets/icon.png",
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "nsis",
@@ -57,10 +60,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DeepSeek Harness"
+      "shortcutName": "DeepSeek Harness",
+      "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "DeepSeek-Harness-Portable.exe"
+      "artifactName": "Deepseek-Harness-Desktop-Portable.exe"
     }
   }
 }

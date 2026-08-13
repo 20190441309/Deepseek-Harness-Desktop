@@ -7,7 +7,11 @@ let settingsWindow = null;
 
 function iconImage() {
   const png = nativeImage.createFromPath(assetFile('icon.png'));
-  return png.isEmpty() ? undefined : png;
+  if (!png.isEmpty()) {
+    return png;
+  }
+  const svg = nativeImage.createFromPath(assetFile('icon.svg'));
+  return svg.isEmpty() ? undefined : svg;
 }
 
 function createMainWindow() {
