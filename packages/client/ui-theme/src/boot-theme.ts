@@ -1,22 +1,75 @@
 /**
  * Host-rendered theme bootstrap for the browser's pre-plugin interval. Each
- * index response embeds the current durable built-in preference; the browser
- * resolves only `system`, then writes the same DOM fields ui-layout's
- * ThemePresenter owns after the client plugin tree activates.
+ * index response embeds the current durable color scheme plus the already
+ * derived alias tokens for both halves; the browser resolves only `system`,
+ * then writes the same DOM fields ui-layout's ThemePresenter owns after the
+ * client plugin tree activates.
  */
 
-import { DEFAULT_PREFERENCE, type ThemePreference } from './theme-settings.ts'
+import { deriveThemeTokens } from './derive.ts'
+import { DEFAULT_FAMILY_ID, type ThemeTokens } from './theme-family.ts'
+import { resolveThemeFamily } from './builtin-families.ts'
+import {
+  DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, resolveThemeSettings,
+  type ThemePreference, type ThemeSettings,
+} from './theme-settings.ts'
 
-/** Build the inline script for one schema-validated built-in preference. */
-function bootThemeScript(preference: ThemePreference): string {
+/** Payload embedded in the pre-plugin bootstrap script. */
+export interface ThemeBootPayload {
+  /** Durable color-scheme preference. */
+  preference: ThemePreference
+  /** Derived tokens for the light half (empty for the DeepSeek family). */
+  lightTokens: ThemeTokens
+  /** Derived tokens for the dark half (empty for the DeepSeek family). */
+  darkTokens: ThemeTokens
+  /** Interface font size in px. */
+  fontSizeInterface: number
+  /** Overlay solidity percent. */
+  glassOpacity: number
+}
+
+function tokensFor(settings: ThemeSettings, mode: 'light' | 'dark'): ThemeTokens {
+  const familyId = mode === 'dark' ? settings.activeDarkThemeId : settings.activeLightThemeId
+  const family = resolveThemeFamily(familyId, settings.customThemes)
+  return family.id === DEFAULT_FAMILY_ID ? {} : deriveThemeTokens(family[mode])
+}
+
+/**
+ * Build the Host bootstrap payload from a durable section.
+ * @param section - accepted Host theme section, or undefined.
+ * @returns JSON-safe boot fields.
+ */
+export function buildThemeBootPayload(section: ThemeSettings | undefined): ThemeBootPayload {
+  const settings = resolveThemeSettings(section)
+  return {
+    preference: settings.preference,
+    lightTokens: tokensFor(settings, 'light'),
+    darkTokens: tokensFor(settings, 'dark'),
+    fontSizeInterface: settings.fontSizeInterface,
+    glassOpacity: settings.glassOpacity,
+  }
+}
+
+/** Build the inline script for one schema-validated boot payload. */
+function bootThemeScript(payload: ThemeBootPayload): string {
   return `<script>(() => {
-  const preference = ${JSON.stringify(preference)}
+  const preference = ${JSON.stringify(payload.preference)}
+  const lightTokens = ${JSON.stringify(payload.lightTokens)}
+  const darkTokens = ${JSON.stringify(payload.darkTokens)}
+  const fontSizeInterface = ${JSON.stringify(payload.fontSizeInterface)}
+  const glassOpacity = ${JSON.stringify(payload.glassOpacity)}
   const systemDark = preference === 'system'
     && typeof matchMedia !== 'undefined'
     && matchMedia('(prefers-color-scheme: dark)').matches
   const dark = preference === 'dark' || systemDark
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+  document.documentElement.style.fontSize = fontSizeInterface + 'px'
   document.body.toggleAttribute('data-ds-dark-theme', dark)
+  const tokens = dark ? darkTokens : lightTokens
+  for (const [name, value] of Object.entries(tokens)) {
+    document.body.style.setProperty(name, value)
+  }
+  document.body.style.setProperty('--dsw-alias-glass-opacity', glassOpacity + '%')
 })()</script>`
 }
 
@@ -25,14 +78,18 @@ function bootThemeScript(preference: ThemePreference): string {
  * the shell mount and module script. Body-less fragments receive it at the
  * end, where the HTML parser has already synthesized a body.
  * @param html - Raw application index HTML.
- * @param preference - Current Host-backed built-in preference.
+ * @param payload - Current Host-backed boot fields, or a bare preference for
+ *   the historical single-field call.
  * @returns HTML containing the theme bootstrap.
  */
 export function injectBootTheme(
   html: string,
-  preference: ThemePreference = DEFAULT_PREFERENCE,
+  payload: ThemeBootPayload | ThemePreference = DEFAULT_PREFERENCE,
 ): string {
-  const script = bootThemeScript(preference)
+  const resolved: ThemeBootPayload = typeof payload === 'string'
+    ? buildThemeBootPayload({ ...DEFAULT_THEME_SETTINGS, preference: payload })
+    : payload
+  const script = bootThemeScript(resolved)
   const body = /<body(?:\s[^>]*)?>/i.exec(html)
   if (body === null) return `${html}${script}`
   const at = body.index + body[0].length

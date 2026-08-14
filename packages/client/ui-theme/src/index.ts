@@ -3,26 +3,25 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
-import { injectBootTheme } from './boot-theme.ts'
+import { buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
 import {
-  DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema,
-  type ThemePreference, type ThemeSettings,
+  THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, type ThemeSettings,
 } from './theme-settings.ts'
 
 export {
-  DEFAULT_PREFERENCE, THEME_PREFERENCE_FIELD, THEME_PREFERENCES, THEME_SETTINGS_NAMESPACE,
-  type ThemePreference, type ThemeSettings,
+  DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, THEME_PREFERENCE_FIELD, THEME_PREFERENCES,
+  THEME_SETTINGS_NAMESPACE, type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
+export { buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
+export type { ThemeBootPayload } from './boot-theme.ts'
 
 const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE)
 
-/** Read the registered preference or use the schema default without a settings provider. */
-function readPreference(ctx: Context): ThemePreference {
+/** Read the registered section, or undefined when no settings provider is composed. */
+function readSection(ctx: Context): ThemeSettings | undefined {
   const settings = ctx.get('settings')
-  if (settings === undefined) return DEFAULT_PREFERENCE
-  const section = settings.get(THEME_NAMESPACE) as ThemeSettings | undefined
-  if (section === undefined) return DEFAULT_PREFERENCE
-  return section.preference
+  if (settings === undefined) return undefined
+  return settings.get(THEME_NAMESPACE) as ThemeSettings | undefined
 }
 
 /**
@@ -36,7 +35,7 @@ export function apply(ctx: Context): void {
   })
   ctx.inject(['webServer'], (httpCtx) => {
     httpCtx.effect(
-      () => httpCtx.webServer.tapIndex(html => injectBootTheme(html, readPreference(ctx))),
+      () => httpCtx.webServer.tapIndex(html => injectBootTheme(html, buildThemeBootPayload(readSection(ctx)))),
       'client-ui-theme: initial theme bootstrap',
     )
   })
