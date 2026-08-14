@@ -34,7 +34,7 @@
 
 ## 跑起来
 
-Windows 10+，Node 22.19+ / 24+，pnpm 11。API Key 去 [DeepSeek](https://platform.deepseek.com/) 申请。
+Windows 10+，Node 22.19+ / 24+，pnpm 11。
 
 ```powershell
 git clone https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git
