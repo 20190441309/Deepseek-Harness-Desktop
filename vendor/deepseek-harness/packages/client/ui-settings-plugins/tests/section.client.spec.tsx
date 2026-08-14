@@ -97,6 +97,8 @@ describe('PluginsSettingsSection', () => {
 
     const configurable = screen.getByRole('tab', { name: en.configurableTab })
     const all = screen.getByRole('tab', { name: 'Plugin list' })
+    expect(configurable.getAttribute('data-dsh-settings-plugin-tab')).toBe('configurable')
+    expect(all.getAttribute('data-dsh-settings-plugin-tab')).toBe('all')
     expect(configurable.getAttribute('aria-selected')).toBe('true')
     expect(screen.getByText('configurable')).toBeTruthy()
     expect(screen.queryByText('all')).toBeNull()

@@ -13,8 +13,9 @@
 1.支持第三方模型设置思考强度。
 2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
 3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
+4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选，一键安装 / 卸载到 web profile。
 
-后续功能开发：插件市场等。也欢迎有需求的朋友来提需求，或者提 PR。
+也欢迎有需求的朋友来提需求，或者提 PR。
 
 
 
@@ -33,6 +34,7 @@
 - **第三方思考强度**：自定义 / 第三方模型可勾 Low / Medium / High / Very High / Extreme，输入栏里就能切推理等级
 - **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
 - **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调
+- **插件市场**：在设置 → 插件 →「插件市场」里，和插件配置、插件列表并排。菜单 / 托盘 / 标题栏 / `Ctrl+Shift+M` 会打开这一页。目录只认 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按界面、工作流、工具、通知、开发、学习分类；安装走官方 `dsh plugin --profile web add github:owner/repo`，装完会重启 Harness。git 安装会在本机执行仓库的 prepare 脚本，只装你信任的插件。GitHub API 被限流时可把 Token 写进这一页。
 
 ### 第三方思考强度
 
@@ -101,6 +103,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 | 操作 | 方式 |
 | --- | --- |
 | 设置 | `Ctrl+,` 或托盘菜单 |
+| 插件市场 | 设置 → 插件 →「插件市场」；`Ctrl+Shift+M`、托盘或标题栏也会打开这一页 |
 | 重启 Harness | `Ctrl+Shift+R` |
 | 重新加载界面 | `Ctrl+R` |
 | 开发者工具 | `Ctrl+Shift+I` |

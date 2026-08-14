@@ -3,6 +3,7 @@ const { rendererFile, assetFile, preloadFile } = require('./paths');
 const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChrome } = require('./chrome');
 
 let mainWindow = null;
+let marketplaceWindow = null;
 
 function iconImage() {
   const png = nativeImage.createFromPath(assetFile('icon.png'));
@@ -127,6 +128,90 @@ function openHarnessSettings(sectionId) {
   `).catch(() => false);
 }
 
+function openMarketplaceWindow() {
+  if (marketplaceWindow && !marketplaceWindow.isDestroyed()) {
+    if (marketplaceWindow.isMinimized()) {
+      marketplaceWindow.restore();
+    }
+    marketplaceWindow.show();
+    marketplaceWindow.focus();
+    return marketplaceWindow;
+  }
+
+  marketplaceWindow = new BrowserWindow({
+    ...windowChrome({
+      width: 1120,
+      height: 780,
+      minWidth: 880,
+      minHeight: 600,
+      show: false,
+      icon: iconImage(),
+    }),
+    webPreferences: {
+      preload: preloadFile(),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+
+  attachIntegratedChrome(marketplaceWindow);
+  marketplaceWindow.once('ready-to-show', () => {
+    hideNativeMenu(marketplaceWindow);
+    marketplaceWindow.show();
+  });
+  marketplaceWindow.on('closed', () => {
+    marketplaceWindow = null;
+  });
+  marketplaceWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  marketplaceWindow.loadFile(rendererFile('marketplace/index.html'));
+  return marketplaceWindow;
+}
+
+function openMarketplace() {
+  const win = showMain();
+  if (!win || !isHarnessLoaded(win)) {
+    return openMarketplaceWindow();
+  }
+  return openHarnessSettings('plugins').then((opened) => {
+    if (!opened) {
+      return openMarketplaceWindow();
+    }
+    return win.webContents.executeJavaScript(`
+      (() => {
+        return new Promise((resolve) => {
+          let n = 0;
+          const tick = () => {
+            const tab = document.querySelector('[data-dsh-settings-plugin-tab="marketplace"]');
+            if (tab) {
+              tab.click();
+              resolve(true);
+              return;
+            }
+            if (n++ > 60) {
+              resolve(false);
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          tick();
+        });
+      })()
+    `).then((selected) => {
+      if (!selected) {
+        return openMarketplaceWindow();
+      }
+      return true;
+    }).catch(() => openMarketplaceWindow());
+  });
+}
+
 function sendToBoot(channel, payload) {
   const win = getMainWindow();
   if (!win) {
@@ -145,6 +230,7 @@ module.exports = {
   showHarness,
   showMain,
   openHarnessSettings,
+  openMarketplace,
   sendToBoot,
   iconImage,
 };

@@ -38,4 +38,15 @@ contextBridge.exposeInMainWorld('shell', {
     ipcRenderer.on('shell:log', listener);
     return () => ipcRenderer.removeListener('shell:log', listener);
   },
+  listMarketplace: (options) => ipcRenderer.invoke('shell:list-marketplace', options),
+  refreshMarketplace: () => ipcRenderer.invoke('shell:refresh-marketplace'),
+  listInstalledPlugins: () => ipcRenderer.invoke('shell:list-installed-plugins'),
+  installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
+  uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
+  openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
+  onPluginProgress: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:plugin-progress', listener);
+    return () => ipcRenderer.removeListener('shell:plugin-progress', listener);
+  },
 });

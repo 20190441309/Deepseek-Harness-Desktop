@@ -1,5 +1,5 @@
 const { Tray, Menu, nativeImage } = require('electron');
-const { showMain, iconImage, openHarnessSettings } = require('./window');
+const { showMain, iconImage, openHarnessSettings, openMarketplace } = require('./window');
 const { assetFile } = require('./paths');
 
 let tray = null;
@@ -22,6 +22,7 @@ function createTray({ onRestart, onQuit }) {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示窗口', click: () => showMain() },
     { label: '设置…', click: () => { openHarnessSettings(); } },
+    { label: '插件市场', click: () => { openMarketplace(); } },
     { label: '重启 Harness', click: () => onRestart() },
     { type: 'separator' },
     { label: '退出', click: () => onQuit() },

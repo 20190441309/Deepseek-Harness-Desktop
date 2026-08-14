@@ -1,5 +1,5 @@
 const { Menu, shell, app } = require('electron');
-const { openHarnessSettings } = require('./window');
+const { openHarnessSettings, openMarketplace } = require('./window');
 const { loadConfig } = require('./config');
 
 function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
@@ -38,6 +38,11 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
           label: '设置…',
           accelerator: 'CmdOrCtrl+,',
           click: () => { openHarnessSettings(); },
+        },
+        {
+          label: '插件市场…',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => { openMarketplace(); },
         },
         { type: 'separator' },
         isMac ? { role: 'close', label: '关闭窗口' } : { role: 'quit', label: '退出' },

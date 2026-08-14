@@ -13,6 +13,7 @@
   const ICON_MAX = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
   const ICON_RESTORE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="3.4" y="2.2" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/><rect x="2.2" y="3.6" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3L3 9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>';
+  const ICON_MARKET = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.2 3.2h7.6v6.4H2.2z" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M4 3.2V2.4a2 2 0 0 1 4 0v.8" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>';
 
   const INTERACTIVE = 'a, button, input, textarea, select, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [contenteditable]';
 
@@ -129,7 +130,7 @@
   }
 
   function reservedRight() {
-    return EDGE + CONTROL_SIZE * 3 + CONTROL_GAP * 2 + CLUSTER;
+    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
   }
 
   function ensureStyle() {
@@ -212,16 +213,25 @@
     host = document.createElement('div');
     host.id = CONTROLS_ID;
     host.innerHTML = [
+      `<button type="button" data-act="marketplace" aria-label="插件市场">${ICON_MARKET}</button>`,
       `<button type="button" data-act="minimize" aria-label="最小化">${ICON_MIN}</button>`,
       `<button type="button" data-act="maximize" aria-label="最大化">${ICON_MAX}</button>`,
       `<button type="button" data-act="close" aria-label="关闭">${ICON_CLOSE}</button>`,
     ].join('');
     host.addEventListener('click', (event) => {
       const button = event.target.closest('[data-act]');
-      if (!button || !window.shell || typeof window.shell.windowAction !== 'function') {
+      if (!button || !window.shell) {
         return;
       }
-      window.shell.windowAction(button.dataset.act);
+      if (button.dataset.act === 'marketplace') {
+        if (typeof window.shell.openMarketplace === 'function') {
+          window.shell.openMarketplace();
+        }
+        return;
+      }
+      if (typeof window.shell.windowAction === 'function') {
+        window.shell.windowAction(button.dataset.act);
+      }
     });
     (document.body || document.documentElement).appendChild(host);
     return host;

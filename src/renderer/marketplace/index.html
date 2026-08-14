@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>插件市场</title>
+  <link rel="stylesheet" href="../window-controls.css" />
+  <link rel="stylesheet" href="marketplace.css" />
+</head>
+<body>
+  <div class="caption" aria-hidden="true"></div>
+  <header class="top">
+    <div class="brand">
+      <strong>插件市场</strong>
+      <span>GitHub dsh-plugin</span>
+    </div>
+    <div class="window-controls" data-minimize="true" data-maximize="true"></div>
+  </header>
+
+  <div class="layout">
+    <aside class="nav">
+      <p class="nav-label">分类</p>
+      <div id="categories" class="cats" role="tablist"></div>
+      <p class="nav-label">状态</p>
+      <div class="status-filters" role="group" aria-label="状态">
+        <button type="button" class="chip active" data-status="all">全部</button>
+        <button type="button" class="chip" data-status="installable">可安装</button>
+        <button type="button" class="chip" data-status="installed">已安装</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="搜索插件、作者或简介" autocomplete="off" />
+        <input id="token" type="password" placeholder="GitHub Token（可选）" autocomplete="off" />
+        <button type="button" id="refresh">刷新</button>
+      </div>
+      <p id="banner" class="banner" hidden></p>
+      <p id="meta" class="meta"></p>
+      <div id="grid" class="grid"></div>
+    </main>
+  </div>
+
+  <div id="dialog" class="dialog" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <h2 id="dialog-title">安装插件</h2>
+      <p id="dialog-body"></p>
+      <pre id="dialog-log" hidden></pre>
+      <div class="sheet-actions">
+        <button type="button" id="dialog-cancel">取消</button>
+        <button type="button" id="dialog-ok" class="primary">继续</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../theme.js"></script>
+  <script src="../window-controls.js"></script>
+  <script src="marketplace.js"></script>
+</body>
+</html>

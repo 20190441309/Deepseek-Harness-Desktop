@@ -16,6 +16,7 @@ const DEFAULTS = {
   openDevTools: false,
   theme: 'deepseek',
   locale: 'zh',
+  githubToken: '',
 };
 
 function configPath() {
@@ -65,6 +66,7 @@ function loadConfig() {
     ...stored,
     apiKey: typeof creds.apiKey === 'string' ? creds.apiKey : stored.apiKey || '',
     baseUrl: typeof creds.baseUrl === 'string' ? creds.baseUrl : stored.baseUrl || '',
+    githubToken: typeof creds.githubToken === 'string' ? creds.githubToken : stored.githubToken || '',
   };
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
@@ -80,12 +82,22 @@ function loadConfig() {
 function saveConfig(next) {
   const current = loadConfig();
   const merged = { ...current, ...next };
+  if (merged.githubToken === '********') {
+    merged.githubToken = current.githubToken;
+  }
+  if (merged.apiKey === '********') {
+    merged.apiKey = current.apiKey;
+  }
   merged.locale = merged.locale === 'en' ? 'en' : 'zh';
   delete merged.pluginSubagent;
   delete merged.pluginGenUi;
-  const { apiKey, baseUrl, ...publicConfig } = merged;
-  writeJson(configPath(), publicConfig);
-  writeJson(credentialsPath(), { apiKey: apiKey || '', baseUrl: baseUrl || '' });
+  const { apiKey, baseUrl, githubToken, ...publicLayer } = merged;
+  writeJson(configPath(), publicLayer);
+  writeJson(credentialsPath(), {
+    apiKey: apiKey || '',
+    baseUrl: baseUrl || '',
+    githubToken: githubToken || '',
+  });
   return merged;
 }
 
@@ -93,7 +105,9 @@ function publicConfig(config) {
   return {
     ...config,
     apiKey: config.apiKey ? '********' : '',
+    githubToken: config.githubToken ? '********' : '',
     hasApiKey: Boolean(config.apiKey),
+    hasGithubToken: Boolean(config.githubToken),
   };
 }
 

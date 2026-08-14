@@ -1,10 +1,12 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, openHarnessSettings } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
+const { listMarketplace } = require('./marketplace-catalog');
+const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -32,6 +34,12 @@ function configPayload(config) {
     repoUrl: REPO_URL,
     releasesUrl: RELEASES_PAGE,
   };
+}
+
+function sendPluginProgress(event, payload) {
+  if (event?.sender && !event.sender.isDestroyed()) {
+    event.sender.send('shell:plugin-progress', payload);
+  }
 }
 
 function registerIpc({ dsh, startHarness }) {
@@ -77,6 +85,48 @@ function registerIpc({ dsh, startHarness }) {
   ipcMain.handle('shell:open-settings', () => openHarnessSettings());
 
   ipcMain.handle('shell:check-update', () => checkUpdate());
+
+  ipcMain.handle('shell:list-marketplace', async (_event, options = {}) => {
+    const config = loadConfig();
+    return listMarketplace({
+      token: config.githubToken,
+      refresh: Boolean(options && options.refresh),
+    });
+  });
+
+  ipcMain.handle('shell:refresh-marketplace', async () => {
+    const config = loadConfig();
+    return listMarketplace({ token: config.githubToken, refresh: true });
+  });
+
+  ipcMain.handle('shell:list-installed-plugins', () => listInstalledPlugins());
+
+  ipcMain.handle('shell:install-plugin', async (event, spec, options = {}) => {
+    const config = loadConfig();
+    const result = await installPlugin(spec, {
+      token: config.githubToken,
+      allowBuilds: Array.isArray(options?.allowBuilds) ? options.allowBuilds : [],
+      onProgress: (payload) => sendPluginProgress(event, payload),
+    });
+    if (result.ok && typeof startHarness === 'function') {
+      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
+      await startHarness();
+    }
+    return result;
+  });
+
+  ipcMain.handle('shell:uninstall-plugin', async (event, name) => {
+    const result = await uninstallPlugin(name, {
+      onProgress: (payload) => sendPluginProgress(event, payload),
+    });
+    if (result.ok && typeof startHarness === 'function') {
+      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
+      await startHarness();
+    }
+    return result;
+  });
+
+  ipcMain.handle('shell:open-marketplace', () => openMarketplace());
 
   ipcMain.handle('shell:install-update', async (event) => {
     try {

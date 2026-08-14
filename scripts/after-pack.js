@@ -355,6 +355,16 @@ function copyBundledNode(destDir) {
   return dest;
 }
 
+function copyBundledPnpm(projectDir, destDir) {
+  const src = path.join(projectDir, 'node_modules', 'pnpm');
+  if (!fs.existsSync(path.join(src, 'bin', 'pnpm.cjs'))) {
+    throw new Error('打包时未找到 pnpm，请先 npm install');
+  }
+  const dest = path.join(destDir, 'pnpm');
+  fs.cpSync(src, dest, { recursive: true, dereference: true });
+  return dest;
+}
+
 module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
   const resources = path.join(context.appOutDir, 'resources');
@@ -382,6 +392,7 @@ module.exports = async function afterPack(context) {
   }
 
   const nodeDest = copyBundledNode(resources);
+  const pnpmDest = copyBundledPnpm(projectDir, resources);
   const binJs = path.join(harnessDest, 'apps', 'cli', 'lib', 'bin.js');
   const webDist = path.join(harnessDest, 'apps', 'web', 'dist', 'index.html');
   if (!fs.existsSync(binJs) || !fs.existsSync(webDist)) {
@@ -396,7 +407,7 @@ module.exports = async function afterPack(context) {
   }
   fs.rmSync(longPath(harnessDest), { recursive: true, force: true });
 
-  console.log(`已复制 ${copied} 个文件，写入 ${nodeDest}`);
+  console.log(`已复制 ${copied} 个文件，写入 ${nodeDest} 与 ${pnpmDest}`);
   console.log(`运行时归档 ${((fs.statSync(archive).size / 1048576).toFixed(1))} MB`);
   console.log(`afterPack 完成 ${((Date.now() - started) / 1000).toFixed(1)}s`);
 };

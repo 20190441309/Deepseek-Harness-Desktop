@@ -7,6 +7,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject, NS } from '../src/client/index.ts'
+import { MarketplaceSettingsTab } from '../src/client/MarketplaceSettingsTab.tsx'
 import { PluginInventorySettingsTab } from '../src/client/PluginInventorySettingsTab.tsx'
 import type { PluginInventorySettingsTabInjected } from '../src/client/PluginInventorySettingsTab.tsx'
 
@@ -88,6 +89,77 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     await fiber.dispose()
     expect(b.slots.entries('settings.plugins.tab')).toHaveLength(0)
     expect(() => b.locale.register(NS, 'zh', {})).not.toThrow()
+    await b.ctx.fiber.dispose()
+  })
+
+  it('registers the marketplace tab only when the desktop shell can install', async () => {
+    const b = await bench()
+    declare(b.slots)
+    const shell = {
+      listMarketplace: vi.fn(async () => ({ items: [] })),
+      listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
+      installPlugin: vi.fn(async () => ({ ok: true })),
+      uninstallPlugin: vi.fn(async () => ({ ok: true })),
+    }
+    ;(window as Window & { shell?: unknown }).shell = shell
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const tabs = b.slots.entries('settings.plugins.tab')
+    expect(tabs.map(entry => entry.options.id)).toEqual(['marketplace', 'all'])
+    expect(tabs.find(entry => entry.options.id === 'marketplace')?.options.order).toBe(5)
+    const market = tabs.find(entry => entry.options.id === 'marketplace')!
+    expect(market.component).toBe(MarketplaceSettingsTab)
+    expect(resolveSlotLabel(market.options.label)).toBe('插件市场')
+    const injected = (market.inject as () => {
+      listMarketplace: typeof shell.listMarketplace
+      listInstalled: typeof shell.listInstalledPlugins
+      installPlugin: typeof shell.installPlugin
+      uninstallPlugin: typeof shell.uninstallPlugin
+      openExternal: (url: string) => Promise<boolean>
+      saveGithubToken: (token: string) => Promise<void>
+      hasGithubToken: () => Promise<boolean>
+      onProgress: (handler: (payload: { line?: string }) => void) => () => void
+    })()
+    await expect(injected.listMarketplace()).resolves.toEqual({ items: [] })
+    await expect(injected.listInstalled()).resolves.toEqual({ plugins: [] })
+    await expect(injected.installPlugin('github:a/b')).resolves.toEqual({ ok: true })
+    await expect(injected.uninstallPlugin('pkg')).resolves.toEqual({ ok: true })
+    await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
+    await injected.saveGithubToken('tok')
+    await expect(injected.hasGithubToken()).resolves.toBe(false)
+    expect(injected.onProgress(() => {})).toEqual(expect.any(Function))
+    delete (window as Window & { shell?: unknown }).shell
+    await b.ctx.fiber.dispose()
+  })
+
+  it('forwards optional desktop shell methods when they exist', async () => {
+    const b = await bench()
+    declare(b.slots)
+    const off = vi.fn()
+    const shell = {
+      listMarketplace: vi.fn(async () => ({ items: [] })),
+      listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
+      installPlugin: vi.fn(async () => ({ ok: true })),
+      uninstallPlugin: vi.fn(async () => ({ ok: true })),
+      openExternal: vi.fn(async () => true),
+      saveConfig: vi.fn(async () => ({ hasGithubToken: true })),
+      getConfig: vi.fn(async () => ({ hasGithubToken: true })),
+      onPluginProgress: vi.fn(() => off),
+    }
+    ;(window as Window & { shell?: unknown }).shell = shell
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const market = b.slots.entries('settings.plugins.tab').find(entry => entry.options.id === 'marketplace')!
+    const injected = (market.inject as () => {
+      openExternal: (url: string) => Promise<boolean>
+      saveGithubToken: (token: string) => Promise<void>
+      hasGithubToken: () => Promise<boolean>
+      onProgress: (handler: (payload: { line?: string }) => void) => () => void
+    })()
+    await expect(injected.openExternal('https://example.com')).resolves.toBe(true)
+    await injected.saveGithubToken('tok')
+    expect(shell.saveConfig).toHaveBeenCalledWith({ githubToken: 'tok' })
+    await expect(injected.hasGithubToken()).resolves.toBe(true)
+    expect(injected.onProgress(() => {})).toBe(off)
+    delete (window as Window & { shell?: unknown }).shell
     await b.ctx.fiber.dispose()
   })
 })

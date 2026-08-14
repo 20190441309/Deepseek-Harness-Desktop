@@ -33,6 +33,7 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Third-party thinking intensity**: custom / third-party models can enable Low / Medium / High / Very High / Extreme; the composer then lets you pick a reasoning level
 - **Vision fallback model**: when the main model (DeepSeek included) cannot see images, a dedicated vision model describes the picture first, then the main model works from that description
 - **Themes and wallpaper**: Settings → Appearance — pick a built-in family or author your own; drop a wallpaper behind the UI and tune frost, pixelation, and glass opacity
+- **Plugin marketplace**: Settings → Plugins → Marketplace, beside Plugin configuration and Plugin list. Menu / tray / title-bar / `Ctrl+Shift+M` open that tab. Catalog is only the GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, grouped into UI, workflow, tools, notifications, development, and learning. Install uses official `dsh plugin --profile web add github:owner/repo` and restarts Harness. Git installs run the repo's prepare script on this machine — only install plugins you trust. If GitHub rate-limits you, save a token on that tab.
 
 ### Third-party thinking intensity
 
@@ -101,6 +102,7 @@ The Harness source ships with the repo (`vendor/deepseek-harness`); the first `s
 | Action | How |
 | --- | --- |
 | Settings | `Ctrl+,` or tray menu |
+| Plugin marketplace | Settings → Plugins → Marketplace; `Ctrl+Shift+M`, tray, or the title-bar button open the same tab |
 | Restart Harness | `Ctrl+Shift+R` |
 | Reload UI | `Ctrl+R` |
 | DevTools | `Ctrl+Shift+I` |

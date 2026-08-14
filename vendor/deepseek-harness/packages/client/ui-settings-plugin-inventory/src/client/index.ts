@@ -3,10 +3,13 @@
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { desktopShell } from './desktop-shell.ts'
+import { MarketplaceSettingsTab, type MarketplaceSettingsTabInjected } from './MarketplaceSettingsTab.tsx'
 import { PluginInventorySettingsTab, type PluginInventorySettingsTabInjected } from './PluginInventorySettingsTab.tsx'
 import { en, zh, type PluginInventoryLocaleKey } from './locales.ts'
 
 export type { PluginInventorySettingsTabInjected, PluginInventorySettingsTabProps } from './PluginInventorySettingsTab.tsx'
+export type { MarketplaceSettingsTabInjected, MarketplaceSettingsTabProps } from './MarketplaceSettingsTab.tsx'
 export type { PluginInventoryLocaleKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -44,4 +47,26 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: injected,
   }, PluginInventorySettingsTab))
+
+  const shell = desktopShell()
+  if (shell?.listMarketplace && shell.listInstalledPlugins && shell.installPlugin && shell.uninstallPlugin) {
+    const market: MarketplaceSettingsTabInjected = {
+      listMarketplace: (options) => shell.listMarketplace!(options),
+      listInstalled: () => shell.listInstalledPlugins!(),
+      installPlugin: (spec, options) => shell.installPlugin!(spec, options),
+      uninstallPlugin: (name) => shell.uninstallPlugin!(name),
+      openExternal: (url) => shell.openExternal?.(url) ?? Promise.resolve(false),
+      saveGithubToken: async (token) => { await shell.saveConfig?.({ githubToken: token }) },
+      hasGithubToken: async () => Boolean((await shell.getConfig?.())?.hasGithubToken),
+      onProgress: (handler) => shell.onPluginProgress?.(handler) ?? (() => {}),
+    }
+    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+      name: 'settings.plugins.tab',
+      id: 'marketplace',
+      order: 5,
+      label: () => t('marketTab'),
+      locale: NS,
+      inject: () => market,
+    }, MarketplaceSettingsTab))
+  }
 }

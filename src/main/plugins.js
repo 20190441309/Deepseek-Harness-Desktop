@@ -93,6 +93,38 @@ function stripDroppedPlugins() {
   return { ok: true, changed, patchChanged };
 }
 
+function listInstalledPlugins() {
+  const file = manifestPath();
+  if (!fs.existsSync(file)) {
+    return { ok: true, profile: PROFILE, profileDir: webProfileDir(), plugins: [], bundles: [] };
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const dependencies = manifest.dependencies && typeof manifest.dependencies === 'object'
+      ? manifest.dependencies
+      : {};
+    const bundles = Array.isArray(manifest.dsh?.profile?.bundles) ? manifest.dsh.profile.bundles : [];
+    return {
+      ok: true,
+      profile: PROFILE,
+      profileDir: webProfileDir(),
+      plugins: Object.entries(dependencies).map(([name, spec]) => ({
+        name,
+        spec: String(spec || ''),
+        bundle: bundles.includes(name),
+        dropped: DROPPED.includes(name),
+      })),
+      bundles,
+    };
+  } catch {
+    return { ok: false, profile: PROFILE, profileDir: webProfileDir(), plugins: [], bundles: [] };
+  }
+}
+
 module.exports = {
+  PROFILE,
+  DROPPED,
+  webProfileDir,
   stripDroppedPlugins,
+  listInstalledPlugins,
 };
