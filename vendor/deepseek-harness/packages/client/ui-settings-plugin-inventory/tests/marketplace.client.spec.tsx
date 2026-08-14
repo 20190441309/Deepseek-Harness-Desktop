@@ -205,7 +205,7 @@ describe('MarketplaceSettingsTab', () => {
   it('shows a loading status until the catalog resolves', async () => {
     let resolveCatalog!: (value: { items: typeof ITEM[]; categories: Array<{ id: string; label: string; count: number }> }) => void
     renderTab({
-      listMarketplace: vi.fn(() => new Promise((resolve) => { resolveCatalog = resolve })),
+      listMarketplace: vi.fn(() => new Promise<{ items: typeof ITEM[]; categories: Array<{ id: string; label: string; count: number }> }>((resolve) => { resolveCatalog = resolve })),
     })
     expect(screen.getByText(en.marketLoading)).toBeTruthy()
     await act(async () => {

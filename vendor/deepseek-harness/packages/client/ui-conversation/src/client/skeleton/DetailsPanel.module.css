@@ -21,6 +21,17 @@
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
+@media (max-width: 767px) {
+  .root {
+    border-left: none;
+  }
+
+  .header {
+    padding-top: max(14px, env(safe-area-inset-top, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+}
+
 /* figma I54:42735;43:41479: 14/20 wt500. */
 .title {
   overflow: hidden;

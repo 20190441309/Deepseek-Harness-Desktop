@@ -28,7 +28,10 @@ function mountWindowControls(host) {
 
   host.addEventListener('click', (event) => {
     const button = event.target.closest('[data-act]');
-    if (!button || !window.shell || typeof window.shell.windowAction !== 'function') {
+    if (!button || !window.shell) {
+      return;
+    }
+    if (typeof window.shell.windowAction !== 'function') {
       return;
     }
     window.shell.windowAction(button.dataset.act);

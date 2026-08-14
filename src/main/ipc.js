@@ -1,6 +1,6 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, openHarnessSettings, openMarketplace } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
@@ -42,7 +42,7 @@ function sendPluginProgress(event, payload) {
   }
 }
 
-function registerIpc({ dsh, startHarness }) {
+function registerIpc({ dsh, startHarness, remote }) {
   ipcMain.handle('shell:get-state', () => dsh.snapshot());
 
   ipcMain.handle('shell:get-config', () => configPayload(loadConfig()));
@@ -127,6 +127,33 @@ function registerIpc({ dsh, startHarness }) {
   });
 
   ipcMain.handle('shell:open-marketplace', () => openMarketplace());
+
+  ipcMain.handle('shell:open-remote', () => openRemote());
+
+  ipcMain.handle('shell:get-remote', () => (remote ? remote.snapshot() : null));
+
+  ipcMain.handle('shell:save-remote', async (_event, patch) => {
+    saveConfig(patch || {});
+    if (remote && typeof remote.sync === 'function') {
+      return remote.sync();
+    }
+    return remote ? remote.snapshot() : null;
+  });
+
+  ipcMain.handle('shell:rotate-remote-token', async () => {
+    if (remote && typeof remote.rotateToken === 'function') {
+      remote.rotateToken();
+      return remote.sync();
+    }
+    return null;
+  });
+
+  ipcMain.handle('shell:unbind-remote-device', async (_event, id) => {
+    if (remote && typeof remote.unbindDevice === 'function') {
+      return remote.unbindDevice(id);
+    }
+    return remote ? remote.snapshot() : null;
+  });
 
   ipcMain.handle('shell:install-update', async (event) => {
     try {

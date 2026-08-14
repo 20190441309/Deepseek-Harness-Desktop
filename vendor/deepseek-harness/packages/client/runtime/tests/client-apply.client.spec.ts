@@ -104,7 +104,7 @@ describe('runtime client apply', () => {
     }))
     bench.api.onList = () => Promise.resolve(ok({ items: [] }))
 
-    bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true })
+    await bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true })
     await flushMicrotasks()
 
     const sessions = bench.ctx.get('sessions') as SessionRuntime

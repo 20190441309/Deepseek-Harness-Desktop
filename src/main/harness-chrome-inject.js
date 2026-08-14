@@ -130,7 +130,7 @@
   }
 
   function reservedRight() {
-    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
+    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 4 + CLUSTER;
   }
 
   function ensureStyle() {

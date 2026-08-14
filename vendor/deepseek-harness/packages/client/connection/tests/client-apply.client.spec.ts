@@ -253,16 +253,30 @@ describe('connection client apply', () => {
     fetch.mockRestore()
   })
 
-  it('maps an HTTPS page origin to a secure WebSocket URL', async () => {
+  it('maps an HTTPS loopback origin to a secure WebSocket URL', async () => {
     ;(globalThis as Win).location = {
-      hostname: 'harness.example', search: '', origin: 'https://harness.example',
+      hostname: 'localhost', search: '', origin: 'https://localhost',
     }
     ;(globalThis as WebSocketGlobal).WebSocket = FakeWebSocket as unknown as typeof WebSocket
     const client = (await mount()).api
     const abort = new AbortController()
     const iterator = client.events.mux({}, abort.signal)[Symbol.asyncIterator]()
     const pending = iterator.next()
-    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('wss://harness.example/api/events.mux') })
+    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('wss://localhost/api/events.mux') })
+    abort.abort()
+    await expect(pending).resolves.toMatchObject({ done: true })
+  })
+
+  it('opens WebSocket downlinks on a non-loopback origin', async () => {
+    ;(globalThis as Win).location = {
+      hostname: '125.124.85.212', search: '', origin: 'http://125.124.85.212:8411',
+    }
+    ;(globalThis as WebSocketGlobal).WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    const client = (await mount()).api
+    const abort = new AbortController()
+    const iterator = client.events.host({}, abort.signal, () => undefined)[Symbol.asyncIterator]()
+    const pending = iterator.next()
+    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('ws://125.124.85.212:8411/api/events.host') })
     abort.abort()
     await expect(pending).resolves.toMatchObject({ done: true })
   })

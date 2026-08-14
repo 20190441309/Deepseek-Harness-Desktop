@@ -174,6 +174,10 @@ function openMarketplaceWindow() {
   return marketplaceWindow;
 }
 
+function openRemote() {
+  return showMain();
+}
+
 function openMarketplace() {
   const win = showMain();
   if (!win || !isHarnessLoaded(win)) {
@@ -231,6 +235,7 @@ module.exports = {
   showMain,
   openHarnessSettings,
   openMarketplace,
+  openRemote,
   sendToBoot,
   iconImage,
 };

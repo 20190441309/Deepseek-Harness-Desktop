@@ -1,19 +1,19 @@
 /**
  * Three-column shell frame, registered into the built-in 'root' slot (the web
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
- * details), the drag handles (pointer capture + rAF throttle), the concession
- * chain (columns.ts), and the child-slot render decisions: the sidebar slot
- * renders HERE with live parameters from the concession solve, and the
- * session-aware occupants render in fixed column positions; strict entries
- * gate themselves on current-session availability while session-maybe
- * entries retain identity. Pure component: everything arrives
- * through the three framework shares — zero cordis or framework imports,
- * zero self-made hooks.
+ * details), the phone overlay band below PHONE_MAX, the drag handles (pointer
+ * capture + rAF throttle), the concession chain (columns.ts), and the
+ * child-slot render decisions: the sidebar slot renders HERE with live
+ * parameters from the concession solve, and the session-aware occupants
+ * render in fixed column positions; strict entries gate themselves on
+ * current-session availability while session-maybe entries retain identity.
+ * Pure component: everything arrives through the three framework shares —
+ * zero cordis or framework imports, zero self-made hooks.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
+import { computeColumns, PHONE_DRAWER, PHONE_MAX, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MIN } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
 
@@ -133,6 +133,7 @@ export function AppFrame({
   // solver stays breakpoint-free: a narrow re-expand passes the preference
   // (or the default when the wide preference is closed) and the center
   // absorbs the squeeze.
+  const phone = viewport < PHONE_MAX
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
@@ -142,6 +143,11 @@ export function AppFrame({
   const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
   const colsRef = useRef(cols)
   colsRef.current = cols
+  const drawerWidth = Math.min(PHONE_DRAWER, Math.max(SIDEBAR_MIN, viewport - 48))
+  const sidebarWidth = phone ? (sidebarCollapsed ? 0 : drawerWidth) : cols.sidebar
+  const detailsOpen = detailsSession !== undefined && (phone ? panels.details > 0 : cols.details > 0)
+  const gridSidebar = phone ? 0 : cols.sidebar
+  const gridDetails = phone ? 0 : cols.details
 
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
@@ -165,20 +171,44 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
+      style={{ gridTemplateColumns: `${gridSidebar}px minmax(0, 1fr) ${gridDetails}px` }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      data-details-collapsed={cols.details === 0 || undefined}
+      data-details-collapsed={detailsOpen ? undefined : true}
+      data-phone={phone || undefined}
+      data-phone-sidebar={phone && !sidebarCollapsed || undefined}
+      data-phone-details={phone && detailsOpen || undefined}
       data-dragging={dragging || undefined}
     >
+      {phone && sidebarCollapsed && (
+        <button
+          type="button"
+          className={css.phoneMenu}
+          aria-label="Open sidebar"
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+      {phone && !sidebarCollapsed && (
+        <button
+          type="button"
+          className={css.phoneBackdrop}
+          aria-label="Close sidebar"
+          onClick={() => { actions.toggleSidebar() }}
+        />
+      )}
       <div className={css.sidebarCol}>
         {/* Render-site slot call with live concession output: a closed
             sidebar keeps the mounted slot at the compact-rail width, and the
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
+            renders the rail UI too). Phone mode reports width 0 when the
+            drawer is closed — there is no rail. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
-          width: cols.sidebar,
+          width: sidebarWidth,
         })}
       </div>
       <>
@@ -193,9 +223,10 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {/* The collapsed rail is fixed-width: no resize handle while closed.
+          Phone drawers are overlays — dragging a column edge does not apply. */}
+      {!phone && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!phone && cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
     </div>
   )
 }

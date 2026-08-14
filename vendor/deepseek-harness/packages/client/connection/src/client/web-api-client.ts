@@ -1,4 +1,4 @@
-/** Browser API carrier: HTTP upstream plus one WebSocket per downstream event stream. */
+/** Browser API carrier: HTTP upstream; mux/host downlinks are WebSockets. */
 
 import type { ApiProxy, HostFrame, MuxFrame, RpcRequest, ServerRequest } from './api.ts'
 import { AbstractApiClient } from './api.ts'
@@ -9,7 +9,12 @@ import { HOST_EVENTS_PATH, MUX_EVENTS_PATH } from '../api-path.ts'
 type SocketItem<F> = { kind: 'frame'; envelope: RpcRequest<F> } | { kind: 'end' }
 type Parser<F> = { parse(value: unknown): F }
 
-/** Browser platform subclass: unary/respond use fetch; mux/host use downlink-only WebSockets. */
+/** Browser platform subclass: unary/respond use fetch; mux/host use
+ * downlink-only WebSockets on every origin, including phone remote through
+ * the HTTP relay (the relay forwards the upgrade when the device cookie is
+ * present). Two long-lived HTTP SSE streams would occupy a mobile browser's
+ * per-origin slots and starve session.list / session.history.
+ */
 export class WebApiClient extends AbstractApiClient {
   protected doFetch(input: URL, init?: RequestInit): Promise<Response> {
     return globalThis.fetch(input, init)

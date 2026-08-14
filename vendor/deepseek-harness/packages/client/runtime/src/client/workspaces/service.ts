@@ -117,7 +117,9 @@ export class WorkspaceRuntime implements IWorkspaces {
 
   /**
    * Follow the first complete Workspace/Session baseline and select a default
-   * session exactly once. A restored current session wins; otherwise the most
+   * session exactly once. A restored current session wins only when that row is
+   * still live (present, non-blank, non-archived). Otherwise the most recently
+   * updated non-blank, non-archived session is opened. With none, the most
    * recent Workspace is connected (reusing or creating its blank session).
    * Later explicit clears stay cleared instead of retriggering this startup
    * policy. A failed connect may retry on the next baseline projection.
@@ -134,9 +136,19 @@ export class WorkspaceRuntime implements IWorkspaces {
       if (disposed || state !== 'waiting') return
       const workspace = this.list.getSnapshot()
       if (!workspace.baselinesReady) return
-      const current = this.sessions.list.getSnapshot().current
+      const sessions = this.sessions.list.getSnapshot()
+      if (isLiveCurrent(sessions, workspace.archivedSessionIds)) {
+        state = 'done'
+        return
+      }
+      const recentSession = recentNonBlankSession(sessions, workspace.archivedSessionIds)
+      if (recentSession !== undefined) {
+        this.sessions.open(recentSession)
+        state = 'done'
+        return
+      }
       const target = workspace.recentWorkspaceId
-      if (current !== undefined || target === undefined) {
+      if (target === undefined) {
         state = 'done'
         return
       }
@@ -325,9 +337,10 @@ export class WorkspaceRuntime implements IWorkspaces {
     this.manager.handleHostEnvelope(envelope)
   }
 
-  /** Rebuild the Workspace baseline after connection. */
-  handleConnected(): void {
-    this.manager.handleConnected()
+  /** Rebuild the Workspace baseline after connection.
+   * @returns once the workspace list refresh has settled. */
+  handleConnected(): Promise<void> {
+    return this.manager.handleConnected()
   }
 
   private project(): void {
@@ -352,6 +365,35 @@ export class WorkspaceRuntime implements IWorkspaces {
       recentWorkspaceId: baselinesReady ? recentWorkspace(workspace.items, sessions.byId) : undefined,
     })
   }
+}
+
+/** True when the persisted current id still names a live conversation. */
+function isLiveCurrent(
+  sessions: SessionsPortList,
+  archived: readonly SessionId[],
+): boolean {
+  const id = sessions.current
+  if (id === undefined) return false
+  const session = sessions.byId[id]
+  return session !== undefined && !session.blank && !archived.includes(id)
+}
+
+/** Most recently updated live conversation, ignoring blanks and the archive set. */
+function recentNonBlankSession(
+  sessions: SessionsPortList,
+  archived: readonly SessionId[],
+): SessionId | undefined {
+  let selected: SessionId | undefined
+  let selectedTime = Number.NEGATIVE_INFINITY
+  for (const id of sessions.ids) {
+    const session = sessions.byId[id]
+    if (session === undefined || session.blank || archived.includes(id)) continue
+    if (selected === undefined || session.updatedAt > selectedTime) {
+      selected = id
+      selectedTime = session.updatedAt
+    }
+  }
+  return selected
 }
 
 /** Stable tie-breaking follows Host Workspace order. */

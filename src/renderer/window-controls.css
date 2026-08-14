@@ -40,3 +40,11 @@
   background: #e81123;
   color: #fff;
 }
+
+.window-controls button.text-act {
+  width: auto;
+  min-width: 52px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font: 600 12px/1 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}

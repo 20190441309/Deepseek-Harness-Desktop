@@ -21,7 +21,9 @@ let quitting = false;
 let starting = null;
 let stoppingForQuit = false;
 
-dsh.on('state', (snapshot) => sendToBoot('shell:state', snapshot));
+dsh.on('state', (snapshot) => {
+  sendToBoot('shell:state', snapshot);
+});
 dsh.on('log', (line) => sendToBoot('shell:log', line));
 
 async function resolveLaunchTarget() {
@@ -111,6 +113,7 @@ function quitApp() {
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  console.error('Deepseek-Harness-Desktop is already running. Quit the installed app before npm start (same appId single-instance lock).');
   app.quit();
 } else {
   app.on('second-instance', () => {

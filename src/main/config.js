@@ -17,6 +17,11 @@ const DEFAULTS = {
   theme: 'deepseek',
   locale: 'zh',
   githubToken: '',
+  remoteEnabled: false,
+  remotePort: 3180,
+  remoteToken: '',
+  remoteMode: 'lan',
+  remoteRelayUrl: 'http://125.124.85.212:8411',
 };
 
 function configPath() {
@@ -67,7 +72,26 @@ function loadConfig() {
     apiKey: typeof creds.apiKey === 'string' ? creds.apiKey : stored.apiKey || '',
     baseUrl: typeof creds.baseUrl === 'string' ? creds.baseUrl : stored.baseUrl || '',
     githubToken: typeof creds.githubToken === 'string' ? creds.githubToken : stored.githubToken || '',
+    remoteToken: typeof creds.remoteToken === 'string' ? creds.remoteToken : stored.remoteToken || '',
+    remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
+  config.remoteEnabled = Boolean(config.remoteEnabled);
+  config.remoteMode = config.remoteMode === 'relay' ? 'relay' : 'lan';
+  try {
+    const relay = String(config.remoteRelayUrl || '').trim();
+    if (!relay) {
+      config.remoteRelayUrl = DEFAULTS.remoteRelayUrl;
+    } else {
+      const url = new URL(relay);
+      config.remoteRelayUrl = (url.protocol === 'http:' || url.protocol === 'https:') ? url.origin : '';
+    }
+  } catch {
+    config.remoteRelayUrl = '';
+  }
+  const remotePort = Number(config.remotePort);
+  config.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
+    ? remotePort
+    : DEFAULTS.remotePort;
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -91,12 +115,14 @@ function saveConfig(next) {
   merged.locale = merged.locale === 'en' ? 'en' : 'zh';
   delete merged.pluginSubagent;
   delete merged.pluginGenUi;
-  const { apiKey, baseUrl, githubToken, ...publicLayer } = merged;
+  const { apiKey, baseUrl, githubToken, remoteToken, remoteDevices, ...publicLayer } = merged;
   writeJson(configPath(), publicLayer);
   writeJson(credentialsPath(), {
     apiKey: apiKey || '',
     baseUrl: baseUrl || '',
     githubToken: githubToken || '',
+    remoteToken: remoteToken || '',
+    remoteDevices: Array.isArray(remoteDevices) ? remoteDevices : [],
   });
   return merged;
 }
@@ -108,6 +134,12 @@ function publicConfig(config) {
     githubToken: config.githubToken ? '********' : '',
     hasApiKey: Boolean(config.apiKey),
     hasGithubToken: Boolean(config.githubToken),
+    remoteEnabled: Boolean(config.remoteEnabled),
+    remotePort: Number(config.remotePort) || DEFAULTS.remotePort,
+    remoteMode: config.remoteMode === 'relay' ? 'relay' : 'lan',
+    remoteRelayUrl: config.remoteRelayUrl || '',
+    remoteToken: '',
+    remoteDevices: [],
   };
 }
 

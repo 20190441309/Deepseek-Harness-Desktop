@@ -372,7 +372,10 @@ export abstract class AbstractApiClient implements IApiClient {
     frameSchema: z.ZodType<F>,
     onOpen?: () => void,
   ): AsyncGenerator<RpcRequest<F>> {
-    const response = await this.doFetch(new URL(path, this.resolveBase()), { signal })
+    const response = await this.doFetch(new URL(path, this.resolveBase()), {
+      signal,
+      headers: { accept: 'text/event-stream' },
+    })
     if (!response.ok || response.body === null) throw new Error(`transport failure for ${path}: HTTP ${response.status}`)
     onOpen?.()
     const reader = response.body.getReader()
