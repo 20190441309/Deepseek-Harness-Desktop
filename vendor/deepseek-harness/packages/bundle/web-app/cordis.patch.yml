@@ -192,6 +192,9 @@
     - id: ui-user-terminal
       name: '@deepseek-ai/dsh-client-ui-user-terminal'
 
+    - id: ui-surfaces
+      name: '@deepseek-ai/dsh-client-ui-surfaces'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 
