@@ -68,6 +68,8 @@
     { "path": "./packages/client/ui-git" },
     { "path": "./packages/client/ui-user-terminal" },
     { "path": "./packages/client/ui-surfaces" },
+    { "path": "./packages/client/ui-files" },
+    { "path": "./packages/client/ui-diff" },
     { "path": "./packages/client/ui-conversation" },
     { "path": "./packages/client/ui-tool" },
     { "path": "./packages/client/ui-deliverables" },

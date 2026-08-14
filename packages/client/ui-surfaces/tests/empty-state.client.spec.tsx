@@ -29,4 +29,15 @@ describe('EmptyState', () => {
     expect(screen.getByText('Review git changes.')).toBeTruthy()
     expect(screen.getByText('Inspect running agents.')).toBeTruthy()
   })
+
+  it('disables the Diff card with the T3code reason when the workspace is not a git repository', () => {
+    const onOpen = vi.fn<(kind: OpenableKind) => void>()
+    render(<EmptyState onOpen={onOpen} t={t} diffAvailable={false} />)
+
+    const diff = screen.getByRole('button', { name: /Diff/ })
+    expect(diff).toHaveProperty('disabled', true)
+    fireEvent.click(diff)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(diff.getAttribute('title')).toBe('Diff is only available for server threads in Git repositories.')
+  })
 })

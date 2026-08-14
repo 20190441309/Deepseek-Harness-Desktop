@@ -73,4 +73,16 @@ describe('createSurfacesStore', () => {
     expect(store.getSnapshot().bySession[SESSION]).toBeUndefined()
     expect(sessionSurfaces(store.getSnapshot(), 'session-2').surfaces).toHaveLength(1)
   })
+
+  it('openFile replaces the files explorer with a file: surface', () => {
+    const { store, actions } = createSurfacesStore().create()
+    actions.open(SESSION, 'files')
+    actions.openFile(SESSION, 'src/index.ts')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION)).toEqual({
+      activeId: 'file:src/index.ts',
+      surfaces: [{ id: 'file:src/index.ts', kind: 'file', relativePath: 'src/index.ts' }],
+    })
+    actions.openFile(SESSION, 'src/index.ts')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toHaveLength(1)
+  })
 })
