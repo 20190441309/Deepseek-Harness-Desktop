@@ -4,7 +4,7 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity and the like. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, and the like. I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
@@ -30,6 +30,32 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **System tray**: show window, settings, restart Harness, quit
 - **Auto-update**: a green "Update available" button appears beside Settings when a newer release exists — one click updates online; Settings → About still offers a manual check
 - **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
+- **Third-party thinking intensity**: custom / third-party models can enable Low / Medium / High / Very High / Extreme; the composer then lets you pick a reasoning level
+- **Vision fallback model**: when the main model (DeepSeek included) cannot see images, a dedicated vision model describes the picture first, then the main model works from that description
+
+### Third-party thinking intensity
+
+Settings → Model → edit a custom provider, then tick thinking intensity on the model. After save, the composer model menu shows Reasoning level.
+
+<p align="center">
+  <img src="assets/screenshot-thinking-settings.png" alt="Enable thinking intensity on a third-party model" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-thinking-chat.png" alt="Pick a reasoning level in the composer" width="920" />
+</p>
+
+### Vision fallback model
+
+Settings → Model → Vision model. Pick a model that accepts images. When the main model cannot see pictures, that model describes the image first, then the main model works from the description.
+
+<p align="center">
+  <img src="assets/screenshot-vision-settings.png" alt="Configure a dedicated vision model" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-vision-chat.png" alt="Vision model describes the image for a text-only main model" width="920" />
+</p>
 
 ## Install
 
@@ -65,7 +91,7 @@ The Harness source ships with the repo (`vendor/deepseek-harness`); the first `s
 
 Upstream lives in `vendor/deepseek-harness`; we boot the built `dsh web` (default `127.0.0.1:3080`). Launch order: integrated source build → local `dsh` → `npx`. Once the service is reachable, the window loads the Web UI and registers the workspace.
 
-Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model (low / medium / high / xhigh / max); that lands in `reasoningEfforts` and shows up in the composer. Official DeepSeek defaults are left alone.
+Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model (low / medium / high / xhigh / max); that lands in `reasoningEfforts` and shows up in the composer. When the main model cannot see images, a dedicated vision model can describe the picture first. Official DeepSeek defaults are left alone.
 
 To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, then restart the desktop app. Harness is still a developer preview — expect it to move.
 
@@ -95,6 +121,10 @@ Shipping the ~1.4 GB vendored harness into the installer makes local builds slow
 - **Auto release**: pushing a `v*` tag (e.g. `v0.1.0`) builds and publishes a GitHub Release automatically
 
 Once a version is on GitHub Releases, the in-app update check picks it up.
+
+## Community acknowledgments
+
+- [Linux.do](https://linux.do)
 
 ## License
 

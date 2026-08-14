@@ -4,7 +4,7 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。对第三方思考强度等做了一点点优化。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。第三方思考强度、识图模型兜底这类地方补了一点。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
@@ -22,6 +22,32 @@
 - **托盘常驻**：显示窗口、设置、重启 Harness、退出
 - **自动更新**：有新版本时设置按钮旁出现绿色"有新版本"按钮，点击即可在线更新；设置 → 关于里也可手动检查 GitHub Releases
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
+- **第三方思考强度**：自定义 / 第三方模型可勾 Low / Medium / High / Very High / Extreme，输入栏里就能切推理等级
+- **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
+
+### 第三方思考强度
+
+设置 → 模型 → 编辑自定义提供方，给模型勾上思考强度。保存后，输入栏的模型菜单会出现「推理等级」。
+
+<p align="center">
+  <img src="assets/screenshot-thinking-settings.png" alt="设置里为第三方模型勾选思考强度" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-thinking-chat.png" alt="输入栏选择推理等级" width="920" />
+</p>
+
+### 识图模型
+
+设置 → 模型 → 识图模型，选一个支持图片输入的模型。主模型不能识图时，会先调用它识别图片内容，再把描述交给主模型。
+
+<p align="center">
+  <img src="assets/screenshot-vision-settings.png" alt="设置里配置识图模型" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-vision-chat.png" alt="主模型不能识图时由识图模型先看图" width="920" />
+</p>
 
 ## 安装
 
@@ -57,7 +83,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 
 官方源码固定在 `vendor/deepseek-harness`，启动时跑构建出来的 `dsh web`（默认 `127.0.0.1:3080`）。启动顺序：集成源码没构建好 → 退回本机 `dsh` → 再退回 `npx`。服务就绪后窗口加载 Web UI，并把工作区注册进去。
 
-第三方 / 自定义供应商走 pi-ai 适配。模型上可以勾思考强度（low / medium / high / xhigh / max），写进 `reasoningEfforts`，输入栏里就能选。官方默认体验基本不动，只在这类地方补了一点。
+第三方 / 自定义供应商走 pi-ai 适配。模型上可以勾思考强度（low / medium / high / xhigh / max），写进 `reasoningEfforts`，输入栏里就能选。主模型不支持图片时，可指定识图模型先看图再交给主模型。官方默认体验基本不动，只在这类地方补了一点。
 
 改界面就改 `vendor/deepseek-harness`，那个目录里 `pnpm run build`，再重启桌面端。Harness 还是开发者预览，随时可能变。
 
@@ -97,6 +123,10 @@ npm run dist
 扫码进群，聊用法、踩坑和需求。
 
 </div>
+
+## 社区鸣谢
+
+- [Linux.do](https://linux.do)
 
 ## 许可证
 
