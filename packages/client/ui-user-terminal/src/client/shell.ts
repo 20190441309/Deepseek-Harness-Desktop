@@ -32,6 +32,7 @@ export function readPtyShell(): Pick<
   TerminalShellInjected,
   'ptyCreate' | 'ptyWrite' | 'ptyResize' | 'ptyKill' | 'onPtyData' | 'onPtyExit'
 > {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
     : (window as Window & { shell?: PtyShell }).shell

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   acquireCreate,
   createTerminalSessionStore,
+  MAX_TERMINAL_BUFFER,
   MAX_TERMINALS_PER_GROUP,
   releaseCreate,
 } from '../src/client/stores.ts'
@@ -90,6 +91,20 @@ describe('createTerminalSessionStore', () => {
     releaseCreate(drawer.actions)
     expect(acquireCreate(surface.actions)).toBe(true)
     releaseCreate(surface.actions)
+  })
+
+  it('caps the retained buffer at MAX_TERMINAL_BUFFER and drops from the head', () => {
+    const { store, actions } = createTerminalSessionStore().create('session-1')
+    actions.newTerminal('t1', '/work')
+    actions.appendData('t1', 'under')
+    expect(store.getSnapshot().sessions[0]?.buffer).toBe('under')
+    actions.appendData('t1', 'x'.repeat(MAX_TERMINAL_BUFFER - 5))
+    expect(store.getSnapshot().sessions[0]?.buffer).toHaveLength(MAX_TERMINAL_BUFFER)
+    actions.appendData('t1', 'YZ')
+    const buffer = store.getSnapshot().sessions[0]?.buffer ?? ''
+    expect(buffer).toHaveLength(MAX_TERMINAL_BUFFER)
+    expect(buffer.endsWith('YZ')).toBe(true)
+    expect(buffer.startsWith('under')).toBe(false)
   })
 
   it('dispatches PTY data and exit once to the shared instance', () => {

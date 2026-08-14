@@ -21,7 +21,6 @@ import type {
 import {
   buildMenuItems,
   requiresDefaultBranchConfirmation,
-  resolveDefaultBranchActionDialogCopy,
   resolveQuickAction,
 } from './git-logic.ts'
 import { NS } from './locales.ts'
@@ -62,6 +61,40 @@ function quickIcon(action: { kind: string; action?: string; label: string }): Gi
   }
   if (action.action === 'commit' || action.label === 'Commit') return 'commit'
   return 'push'
+}
+
+function localizeDefaultBranchDialog(
+  pending: PendingDefaultBranchAction,
+  t: GitActionsProps['t'],
+): { title: string; description: string; continueLabel: string } {
+  const branch = pending.branchName
+  const isPush = pending.action === 'push' || pending.action === 'commit_push'
+  if (isPush) {
+    if (pending.includesCommit) {
+      return {
+        title: t('confirm.commitPush.title'),
+        description: t('confirm.commitPush.description', { branch }),
+        continueLabel: t('confirm.commitPush.continue', { branch }),
+      }
+    }
+    return {
+      title: t('confirm.push.title'),
+      description: t('confirm.push.description', { branch }),
+      continueLabel: t('confirm.push.continue', { branch }),
+    }
+  }
+  if (pending.includesCommit) {
+    return {
+      title: t('confirm.commitPr.title'),
+      description: t('confirm.commitPr.description', { branch }),
+      continueLabel: t('confirm.commitPr.continue'),
+    }
+  }
+  return {
+    title: t('confirm.pr.title'),
+    description: t('confirm.pr.description', { branch }),
+    continueLabel: t('confirm.pr.continue'),
+  }
 }
 
 function failureMessage(result: GitResult, fallback: string): string | undefined {
@@ -122,14 +155,29 @@ export function GitActionsControl({
     return () => { cancelled = true }
   }, [cwd, gitStatus])
 
+  useEffect(() => {
+    if (cwd === undefined) return
+    const onFocus = (): void => { void refresh(cwd) }
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') return
+      void refresh(cwd)
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [cwd, gitStatus])
+
   const isDefaultRef = status?.isDefaultRef ?? false
   const hasPrimaryRemote = status?.hasPrimaryRemote ?? true
   const quickAction = useMemo(() => {
     if (cwd === undefined) {
-      return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: 'Git status is unavailable.' }
+      return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: t('hint.unavailable') }
     }
     if (!loaded) {
-      return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: 'Git action in progress.' }
+      return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: t('hint.busy') }
     }
     const resolved = resolveQuickAction(status, busy, isDefaultRef, hasPrimaryRemote)
     if (resolved.kind === 'open_publish') {
@@ -147,7 +195,7 @@ export function GitActionsControl({
     [busy, hasPrimaryRemote, status],
   )
   const pendingCopy = pending
-    ? resolveDefaultBranchActionDialogCopy(pending)
+    ? localizeDefaultBranchDialog(pending, t)
     : null
 
   const runStacked = async (
@@ -253,7 +301,7 @@ export function GitActionsControl({
   }
 
   const hint = quickAction.disabled
-    ? (quickAction.hint ?? 'Git status is unavailable.')
+    ? (quickAction.hint ?? t('hint.unavailable'))
     : undefined
 
   const mainButton = (

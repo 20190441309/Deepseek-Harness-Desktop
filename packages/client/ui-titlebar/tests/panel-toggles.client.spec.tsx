@@ -63,6 +63,13 @@ describe('PanelToggles', () => {
     expect(screen.getByRole('button', { name: 'Toggle terminal drawer' }).getAttribute('aria-pressed')).toBe('true')
   })
 
+  it('Ctrl+\\ toggles the surfaces column', () => {
+    const b = mount()
+    fireEvent.keyDown(window, { key: '\\', ctrlKey: true })
+    expect(b.toggleSurfaces).toHaveBeenCalledOnce()
+    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+  })
+
   it('disables the terminal toggle when no workspace is available', () => {
     const b = mount({ workspaceCount: 0 })
     const terminal = screen.getByRole<HTMLButtonElement>('button', { name: 'Toggle terminal drawer' })

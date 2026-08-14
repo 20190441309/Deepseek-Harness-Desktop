@@ -20,5 +20,5 @@ store 保存 `sessions[]`、`activeId`、每会话的 `cols`／`rows`／`buffer`
 
 ## 已知限制与暂缓事项
 
-- **交互视图不是 xterm**：窗格在 `pre` 中渲染共享缓冲区，并把按键转给 `ptyWrite`；完整终端模拟器暂缓。
+- **交互视图不是 VT 模拟器**：窗格是可聚焦的 `div` 加 `pre`，渲染原始 PTY 字节流，并把一小部分按键转给 `ptyWrite`（Enter、Backspace、Tab、可打印键，以及作为 `\x03` 的 Ctrl+C）。没有 ANSI/VT 解析，没有方向键／Home／End／Delete 映射，也没有粘贴路径。计划 Task 5 允许这种降级视图；未接入 `@xterm/xterm`。
 - **右边栏壳不由本包拥有**：本包注入 `surfaces.terminal`，不声明 surfaces 列或其空态卡片。

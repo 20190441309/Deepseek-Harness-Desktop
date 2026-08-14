@@ -46,6 +46,7 @@ function missingRead(): ReadFileResult {
  * @returns injected list/read callbacks; each call no-ops outside the desktop app.
  */
 export function readFilesShell(): FilesShellInjected {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
     : (window as Window & { shell?: FilesShell }).shell

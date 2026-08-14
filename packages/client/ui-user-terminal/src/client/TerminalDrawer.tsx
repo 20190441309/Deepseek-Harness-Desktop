@@ -10,7 +10,7 @@ export type { TerminalShellInjected }
 
 export type TerminalDrawerProps =
   & PropsRuntime<'shell.terminalDrawer'>
-  & Partial<PropsStore<ReturnType<typeof createTerminalSessionStore>>>
+  & PropsStore<ReturnType<typeof createTerminalSessionStore>>
   & PropsLocale<typeof NS>
   & InjectFace<TerminalShellInjected>
 
@@ -33,17 +33,6 @@ export function TerminalDrawer(props: TerminalDrawerProps): ReactNode {
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
   }, [cwd, props.toggleTerminalDrawer])
-
-  if (props.useStore === undefined || props.actions === undefined) {
-    return (
-      <aside data-terminal-owner="drawer">
-        <p>{props.t('empty.unavailable')}</p>
-        <button type="button" aria-label={props.t('action.new')} disabled>
-          {props.t('action.new')}
-        </button>
-      </aside>
-    )
-  }
 
   return (
     <TerminalWorkspace

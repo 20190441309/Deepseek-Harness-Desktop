@@ -11,6 +11,8 @@ export const MAX_TERMINALS_PER_GROUP = 4
 export const DEFAULT_TERMINAL_COLS = 80
 /** Default PTY rows before the viewport reports a fit. */
 export const DEFAULT_TERMINAL_ROWS = 24
+/** Retained scrollback cap; appendData drops from the head past this length. */
+export const MAX_TERMINAL_BUFFER = 256 * 1024
 
 /** One live PTY session the drawer and surface can both attach. */
 export type TerminalSessionRecord = {
@@ -176,7 +178,10 @@ export function createTerminalSessionStore(): TerminalSessionStoreHandle {
       appendData: (draft, id: string, data: string) => {
         const session = draft.sessions.find(item => item.id === id)
         if (session === undefined) return
-        session.buffer += data
+        const next = session.buffer + data
+        session.buffer = next.length <= MAX_TERMINAL_BUFFER
+          ? next
+          : next.slice(next.length - MAX_TERMINAL_BUFFER)
       },
       failCreate: (draft) => {
         draft.createFailed = true

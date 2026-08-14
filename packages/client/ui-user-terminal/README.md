@@ -20,5 +20,5 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **Interactive view is not xterm** — panes render the shared buffer in a `pre` and forward keystrokes to `ptyWrite`; a full terminal emulator is deferred.
+- **Interactive view is not a VT emulator** — panes are a focusable `div` plus `pre` that render the raw PTY byte stream and forward a small key set to `ptyWrite` (Enter, Backspace, Tab, printable keys, and Ctrl+C as `\x03`). There is no ANSI/VT parsing, no arrow/Home/End/Delete map, and no paste path. Plan Task 5 allowed this reduced view; `@xterm/xterm` is not integrated.
 - **Right-panel shell is not owned here** — this package injects `surfaces.terminal` and does not declare the surfaces column or its empty-state cards.

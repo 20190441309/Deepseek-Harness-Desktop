@@ -23,7 +23,17 @@ export type TerminalWorkspaceProps =
   & Omit<TerminalShellInjected, 'onPtyData' | 'onPtyExit'>
   & { mode: 'drawer' | 'surface'; sessionId: SessionId | undefined }
 
-function readKeyData(event: KeyboardEvent): string | undefined {
+/**
+ * Map a keydown to PTY bytes. This is not a VT emulator: arrows, Home/End,
+ * Delete, and paste are dropped. Ctrl+C is interrupt (`\\x03`), not the letter.
+ * @param event - the native keydown.
+ * @returns bytes to write, or undefined when the key is not forwarded.
+ */
+export function readKeyData(event: KeyboardEvent): string | undefined {
+  if (event.ctrlKey || event.metaKey) {
+    if (event.key === 'c' || event.key === 'C') return '\x03'
+    return undefined
+  }
   if (event.key === 'Enter') return '\r'
   if (event.key === 'Backspace') return '\u007f'
   if (event.key === 'Tab') return '\t'
@@ -86,17 +96,22 @@ export function TerminalWorkspace({
     void ptyKill(id)
   }, [actions, activeId, ptyKill])
 
+  const wasOpen = useRef(false)
   useEffect(() => {
     const el = rootRef.current
     if (el === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
+      const open = el.clientHeight > 0
+      const justOpened = open && !wasOpen.current
+      wasOpen.current = open
+      if (!justOpened) return
       const snap = snapshotOf(actions)
-      if (el.clientHeight <= 0 || !cwd || !snap || snap.sessions.length > 0 || snap.createFailed) return
+      if (!cwd || !snap || snap.sessions.length > 0 || snap.createFailed) return
       void create('new')
     })
     observer.observe(el)
     return () => { observer.disconnect() }
-  }, [create, createFailed, cwd, sessions.length])
+  }, [actions, create, createFailed, cwd])
 
   useEffect(() => {
     const el = rootRef.current
@@ -224,9 +239,10 @@ export function TerminalWorkspace({
             {visibleIds.map(id => {
               const session = sessions.find(item => item.id === id)
               return (
-                <button
+                <div
                   key={id}
-                  type="button"
+                  role="group"
+                  tabIndex={0}
                   className={clsx(css.pane)}
                   data-active={id === activeId || undefined}
                   aria-label={`${t('session.label')} ${id}`}
@@ -249,7 +265,7 @@ export function TerminalWorkspace({
                   >
                     {session?.buffer ?? ''}
                   </pre>
-                </button>
+                </div>
               )
             })}
           </div>

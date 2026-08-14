@@ -57,6 +57,8 @@ export function FilesPanel({
       }
       setError(null)
       setRoot(toTree('', result.entries ?? []))
+    }).catch(() => {
+      if (!cancelled) setError(t('error.list'))
     })
     return () => { cancelled = true }
   }, [cwd, listDir, t])
@@ -76,7 +78,7 @@ export function FilesPanel({
         return
       }
       setChildrenByPath(current => ({ ...current, [path]: toTree(path, result.entries ?? []) }))
-    })
+    }).catch(() => { setError(t('error.list')) })
   }
 
   return (

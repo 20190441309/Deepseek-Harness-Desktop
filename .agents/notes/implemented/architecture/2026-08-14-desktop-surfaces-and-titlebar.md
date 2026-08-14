@@ -38,6 +38,10 @@ The web composition and the desktop window share the same client plugins; Electr
 
 The inject script remains a closed chrome IIFE. Contributors that need a new titlebar control register into `shell.titlebar.trailing` with an `order` and keep Node helpers out of that file.
 
+Desktop CI for this repository is the Electron installer workflow in `.github/workflows/release.yml` only. That workflow runs `npm ci` and packs the Windows installer; it does not run harness `test`, `test:gui`, `test:coverage`, `typecheck`, `lint`, or `doc-sync`. New client packages stay under the harness per-file 100% coverage gate locally, with `/* v8 ignore -- <reason> */` on genuinely unreachable arms.
+
+The user terminal is a focusable raw-buffer view, not a VT emulator. Panes render the PTY byte stream in a `div` + `pre`, forward a small key set (including Ctrl+C as `\x03`), and do not parse ANSI. Plan Task 5 allowed this reduced interactive view; `@xterm/xterm` is not integrated.
+
 ## Testing
 
 Package suites pin concession, store actions, titlebar inject/dispose, Git state, shared PTY ownership, and the five-card empty state. `src/main/harness-chrome-inject.test.js` pins the IIFE form, double-eval, and `--dsh-wco-pad` growth from a measured trailing width. `apps/web/tests/desktop-chrome.e2e.ts` is the keyless assembled assertion that the titlebar shows Session log, Git, and the two toggles, and that the right panel empty state shows the five cards.

@@ -20,7 +20,7 @@ export interface SurfacesRootInjected {
 
 export type SurfacesRootProps =
   & PropsRuntime<'surfaces'>
-  & Partial<PropsStore<ReturnType<typeof createSurfacesStore>>>
+  & PropsStore<ReturnType<typeof createSurfacesStore>>
   & PropsRenderSlots<'surfaces.browser' | 'surfaces.terminal' | 'surfaces.files' | 'surfaces.file' | 'surfaces.diff' | 'surfaces.agents'>
   & PropsLocale<typeof NS>
   & InjectFace<SurfacesRootInjected>
@@ -43,10 +43,12 @@ function renderOccupant(
       return renderSlot('surfaces.diff', {})
     case 'agents':
       return renderSlot('surfaces.agents', {})
+    /* v8 ignore start -- Surface is a closed union; the never arm is uninhabited. */
     default: {
       const _never: never = surface
       return _never
     }
+    /* v8 ignore stop */
   }
 }
 
@@ -79,18 +81,6 @@ export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
     return () => { cancelled = true }
   }, [cwd, props.gitStatus])
 
-  if (props.useStore === undefined || props.actions === undefined) {
-    return (
-      <div className={css.root} data-surfaces-root>
-        <EmptyState
-          onOpen={() => { props.openSurfaces() }}
-          t={props.t}
-          browserAvailable={props.previewAvailable}
-          diffAvailable={diffAvailable}
-        />
-      </div>
-    )
-  }
   return (
     <SurfacesBody
       {...props}

@@ -40,6 +40,7 @@ export function DiffPanel({
   const cwd = currentCwd(useSessions)
   const [available, setAvailable] = useState(false)
   const [files, setFiles] = useState<DiffFile[]>([])
+  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(new Set())
 
@@ -47,6 +48,7 @@ export function DiffPanel({
     if (cwd === undefined) {
       setAvailable(false)
       setFiles([])
+      setTruncated(false)
       setError(null)
       return
     }
@@ -56,11 +58,13 @@ export function DiffPanel({
       if (status === null || diff === null) {
         setAvailable(false)
         setFiles([])
+        setTruncated(false)
         setError(null)
         return
       }
       setAvailable(true)
       setFiles(diff.files)
+      setTruncated(diff.truncated === true)
       setOpenPaths(new Set(diff.files.map(file => file.path)))
       setError(null)
     }).catch(() => {
@@ -91,7 +95,9 @@ export function DiffPanel({
         ) : files.length === 0 ? (
           <p className={css.message}>{t('empty.changes')}</p>
         ) : (
-          files.map(file => (
+          <>
+          {truncated ? <p className={css.message}>{t('truncated')}</p> : null}
+          {files.map(file => (
             <DisclosureRow
               key={file.path}
               icon={<IconCodeOutline16 size={14} />}
@@ -118,7 +124,8 @@ export function DiffPanel({
                 ))}
               </div>
             </DisclosureRow>
-          ))
+          ))}
+          </>
         )}
       </div>
     </div>
