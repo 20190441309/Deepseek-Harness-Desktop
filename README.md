@@ -10,15 +10,7 @@
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-## 微信群
 
-<div align="center">
-
-![Deepseek-Harness-Desktop 交流群](assets/wechat-group.png)
-
-扫码进群，聊用法、踩坑和需求。
-
-</div>
 
 ## 特性
 
@@ -83,6 +75,15 @@ npm run dist
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
 
+## 微信群
+
+<div>
+
+![Deepseek-Harness-Desktop 交流群](assets/wechat-group.png)
+
+扫码进群，聊用法、踩坑和需求。
+
+</div>
 ## 许可证
 
 [MIT](LICENSE)
