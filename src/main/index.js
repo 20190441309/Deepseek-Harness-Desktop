@@ -117,7 +117,7 @@ if (!gotLock) {
     showMain();
   });
 
-  app.setName('DeepSeek Harness');
+  app.setName('Deepseek-Harness-Desktop');
   app.setAppUserModelId('ai.deepseek.harness.gui');
 
   app.whenReady().then(async () => {

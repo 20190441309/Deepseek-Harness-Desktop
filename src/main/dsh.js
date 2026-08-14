@@ -5,6 +5,7 @@ const { spawn, execFileSync } = require('child_process');
 const EventEmitter = require('events');
 const { loadConfig, configPath } = require('./config');
 const { harnessRoot } = require('./paths');
+const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 
 const PORT_SCAN_RANGE = 50;
 
@@ -117,12 +118,19 @@ function sourceHarnessStatus() {
   const binJs = path.join(root, 'apps', 'cli', 'lib', 'bin.js');
   const binTs = path.join(root, 'apps', 'cli', 'src', 'bin.ts');
   const webDist = path.join(root, 'apps', 'web', 'dist', 'index.html');
-  const present = fs.existsSync(binTs) || fs.existsSync(binJs);
+  const builtOnDisk = fs.existsSync(binJs) && fs.existsSync(webDist);
+  let archived = false;
+  try {
+    const { app } = require('electron');
+    archived = Boolean(app.isPackaged && fs.existsSync(harnessArchivePath()));
+  } catch {
+    // app not ready
+  }
   return {
     root,
-    present,
-    installed: fs.existsSync(path.join(root, 'node_modules')),
-    built: fs.existsSync(binJs) && fs.existsSync(webDist),
+    present: fs.existsSync(binTs) || fs.existsSync(binJs) || archived,
+    installed: fs.existsSync(path.join(root, 'node_modules')) || archived,
+    built: builtOnDisk || archived,
     bin: fs.existsSync(binJs) ? binJs : binTs,
   };
 }
@@ -599,6 +607,12 @@ class DshManager extends EventEmitter {
     const config = loadConfig();
     if (!config.workspace || !fs.existsSync(config.workspace)) {
       throw new Error(`工作区不存在：${config.workspace || '(空)'}`);
+    }
+
+    try {
+      await ensurePackagedHarness((line) => this.log(line));
+    } catch (error) {
+      throw new Error(`准备运行时失败：${error.message}`);
     }
 
     const port = Number(options.port) || Number(config.port) || 3080;

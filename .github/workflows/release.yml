@@ -5,6 +5,9 @@ on:
   push:
     tags: ['v*'] # 打 tag 时构建并发布 GitHub Release
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -53,5 +56,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.blockmap \
-            --title "DeepSeek Harness $GITHUB_REF_NAME" \
-            --generate-notes
+            --title "Deepseek-Harness-Desktop $GITHUB_REF_NAME" \
+            --generate-notes \
+            --latest

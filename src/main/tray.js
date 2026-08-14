@@ -30,7 +30,7 @@ function createTray({ onRestart, onQuit }) {
   }
 
   tray = new Tray(image && !image.isEmpty() ? image : nativeImage.createEmpty());
-  tray.setToolTip('DeepSeek Harness');
+  tray.setToolTip('Deepseek-Harness-Desktop');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示窗口', click: () => showMain() },
     { label: '设置…', click: () => createSettingsWindow() },

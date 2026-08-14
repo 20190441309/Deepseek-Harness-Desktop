@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
-  "productName": "DeepSeek Harness",
-  "version": "0.1.0",
+  "productName": "Deepseek-Harness-Desktop",
+  "version": "0.1.1",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Tiffany",
   "license": "MIT",
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "ai.deepseek.harness.gui",
-    "productName": "DeepSeek Harness",
+    "productName": "Deepseek-Harness-Desktop",
     "copyright": "MIT",
     "directories": {
       "output": "dist"
@@ -36,6 +36,8 @@
       "main": "src/main/index.js"
     },
     "electronDist": "node_modules/electron/dist",
+    "compression": "maximum",
+    "electronLanguages": ["en-US", "zh-CN"],
     "afterPack": "./scripts/after-pack.js",
     "win": {
       "icon": "assets/icon.png",
@@ -60,7 +62,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DeepSeek Harness",
+      "shortcutName": "Deepseek-Harness-Desktop",
       "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}"
     },
     "portable": {

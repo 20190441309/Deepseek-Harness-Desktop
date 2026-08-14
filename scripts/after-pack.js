@@ -1,3 +1,4 @@
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -187,8 +188,12 @@ function collectFiles(root, destRoot, expandNested = false, flat = false) {
     }
 
     if (lstat.isFile()) {
-      if (/\.(map|tsbuildinfo)$/.test(src)) {
-        return; // 跳过 sourcemap 与 tsbuildinfo
+      const base = path.basename(src);
+      if (/\.(map|tsbuildinfo|md|d\.ts)$/i.test(base)) {
+        return;
+      }
+      if (/^(license|licence|changelog|changes|authors|contributing)(\.|$)/i.test(base)) {
+        return;
       }
       files.push({ src, dest });
     }
@@ -382,7 +387,17 @@ module.exports = async function afterPack(context) {
   if (!fs.existsSync(binJs) || !fs.existsSync(webDist)) {
     throw new Error('安装包缺少 dsh 构建产物，请先在 vendor/deepseek-harness 跑 pnpm run build');
   }
+
+  const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
+  console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
+  execFileSync('tar', ['-cf', archive, '-C', harnessDest, '.'], { stdio: 'inherit' });
+  if (!fs.existsSync(archive) || fs.statSync(archive).size < 1024) {
+    throw new Error('运行时 tar 生成失败');
+  }
+  fs.rmSync(longPath(harnessDest), { recursive: true, force: true });
+
   console.log(`已复制 ${copied} 个文件，写入 ${nodeDest}`);
+  console.log(`运行时归档 ${((fs.statSync(archive).size / 1048576).toFixed(1))} MB`);
   console.log(`afterPack 完成 ${((Date.now() - started) / 1000).toFixed(1)}s`);
 };
 

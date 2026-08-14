@@ -9,6 +9,10 @@ function projectRoot() {
 }
 
 function harnessRoot() {
+  if (app.isPackaged) {
+    const { packagedHarnessRoot } = require('./harness-extract');
+    return packagedHarnessRoot();
+  }
   return path.join(projectRoot(), 'vendor', 'deepseek-harness');
 }
 

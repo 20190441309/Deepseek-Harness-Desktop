@@ -87,8 +87,8 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
             const win = getMainWindow();
             dialog.showMessageBox(win || undefined, {
               type: 'info',
-              title: 'DeepSeek Harness',
-              message: 'DeepSeek Harness',
+              title: 'Deepseek-Harness-Desktop',
+              message: 'Deepseek-Harness-Desktop',
               detail: 'Electron 桌面壳，嵌入官方 dsh web。\n当前工作区即本机所选项目目录。',
             });
           },
