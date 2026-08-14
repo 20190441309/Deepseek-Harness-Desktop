@@ -16,6 +16,9 @@ declare module '@deepseek-ai/cordis' {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'shell.titlebar.trailing': { kind: 'list'; scope: 'root' }
+  }
   interface LocaleNamespaceMap {
     'session-log-download': SessionLogDownloadKey
   }
@@ -26,7 +29,7 @@ export type { SessionLogDownloadEntry, SessionLogDownloadState } from './control
 export const inject = ['slots', 'locale']
 
 /**
- * Provide the download controller and mount its modal into the Session Header.
+ * Provide the download controller and mount its button into the titlebar trailing cluster.
  * @param ctx - browser context carrying slots and locale services.
  */
 export function apply(ctx: ClientContext): void {
@@ -50,4 +53,8 @@ export function apply(ctx: ClientContext): void {
   }, SessionLogDownloadHeaderAction))
 }
 
-export type { SessionLogDownloadDialogInjected, SessionLogDownloadDialogProps } from './Dialog.tsx'
+export type {
+  SessionLogDownloadDialogInjected,
+  SessionLogDownloadDialogProps,
+  SessionLogDownloadDialogRenderProps,
+} from './Dialog.tsx'
