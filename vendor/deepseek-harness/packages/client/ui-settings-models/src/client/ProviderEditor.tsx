@@ -160,6 +160,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const fallback = getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
   const layout = layoutOf(namespace.ns)
+  const [customizedOpen, setCustomizedOpen] = useState(layout === 'pi-ai')
   const keyRef = refFor(namespace, settingsPath, props.provider)
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -375,7 +376,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           />
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
         </div>
-        {props.credentialOnly === true ? null : <details className={styles['customized']} defaultOpen={family === 'pi-ai'}>
+        {props.credentialOnly === true ? null : (
+          <details
+            className={styles['customized']}
+            open={customizedOpen}
+            onToggle={(event) => { setCustomizedOpen(event.currentTarget.open) }}
+          >
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>
           <div className={styles['customizedBody']}>
             {/* The name and the protocol are the create card's two remaining
@@ -461,7 +467,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
               )
               : <ModelListEditor {...catalogProps} probe={probe} probeBlocked={keyFailure} api={api} />}
           </div>
-        </details>}
+          </details>
+        )}
       </>
     )
   }
