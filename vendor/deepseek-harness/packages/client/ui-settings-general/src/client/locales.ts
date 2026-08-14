@@ -1,0 +1,60 @@
+/** Shell chrome and General-nav dictionaries; feature rows own their copy. */
+
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export const zh = {
+  'trigger': '设置',
+  'title': '设置',
+  'close': '关闭',
+  'openDocument': '打开配置文件',
+  'openDocument.error': '无法打开配置文件',
+  'general.nav': '通用设置',
+  'about.nav': '关于',
+  'about.intro': '本桌面应用与官方 Harness。',
+  'about.app': 'Deepseek-Harness-Desktop',
+  'about.appMeta': 'github.com/ChisaAlter/Deepseek-Harness-Desktop',
+  'about.version': '当前版本 {version}',
+  'about.checkUpdate': '检测更新',
+  'about.installUpdate': '在线安装',
+  'about.releases': 'GitHub 发行版',
+  'about.desktopOnly': '版本检测仅在桌面应用中可用。',
+  'about.updateChecking': '正在检测更新…',
+  'about.updateNone': '暂无 GitHub 发行版。',
+  'about.updateCurrent': '已是最新版本 {latest}',
+  'about.updateAvailable': '发现新版本 {latest}',
+  'about.updateDownloading': '正在下载 {percent}%',
+  'about.updateInstalling': '已启动安装程序，请按向导完成安装。',
+  'about.updateOpenedPage': '未找到安装包，已打开 GitHub 发行页。',
+  'about.updateError': '检测或安装失败：{message}',
+  'about.harness': '官方 Harness',
+} satisfies Record<string, string>
+
+/** The settings namespace key union. */
+export type SettingsKey = keyof typeof zh
+
+/** English dictionary, checked complete against the zh key set. */
+export const en = {
+  'trigger': 'Settings',
+  'title': 'Settings',
+  'close': 'Close',
+  'openDocument': 'Open configuration file',
+  'openDocument.error': 'Could not open configuration file',
+  'general.nav': 'General',
+  'about.nav': 'About',
+  'about.intro': 'This desktop app and official Harness.',
+  'about.app': 'Deepseek-Harness-Desktop',
+  'about.appMeta': 'github.com/ChisaAlter/Deepseek-Harness-Desktop',
+  'about.version': 'Version {version}',
+  'about.checkUpdate': 'Check for updates',
+  'about.installUpdate': 'Install online',
+  'about.releases': 'GitHub releases',
+  'about.desktopOnly': 'Update checks are available in the desktop app.',
+  'about.updateChecking': 'Checking for updates…',
+  'about.updateNone': 'No GitHub release yet.',
+  'about.updateCurrent': 'You are on the latest version {latest}',
+  'about.updateAvailable': 'New version {latest} is available',
+  'about.updateDownloading': 'Downloading {percent}%',
+  'about.updateInstalling': 'Installer launched. Follow the wizard to finish.',
+  'about.updateOpenedPage': 'No installer asset found. Opened the GitHub releases page.',
+  'about.updateError': 'Update failed: {message}',
+  'about.harness': 'Official Harness',
+} satisfies Record<SettingsKey, string>
