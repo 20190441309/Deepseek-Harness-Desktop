@@ -15,3 +15,4 @@ Thumbs.db
 *.iml
 .pack-v2/
 .pack-tmp*/
+.pack-v*/
