@@ -6,7 +6,7 @@
  * reference graph closes a cycle through ui-sidebar → ui-layout → ui-theme.
  * The settings SLOT types (what registrants contribute) stay in ui-settings.
  */
-import type { HostObservable, InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.settings' entry)
 // into every program that sees this contract.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -42,9 +42,10 @@ export type SettingsRootInjected = {
 
 /**
  * Full component props of the settings shell root: the sidebar owner share
- * (wide/rail state) plus the declared render shares and the injected face
- * (hooks compartment bound to useSections). No store is registered — modal
- * open state and active section id are component-local viewing state.
+ * (wide/rail state) plus the declared render shares, the settings locale seat
+ * (for the shell-owned update entry), and the injected face (hooks compartment
+ * bound to useSections). No store is registered — modal open state and active
+ * section id are component-local viewing state.
  */
 export type SettingsRootComponentProps =
   PropsRuntime<'sidebar.settings'>
@@ -56,4 +57,5 @@ export type SettingsRootComponentProps =
     | 'settings.section'
     | 'settings.onboarding'
   >
+  & PropsLocale<'settings'>
   & InjectFace<SettingsRootInjected>
