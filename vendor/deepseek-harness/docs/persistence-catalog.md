@@ -930,6 +930,24 @@ Source: [`packages/core/session/src/types.ts:243`](../packages/core/session/src/
 
 Source: [`packages/core/session/src/types.ts:264`](../packages/core/session/src/types.ts)
 
+### `vision/*`
+
+<a id="visiondescribe--log-only"></a>
+
+#### `vision/describe` — log-only
+
+```ts persistence-catalog
+/**
+ * Log-only record of one vision-model image description, appended before
+ * the main request that first substitutes it. Request rewriting derives
+ * substituted text exclusively from these events, keeping the dispatched
+ * request reconstructable from the log.
+ */
+'vision/describe': VisionDescribeEventData
+```
+
+Source: [`packages/llm/llm-vision-fallback/src/index.ts:54`](../packages/llm/llm-vision-fallback/src/index.ts)
+
 ### `web/*`
 
 <a id="webdeepseek-search-llm-request--log-only"></a>

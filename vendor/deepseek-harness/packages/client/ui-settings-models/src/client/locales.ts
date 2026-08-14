@@ -103,6 +103,11 @@ export const en = {
   onboardingSave: 'Save and continue',
   onboardingSaving: 'Saving…',
   keyRequired: 'Enter an API key to continue.',
+  visionModel: 'Vision model',
+  visionModelHint: 'When the main model cannot read images, this model describes them first and the description is handed to the main model. Pick a model that accepts image input.',
+  visionModelOff: 'Off',
+  visionModelSaveFailed: 'Saving the vision model failed',
+  visionModelLoadFailed: 'Loading the model list failed',
 }
 
 /** The settings.models namespace key union. */
@@ -209,4 +214,9 @@ export const zh: { [Key in keyof typeof en]: string } = {
   onboardingSave: '保存并继续',
   onboardingSaving: '保存中…',
   keyRequired: '请输入 API 密钥后继续。',
+  visionModel: '识图模型',
+  visionModelHint: '主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。',
+  visionModelOff: '不启用',
+  visionModelSaveFailed: '保存识图模型失败',
+  visionModelLoadFailed: '加载模型列表失败',
 }

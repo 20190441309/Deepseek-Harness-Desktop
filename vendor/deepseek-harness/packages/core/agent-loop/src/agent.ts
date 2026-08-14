@@ -51,6 +51,21 @@ type PreparedStep =
   | { kind: 'reject' }
   | { kind: 'enter'; messages: UserMessage[]; assembly: PromptAssembly }
 
+/**
+ * Structural face of the optional `visionFallback` service
+ * (`@deepseek-ai/dsh-llm-vision-fallback`): rewrites derived messages for a
+ * text-only route by substituting image blocks with logged description text.
+ * Declared structurally so the loop takes no dependency on the plugin package.
+ */
+interface VisionMessageRewriter {
+  rewriteMessages(
+    session: Session,
+    route: { provider: string; model: string },
+    messages: Message[],
+    signal: AbortSignal,
+  ): Promise<Message[]>
+}
+
 /** Remove adapter-derived values before plugins propose the next request config. */
 function requestProposal(header: EpochHeader): LlmCallConfig {
   if (header.adapterDefaults === undefined) return header.config
@@ -483,9 +498,24 @@ export class ReactLoopAgent implements Agent {
     }
     signal.throwIfAborted()
 
+    // The vision fallback substitutes image blocks with logged description
+    // text for a route that declares no image support; the rewrite appends
+    // any newly generated description to the log before returning, so the
+    // dispatched messages stay a pure function of the session log.
+    const visionFallback = this.loopCtx.get('visionFallback') as VisionMessageRewriter | undefined
+    const requestMessages = visionFallback === undefined
+      ? boundaryMessages
+      : await visionFallback.rewriteMessages(
+        this.session,
+        { provider: config.provider, model: config.model },
+        boundaryMessages,
+        signal,
+      )
+    signal.throwIfAborted()
+
     const request = markAgentLoopRequest(deepFreeze({
       ...header.config,
-      messages: boundaryMessages,
+      messages: requestMessages,
       ...header.system !== undefined ? { system: header.system } : {},
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
