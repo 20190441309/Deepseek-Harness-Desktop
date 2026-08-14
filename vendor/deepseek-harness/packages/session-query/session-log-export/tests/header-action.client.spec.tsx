@@ -85,6 +85,28 @@ describe('Session export titlebar action', () => {
     expect(b.view.queryByRole('button', { name: 'Session log' })).toBeNull()
   })
 
+  it('keeps hook order legal when the current session is selected after booting with none', async () => {
+    const b = bench(undefined)
+    expect(b.view.queryByRole('button', { name: 'Session log' })).toBeNull()
+    b.view.rerender(<SessionLogDownloadHeaderAction {...({
+      ...b.props,
+      useSessions: useSessionsStub(sessionList(SID)),
+    } as unknown as SessionLogDownloadDialogProps)} />)
+    const button = b.view.getByRole('button', { name: 'Session log' })
+    fireEvent.click(button)
+    await waitFor(() => { expect(b.request).toHaveBeenCalledWith(SID) })
+  })
+
+  it('keeps hook order legal when the last current session is cleared', () => {
+    const b = bench(SID)
+    expect(b.view.getByRole('button', { name: 'Session log' })).toBeTruthy()
+    b.view.rerender(<SessionLogDownloadHeaderAction {...({
+      ...b.props,
+      useSessions: useSessionsStub(sessionList(undefined)),
+    } as unknown as SessionLogDownloadDialogProps)} />)
+    expect(b.view.queryByRole('button', { name: 'Session log' })).toBeNull()
+  })
+
   it('disables the capsule while either entry path downloads this Session', async () => {
     const b = bench(SID)
     let release!: (response: Response) => void

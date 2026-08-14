@@ -11,9 +11,10 @@ import css from './HeaderAction.module.css'
 export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogProps): ReactNode {
   const { useSessions, useSessionLogDownload, request } = props
   const sessionId = useSessions(s => s.current)
+  const entry = useSessionLogDownload(state =>
+    sessionId === undefined ? undefined : state.bySession[String(sessionId)])
   if (sessionId === undefined) return null
 
-  const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
   const busy = entry?.status === 'downloading'
 
   return (
