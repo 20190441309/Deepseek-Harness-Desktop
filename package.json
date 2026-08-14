@@ -1,9 +1,9 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
-  "author": "Tiffany",
+  "author": "Chisa",
   "license": "MIT",
   "main": "src/main/index.js",
   "private": true,
@@ -15,7 +15,7 @@
     "dist": "electron-builder --win"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^22.19.0 || >=24.0.0"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -38,7 +38,10 @@
     },
     "electronDist": "node_modules/electron/dist",
     "compression": "maximum",
-    "electronLanguages": ["en-US", "zh-CN"],
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
     "afterPack": "./scripts/after-pack.js",
     "win": {
       "icon": "assets/icon.png",

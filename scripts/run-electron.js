@@ -13,8 +13,6 @@ function candidates() {
     path.join(repoRoot, 'node_modules', 'electron', 'dist', 'electron.exe'),
     path.join(repoRoot, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
     path.join(repoRoot, 'node_modules', 'electron', 'dist', 'electron'),
-    'C:\\ai\\HermesCoWork\\node_modules\\electron\\dist\\electron.exe',
-    'C:\\ai\\routiform-desktop\\node_modules\\electron\\dist\\electron.exe',
   );
   return list;
 }

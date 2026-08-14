@@ -27,6 +27,8 @@
 
 只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）或免安装的便携版，装完不需要本机 Node 环境。
 
+目前只提供 Windows x64 安装包；macOS / Linux 请从源码运行，官方打包暂未提供。
+
 ## 从源码跑
 
 Windows 10+，Node 22.19+ / 24+，pnpm 11。

@@ -35,6 +35,8 @@ Scan to join: tips, troubleshooting, and feature requests.
 
 Just want to use it? Grab the latest NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) or the portable build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) — no local Node required.
 
+Only Windows x64 packages are published for now; on macOS / Linux, run from source — official packaging is not provided yet.
+
 ## Run from source
 
 Windows 10+, Node 22.19+ / 24+, pnpm 11. Get an API key from [DeepSeek](https://platform.deepseek.com/).
