@@ -54,7 +54,6 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     active: { colorScheme: overrides.preference === 'dark' ? 'dark' : 'light' },
     activeLightThemeId: 'deepseek',
     activeDarkThemeId: 'deepseek',
-    families: listThemeFamilies(customThemes),
     customThemes,
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
     wallpaperImage: '',

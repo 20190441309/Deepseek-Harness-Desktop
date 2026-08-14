@@ -14,7 +14,26 @@ const DARK_THEME_COLOR = 'rgb(21, 21, 23)'
 function snapshot(colorScheme: 'light' | 'dark', tokens: Record<string, string> = {}): ThemeSnapshot {
   // The presenter must key off colorScheme, not the id — keep them distinct.
   const active = { id: `${colorScheme}-test`, colorScheme, tokens }
-  return { preference: colorScheme, active, themes: [active], revision: 1 }
+  return {
+    preference: colorScheme,
+    active,
+    themes: [active],
+    families: [],
+    activeLightThemeId: 'deepseek',
+    activeDarkThemeId: 'deepseek',
+    customThemes: [],
+    glassOpacity: 80,
+    wallpaperImage: '',
+    wallpaperBlur: 0,
+    wallpaperPixelate: 0,
+    fontFamilySans: '',
+    fontFamilyCode: '',
+    fontSizeInterface: 16,
+    fontSizeCode: 13,
+    fontFamilyComposer: '',
+    fontFamilyTerminal: '',
+    revision: 1,
+  }
 }
 
 function clearThemePresentation(): void {

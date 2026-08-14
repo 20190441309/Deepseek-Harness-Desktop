@@ -8,6 +8,11 @@ import type {
   ThemeTokenOverrides,
 } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
+import { DEFAULT_THEME_SETTINGS } from '../src/theme-settings.ts'
+
+function section(overrides: Partial<ThemeSettings> = {}): ThemeSettings {
+  return { ...DEFAULT_THEME_SETTINGS, customThemes: [], ...overrides }
+}
 
 const make = (host = stubSettingsScope<ThemeSettings>()): {
   ctx: Context
@@ -61,17 +66,17 @@ describe('ThemeRuntime', () => {
 
   it('adopts a published Host section without writing it back', () => {
     const { theme, events, host } = make()
-    host.publish({ status: 'ready', value: { preference: 'dark' }, revision: 1, writable: true })
+    host.publish({ status: 'ready', value: section({ preference: 'dark' }), revision: 1, writable: true })
     expect(theme.getTheme().preference).toBe('dark')
     expect(events).toHaveLength(1)
     expect(host.set).not.toHaveBeenCalled()
-    host.publish({ value: { preference: 'dark' }, revision: 2 })
+    host.publish({ value: section({ preference: 'dark' }), revision: 2 })
     expect(events).toHaveLength(1)
   })
 
   it('adopts a section already standing at construction', () => {
     const host = stubSettingsScope<ThemeSettings>()
-    host.publish({ status: 'ready', value: { preference: 'dark' }, revision: 1, writable: true })
+    host.publish({ status: 'ready', value: section({ preference: 'dark' }), revision: 1, writable: true })
     const { theme } = make(host)
     expect(theme.getTheme().preference).toBe('dark')
   })
@@ -306,7 +311,7 @@ describe('ThemeRuntime', () => {
     const { theme, host } = make()
     host.publish({
       status: 'ready',
-      value: { preference: 'dark', activeDarkThemeId: 'violet' },
+      value: section({ preference: 'dark', activeDarkThemeId: 'violet' }),
       revision: 1,
       writable: true,
     })
@@ -345,7 +350,7 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().active.colorScheme).toBe('dark')
     host.publish({
       status: 'ready',
-      value: { preference: 'ghost' as never },
+      value: section({ preference: 'ghost' as never }),
       revision: 1,
       writable: true,
     })
