@@ -1,7 +1,8 @@
 /**
- * Theme-family grid: two-ball cards, create / import / duplicate / delete.
+ * Theme-family grid: split-preview cards, create / import / duplicate /
+ * delete, and the live-previewing editor.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -25,20 +26,43 @@ export function ThemeLibrary({
   customThemes,
   activeLightThemeId,
   activeDarkThemeId,
+  resolvedMode,
   t,
   setThemeHalf,
   setCustomThemes,
+  previewTheme,
 }: {
   families: readonly ThemeFamily[]
   customThemes: readonly ThemeFamily[]
   activeLightThemeId: string
   activeDarkThemeId: string
+  resolvedMode: 'light' | 'dark'
   t: (key: ThemeKey) => string
   setThemeHalf: (mode: 'light' | 'dark', id: string) => void
   setCustomThemes: (families: ThemeFamily[]) => void
+  previewTheme: (family: ThemeFamily | null) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState<ThemeFamily | null>(null)
+
+  // The preview layer belongs to the open editor; leaving the page (or
+  // unmounting mid-edit) must restore the stored theme.
+  useEffect(() => () => { previewTheme(null) }, [previewTheme])
+
+  const openDraft = (family: ThemeFamily): void => {
+    setDraft(family)
+    previewTheme(family)
+  }
+
+  const updateDraft = (family: ThemeFamily): void => {
+    setDraft(family)
+    previewTheme(family)
+  }
+
+  const closeDraft = (): void => {
+    setDraft(null)
+    previewTheme(null)
+  }
 
   const reserved = new Set([...getReservedThemeIds(), ...customThemes.map(family => family.id)])
 
@@ -46,14 +70,14 @@ export function ThemeLibrary({
     const source = families.find(family => family.id === activeDarkThemeId)
       ?? families.find(family => family.id === activeLightThemeId)
       ?? families[0]!
-    setDraft(duplicateThemeFamily(source, reserved))
+    openDraft(duplicateThemeFamily(source, reserved))
   }
 
   const saveDraft = (next: ThemeFamily): void => {
     setCustomThemes(replaceCustomTheme(customThemes, next))
     setThemeHalf('light', next.id)
     setThemeHalf('dark', next.id)
-    setDraft(null)
+    closeDraft()
   }
 
   const importFile = async (file: File): Promise<void> => {
@@ -64,6 +88,35 @@ export function ThemeLibrary({
     } catch {
       /* invalid JSON or schema — leave the library unchanged */
     }
+  }
+
+  const half = (family: ThemeFamily, mode: 'light' | 'dark') => {
+    const active = (mode === 'light' ? activeLightThemeId : activeDarkThemeId) === family.id
+    const current = mode === resolvedMode
+    const seeds = family[mode]
+    return (
+      <button
+        type="button"
+        className={clsx(css.half, active && css.halfActive)}
+        style={{ background: seeds.background, color: seeds.foreground }}
+        aria-label={`${family.name} ${t(mode === 'light' ? 'editor.light' : 'editor.dark')}`}
+        aria-pressed={active}
+        onClick={() => { setThemeHalf(mode, family.id) }}
+      >
+        <span className={css.miniUi} aria-hidden="true">
+          <span className={css.miniDot} style={{ background: seeds.accent }} />
+          <span className={css.miniLines}>
+            <span className={css.miniLine} />
+            <span className={clsx(css.miniLine, css.miniLineShort)} />
+          </span>
+        </span>
+        <span className={css.halfLabel}>
+          {t(mode === 'light' ? 'appearance.light' : 'appearance.dark')}
+          {current ? <span className={css.halfCurrent}>{t('library.currentMode')}</span> : null}
+        </span>
+        {active ? <span className={css.halfBadge} aria-hidden="true">✓</span> : null}
+      </button>
+    )
   }
 
   return (
@@ -91,68 +144,56 @@ export function ThemeLibrary({
       <div className={css.grid}>
         {families.map(family => (
           <article key={family.id} className={css.card}>
-            <p className={css.cardName}>{family.name}</p>
-            <div className={css.balls}>
-              <button
-                type="button"
-                className={clsx(css.ball, activeLightThemeId === family.id && css.ballActive)}
-                style={{ background: `linear-gradient(135deg, ${family.light.background}, ${family.light.accent})` }}
-                aria-label={`${family.name} ${t('editor.light')}`}
-                aria-pressed={activeLightThemeId === family.id}
-                onClick={() => { setThemeHalf('light', family.id) }}
-              >
-                {activeLightThemeId === family.id ? <span className={css.sun} aria-hidden="true" /> : null}
-              </button>
-              <button
-                type="button"
-                className={clsx(css.ball, activeDarkThemeId === family.id && css.ballActive)}
-                style={{ background: `linear-gradient(135deg, ${family.dark.background}, ${family.dark.accent})` }}
-                aria-label={`${family.name} ${t('editor.dark')}`}
-                aria-pressed={activeDarkThemeId === family.id}
-                onClick={() => { setThemeHalf('dark', family.id) }}
-              >
-                {activeDarkThemeId === family.id ? <span className={css.moon} aria-hidden="true" /> : null}
-              </button>
+            <div className={css.preview}>
+              {half(family, 'light')}
+              {half(family, 'dark')}
             </div>
-            <div className={css.cardActions}>
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('library.duplicate')}
-                onClick={() => { setDraft(duplicateThemeFamily(family, reserved)) }}
-              >
-                +
-              </button>
-              {family.origin === 'custom' ? (
-                <>
-                  <button
-                    type="button"
-                    className={css.iconButton}
-                    aria-label={t('library.edit')}
-                    onClick={() => { setDraft(family) }}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    className={css.iconButton}
-                    aria-label={t('library.export')}
-                    onClick={() => { void writeClipboard(serializeThemeFamily(family)) }}
-                  >
-                    ↗
-                  </button>
-                  <button
-                    type="button"
-                    className={css.iconButton}
-                    aria-label={t('library.delete')}
-                    onClick={() => {
-                      setCustomThemes(customThemes.filter(item => item.id !== family.id))
-                    }}
-                  >
-                    ×
-                  </button>
-                </>
-              ) : null}
+            <div className={css.cardFoot}>
+              <p className={css.cardName}>{family.name}</p>
+              <div className={css.cardActions}>
+                <button
+                  type="button"
+                  className={css.iconButton}
+                  aria-label={t('library.duplicate')}
+                  title={t('library.duplicate')}
+                  onClick={() => { openDraft(duplicateThemeFamily(family, reserved)) }}
+                >
+                  +
+                </button>
+                {family.origin === 'custom' ? (
+                  <>
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={t('library.edit')}
+                      title={t('library.edit')}
+                      onClick={() => { openDraft(family) }}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={t('library.export')}
+                      title={t('library.export')}
+                      onClick={() => { void writeClipboard(serializeThemeFamily(family)) }}
+                    >
+                      ↗
+                    </button>
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={t('library.delete')}
+                      title={t('library.delete')}
+                      onClick={() => {
+                        setCustomThemes(customThemes.filter(item => item.id !== family.id))
+                      }}
+                    >
+                      ×
+                    </button>
+                  </>
+                ) : null}
+              </div>
             </div>
           </article>
         ))}
@@ -160,10 +201,11 @@ export function ThemeLibrary({
       {draft !== null ? (
         <ThemeEditor
           family={draft}
+          resolvedMode={resolvedMode}
           t={t}
-          onChange={setDraft}
+          onChange={updateDraft}
           onSave={() => { saveDraft(draft) }}
-          onCancel={() => { setDraft(null) }}
+          onCancel={closeDraft}
         />
       ) : null}
     </div>

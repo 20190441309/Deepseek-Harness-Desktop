@@ -24,6 +24,7 @@ import type { createAppearanceRowStore } from './settings-store.ts'
 import { ColorSchemeTiles } from './ColorSchemeTiles.tsx'
 import { ThemeLibrary } from './ThemeLibrary.tsx'
 import { WallpaperRow } from './WallpaperRow.tsx'
+import { sliderFillStyle } from './slider.ts'
 import css from './AppearanceSection.module.css'
 
 const TYPOGRAPHY_ADVANCED_KEY = 'dsh:typography-advanced'
@@ -54,6 +55,8 @@ export interface AppearanceSectionInjected {
   setThemeHalf: (mode: 'light' | 'dark', id: string) => void
   /** Replace the durable custom-family list. */
   setCustomThemes: (families: ThemeFamily[]) => void
+  /** Paint a transient draft family for live preview; null restores the stored theme. */
+  previewTheme: (family: ThemeFamily | null) => void
   /** Persist glass-surface opacity. */
   setGlassOpacity: (value: number) => void
   /** Persist wallpaper image and/or the two effect sliders. */
@@ -84,11 +87,13 @@ export function AppearanceSection({
   setTheme,
   setThemeHalf,
   setCustomThemes,
+  previewTheme,
   setGlassOpacity,
   setWallpaper,
   setTypography,
 }: AppearanceSectionComponentProps) {
   const preference = useStore(s => s.preference)
+  const resolvedMode = useStore(s => s.resolvedMode)
   const families = useStore(s => s.families)
   const customThemes = useStore(s => s.customThemes)
   const activeLightThemeId = useStore(s => s.activeLightThemeId)
@@ -123,9 +128,11 @@ export function AppearanceSection({
           customThemes={customThemes}
           activeLightThemeId={activeLightThemeId}
           activeDarkThemeId={activeDarkThemeId}
+          resolvedMode={resolvedMode}
           t={t}
           setThemeHalf={setThemeHalf}
           setCustomThemes={setCustomThemes}
+          previewTheme={previewTheme}
         />
       </section>
 
@@ -150,6 +157,7 @@ export function AppearanceSection({
           max={MAX_GLASS_OPACITY}
           step={GLASS_OPACITY_STEP}
           value={glassOpacity}
+          style={sliderFillStyle(glassOpacity, MIN_GLASS_OPACITY, MAX_GLASS_OPACITY)}
           aria-valuemin={MIN_GLASS_OPACITY}
           aria-valuemax={MAX_GLASS_OPACITY}
           aria-valuenow={glassOpacity}
@@ -200,6 +208,7 @@ export function AppearanceSection({
             max={MAX_INTERFACE_FONT_SIZE}
             step={1}
             value={fontSizeInterface}
+            style={sliderFillStyle(fontSizeInterface, MIN_INTERFACE_FONT_SIZE, MAX_INTERFACE_FONT_SIZE)}
             aria-label={t('type.size')}
             onChange={event => { setTypography({ fontSizeInterface: Number(event.currentTarget.value) }) }}
           />
@@ -223,6 +232,7 @@ export function AppearanceSection({
             max={MAX_CODE_FONT_SIZE}
             step={1}
             value={fontSizeCode}
+            style={sliderFillStyle(fontSizeCode, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE)}
             aria-label={t('type.sizeCode')}
             onChange={event => { setTypography({ fontSizeCode: Number(event.currentTarget.value) }) }}
           />

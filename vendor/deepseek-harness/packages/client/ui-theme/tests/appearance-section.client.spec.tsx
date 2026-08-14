@@ -51,6 +51,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
   const customThemes = overrides.customThemes ?? []
   return {
     preference: DEFAULT_THEME_SETTINGS.preference,
+    active: { colorScheme: overrides.preference === 'dark' ? 'dark' : 'light' },
     activeLightThemeId: 'deepseek',
     activeDarkThemeId: 'deepseek',
     families: listThemeFamilies(customThemes),
@@ -76,6 +77,7 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
   const setTheme = vi.fn()
   const setThemeHalf = vi.fn()
   const setCustomThemes = vi.fn()
+  const previewTheme = vi.fn()
   const setGlassOpacity = vi.fn()
   const setWallpaper = vi.fn()
   const setTypography = vi.fn()
@@ -89,12 +91,13 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
     setTheme,
     setThemeHalf,
     setCustomThemes,
+    previewTheme,
     setGlassOpacity,
     setWallpaper,
     setTypography,
   }
   const view = render(<AppearanceSection {...props} />)
-  return { store, setTheme, setThemeHalf, setCustomThemes, setGlassOpacity, setWallpaper, setTypography, ...view }
+  return { store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setWallpaper, setTypography, ...view }
 }
 
 const cube = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}$`) })
@@ -170,6 +173,32 @@ describe('AppearanceSection', () => {
     expect(saved[0]!.name).toBe('My Grove')
     expect(b.setThemeHalf).toHaveBeenCalledWith('light', saved[0]!.id)
     expect(b.setThemeHalf).toHaveBeenCalledWith('dark', saved[0]!.id)
+  })
+
+  it('previews the draft live while the editor is open and clears on close', () => {
+    const b = mount('dark')
+    fireEvent.click(screen.getByRole('button', { name: '创建主题' }))
+    expect(screen.getByText(/正处于深色模式/)).toBeDefined()
+    expect(b.previewTheme).toHaveBeenCalledTimes(1)
+    const opened = b.previewTheme.mock.calls[0]![0] as ThemeFamily
+    expect(opened.origin).toBe('custom')
+
+    const colors = b.container.querySelectorAll('input[type="color"]')
+    fireEvent.change(colors[0]!, { target: { value: '#e60000' } })
+    const updated = b.previewTheme.mock.calls.at(-1)![0] as ThemeFamily
+    expect(updated.light.accent).toBe('#e60000')
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(b.previewTheme).toHaveBeenLastCalledWith(null)
+  })
+
+  it('clears the preview when saving and marks the current mode half', () => {
+    const b = mount('dark')
+    expect(screen.getAllByText('当前模式').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '创建主题' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(b.setCustomThemes).toHaveBeenCalled()
+    expect(b.previewTheme).toHaveBeenLastCalledWith(null)
   })
 
   it('duplicates, edits advanced tokens, and cancels without writing', () => {

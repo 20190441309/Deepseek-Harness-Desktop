@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ThemeFamily, ThemeSeeds } from '../theme-family.ts'
 import type { ThemeKey } from './locales.ts'
+import { sliderFillStyle } from './slider.ts'
 import css from './AppearanceSection.module.css'
 
 const OVERRIDE_FIELDS = [
@@ -22,8 +23,11 @@ const OVERRIDE_FIELDS = [
 ] as const
 
 /**
- * Render the custom-theme editor.
+ * Render the custom-theme editor. Edits preview live through the theme
+ * service; only the half matching `resolvedMode` is visible on screen, so the
+ * other half is labeled as hidden until the color scheme switches.
  * @param props.family - draft family.
+ * @param props.resolvedMode - which half the UI is currently painting.
  * @param props.t - localized copy.
  * @param props.onChange - draft write.
  * @param props.onSave - persist the draft.
@@ -32,12 +36,14 @@ const OVERRIDE_FIELDS = [
  */
 export function ThemeEditor({
   family,
+  resolvedMode,
   t,
   onChange,
   onSave,
   onCancel,
 }: {
   family: ThemeFamily
+  resolvedMode: 'light' | 'dark'
   t: (key: ThemeKey) => string
   onChange: (family: ThemeFamily) => void
   onSave: () => void
@@ -46,6 +52,9 @@ export function ThemeEditor({
   const [advanced, setAdvanced] = useState(false)
   return (
     <div className={css.editor}>
+      <p className={css.hint}>
+        {t(resolvedMode === 'dark' ? 'editor.previewHintDark' : 'editor.previewHintLight')}
+      </p>
       <label className={css.field}>
         <span>{t('editor.name')}</span>
         <Input
@@ -55,6 +64,7 @@ export function ThemeEditor({
       </label>
       <HalfEditor
         title={t('editor.light')}
+        current={resolvedMode === 'light'}
         seeds={family.light}
         advanced={advanced}
         t={t}
@@ -62,6 +72,7 @@ export function ThemeEditor({
       />
       <HalfEditor
         title={t('editor.dark')}
+        current={resolvedMode === 'dark'}
         seeds={family.dark}
         advanced={advanced}
         t={t}
@@ -80,12 +91,14 @@ export function ThemeEditor({
 
 function HalfEditor({
   title,
+  current,
   seeds,
   advanced,
   t,
   onChange,
 }: {
   title: string
+  current: boolean
   seeds: ThemeSeeds
   advanced: boolean
   t: (key: ThemeKey) => string
@@ -93,7 +106,10 @@ function HalfEditor({
 }) {
   return (
     <fieldset className={css.half}>
-      <legend>{title}</legend>
+      <legend>
+        {title}
+        {current ? <span className={css.halfCurrent}>{t('library.currentMode')}</span> : null}
+      </legend>
       <div className={css.colorRow}>
         <ColorField label={t('editor.accent')} value={seeds.accent} onChange={accent => { onChange({ ...seeds, accent }) }} />
         <ColorField label={t('editor.background')} value={seeds.background} onChange={background => { onChange({ ...seeds, background }) }} />
@@ -103,9 +119,11 @@ function HalfEditor({
         <span>{t('editor.contrast')} ({seeds.contrast})</span>
         <input
           type="range"
+          className={css.slider}
           min={0}
           max={100}
           value={seeds.contrast}
+          style={sliderFillStyle(seeds.contrast, 0, 100)}
           onChange={event => { onChange({ ...seeds, contrast: Number(event.currentTarget.value) }) }}
         />
       </label>

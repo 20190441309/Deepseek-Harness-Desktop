@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { stubSettingsScope, type StubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import type {
@@ -21,7 +21,13 @@ const make = (host = stubSettingsScope<ThemeSettings>()): {
   return { ctx, theme: new ThemeRuntime(ctx, host.scope), events, host }
 }
 
+/** Advance past the durable-write debounce so queued scope writes land. */
+const flushWrites = (): void => { vi.advanceTimersByTime(300) }
+
 describe('ThemeRuntime', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
   it('defaults to the system preference resolved against prefers-color-scheme', () => {
     const { theme } = make()
     const snapshot = theme.getTheme()
@@ -40,6 +46,7 @@ describe('ThemeRuntime', () => {
     theme.setTheme('dark')
     expect(theme.getTheme().preference).toBe('dark')
     expect(theme.getTheme().active.colorScheme).toBe('dark')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('preference', 'dark')
     expect(events).toHaveLength(1)
     expect(events[0]).toBe(theme.getTheme())
@@ -48,6 +55,7 @@ describe('ThemeRuntime', () => {
     // Same-value set is a no-op (no extra event).
     theme.setTheme('dark')
     expect(events).toHaveLength(1)
+    flushWrites()
     expect(host.set).toHaveBeenCalledOnce()
   })
 
@@ -86,6 +94,7 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().themes.map(t => t.id)).toEqual(['light', 'dark'])
     // Custom ids are in-process extension themes; only the built-in product
     // preferences cross the Host settings schema.
+    flushWrites()
     expect(host.set).not.toHaveBeenCalled()
     // register + set + dispose = three publishes; disposer is idempotent.
     expect(events.length).toBe(3)
@@ -259,10 +268,38 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().activeLightThemeId).toBe('celadon')
     expect(theme.getTheme().active.id).toBe('celadon')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBe('#f3faf7')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('activeLightThemeId', 'celadon')
     theme.setThemeHalf('light', 'celadon')
+    flushWrites()
     expect(host.set).toHaveBeenCalledTimes(2)
     expect(() => { theme.setThemeHalf('dark', 'missing') }).toThrow('not registered')
+  })
+
+  it('previews a transient family without writing the scope, and clears back', () => {
+    const { theme, events, host } = make()
+    theme.setTheme('light')
+    const before = theme.getTheme()
+    const draft = {
+      id: 'red-draft',
+      name: 'red',
+      origin: 'custom' as const,
+      light: { accent: '#e60000', background: '#ffffff', foreground: '#0f1115', contrast: 46 },
+      dark: { accent: '#ff8080', background: '#151517', foreground: '#f5f5f5', contrast: 41 },
+    }
+    theme.setPreviewFamily(draft)
+    expect(theme.getTheme().active.id).toBe('red-draft')
+    expect(theme.getTheme().active.tokens['--dsw-alias-brand-primary']).toBe('#e60000')
+    // Durable selection is untouched: no scope write, half ids unchanged.
+    expect(theme.getTheme().activeLightThemeId).toBe(before.activeLightThemeId)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledTimes(1) // only the setTheme('light') write
+    // Same reference is a no-op; clearing restores the stored family.
+    const published = events.length
+    theme.setPreviewFamily(draft)
+    expect(events).toHaveLength(published)
+    theme.setPreviewFamily(null)
+    expect(theme.getTheme().active.id).toBe('deepseek')
   })
 
   it('adopts half ids from Host and keeps DeepSeek tokens empty besides glass', () => {
@@ -296,6 +333,7 @@ describe('ThemeRuntime', () => {
     theme.setCustomThemes([])
     expect(theme.getTheme().activeLightThemeId).toBe('deepseek')
     expect(theme.getTheme().activeDarkThemeId).toBe('deepseek')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('activeLightThemeId', 'deepseek')
     expect(host.set).toHaveBeenCalledWith('activeDarkThemeId', 'deepseek')
   })
@@ -318,12 +356,14 @@ describe('ThemeRuntime', () => {
     const { theme, host } = make()
     theme.setGlassOpacity(60)
     expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('60%')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('glassOpacity', 60)
     theme.setGlassOpacity(60)
     theme.setTypography({ fontFamilySans: 'Inter', fontSizeInterface: 18, fontFamilyComposer: 'Georgia' })
     expect(theme.getTheme().fontFamilySans).toBe('Inter')
     expect(theme.getTheme().fontSizeInterface).toBe(18)
     expect(theme.getTheme().fontFamilyComposer).toBe('Georgia')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('fontFamilySans', 'Inter')
   })
 
@@ -340,6 +380,7 @@ describe('ThemeRuntime', () => {
     theme.setTheme('light')
     theme.setThemeHalf('light', 'celadon')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('#f3faf7')
+    flushWrites()
     expect(host.set).toHaveBeenCalledWith('wallpaperImage', png)
     theme.setWallpaper({ wallpaperImage: png, wallpaperBlur: 25, wallpaperPixelate: 40 })
     theme.setWallpaper({ wallpaperImage: 'javascript:alert(1)' })
@@ -347,5 +388,32 @@ describe('ThemeRuntime', () => {
     theme.setWallpaper({ wallpaperBlur: 250, wallpaperPixelate: -4 })
     expect(theme.getTheme().wallpaperBlur).toBe(100)
     expect(theme.getTheme().wallpaperPixelate).toBe(0)
+  })
+
+  it('coalesces a drag into one durable write per field', () => {
+    const { theme, host } = make()
+    theme.setGlassOpacity(45)
+    theme.setGlassOpacity(50)
+    theme.setGlassOpacity(65)
+    expect(host.set).not.toHaveBeenCalled()
+    flushWrites()
+    expect(host.set).toHaveBeenCalledOnce()
+    expect(host.set).toHaveBeenCalledWith('glassOpacity', 65)
+  })
+
+  it('ignores durable echoes while local writes are pending, then re-adopts', async () => {
+    const { theme, host } = make()
+    theme.setGlassOpacity(45)
+    // Stale echo mid-drag: must not snap the slider back.
+    host.publish({ status: 'ready', value: { glassOpacity: 80 } as ThemeSettings, revision: 1, writable: true })
+    expect(theme.getTheme().glassOpacity).toBe(45)
+    flushWrites()
+    // The scope publishes the accepted write before the set() settlement.
+    host.publish({ value: { glassOpacity: 45 } as ThemeSettings, revision: 2 })
+    await vi.runAllTimersAsync()
+    expect(theme.getTheme().glassOpacity).toBe(45)
+    // Once idle, a genuine external change is adopted normally.
+    host.publish({ value: { glassOpacity: 90 } as ThemeSettings, revision: 3 })
+    expect(theme.getTheme().glassOpacity).toBe(90)
   })
 })

@@ -7,6 +7,7 @@ import { DEFAULT_THEME_SETTINGS } from '../src/theme-settings.ts'
 function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSnapshot {
   return {
     preference: DEFAULT_THEME_SETTINGS.preference,
+    active: { colorScheme: 'light' },
     activeLightThemeId: 'deepseek',
     activeDarkThemeId: 'deepseek',
     families: [],
@@ -33,9 +34,9 @@ describe('createAppearanceRowStore', () => {
 
   it('sync mirrors the snapshot and advances the revision', () => {
     const store = createAppearanceRowStore().create()
-    store.actions.sync(snap({ preference: 'dark', glassOpacity: 60, wallpaperBlur: 15 }), 0)
+    store.actions.sync(snap({ preference: 'dark', active: { colorScheme: 'dark' }, glassOpacity: 60, wallpaperBlur: 15 }), 0)
     expect(store.getSnapshot()).toMatchObject({
-      preference: 'dark', glassOpacity: 60, wallpaperBlur: 15, revision: 0,
+      preference: 'dark', resolvedMode: 'dark', glassOpacity: 60, wallpaperBlur: 15, revision: 0,
     })
     store.actions.sync(snap({ preference: 'light' }), 2)
     expect(store.getSnapshot().preference).toBe('light')
