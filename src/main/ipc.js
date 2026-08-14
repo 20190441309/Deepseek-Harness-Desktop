@@ -1,6 +1,6 @@
 const { ipcMain, dialog, app, shell } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, createSettingsWindow } = require('./window');
+const { getMainWindow, openHarnessSettings } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
@@ -67,27 +67,12 @@ function registerIpc({ dsh, startHarness }) {
     return result.filePaths[0];
   });
 
-  ipcMain.handle('shell:pick-file', async (_event, options = {}) => {
-    const win = getMainWindow();
-    const result = await dialog.showOpenDialog(win || undefined, {
-      title: options.title || (configLocale() === 'en' ? 'Choose file' : '选择文件'),
-      properties: ['openFile'],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return null;
-    }
-    return result.filePaths[0];
-  });
-
   ipcMain.handle('shell:restart', async () => {
     await startHarness();
     return dsh.snapshot();
   });
 
-  ipcMain.handle('shell:open-settings', () => {
-    createSettingsWindow();
-    return true;
-  });
+  ipcMain.handle('shell:open-settings', () => openHarnessSettings());
 
   ipcMain.handle('shell:check-update', () => checkUpdate());
 

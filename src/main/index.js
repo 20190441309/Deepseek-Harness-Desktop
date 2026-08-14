@@ -1,7 +1,7 @@
 const { app, dialog, globalShortcut, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { loadConfig, saveConfig, defaultWorkspace } = require('./config');
+const { loadConfig, saveConfig } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { stripDroppedPlugins } = require('./plugins');
 const { ensureWorkspace } = require('./workspace-rpc');
@@ -122,9 +122,8 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     const config = loadConfig();
-    if (!fs.existsSync(config.workspace)) {
-      saveConfig({ workspace: defaultWorkspace() });
-    }
+    fs.mkdirSync(config.workspace, { recursive: true });
+    saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
 
     registerIpc({ dsh, startHarness: restartHarness });

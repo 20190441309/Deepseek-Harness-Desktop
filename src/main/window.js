@@ -3,7 +3,6 @@ const { rendererFile, assetFile, preloadFile } = require('./paths');
 const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChrome } = require('./chrome');
 
 let mainWindow = null;
-let settingsWindow = null;
 
 function iconImage() {
   const png = nativeImage.createFromPath(assetFile('icon.png'));
@@ -77,39 +76,55 @@ function showHarness(baseUrl) {
   return win.loadURL(baseUrl);
 }
 
-function createSettingsWindow() {
-  const parent = getMainWindow();
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.focus();
-    return settingsWindow;
+function showMain() {
+  const win = getMainWindow();
+  if (!win) {
+    return null;
   }
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.show();
+  win.focus();
+  return win;
+}
 
-  settingsWindow = new BrowserWindow({
-    ...windowChrome({
-      width: 560,
-      height: 920,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      parent: parent || undefined,
-      modal: Boolean(parent),
-      icon: iconImage(),
-    }),
-    webPreferences: {
-      preload: preloadFile(),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+function isHarnessLoaded(win) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\b/i.test(win?.webContents.getURL() || '');
+}
 
-  hideNativeMenu(settingsWindow);
-  attachIntegratedChrome(settingsWindow);
-  settingsWindow.loadFile(rendererFile('settings.html'));
-  settingsWindow.on('closed', () => {
-    settingsWindow = null;
-  });
-  return settingsWindow;
+function openHarnessSettings(sectionId) {
+  const win = showMain();
+  if (!win || !isHarnessLoaded(win)) {
+    return Promise.resolve(false);
+  }
+  const section = JSON.stringify(sectionId || '');
+  return win.webContents.executeJavaScript(`
+    (() => {
+      const trigger = document.querySelector('[data-dsh-settings-trigger]');
+      if (!trigger) return false;
+      if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+      const id = ${section};
+      if (!id) return true;
+      return new Promise((resolve) => {
+        let n = 0;
+        const tick = () => {
+          const nav = document.querySelector('[data-dsh-settings-section="' + id + '"]');
+          if (nav) {
+            nav.click();
+            resolve(true);
+            return;
+          }
+          if (n++ > 40) {
+            resolve(false);
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+    })()
+  `).catch(() => false);
 }
 
 function sendToBoot(channel, payload) {
@@ -128,7 +143,8 @@ module.exports = {
   getMainWindow,
   showBoot,
   showHarness,
-  createSettingsWindow,
+  showMain,
+  openHarnessSettings,
   sendToBoot,
   iconImage,
 };

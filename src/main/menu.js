@@ -1,5 +1,5 @@
-const { Menu, shell, dialog, app } = require('electron');
-const { getMainWindow, createSettingsWindow } = require('./window');
+const { Menu, shell, app } = require('electron');
+const { openHarnessSettings } = require('./window');
 const { loadConfig } = require('./config');
 
 function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
@@ -37,7 +37,7 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
         {
           label: '设置…',
           accelerator: 'CmdOrCtrl+,',
-          click: () => createSettingsWindow(),
+          click: () => { openHarnessSettings(); },
         },
         { type: 'separator' },
         isMac ? { role: 'close', label: '关闭窗口' } : { role: 'quit', label: '退出' },
@@ -83,15 +83,7 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
         { type: 'separator' },
         {
           label: '关于',
-          click: () => {
-            const win = getMainWindow();
-            dialog.showMessageBox(win || undefined, {
-              type: 'info',
-              title: 'Deepseek-Harness-Desktop',
-              message: 'Deepseek-Harness-Desktop',
-              detail: 'Electron 桌面壳，嵌入官方 dsh web。\n当前工作区即本机所选项目目录。',
-            });
-          },
+          click: () => { openHarnessSettings('about'); },
         },
       ],
     },

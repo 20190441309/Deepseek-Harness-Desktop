@@ -18,10 +18,9 @@
 - **自动启动 Harness**：启动时检测 `127.0.0.1:3080` 端口——杀掉上次残留的 dsh 进程；被其他程序占用就自动跳到空闲端口
 - **三重启动链**：优先跑 `vendor/deepseek-harness` 构建产物 → 本机 `dsh` → `npx @deepseek-ai/dsh`，总有一条能起来
 - **工作区自动注册**：启动时通过 RPC 把工作区目录注册进 Harness，不用手动建
-- **设置窗口**（`Ctrl+,`）：主题、工作区、端口、API Key、Base URL、dsh / Node 路径、开机自启、关窗进托盘、中英文
-- **六套主题**：午夜 / 青瓷 / 暮紫 / 琥珀 / 宣纸 / 对比，主题色会同步到 Harness 窗口背景
+- **设置就是 Harness 设置**（`Ctrl+,`）：模型、插件、关于、检测更新和在线安装都在官方设置里
 - **托盘常驻**：显示窗口、设置、重启 Harness、退出
-- **自动更新**：启动时检查 GitHub Releases，有新版本直接下载安装包并拉起安装器
+- **自动更新**：Harness 设置 → 关于里检查 GitHub Releases，有新版本可在线安装
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 
 ## 跑起来

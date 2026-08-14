@@ -41,7 +41,19 @@ function writeJson(file, data) {
   fs.renameSync(tmp, file);
 }
 
+function isUnsafeWorkspace(dir) {
+  if (!app.isPackaged || !dir) {
+    return false;
+  }
+  const resources = path.normalize(process.resourcesPath);
+  const resolved = path.normalize(dir);
+  return resolved === resources || resolved.startsWith(`${resources}${path.sep}`);
+}
+
 function defaultWorkspace() {
+  if (app.isPackaged) {
+    return path.join(app.getPath('documents'), 'Deepseek-Harness-Desktop');
+  }
   return projectRoot();
 }
 
@@ -54,7 +66,7 @@ function loadConfig() {
     apiKey: typeof creds.apiKey === 'string' ? creds.apiKey : stored.apiKey || '',
     baseUrl: typeof creds.baseUrl === 'string' ? creds.baseUrl : stored.baseUrl || '',
   };
-  if (!config.workspace) {
+  if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
   if (config.locale !== 'en' && config.locale !== 'zh') {

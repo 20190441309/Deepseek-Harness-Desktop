@@ -5,7 +5,6 @@ contextBridge.exposeInMainWorld('shell', {
   getConfig: () => ipcRenderer.invoke('shell:get-config'),
   saveConfig: (patch) => ipcRenderer.invoke('shell:save-config', patch),
   pickWorkspace: () => ipcRenderer.invoke('shell:pick-workspace'),
-  pickFile: (options) => ipcRenderer.invoke('shell:pick-file', options),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   restart: () => ipcRenderer.invoke('shell:restart'),
   openSettings: () => ipcRenderer.invoke('shell:open-settings'),

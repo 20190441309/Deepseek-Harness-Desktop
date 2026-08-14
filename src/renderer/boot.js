@@ -3,14 +3,13 @@ const hintEl = document.getElementById('hint');
 const actionsEl = document.getElementById('actions');
 const logEl = document.getElementById('log');
 const retryEl = document.getElementById('retry');
-const settingsEl = document.getElementById('settings');
 
 const HINTS = {
   idle: '等待启动。',
     starting: '正在启动本机 dsh web；关闭应用时会一并退出服务。',
   ready: '正在打开 Web UI。',
   stopping: '正在停止运行时。',
-  error: '启动失败。检查 Node.js、网络，或打开设置确认工作区与 API Key。',
+  error: '启动失败。检查 Node.js、网络，或在 Harness 设置里确认 API Key。',
 };
 
 const LABELS = {
@@ -85,15 +84,6 @@ retryEl.addEventListener('click', () => {
         error: error.message || String(error),
       });
     });
-});
-
-settingsEl.addEventListener('click', () => {
-  invoke('openSettings').catch((error) => {
-    renderState({
-      state: 'error',
-      error: error.message || String(error),
-    });
-  });
 });
 
 invoke('getState')

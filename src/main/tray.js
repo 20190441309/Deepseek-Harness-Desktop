@@ -1,20 +1,8 @@
 const { Tray, Menu, nativeImage } = require('electron');
-const { getMainWindow, iconImage, createSettingsWindow } = require('./window');
+const { showMain, iconImage, openHarnessSettings } = require('./window');
 const { assetFile } = require('./paths');
 
 let tray = null;
-
-function showMain() {
-  const win = getMainWindow();
-  if (!win) {
-    return;
-  }
-  if (win.isMinimized()) {
-    win.restore();
-  }
-  win.show();
-  win.focus();
-}
 
 function createTray({ onRestart, onQuit }) {
   if (tray) {
@@ -33,7 +21,7 @@ function createTray({ onRestart, onQuit }) {
   tray.setToolTip('Deepseek-Harness-Desktop');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示窗口', click: () => showMain() },
-    { label: '设置…', click: () => createSettingsWindow() },
+    { label: '设置…', click: () => { openHarnessSettings(); } },
     { label: '重启 Harness', click: () => onRestart() },
     { type: 'separator' },
     { label: '退出', click: () => onQuit() },
