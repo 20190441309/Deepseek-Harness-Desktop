@@ -26,6 +26,13 @@ export const zh = {
   'about.updateOpenedPage': '未找到安装包，已打开 GitHub 发行页。',
   'about.updateError': '检测或安装失败：{message}',
   'about.harness': '官方 Harness',
+  'update.badge': '有新版本',
+  'update.tooltip': '有新版本 {latest}，点击更新',
+  'update.title': '发现新版本 {latest}',
+  'update.body': '当前版本 {current}，可在线更新到 {latest}。下载完成后将启动安装程序。',
+  'update.install': '立即更新',
+  'update.later': '稍后再说',
+  'update.retry': '重试',
 } satisfies Record<string, string>
 
 /** The settings namespace key union. */
@@ -57,4 +64,11 @@ export const en = {
   'about.updateOpenedPage': 'No installer asset found. Opened the GitHub releases page.',
   'about.updateError': 'Update failed: {message}',
   'about.harness': 'Official Harness',
+  'update.badge': 'Update available',
+  'update.tooltip': 'Version {latest} is available — click to update',
+  'update.title': 'New version {latest}',
+  'update.body': 'You are on {current}. Update online to {latest}; the installer launches after the download.',
+  'update.install': 'Update now',
+  'update.later': 'Later',
+  'update.retry': 'Retry',
 } satisfies Record<SettingsKey, string>

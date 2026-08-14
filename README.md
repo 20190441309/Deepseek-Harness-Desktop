@@ -20,7 +20,7 @@
 - **工作区自动注册**：启动时通过 RPC 把工作区目录注册进 Harness，不用手动建
 - **设置就是 Harness 设置**（`Ctrl+,`）：模型、插件、关于、检测更新和在线安装都在官方设置里
 - **托盘常驻**：显示窗口、设置、重启 Harness、退出
-- **自动更新**：Harness 设置 → 关于里检查 GitHub Releases，有新版本可在线安装
+- **自动更新**：有新版本时设置按钮旁出现绿色"有新版本"按钮，点击即可在线更新；设置 → 关于里也可手动检查 GitHub Releases
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 
 ## 安装

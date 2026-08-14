@@ -4,6 +4,32 @@
    panel is a two-column layout — 188px nav rail + content column with a
    54px header and the 24px-padded options area. */
 
+/* Trigger + update-entry row: the trigger keeps its full-width rhythm and the
+   green update badge (when a newer release exists) docks at its right edge. */
+.triggerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Rail: stack the circle controls, update badge above the settings circle. */
+.triggerRowRail {
+  flex-direction: column-reverse;
+  align-items: center;
+}
+
+.triggerRow .trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin-right: 0;
+}
+
+.triggerRowRail .trigger {
+  flex: none;
+  width: 36px;
+}
+
 /* Trigger row: match the other wide sidebar controls' compact vertical rhythm. */
 .trigger {
   flex: none;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { desktopShell, type UpdateInfo } from './desktop-shell.ts'
 import css from './AboutSection.module.css'
 
 const HARNESS_URL = 'https://github.com/deepseek-ai/deepseek-harness'
@@ -11,38 +12,6 @@ const REPO_URL = 'https://github.com/ChisaAlter/Deepseek-Harness-Desktop'
 const RELEASES_URL = `${REPO_URL}/releases`
 
 type UpdateStatus = 'idle' | 'checking' | 'none' | 'current' | 'available' | 'error' | 'download' | 'install'
-
-type UpdateInfo = {
-  status?: string
-  current?: string
-  latest?: string
-  htmlUrl?: string
-  repoUrl?: string
-  releasesUrl?: string
-  assetName?: string
-  assetUrl?: string
-  message?: string
-  launched?: boolean
-  openedPage?: boolean
-}
-
-type ProgressPayload = {
-  phase?: string
-  percent?: number
-}
-
-type DesktopShell = {
-  getConfig?: () => Promise<{ appVersion?: string; repoUrl?: string; releasesUrl?: string }>
-  checkUpdate?: () => Promise<UpdateInfo>
-  installUpdate?: () => Promise<UpdateInfo>
-  onUpdateProgress?: (handler: (payload: ProgressPayload) => void) => () => void
-}
-
-function desktopShell(): DesktopShell | null {
-  if (typeof window === 'undefined') return null
-  const api = (window as Window & { shell?: DesktopShell }).shell
-  return api && typeof api === 'object' ? api : null
-}
 
 /** Props the Settings renderer binds for this section. */
 export type AboutSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings'>

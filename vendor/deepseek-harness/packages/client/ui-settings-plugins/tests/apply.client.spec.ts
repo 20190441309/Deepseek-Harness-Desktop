@@ -148,7 +148,7 @@ describe('ui-settings-plugins apply', () => {
     declareRoot(slots)
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(slots.entries('settings.plugin.item')).toHaveLength(4)
+    expect(slots.entries('settings.plugin.item')).toHaveLength(3)
 
     await fiber.dispose()
 

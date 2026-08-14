@@ -28,7 +28,7 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Auto workspace registration**: registers the workspace directory into Harness over RPC at boot, no manual setup
 - **Settings are Harness settings** (`Ctrl+,`): models, plugins, About, update check, and online install all live in the official settings panel
 - **System tray**: show window, settings, restart Harness, quit
-- **Auto-update**: Settings → About checks GitHub Releases and can install online
+- **Auto-update**: a green "Update available" button appears beside Settings when a newer release exists — one click updates online; Settings → About still offers a manual check
 - **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
 
 ## Install
