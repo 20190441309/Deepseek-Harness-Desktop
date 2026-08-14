@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TerminalDrawerProps } from '../src/client/TerminalDrawer.tsx'
 import { TerminalDrawer } from '../src/client/TerminalDrawer.tsx'
+import { readKeyData } from '../src/client/TerminalWorkspace.tsx'
 import { TerminalSurface } from '../src/client/TerminalSurface.tsx'
 import { createTerminalSessionStore, MAX_TERMINALS_PER_GROUP } from '../src/client/stores.ts'
 import { clampDrawerHeight, maxDrawerHeight, TERMINAL_DRAWER_MIN } from '../src/client/height.ts'
@@ -105,7 +106,7 @@ function mount(opts: {
     </>,
   )
   return {
-    ptyCreate, ptyKill, toggleTerminalDrawer, setTerminalDrawer, instance, handle,
+    ptyCreate, ptyWrite, ptyKill, toggleTerminalDrawer, setTerminalDrawer, instance, handle,
     onPtyData, onPtyExit, dataHandlers, exitHandlers,
     rerender: view.rerender, shared,
   }
@@ -114,6 +115,15 @@ function mount(opts: {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+})
+
+describe('readKeyData', () => {
+  it('maps Ctrl+C to the interrupt byte and drops arrows', () => {
+    expect(readKeyData({ key: 'c', ctrlKey: true } as KeyboardEvent)).toBe('\x03')
+    expect(readKeyData({ key: 'C', metaKey: true } as KeyboardEvent)).toBe('\x03')
+    expect(readKeyData({ key: 'c' } as KeyboardEvent)).toBe('c')
+    expect(readKeyData({ key: 'ArrowLeft' } as KeyboardEvent)).toBeUndefined()
+  })
 })
 
 describe('clampDrawerHeight', () => {
@@ -160,7 +170,7 @@ describe('TerminalDrawer', () => {
     await screen.findAllByRole('log', { name: 'pty-1' })
     fireEvent.click(screen.getAllByRole('button', { name: 'Split' })[0]!)
     await waitFor(() => expect(screen.getAllByRole('log', { name: 'pty-2' }).length).toBeGreaterThan(0))
-    const drawerPane = screen.getAllByRole('button', { name: 'Terminal pty-1' })[0]!
+    const drawerPane = screen.getAllByRole('group', { name: 'Terminal pty-1' })[0]!
     fireEvent.click(drawerPane)
     expect(instance.store.getSnapshot().activeId).toBe('pty-1')
     expect(screen.getAllByRole('log', { name: 'pty-1' }).length).toBe(2)
@@ -245,6 +255,42 @@ describe('TerminalDrawer', () => {
     for (const handler of b.exitHandlers) handler({ id: 'pty-1', code: 0 })
     await waitFor(() => expect(instance.getSnapshot().sessions).toHaveLength(0))
     expect(screen.queryByRole('log', { name: 'pty-1' })).toBeNull()
+  })
+
+  it('maps Ctrl+C to the interrupt byte and does not nest a button around the log', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    const log = await screen.findByRole('log', { name: 'pty-1' })
+    expect(log.closest('button')).toBeNull()
+    const pane = screen.getByRole('group', { name: 'Terminal pty-1' })
+    fireEvent.keyDown(pane, { key: 'c', ctrlKey: true })
+    expect(b.ptyWrite).toHaveBeenCalledWith('pty-1', '\x03')
+  })
+
+  it('does not auto-create after the last pane is closed', async () => {
+    const observers: Array<() => void> = []
+    vi.stubGlobal('ResizeObserver', class {
+      cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) { this.cb = cb }
+      observe(el: Element) {
+        Object.defineProperty(el, 'clientHeight', { configurable: true, value: 200 })
+        Object.defineProperty(el, 'clientWidth', { configurable: true, value: 800 })
+        const run = () => { this.cb([] as never, this as never) }
+        observers.push(run)
+        run()
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+    const b = mount({ cwd: '/work' })
+    await waitFor(() => expect(b.ptyCreate).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Close terminal' }))
+    await waitFor(() => expect(b.ptyKill).toHaveBeenCalledWith('pty-1'))
+    expect(screen.queryByRole('log', { name: 'pty-1' })).toBeNull()
+    for (const run of observers) run()
+    await Promise.resolve()
+    expect(b.ptyCreate).toHaveBeenCalledTimes(1)
+    expect(b.instance.getSnapshot().sessions).toHaveLength(0)
   })
 
   it('shows Chinese copy on ptyCreate rejection and does not auto-retry', async () => {

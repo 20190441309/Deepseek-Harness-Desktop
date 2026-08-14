@@ -54,16 +54,16 @@ export function PreviewPanel({
       if (bounds === undefined) {
         if (visible) {
           visible = false
-          void previewHide(previewId)
+          void previewHide(previewId).catch(() => {})
         }
         return
       }
       if (!visible) {
         visible = true
-        void previewShow(previewId, bounds)
+        void previewShow(previewId, bounds).catch(() => {})
         return
       }
-      void previewResize(previewId, bounds)
+      void previewResize(previewId, bounds).catch(() => {})
     }
     sync()
     const host = hostRef.current
@@ -75,12 +75,12 @@ export function PreviewPanel({
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', sync)
-      void previewHide(previewId)
+      void previewHide(previewId).catch(() => {})
     }
   }, [previewId, previewHide, previewResize, previewShow])
 
   useEffect(() => () => {
-    if (previewId !== null) void previewClose(previewId)
+    if (previewId !== null) void previewClose(previewId).catch(() => {})
   }, [previewId, previewClose])
 
   const submit = (event: FormEvent): void => {
@@ -97,7 +97,7 @@ export function PreviewPanel({
       }
       setMessage(null)
       if (result.id !== undefined) setPreviewId(result.id)
-    })
+    }).catch(() => { setMessage(t('rejected')) })
   }
 
   return (

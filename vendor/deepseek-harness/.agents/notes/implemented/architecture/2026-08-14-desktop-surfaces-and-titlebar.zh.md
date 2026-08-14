@@ -38,6 +38,10 @@ Web 组合与桌面窗口共用同一批客户端插件；Electron 是 IPC 宿�
 
 注入脚本保持为封闭的 chrome IIFE。需要新标题栏控件的贡献方以带 `order` 的方式注册到 `shell.titlebar.trailing`，不要把 Node 辅助函数写进该文件。
 
+本仓库的桌面 CI 只有 `.github/workflows/release.yml` 里的 Electron 安装包工作流。该工作流运行 `npm ci` 并打包 Windows 安装包；它不运行 harness 的 `test`、`test:gui`、`test:coverage`、`typecheck`、`lint` 或 `doc-sync`。新的客户端包在本地仍受 harness 的逐文件 100% 覆盖率门槛约束，对真正不可达的分支使用 `/* v8 ignore -- <reason> */`。
+
+用户终端是可聚焦的原始缓冲区视图，不是 VT 模拟器。窗格用 `div` + `pre` 渲染 PTY 字节流，转发一小部分按键（包括作为 `\x03` 的 Ctrl+C），并且不解析 ANSI。计划 Task 5 允许这种降级交互视图；未接入 `@xterm/xterm`。
+
 ## 测试
 
 各包套件钉住让步、store 动作、标题栏注入 / dispose（资源释放）、Git 状态、共享 PTY 所有权，以及五卡空态。`src/main/harness-chrome-inject.test.js` 钉住 IIFE 形态、二次求值和由实测尾簇加宽的 `--dsh-wco-pad`。`apps/web/tests/desktop-chrome.e2e.ts` 是无密钥的组装断言：标题栏有 Session log、Git 和两个开关，右侧栏空态有五张卡。

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPreviewController, isAllowedPreviewUrl } = require('./preview.js');
+const { createPreviewController, isAllowedPreviewUrl, previewRequestFilter } = require('./preview.js');
 
 function fakeAttach() {
   const navigations = [];
@@ -10,7 +10,7 @@ function fakeAttach() {
   const views = [];
 
   function attach({ id, url, bounds, partition, extraHeaders }) {
-    const handlers = { navigate: [], redirect: [] };
+    const handlers = { navigate: [], redirect: [], request: [] };
     const view = {
       id,
       url,
@@ -34,8 +34,20 @@ function fakeAttach() {
       setVisible(visible) {
         view.visible = visible;
       },
+      webRequest: {
+        onBeforeRequest(_filter, listener) {
+          handlers.request.push(listener);
+        },
+      },
       destroy() {
         destroyed.push(id);
+      },
+      emitRequest(next) {
+        let decision = { cancel: false };
+        for (const listener of handlers.request) {
+          listener({ url: next }, (result) => { decision = result; });
+        }
+        return decision;
       },
       emitNavigate(next) {
         const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
@@ -63,11 +75,22 @@ test('isAllowedPreviewUrl accepts http://127.0.0.1 with any port', () => {
   assert.equal(isAllowedPreviewUrl('http://127.0.0.1:8080/app'), true);
 });
 
+test('isAllowedPreviewUrl accepts IPv6 loopback with WHATWG brackets', () => {
+  assert.equal(isAllowedPreviewUrl('http://[::1]:3000'), true);
+  assert.equal(isAllowedPreviewUrl('http://[::1]/app'), true);
+});
+
 test('isAllowedPreviewUrl rejects non-local arbitrary URLs', () => {
   assert.equal(isAllowedPreviewUrl('https://example.com'), false);
   assert.equal(isAllowedPreviewUrl('http://evil.example'), false);
   assert.equal(isAllowedPreviewUrl('file:///etc/passwd'), false);
   assert.equal(isAllowedPreviewUrl('javascript:alert(1)'), false);
+});
+
+test('previewRequestFilter cancels non-loopback subframe URLs', () => {
+  assert.deepEqual(previewRequestFilter({ url: 'https://example.com/embed' }), { cancel: true });
+  assert.deepEqual(previewRequestFilter({ url: 'http://127.0.0.1:4173/app' }), { cancel: false });
+  assert.deepEqual(previewRequestFilter({ url: 'http://[::1]:3000/' }), { cancel: false });
 });
 
 test('previewOpen succeeds for http://127.0.0.1 and attaches an isolated view', async () => {
@@ -91,6 +114,16 @@ test('previewOpen rejects a non-local URL and does not attach a view', async () 
   assert.match(result.message, /local/i);
   assert.equal(fake.views.length, 0);
   assert.equal(fake.loads.length, 0);
+});
+
+test('onBeforeRequest denies a remote iframe URL and allows loopback', async () => {
+  const fake = fakeAttach();
+  const preview = createPreviewController({ attach: fake.attach });
+  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
+  assert.equal(opened.ok, true);
+  const view = fake.views[0];
+  assert.deepEqual(view.emitRequest('https://example.com/iframe'), { cancel: true });
+  assert.deepEqual(view.emitRequest('http://127.0.0.1:3000/next'), { cancel: false });
 });
 
 test('will-navigate and will-redirect to a non-local host are denied', async () => {

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const os = require('node:os');
-const { createPtyController } = require('./pty.js');
+const { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc } = require('./pty.js');
 
 function fakeSpawn() {
   return ({ onData, onExit }) => ({
@@ -45,4 +45,40 @@ test('ptyCreate rejects a missing project cwd', async () => {
   const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
   await assert.rejects(() => pty.create({ cwd: '' }), /cwd/);
   await assert.rejects(() => pty.create({}), /cwd/);
+});
+
+test('createPtyController does not load node-pty until create', () => {
+  assert.doesNotThrow(() => createPtyController({ emit() {} }));
+});
+
+test('registerPtyIpc succeeds when the PTY backend is unavailable', async () => {
+  const handlers = new Map();
+  const ipcMain = {
+    handle(channel, fn) {
+      handlers.set(channel, fn);
+    },
+  };
+  const pty = createPtyController({ spawn: null, emit() {} });
+  assert.doesNotThrow(() => registerPtyIpc(ipcMain, pty));
+  assert.equal(typeof handlers.get('shell:pty-create'), 'function');
+  assert.equal(typeof handlers.get('shell:pty-write'), 'function');
+  assert.equal(typeof handlers.get('shell:pty-resize'), 'function');
+  assert.equal(typeof handlers.get('shell:pty-kill'), 'function');
+  await assert.rejects(
+    () => pty.create({ cwd: os.tmpdir() }),
+    { message: BACKEND_UNAVAILABLE },
+  );
+});
+
+test('ptyCreate maps a throwing spawn factory to the stable unavailable result', async () => {
+  const pty = createPtyController({
+    spawn() {
+      throw new Error('node-pty is not available');
+    },
+    emit() {},
+  });
+  await assert.rejects(
+    () => pty.create({ cwd: os.tmpdir() }),
+    { message: BACKEND_UNAVAILABLE },
+  );
 });

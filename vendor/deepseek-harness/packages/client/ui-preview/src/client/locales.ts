@@ -5,7 +5,7 @@ export const zh = {
   'title': '浏览器',
   'placeholder': 'http://127.0.0.1:3000',
   'open': '打开',
-  'unavailable': 'Browser previews are only available in the desktop app.',
+  'unavailable': '浏览器预览仅在桌面应用中可用。',
   'empty': '输入本地应用或 URL。',
   'rejected': '只能预览本机地址。',
 } satisfies Record<string, string>

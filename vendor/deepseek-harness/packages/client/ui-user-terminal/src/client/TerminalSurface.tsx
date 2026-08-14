@@ -7,7 +7,7 @@ import { TerminalWorkspace } from './TerminalWorkspace.tsx'
 
 export type TerminalSurfaceProps =
   & PropsRuntime<'surfaces.terminal'>
-  & Partial<PropsStore<ReturnType<typeof createTerminalSessionStore>>>
+  & PropsStore<ReturnType<typeof createTerminalSessionStore>>
   & PropsLocale<typeof NS>
   & InjectFace<TerminalShellInjected>
 
@@ -17,7 +17,6 @@ export type TerminalSurfaceProps =
  * @returns the surface chrome, or nothing before a session exists.
  */
 export function TerminalSurface(props: TerminalSurfaceProps): ReactNode {
-  if (props.useStore === undefined || props.actions === undefined) return null
   return (
     <TerminalWorkspace
       mode="surface"

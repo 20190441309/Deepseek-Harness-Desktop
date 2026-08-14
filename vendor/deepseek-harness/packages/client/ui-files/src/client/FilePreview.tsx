@@ -57,6 +57,8 @@ export function FilePreview({
       setBinary(result.binary === true)
       setTruncated(result.truncated === true)
       setText(result.text ?? '')
+    }).catch(() => {
+      if (!cancelled) setError(t('error.read'))
     })
     return () => { cancelled = true }
   }, [cwd, relativePath, readFile, t])

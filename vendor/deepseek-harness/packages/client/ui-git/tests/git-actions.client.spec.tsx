@@ -8,7 +8,13 @@ import type { VcsStatus } from '../src/client/git-logic.ts'
 import { en } from '../src/client/locales.ts'
 
 const SID = 'session-git' as SessionId
-const t: GitActionsProps['t'] = key => (en as Record<string, string>)[key] ?? key
+const t: GitActionsProps['t'] = (key, params) => {
+  const template = (en as Record<string, string>)[key] ?? key
+  if (!params) return template
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => (
+    name in params ? String(params[name]) : match
+  ))
+}
 const neverWorkspaces = (() => { throw new Error('git actions must not read useWorkspaces') }) as never
 
 function sessionList(cwd: string | undefined): SessionListState {
@@ -197,6 +203,17 @@ describe('GitActionsControl', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Push to main' }))
     expect(await screen.findByRole('dialog', { name: 'Action failed' })).toBeTruthy()
     expect(screen.getByText('origin rejected the push.')).toBeTruthy()
+  })
+
+  it('refreshes git status on window focus', async () => {
+    const gitStatus = vi.fn(async () => status({ aheadCount: 2 }))
+    mount({ cwd: '/work', gitStatus })
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(1) })
+    fireEvent(window, new Event('focus'))
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(2) })
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    fireEvent(document, new Event('visibilitychange'))
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(3) })
   })
 
   it('disables Publish repository and shows the unavailable hint', async () => {

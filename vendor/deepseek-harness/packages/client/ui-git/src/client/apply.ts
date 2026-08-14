@@ -37,6 +37,7 @@ function unavailable(): GitResult {
  * @returns injected git callbacks; each call no-ops outside the desktop app.
  */
 function readGitShell(): GitActionsInjected {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
     : (window as Window & { shell?: GitShell }).shell

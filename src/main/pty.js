@@ -50,15 +50,27 @@ function defaultSpawn() {
   };
 }
 
+const BACKEND_UNAVAILABLE = 'terminal backend unavailable';
+
 /**
  * In-process PTY table used by Electron IPC. Tests inject a fake spawn that
- * echoes writes; production uses node-pty / conpty with cwd = workspace.
- * @param {{ spawn?: Function, emit?: Function }} [options]
+ * echoes writes; production lazy-loads node-pty / conpty on the first create
+ * so a missing optional native module cannot take down registerIpc.
+ * @param {{ spawn?: Function | null, emit?: Function }} [options]
  */
 function createPtyController(options = {}) {
-  const spawn = options.spawn ?? defaultSpawn();
+  let spawn = options.spawn;
   const emit = options.emit ?? (() => {});
   const sessions = new Map();
+
+  function resolveSpawn() {
+    if (spawn === null) {
+      throw new Error(BACKEND_UNAVAILABLE);
+    }
+    if (typeof spawn === 'function') return spawn;
+    spawn = defaultSpawn();
+    return spawn;
+  }
 
   function requireSession(id) {
     const session = sessions.get(id);
@@ -74,19 +86,30 @@ function createPtyController(options = {}) {
       if (!cwd) {
         throw new Error('ptyCreate requires a project cwd');
       }
+      let backend;
+      try {
+        backend = resolveSpawn();
+      } catch {
+        throw new Error(BACKEND_UNAVAILABLE);
+      }
       const id = randomUUID();
-      const session = spawn({
-        cwd,
-        cols: input.cols,
-        rows: input.rows,
-        onData(data) {
-          emit('shell:pty-data', { id, data: String(data) });
-        },
-        onExit(code) {
-          sessions.delete(id);
-          emit('shell:pty-exit', { id, code: Number(code) || 0 });
-        },
-      });
+      let session;
+      try {
+        session = backend({
+          cwd,
+          cols: input.cols,
+          rows: input.rows,
+          onData(data) {
+            emit('shell:pty-data', { id, data: String(data) });
+          },
+          onExit(code) {
+            sessions.delete(id);
+            emit('shell:pty-exit', { id, code: Number(code) || 0 });
+          },
+        });
+      } catch {
+        throw new Error(BACKEND_UNAVAILABLE);
+      }
       sessions.set(id, session);
       return { id };
     },
@@ -140,4 +163,4 @@ function registerPtyIpc(ipcMain, controller) {
   ipcMain.handle('shell:pty-kill', (event, id) => track(event).kill(id));
 }
 
-module.exports = { createPtyController, registerPtyIpc };
+module.exports = { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc };

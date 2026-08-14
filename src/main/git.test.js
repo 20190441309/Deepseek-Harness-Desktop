@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { gitCommit, gitDiff, gitStatus, parseUnifiedDiff } = require('./git.js');
+const { gitCommit, gitDiff, gitStatus, parseUnifiedDiff, run } = require('./git.js');
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-'));
@@ -109,6 +109,45 @@ test('gitDiff keeps a real path for a committed then modified binary', async () 
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
+});
+
+test('parseUnifiedDiff keeps +++ and --- hunk lines as content', () => {
+  const files = parseUnifiedDiff([
+    'diff --git a/foo.c b/foo.c',
+    '--- a/foo.c',
+    '+++ b/foo.c',
+    '@@ -1,2 +1,2 @@',
+    '- -- sql',
+    '+ ++ op',
+  ].join('\n'));
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, 'foo.c');
+  assert.deepEqual(files[0].hunks[0].lines, [
+    { kind: 'del', text: ' -- sql' },
+    { kind: 'add', text: ' ++ op' },
+  ]);
+});
+
+test('run kills a hung child after the timeout', async () => {
+  const result = await run(
+    process.execPath,
+    ['-e', 'setTimeout(() => {}, 30000)'],
+    os.tmpdir(),
+    { timeoutMs: 80 },
+  );
+  assert.equal(result.timedOut, true);
+  assert.equal(result.code, -1);
+});
+
+test('run caps stdout and sets truncated', async () => {
+  const result = await run(
+    process.execPath,
+    ['-e', "process.stdout.write('x'.repeat(64))"],
+    os.tmpdir(),
+    { maxBytes: 8 },
+  );
+  assert.equal(result.truncated, true);
+  assert.ok(result.stdout.length <= 8);
 });
 
 test('gitCommit records a message and clears working-tree changes', async () => {

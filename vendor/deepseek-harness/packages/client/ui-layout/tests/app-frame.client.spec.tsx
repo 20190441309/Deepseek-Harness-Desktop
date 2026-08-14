@@ -320,9 +320,18 @@ describe('AppFrame', () => {
     act(() => { instance.actions.openSurfaces() })
     expect(surfacesTrack(frame)).toBe(400)
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
     act(() => { instance.actions.toggleTerminalDrawer() })
     expect(drawerTrack(frame)).toBe(280)
     expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(false)
+  })
+
+  it('surfaces drag widens leftward (negative dx grows the panel)', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.openSurfaces() })
+    const handles = frame.querySelectorAll('[class*="handle"]')
+    drag(handles[1]!, 1520, 1460)
+    expect(surfacesTrack(frame)).toBe(460)
   })
 
   it('keeps surfaces and the terminal drawer mounted at zero size when closed', () => {

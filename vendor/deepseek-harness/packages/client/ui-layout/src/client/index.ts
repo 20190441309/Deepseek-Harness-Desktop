@@ -98,7 +98,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * its controls stay clickable on the desktop chrome drag strip. Owner
      * props are the live layout widths so toggles can derive pressed state.
      */
-    'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: { surfaces: number; terminalDrawer: number } }
+    'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: TitlebarTrailingOwnerProps }
     /**
      * Terminal drawer track under the conversation column only. Height 0 when
      * closed keeps the subtree mounted. Session-optional: the occupant owns
@@ -134,7 +134,7 @@ export interface SurfacesOwnerProps {}
 /** Terminal drawer owner share: empty — session facts arrive through session-maybe hooks. */
 export interface TerminalDrawerOwnerProps {}
 
-/** Titlebar trailing owner share: live layout widths (0 = closed). */
+/** Titlebar trailing owner share: live layout widths (0 = closed). This is the SlotMap home; session-log-export copies the owner fields because it does not depend on this package. */
 export interface TitlebarTrailingOwnerProps {
   /** Surfaces column width in px (0 when closed). */
   surfaces: number

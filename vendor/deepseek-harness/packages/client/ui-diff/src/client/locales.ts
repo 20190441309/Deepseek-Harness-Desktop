@@ -7,6 +7,7 @@ export const zh = {
   'empty.changes': '没有净变更。',
   'unavailable': '差异仅适用于 Git 仓库中的服务端会话。',
   'error.load': '无法加载差异。',
+  'truncated': '差异过长，仅显示开头。',
 } satisfies Record<string, string>
 
 /** The diff namespace key union. */
@@ -19,6 +20,7 @@ export const en = {
   'empty.changes': 'No net changes in this selection.',
   'unavailable': 'Diff is only available for server threads in Git repositories.',
   'error.load': 'Could not load the diff.',
+  'truncated': 'Diff is too large; showing the beginning.',
 } satisfies Record<DiffKey, string>
 
 /** Dictionary namespace owned by this plugin. */

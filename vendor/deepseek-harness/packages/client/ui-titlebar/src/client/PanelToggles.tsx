@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconPanelBottomOutline16, IconPanelRightOutline16, Tooltip,
@@ -35,6 +35,17 @@ export function PanelToggles({
   const terminalAvailable = useWorkspaces(s => s.items.length > 0)
   const terminalOpen = terminalDrawer > 0
   const surfacesOpen = surfaces > 0
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      if (event.key !== '\\' && event.code !== 'Backslash') return
+      event.preventDefault()
+      toggleSurfaces()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [toggleSurfaces])
 
   return (
     <div className={css.cluster} data-panel-layout-controls>

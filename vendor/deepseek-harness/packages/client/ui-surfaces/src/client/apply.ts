@@ -66,6 +66,7 @@ interface DesktopShell {
  * @returns a probe that resolves null outside the desktop app or when git is missing.
  */
 function readDesktopShell(): Pick<SurfacesRootInjected, 'gitStatus' | 'previewAvailable'> {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
     : (window as Window & { shell?: DesktopShell }).shell

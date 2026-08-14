@@ -12,8 +12,22 @@ function asCwd(cwd) {
   return cwd;
 }
 
-function run(command, args, cwd) {
+/** Wall-clock limit for one git/gh child. */
+const GIT_TIMEOUT_MS = 60_000;
+/** Retained stdout cap; overflow kills the child and sets truncated. */
+const GIT_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+
+function run(command, args, cwd, limits = {}) {
+  const timeoutMs = limits.timeoutMs ?? GIT_TIMEOUT_MS;
+  const maxBytes = limits.maxBytes ?? GIT_MAX_OUTPUT_BYTES;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
     const child = spawn(command, args, {
       cwd,
       windowsHide: true,
@@ -21,13 +35,52 @@ function run(command, args, cwd) {
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    let stdoutBytes = 0;
+    let truncated = false;
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({
+        code: -1,
+        stdout,
+        stderr: 'git command timed out',
+        missing: false,
+        timedOut: true,
+        truncated,
+      });
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      const next = stdoutBytes + chunk.length;
+      if (next > maxBytes) {
+        const remain = Math.max(0, maxBytes - stdoutBytes);
+        stdout += chunk.subarray(0, remain).toString();
+        stdoutBytes = maxBytes;
+        truncated = true;
+        child.kill();
+        return;
+      }
+      stdoutBytes = next;
+      stdout += chunk;
+    });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('error', (error) => {
-      resolve({ code: -1, stdout, stderr: error.message, missing: error.code === 'ENOENT' });
+      finish({
+        code: -1,
+        stdout,
+        stderr: error.message,
+        missing: error.code === 'ENOENT',
+        timedOut: false,
+        truncated,
+      });
     });
     child.on('close', (code) => {
-      resolve({ code: code ?? 1, stdout, stderr, missing: false });
+      finish({
+        code: code ?? 1,
+        stdout,
+        stderr,
+        missing: false,
+        timedOut: false,
+        truncated,
+      });
     });
   });
 }
@@ -177,8 +230,10 @@ async function gitCommit(cwd, message) {
   }
   const add = await runGit(root, ['add', '-A']);
   if (add.missing) return fail('Git is unavailable.');
+  if (add.timedOut) return fail('Git command timed out.');
   if (add.code !== 0) return fail(add.stderr.trim() || 'git add failed.');
   const commit = await runGit(root, ['commit', '-m', message.trim()]);
+  if (commit.timedOut) return fail('Git command timed out.');
   if (commit.code !== 0) return fail(commit.stderr.trim() || commit.stdout.trim() || 'git commit failed.');
   return ok();
 }
@@ -188,6 +243,7 @@ async function gitPush(cwd) {
   if (!root) return fail('Git status is unavailable.');
   const pushed = await runGit(root, ['push', '-u', 'origin', 'HEAD']);
   if (pushed.missing) return fail('Git is unavailable.');
+  if (pushed.timedOut) return fail('Git command timed out.');
   if (pushed.code !== 0) return fail(pushed.stderr.trim() || pushed.stdout.trim() || 'git push failed.');
   return ok();
 }
@@ -197,6 +253,7 @@ async function gitPull(cwd) {
   if (!root) return fail('Git status is unavailable.');
   const pulled = await runGit(root, ['pull']);
   if (pulled.missing) return fail('Git is unavailable.');
+  if (pulled.timedOut) return fail('Git command timed out.');
   if (pulled.code !== 0) return fail(pulled.stderr.trim() || pulled.stdout.trim() || 'git pull failed.');
   return ok();
 }
@@ -291,12 +348,12 @@ function parseUnifiedDiff(text) {
       current.oldPath = line.slice('rename from '.length);
       continue;
     }
-    if (line.startsWith('+++ ')) {
+    if (hunk === null && line.startsWith('+++ ')) {
       const next = pathFromPlusMinus(line.slice(4));
       if (next !== null) current.path = next;
       continue;
     }
-    if (line.startsWith('--- ')) {
+    if (hunk === null && line.startsWith('--- ')) {
       const next = pathFromPlusMinus(line.slice(4));
       if (next !== null && !current.path) current.path = next;
       continue;
@@ -351,13 +408,16 @@ async function gitDiff(cwd) {
   if (inside.missing || inside.code !== 0 || inside.stdout.trim() !== 'true') return null;
 
   const files = [];
+  let truncated = false;
   const head = await runGit(root, ['rev-parse', '--verify', '--quiet', 'HEAD']);
   if (head.code === 0) {
     const diff = await runGit(root, ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--find-renames']);
+    truncated = Boolean(diff.truncated);
     files.push(...parseUnifiedDiff(diff.stdout));
   } else {
     const staged = await runGit(root, ['diff', '--cached', '--no-color', '--no-ext-diff']);
     const unstaged = await runGit(root, ['diff', '--no-color', '--no-ext-diff']);
+    truncated = Boolean(staged.truncated || unstaged.truncated);
     files.push(...parseUnifiedDiff(staged.stdout), ...parseUnifiedDiff(unstaged.stdout));
   }
 
@@ -369,7 +429,7 @@ async function gitDiff(cwd) {
       if (added) files.push(added);
     }
   }
-  return { files };
+  return truncated ? { files, truncated: true } : { files };
 }
 
 async function gitCreateChangeRequest(cwd, input) {
@@ -393,4 +453,7 @@ module.exports = {
   gitPull,
   gitCreateChangeRequest,
   parseUnifiedDiff,
+  run,
+  GIT_TIMEOUT_MS,
+  GIT_MAX_OUTPUT_BYTES,
 };

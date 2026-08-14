@@ -72,10 +72,46 @@ async function openGuest(b: ReturnType<typeof mount>): Promise<void> {
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
+  it('shows Chinese unavailable copy when preview IPC is absent', () => {
+    const zhT: PreviewPanelProps['t'] = key => {
+      const zh = {
+        title: '浏览器',
+        unavailable: '浏览器预览仅在桌面应用中可用。',
+      } as Record<string, string>
+      return zh[key] ?? key
+    }
+    render(
+      <PreviewPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={neverHook}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        previewAvailable={false}
+        previewOpen={async () => ({ ok: false })}
+        previewNavigate={async () => ({ ok: false })}
+        previewResize={async () => {}}
+        previewHide={async () => {}}
+        previewShow={async () => {}}
+        previewClose={async () => {}}
+        t={zhT}
+      />,
+    )
+    expect(screen.getByText('浏览器预览仅在桌面应用中可用。')).toBeTruthy()
+  })
+
   it('shows the T3code reason when preview IPC is unavailable', () => {
     mount({ available: false })
     expect(screen.getByText('Browser previews are only available in the desktop app.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Open' })).toBeNull()
+  })
+
+  it('catches a thrown previewOpen and shows the rejected copy', async () => {
+    mount({
+      open: async () => { throw new Error('unknown preview id') },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(await screen.findByText('Preview only opens local URLs.')).toBeTruthy()
   })
 
   it('opens http://127.0.0.1 through previewOpen', async () => {

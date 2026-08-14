@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto');
 
 const PREVIEW_PARTITION = 'dsh-preview';
-const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 /**
  * Local preview URLs only: http(s) to loopback. Arbitrary hosts, file:, and
@@ -33,12 +33,13 @@ function defaultAttach({ bounds, partition }) {
   if (!win) {
     throw new Error('preview requires the desktop window');
   }
+  const ses = session.fromPartition(partition);
   const view = new BrowserView({
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      session: session.fromPartition(partition),
+      session: ses,
     },
   });
   win.addBrowserView(view);
@@ -52,6 +53,7 @@ function defaultAttach({ bounds, partition }) {
     partition,
     extraHeaders: null,
     webContents: view.webContents,
+    webRequest: ses.webRequest,
     setBounds(next) {
       view.setBounds(next);
     },
@@ -68,12 +70,27 @@ function defaultAttach({ bounds, partition }) {
   };
 }
 
+/**
+ * Cancel any non-loopback request, including iframe and subresource loads.
+ * @param {{ url?: string }} details
+ * @returns {{ cancel: boolean }}
+ */
+function previewRequestFilter(details) {
+  return { cancel: !isAllowedPreviewUrl(details && details.url) };
+}
+
 function guardView(view) {
   const deny = (event, next) => {
     if (!isAllowedPreviewUrl(next)) event.preventDefault();
   };
   view.webContents.on('will-navigate', deny);
   view.webContents.on('will-redirect', deny);
+  const webRequest = view.webRequest;
+  if (webRequest && typeof webRequest.onBeforeRequest === 'function') {
+    webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+      callback(previewRequestFilter(details));
+    });
+  }
 }
 
 /**
@@ -164,6 +181,7 @@ function registerPreviewIpc(ipcMain, controller) {
 module.exports = {
   PREVIEW_PARTITION,
   isAllowedPreviewUrl,
+  previewRequestFilter,
   createPreviewController,
   registerPreviewIpc,
 };

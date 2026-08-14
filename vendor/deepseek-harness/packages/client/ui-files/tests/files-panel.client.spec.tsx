@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import { FileTree, joinRel } from '../src/client/FileTree.tsx'
+import type { FilePreviewProps } from '../src/client/FilePreview.tsx'
+import { FilePreview } from '../src/client/FilePreview.tsx'
 import type { FilesPanelProps } from '../src/client/FilesPanel.tsx'
 import { FilesPanel } from '../src/client/FilesPanel.tsx'
 import { en } from '../src/client/locales.ts'
@@ -99,5 +101,41 @@ describe('FilesPanel', () => {
     expect(listDir).toHaveBeenCalledWith('/tmp/proj', '')
     fireEvent.click(screen.getByRole('button', { name: /README.md/ }))
     expect(openFile).toHaveBeenCalledWith('README.md')
+  })
+
+  it('shows the list error when listDir rejects', async () => {
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        openFile={() => {}}
+        listDir={async () => { throw new Error('unknown id') }}
+        readFile={async () => ({ ok: false })}
+        t={t}
+      />,
+    )
+    expect(await screen.findByText('Could not list the directory.')).toBeTruthy()
+  })
+})
+
+describe('FilePreview', () => {
+  it('shows the read error when readFile rejects', async () => {
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="README.md"
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => { throw new Error('unknown id') }}
+        t={t as FilePreviewProps['t']}
+      />,
+    )
+    expect(await screen.findByText('Could not read the file.')).toBeTruthy()
   })
 })

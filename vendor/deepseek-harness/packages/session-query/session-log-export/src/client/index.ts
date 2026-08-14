@@ -17,6 +17,10 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /**
+     * Owned by ui-layout (`TitlebarTrailingOwnerProps`). This package does
+     * not depend on ui-layout; keep this owner share textually identical.
+     */
     'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: { surfaces: number; terminalDrawer: number } }
   }
   interface LocaleNamespaceMap {

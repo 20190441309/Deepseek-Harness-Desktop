@@ -23,6 +23,7 @@ export interface DiffFile {
 /** gitDiff IPC result; null when the cwd is not a git repository. */
 export interface GitDiffResult {
   files: DiffFile[]
+  truncated?: boolean
 }
 
 /** Injected git probes. */
@@ -41,6 +42,7 @@ interface DiffShell {
  * @returns injected git callbacks; each call resolves null outside the desktop app.
  */
 export function readDiffShell(): DiffShellInjected {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
     : (window as Window & { shell?: DiffShell }).shell
