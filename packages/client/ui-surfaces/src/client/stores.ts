@@ -1,0 +1,154 @@
+/**
+ * Session-scoped right-panel surface descriptors. Layout width lives on
+ * ctx.layout; this store only owns the ordered surfaces and the active id.
+ */
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+
+/** Surface kinds the empty-state cards and later occupants can open. */
+export type SurfaceKind = 'preview' | 'terminal' | 'files' | 'diff' | 'agents' | 'file'
+
+/** Kinds `open` accepts; a file surface needs a path from a later occupant. */
+export type OpenableKind = Exclude<SurfaceKind, 'file'>
+
+/** One right-panel surface descriptor. */
+export type Surface =
+  | { id: string; kind: 'preview'; resourceId: string | null }
+  | { id: string; kind: 'terminal'; terminalIds: string[]; activeTerminalId: string }
+  | { id: 'files'; kind: 'files' }
+  | { id: 'diff'; kind: 'diff' }
+  | { id: 'agents'; kind: 'agents' }
+  | { id: string; kind: 'file'; relativePath: string }
+
+/** Per-session active id and ordered surface list. */
+export type SessionSurfaces = {
+  activeId: string | null
+  surfaces: Surface[]
+}
+
+/** Surfaces store state: session id is the key (T3code thread scope). */
+export type SurfacesState = {
+  bySession: Record<string, SessionSurfaces>
+}
+
+type SurfacesActions = {
+  open: (draft: SurfacesState, sessionId: string, kind: OpenableKind) => void
+  activate: (draft: SurfacesState, sessionId: string, id: string) => void
+  close: (draft: SurfacesState, sessionId: string, id: string) => void
+  closeOthers: (draft: SurfacesState, sessionId: string, id: string) => void
+  closeToRight: (draft: SurfacesState, sessionId: string, id: string) => void
+  closeAll: (draft: SurfacesState, sessionId: string) => void
+}
+
+const EMPTY_SESSION: SessionSurfaces = { activeId: null, surfaces: [] }
+
+/**
+ * Live per-session bucket, or the empty snapshot when the session has none.
+ * @param state - the store snapshot.
+ * @param sessionId - session key.
+ * @returns the session's surfaces, or the empty bucket.
+ */
+export function sessionSurfaces(state: SurfacesState, sessionId: string): SessionSurfaces {
+  return state.bySession[sessionId] ?? EMPTY_SESSION
+}
+
+function ensure(draft: SurfacesState, sessionId: string): SessionSurfaces {
+  const current = draft.bySession[sessionId]
+  if (current !== undefined) return current
+  const created: SessionSurfaces = { activeId: null, surfaces: [] }
+  draft.bySession[sessionId] = created
+  return created
+}
+
+function prune(draft: SurfacesState, sessionId: string): void {
+  const current = draft.bySession[sessionId]
+  if (current === undefined) return
+  if (current.surfaces.length === 0 && current.activeId === null) {
+    delete draft.bySession[sessionId]
+  }
+}
+
+function singleton(kind: 'files' | 'diff' | 'agents'): Surface {
+  return { id: kind, kind }
+}
+
+function surfaceFor(kind: OpenableKind, current: SessionSurfaces): Surface {
+  switch (kind) {
+    case 'files':
+    case 'diff':
+    case 'agents':
+      return singleton(kind)
+    case 'preview': {
+      const existing = current.surfaces.find(surface => surface.kind === 'preview')
+      return existing ?? { id: 'browser:new', kind: 'preview', resourceId: null }
+    }
+    case 'terminal': {
+      const existing = current.surfaces.find(surface => surface.kind === 'terminal')
+      return existing ?? { id: 'terminal:new', kind: 'terminal', terminalIds: [], activeTerminalId: '' }
+    }
+    default: {
+      const _never: never = kind
+      return _never
+    }
+  }
+}
+
+/**
+ * Create the surfaces store handle. Production declares the factory at
+ * register; tests call create().
+ * @returns the store handle.
+ */
+export function createSurfacesStore(): EngineStoreHandle<SurfacesState, SurfacesActions> {
+  return defineStore({
+    init: (): SurfacesState => ({ bySession: {} }),
+    actions: {
+      open: (draft, sessionId: string, kind: OpenableKind) => {
+        const bucket = ensure(draft, sessionId)
+        const surface = surfaceFor(kind, bucket)
+        if (!bucket.surfaces.some(entry => entry.id === surface.id)) {
+          bucket.surfaces.push(surface)
+        }
+        bucket.activeId = surface.id
+      },
+      activate: (draft, sessionId: string, id: string) => {
+        const bucket = draft.bySession[sessionId]
+        if (bucket === undefined) return
+        if (!bucket.surfaces.some(surface => surface.id === id)) return
+        bucket.activeId = id
+      },
+      close: (draft, sessionId: string, id: string) => {
+        const bucket = draft.bySession[sessionId]
+        if (bucket === undefined) return
+        const index = bucket.surfaces.findIndex(surface => surface.id === id)
+        if (index < 0) return
+        bucket.surfaces.splice(index, 1)
+        if (bucket.activeId === id) {
+          const fallback = bucket.surfaces[Math.min(index, bucket.surfaces.length - 1)]
+          bucket.activeId = fallback?.id ?? null
+        }
+        prune(draft, sessionId)
+      },
+      closeOthers: (draft, sessionId: string, id: string) => {
+        const bucket = draft.bySession[sessionId]
+        if (bucket === undefined) return
+        const kept = bucket.surfaces.find(surface => surface.id === id)
+        if (kept === undefined || bucket.surfaces.length === 1) return
+        bucket.surfaces = [kept]
+        bucket.activeId = kept.id
+      },
+      closeToRight: (draft, sessionId: string, id: string) => {
+        const bucket = draft.bySession[sessionId]
+        if (bucket === undefined) return
+        const index = bucket.surfaces.findIndex(surface => surface.id === id)
+        if (index < 0 || index === bucket.surfaces.length - 1) return
+        bucket.surfaces = bucket.surfaces.slice(0, index + 1)
+        if (!bucket.surfaces.some(surface => surface.id === bucket.activeId)) {
+          bucket.activeId = id
+        }
+      },
+      closeAll: (draft, sessionId: string) => {
+        if (draft.bySession[sessionId] === undefined) return
+        delete draft.bySession[sessionId]
+      },
+    },
+  })
+}
