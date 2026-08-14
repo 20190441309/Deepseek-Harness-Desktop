@@ -189,6 +189,9 @@
     - id: ui-git
       name: '@deepseek-ai/dsh-client-ui-git'
 
+    - id: ui-user-terminal
+      name: '@deepseek-ai/dsh-client-ui-user-terminal'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 
