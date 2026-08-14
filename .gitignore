@@ -16,3 +16,4 @@ Thumbs.db
 .pack-tmp*/
 .pack-v*/
 release*/
+/resources/
