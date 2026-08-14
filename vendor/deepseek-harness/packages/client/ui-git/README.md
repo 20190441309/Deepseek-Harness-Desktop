@@ -20,5 +20,5 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **Publish repository is not wired** — `resolveQuickAction` may return `open_publish` when there is no origin; this package does not open a publish wizard.
+- **Publish repository is not wired** — `resolveQuickAction` may return `open_publish` when there is no origin; the main button stays disabled with `publish.unavailable` and this package does not open a publish wizard.
 - **Commit messages are not auto-generated** — an empty commit dialog uses the fallback `Update` instead of a model-written subject.

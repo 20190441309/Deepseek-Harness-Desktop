@@ -11,6 +11,9 @@ export const zh = {
   'commit.cancel': '取消',
   'confirm.abort': '取消',
   'publish.unavailable': '发布仓库不可用。',
+  'error.title': '操作失败',
+  'error.close': '关闭',
+  'error.fallback': 'Git 操作失败。',
 } satisfies Record<string, string>
 
 /** The git namespace key union. */
@@ -27,6 +30,9 @@ export const en = {
   'commit.cancel': 'Cancel',
   'confirm.abort': 'Abort',
   'publish.unavailable': 'Publish repository is unavailable.',
+  'error.title': 'Action failed',
+  'error.close': 'Close',
+  'error.fallback': 'Git action failed.',
 } satisfies Record<GitKey, string>
 
 /** Dictionary namespace owned by this plugin. */
