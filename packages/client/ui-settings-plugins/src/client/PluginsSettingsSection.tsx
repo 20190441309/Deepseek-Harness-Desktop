@@ -69,6 +69,7 @@ export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettin
                   aria-selected={selected}
                   aria-controls={`${tabsId}-panel-${row.id}`}
                   data-active={selected ? 'true' : undefined}
+                  data-dsh-settings-plugin-tab={row.id}
                   tabIndex={selected ? 0 : -1}
                   onClick={() => { setActiveId(row.id) }}
                   onKeyDown={(event) => {
