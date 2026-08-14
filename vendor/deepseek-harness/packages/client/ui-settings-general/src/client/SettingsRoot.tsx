@@ -70,6 +70,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
                 key={row.id}
                 type="button"
                 className={clsx(css.navCell, row.id === active && css.active)}
+                data-dsh-settings-section={row.id}
                 aria-current={row.id === active ? 'true' : undefined}
                 onClick={() => { onSelect(row.id) }}
               >
@@ -144,6 +145,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
       <button
         type="button"
         className={clsx(css.trigger, !wide && css.rail)}
+        data-dsh-settings-trigger
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => { setOpen(true) }}

@@ -309,6 +309,43 @@ describe('model list editing', () => {
     ])
   })
 
+  it('writes checked thinking intensities as reasoningEfforts on the model', async () => {
+    const { mutate } = await mountSection()
+    openEditor('openai')
+
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-think' } })
+    fireEvent.click(screen.getByLabelText(`${en['effort.high']} 1`))
+    fireEvent.click(screen.getByLabelText(`${en['effort.max']} 1`))
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([{
+      id: 'acme-think',
+      reasoningEfforts: { high: 'high', max: 'max' },
+    }])
+  })
+
+  it('drops reasoningEfforts when every thinking intensity is unchecked', async () => {
+    const { mutate } = await mountSection({
+      providers: {
+        openai: {
+          baseURL: 'https://proxy.example/v1',
+          models: [{ id: 'acme-think', reasoningEfforts: { high: 'high', max: 'max' } }],
+        },
+      },
+    })
+    openEditor('openai')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en['effort.high']} 1`).checked).toBe(true)
+    expect(screen.getByLabelText<HTMLInputElement>(`${en['effort.max']} 1`).checked).toBe(true)
+    fireEvent.click(screen.getByLabelText(`${en['effort.high']} 1`))
+    fireEvent.click(screen.getByLabelText(`${en['effort.max']} 1`))
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([{ id: 'acme-think' }])
+  })
+
   it('shows the adapter defaults as inherited until an edit takes them over', async () => {
     await mountSection({ providers: { openai: { baseURL: 'https://proxy.example/v1' } } })
     openEditor('openai')
@@ -1068,6 +1105,22 @@ describe('hand-declared providers', () => {
 
     await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
     expect(firstMutate(mutate).ops[0]?.value).toMatchObject({ models: [{ id: 'bare' }] })
+  })
+
+  it('creates a model with the thinking intensities the user checked', async () => {
+    const { mutate, onClose } = mountCard()
+    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'thinker' } })
+    fireEvent.click(screen.getByLabelText(`${en['effort.low']} 1`))
+    fireEvent.click(screen.getByLabelText(`${en['effort.medium']} 1`))
+    fireEvent.click(screen.getByText(en.create))
+
+    await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
+    expect(firstMutate(mutate).ops[0]?.value).toMatchObject({
+      models: [{ id: 'thinker', reasoningEfforts: { low: 'low', medium: 'medium' } }],
+    })
   })
 
   it('refuses to create until the route, endpoint, and a model are usable', () => {

@@ -518,6 +518,43 @@
   line-height: 18px;
 }
 
+.effortGroup {
+  margin: 0;
+  padding: 8px 4px 4px;
+  border: none;
+  min-width: 0;
+}
+
+.effortGroup legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.effortOptions {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 8px 20px;
+}
+
+.effortOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.effortOption input {
+  margin: 0;
+}
+
+.effortOption:has(input:disabled) {
+  cursor: default;
+  opacity: 0.4;
+}
+
 .modelEmpty {
   padding: 12px;
   border: 1px dashed var(--dsw-alias-border-l3);

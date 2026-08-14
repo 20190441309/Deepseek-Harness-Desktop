@@ -1323,4 +1323,11 @@ describe('command launcher chrome and control seats', () => {
     const live = bench({ running: true, permissions })
     expect((live.view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
   })
+
+  it('lights the composer border beam while a turn is sending, thinking, or streaming', () => {
+    const idle = bench()
+    expect(idle.view.container.querySelector('[data-composer-card]')?.hasAttribute('data-beam')).toBe(false)
+    const live = bench({ running: true })
+    expect(live.view.container.querySelector('[data-composer-card]')?.hasAttribute('data-beam')).toBe(true)
+  })
 })

@@ -143,6 +143,8 @@ export function InputBar({
   // exists; the trigger itself is read-only rather than disabled so pointer
   // and keyboard users can reach the recovery action.
   const workspaceTrigger = inert && !removed && onRequestWorkspace !== undefined
+  // Traveling border beam while a turn is in flight: send, think, and stream.
+  const beamLive = !workspaceTrigger && (machineBusy || running)
   const textareaDisabled = removed || (locked && !workspaceTrigger)
   const canSteerQueue = !locked && !machineBusy && !commandMenuOpen && empty && running && subagent === null
     && input.queue.some(row => row.placement === 'queued')
@@ -669,11 +671,19 @@ export function InputBar({
           click's reopen (close-then-open flickers the chip's open echo). */}
       <div
         ref={cardRef}
-        className={clsx(css.card, workspaceTrigger && css.cardWorkspaceTrigger)}
+        className={clsx(
+          css.card,
+          workspaceTrigger && css.cardWorkspaceTrigger,
+          beamLive && css.cardBeam,
+        )}
         data-composer-card
+        data-beam={beamLive || undefined}
         onClick={workspaceTrigger ? onRequestWorkspace : undefined}
         onPointerDown={workspaceTrigger ? (e) => { e.stopPropagation() } : undefined}
       >
+        <span className={css.beamInner} aria-hidden />
+        <span className={css.beamStroke} aria-hidden />
+        <span className={css.beamBloom} aria-hidden />
         {overlay !== undefined && <div className={css.overlayAnchor}>{overlay}</div>}
         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
         {railItems.length > 0 && (
