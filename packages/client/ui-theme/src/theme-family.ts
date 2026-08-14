@@ -60,7 +60,7 @@ const ThemeSeedsSchema: z<ThemeSeeds> = z.object({
   background: z.string().required(),
   foreground: z.string().required(),
   contrast: z.number().min(0).max(100).default(DEFAULT_CONTRAST),
-  overrides: z.dict(z.string()).optional(),
+  overrides: z.dict(z.string()),
 })
 
 /** Wire schema for one family document (Host settings and JSON import). */
@@ -193,7 +193,7 @@ export function serializeThemeFamily(family: ThemeFamily): string {
  * @returns the decoded family.
  */
 export function parseThemeFamilyJson(raw: string): ThemeFamily {
-  return ThemeFamilySchema.parse(JSON.parse(raw))
+  return ThemeFamilySchema(JSON.parse(raw))
 }
 
 function canonicalizeSeeds(seeds: ThemeSeeds): ThemeSeeds {

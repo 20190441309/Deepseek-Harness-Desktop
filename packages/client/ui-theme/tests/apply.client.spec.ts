@@ -121,6 +121,10 @@ describe('ui-theme apply', () => {
     expect(theme.getTheme().glassOpacity).toBe(55)
     face.setTypography({ fontFamilySans: 'Inter' })
     expect(theme.getTheme().fontFamilySans).toBe('Inter')
+    face.setCustomThemes([])
+    expect(theme.getTheme().customThemes).toEqual([])
+    const label = b.slots.entries(SLOT).find(e => e.component === AppearanceSection)!.options.label
+    expect(typeof label === 'function' ? label() : label).toBe('外观')
     await vi.waitFor(() => { expect(b.mutate.mock.calls.length).toBeGreaterThanOrEqual(2) })
   })
 

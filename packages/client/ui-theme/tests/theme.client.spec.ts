@@ -292,9 +292,26 @@ describe('ThemeRuntime', () => {
     theme.setThemeHalf('light', 'grove')
     theme.setTheme('light')
     expect(theme.getTheme().active.id).toBe('grove')
+    theme.setThemeHalf('dark', 'grove')
     theme.setCustomThemes([])
     expect(theme.getTheme().activeLightThemeId).toBe('deepseek')
+    expect(theme.getTheme().activeDarkThemeId).toBe('deepseek')
     expect(host.set).toHaveBeenCalledWith('activeLightThemeId', 'deepseek')
+    expect(host.set).toHaveBeenCalledWith('activeDarkThemeId', 'deepseek')
+  })
+
+  it('resolves a registered extension theme and falls back when the id is unknown', () => {
+    const { theme, host } = make()
+    theme.register({ id: 'sepia', colorScheme: 'dark', tokens: {} })
+    theme.setTheme('sepia')
+    expect(theme.getTheme().active.colorScheme).toBe('dark')
+    host.publish({
+      status: 'ready',
+      value: { preference: 'ghost' as never },
+      revision: 1,
+      writable: true,
+    })
+    expect(theme.getTheme().active.colorScheme).toBe('light')
   })
 
   it('persists glass opacity and typography extras', () => {
