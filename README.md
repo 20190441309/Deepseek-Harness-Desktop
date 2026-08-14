@@ -9,6 +9,13 @@
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
+目前已开发功能：
+1.支持第三方模型设置思考强度。
+2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
+
+后续功能开发：颜色和主题功能/插件市场等。也欢迎与需求的朋来提需求，或者提PR。
+
+
 
 
 
