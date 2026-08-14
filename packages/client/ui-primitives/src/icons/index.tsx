@@ -885,3 +885,38 @@ export const IconArchiveOutline20 = ({ size = 20, className }: IconProps) => (
     <path d="M12.7962 12.5661V11.0832H7.20548V12.5661L12.7962 12.5661Z" fill="currentColor" />
   </svg>
 )
+
+/** Git commit node: filled circle on a vertical spine. */
+export const IconCommitOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M7.325 1.35v3.214A3.676 3.676 0 0 0 4.35 8c0 1.64 1.077 3.03 2.975 3.436V14.65h1.35v-3.214A3.676 3.676 0 0 0 11.65 8c0-1.64-1.077-3.03-2.975-3.436V1.35H7.325ZM8 5.7A2.3 2.3 0 1 0 8 10.3 2.3 2.3 0 0 0 8 5.7Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+
+/** Git push: tray with an upward arrow. */
+export const IconPushOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M7.325 1.8v7.85h1.35V1.8L11.4 4.725l.955-.955L8 0.35 3.645 3.77l.955.955L7.325 1.8ZM2.35 10.65v2.7c0 .746.604 1.35 1.35 1.35h8.6c.746 0 1.35-.604 1.35-1.35v-2.7h-1.35v2.7h-8.6v-2.7H2.35Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+
+/** Change request: two branch nodes joined by a merge path. */
+export const IconPullRequestOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M3.2 1.2a1.8 1.8 0 0 0-.675 3.47V11.33A1.8 1.8 0 1 0 3.875 12.7V4.67A1.8 1.8 0 0 0 3.2 1.2Zm0 1.35a.45.45 0 1 1 0 .9.45.45 0 0 1 0-.9Zm0 9.9a.45.45 0 1 1 0 .9.45.45 0 0 1 0-.9ZM12.8 4.67V9.2a2.8 2.8 0 0 1-2.8 2.8H8.65v-1.35H10a1.45 1.45 0 0 0 1.45-1.45V4.67a1.8 1.8 0 1 0-1.35 0v.01A1.8 1.8 0 1 0 12.8 4.67ZM12.8 2.55a.45.45 0 1 1 0 .9.45.45 0 0 1 0-.9Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+

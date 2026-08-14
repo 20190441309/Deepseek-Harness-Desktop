@@ -186,6 +186,9 @@
     - id: ui-titlebar
       name: '@deepseek-ai/dsh-client-ui-titlebar'
 
+    - id: ui-git
+      name: '@deepseek-ai/dsh-client-ui-git'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 
