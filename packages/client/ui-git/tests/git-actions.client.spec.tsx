@@ -58,14 +58,18 @@ function mount(opts: {
   cwd?: string | undefined
   git?: VcsStatus | null
   gitStatus?: GitActionsProps['gitStatus']
+  gitCommit?: GitActionsProps['gitCommit']
+  gitPush?: GitActionsProps['gitPush']
+  gitPull?: GitActionsProps['gitPull']
+  gitCreateChangeRequest?: GitActionsProps['gitCreateChangeRequest']
 } = {}) {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => opts.git ?? null)
-  const gitCommit = vi.fn(async () => ({ ok: true }))
-  const gitPush = vi.fn(async () => ({ ok: true }))
-  const gitPull = vi.fn(async () => ({ ok: true }))
-  const gitCreateChangeRequest = vi.fn(async () => ({ ok: true }))
+  const gitCommit = opts.gitCommit ?? vi.fn(async () => ({ ok: true }))
+  const gitPush = opts.gitPush ?? vi.fn(async () => ({ ok: true }))
+  const gitPull = opts.gitPull ?? vi.fn(async () => ({ ok: true }))
+  const gitCreateChangeRequest = opts.gitCreateChangeRequest ?? vi.fn(async () => ({ ok: true }))
   const openExternal = vi.fn(async () => true)
-  render(
+  const view = render(
     <GitActionsControl
       surfaces={0}
       terminalDrawer={0}
@@ -80,7 +84,7 @@ function mount(opts: {
       t={t}
     />,
   )
-  return { gitStatus, gitCommit, gitPush, gitPull, gitCreateChangeRequest, openExternal }
+  return { gitStatus, gitCommit, gitPush, gitPull, gitCreateChangeRequest, openExternal, rerender: view.rerender }
 }
 
 afterEach(cleanup)
@@ -151,5 +155,61 @@ describe('GitActionsControl', () => {
     expect(b.gitPush).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Push to main' }))
     await waitFor(() => { expect(b.gitPush).toHaveBeenCalledWith('/work') })
+  })
+
+  it('keeps a stable useSessions hook count when a session cwd appears', async () => {
+    const gitStatus = vi.fn(async () => status({ aheadCount: 2 }))
+    const shared = {
+      surfaces: 0,
+      terminalDrawer: 0,
+      useWorkspaces: neverWorkspaces,
+      gitStatus,
+      gitCommit: vi.fn(async () => ({ ok: true })),
+      gitPush: vi.fn(async () => ({ ok: true })),
+      gitPull: vi.fn(async () => ({ ok: true })),
+      gitCreateChangeRequest: vi.fn(async () => ({ ok: true })),
+      openExternal: vi.fn(async () => true),
+      t,
+    } satisfies Omit<GitActionsProps, 'useSessions'>
+    const { rerender } = render(
+      <GitActionsControl {...shared} useSessions={useSessionsStub(sessionList(undefined))} />,
+    )
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Commit' }).disabled).toBe(true)
+    expect(gitStatus).not.toHaveBeenCalled()
+    rerender(
+      <GitActionsControl {...shared} useSessions={useSessionsStub(sessionList('/work'))} />,
+    )
+    expect(await screen.findByRole('button', { name: 'Push & create PR' })).toBeTruthy()
+  })
+
+  it('shows the IPC failure message in a dialog', async () => {
+    const gitPush = vi.fn(async () => ({ ok: false, message: 'origin rejected the push.' }))
+    mount({
+      cwd: '/work',
+      git: status({
+        refName: 'main',
+        aheadCount: 2,
+        isDefaultRef: true,
+      }),
+      gitPush,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Push' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Push to main' }))
+    expect(await screen.findByRole('dialog', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('origin rejected the push.')).toBeTruthy()
+  })
+
+  it('disables Publish repository and shows the unavailable hint', async () => {
+    mount({
+      cwd: '/work',
+      git: status({
+        hasUpstream: false,
+        hasPrimaryRemote: false,
+      }),
+    })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Publish repository' })
+    expect(main.disabled).toBe(true)
+    fireEvent.focus(main)
+    expect(await screen.findByText('Publish repository is unavailable.')).toBeTruthy()
   })
 })

@@ -20,5 +20,5 @@
 
 ## 已知限制与暂缓事项
 
-- **未接入发布仓库**：没有 origin 时 `resolveQuickAction` 可能返回 `open_publish`；本包不打开发布向导。
+- **未接入发布仓库**：没有 origin 时 `resolveQuickAction` 可能返回 `open_publish`；主按钮保持 disabled 并提示 `publish.unavailable`，本包不打开发布向导。
 - **提交说明不自动生成**：提交弹窗留空时使用回退文案 `Update`，而不是模型撰写的主题。

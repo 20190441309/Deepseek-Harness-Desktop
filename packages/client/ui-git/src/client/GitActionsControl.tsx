@@ -64,11 +64,10 @@ function quickIcon(action: { kind: string; action?: string; label: string }): Gi
   return 'push'
 }
 
-function currentCwd(useSessions: GitActionsProps['useSessions']): string | undefined {
-  const current = useSessions(s => s.current)
-  if (current === undefined) return undefined
-  const cwd = useSessions(s => s.byId[current]?.cwd)
-  return cwd !== undefined && cwd !== '' ? cwd : undefined
+function failureMessage(result: GitResult, fallback: string): string | undefined {
+  if (result.ok) return undefined
+  const message = result.message?.trim()
+  return message !== undefined && message !== '' ? message : fallback
 }
 
 /**
@@ -86,7 +85,11 @@ export function GitActionsControl({
   openExternal,
   t,
 }: GitActionsProps): ReactNode {
-  const cwd = currentCwd(useSessions)
+  const cwd = useSessions(s => {
+    const id = s.current
+    const next = id === undefined ? undefined : s.byId[id]?.cwd
+    return next ? next : undefined
+  })
   const [status, setStatus] = useState<VcsStatus | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -94,6 +97,7 @@ export function GitActionsControl({
   const [commitOpen, setCommitOpen] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
   const [pending, setPending] = useState<PendingDefaultBranchAction | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = async (target: string): Promise<VcsStatus | null> => {
     const next = await gitStatus(target)
@@ -127,8 +131,17 @@ export function GitActionsControl({
     if (!loaded) {
       return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: 'Git action in progress.' }
     }
-    return resolveQuickAction(status, busy, isDefaultRef, hasPrimaryRemote)
-  }, [busy, cwd, hasPrimaryRemote, isDefaultRef, loaded, status])
+    const resolved = resolveQuickAction(status, busy, isDefaultRef, hasPrimaryRemote)
+    if (resolved.kind === 'open_publish') {
+      return {
+        label: resolved.label,
+        disabled: true,
+        kind: 'show_hint' as const,
+        hint: t('publish.unavailable'),
+      }
+    }
+    return resolved
+  }, [busy, cwd, hasPrimaryRemote, isDefaultRef, loaded, status, t])
   const menuItems = useMemo(
     () => buildMenuItems(status, busy, hasPrimaryRemote),
     [busy, hasPrimaryRemote, status],
@@ -158,10 +171,16 @@ export function GitActionsControl({
       return
     }
     setBusy(true)
+    setError(null)
+    const fallback = t('error.fallback')
     try {
       if (includesCommit) {
         const committed = await gitCommit(cwd, options.commitMessage?.trim() || 'Update')
-        if (!committed.ok) return
+        const failed = failureMessage(committed, fallback)
+        if (failed !== undefined) {
+          setError(failed)
+          return
+        }
       }
       const needsPush = action === 'push'
         || action === 'commit_push'
@@ -169,13 +188,19 @@ export function GitActionsControl({
         || (action === 'create_pr' && (!status?.hasUpstream || (status.aheadCount ?? 0) > 0 || includesCommit))
       if (needsPush) {
         const pushed = await gitPush(cwd)
-        if (!pushed.ok) return
+        const failed = failureMessage(pushed, fallback)
+        if (failed !== undefined) {
+          setError(failed)
+          return
+        }
       }
       if (action === 'create_pr' || action === 'commit_push_pr') {
-        await gitCreateChangeRequest(cwd, {
+        const created = await gitCreateChangeRequest(cwd, {
           title: options.commitMessage?.trim() || status?.refName || 'Change',
           body: '',
         })
+        const failed = failureMessage(created, fallback)
+        if (failed !== undefined) setError(failed)
       }
     } finally {
       setBusy(false)
@@ -190,11 +215,14 @@ export function GitActionsControl({
       if (url) void openExternal(url)
       return
     }
-    if (quickAction.kind === 'open_publish') return
     if (quickAction.kind === 'run_pull') {
       if (cwd === undefined) return
       setBusy(true)
-      void gitPull(cwd).finally(() => {
+      setError(null)
+      void gitPull(cwd).then((result) => {
+        const failed = failureMessage(result, t('error.fallback'))
+        if (failed !== undefined) setError(failed)
+      }).finally(() => {
         setBusy(false)
         void refresh(cwd)
       })
@@ -314,6 +342,19 @@ export function GitActionsControl({
           />
         </label>
       </Modal>
+
+      <Modal
+        open={error !== null}
+        onClose={() => { setError(null) }}
+        title={t('error.title')}
+        closeLabel={t('error.close')}
+        description={error ?? ''}
+        footer={(
+          <Button variant="primary" size="sm" onClick={() => { setError(null) }}>
+            {t('error.close')}
+          </Button>
+        )}
+      />
 
       <Modal
         open={pending !== null}
