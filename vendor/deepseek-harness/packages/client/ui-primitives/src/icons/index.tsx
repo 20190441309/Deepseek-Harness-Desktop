@@ -112,6 +112,18 @@ export const IconPanelBottomOutline16 = ({ size = 16, className }: IconProps) =>
   </svg>
 )
 
+/** Two side-by-side panes for a terminal split. */
+export const IconSplitOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M2.2 1.6h11.6A1.6 1.6 0 0 1 15.4 3.2v9.6a1.6 1.6 0 0 1-1.6 1.6H2.2A1.6 1.6 0 0 1 0.6 12.8V3.2A1.6 1.6 0 0 1 2.2 1.6Zm0 1.35A.25.25 0 0 0 1.95 3.2v9.6c0 .138.112.25.25.25H7.25V2.95H2.2Zm6.4 0v10.1h5.2a.25.25 0 0 0 .25-.25V3.2a.25.25 0 0 0-.25-.25H8.6Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+
 /** ic_ds_ellipsis_outline_16 */
 export const IconEllipsisOutline16 = ({ size = 16, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

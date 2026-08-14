@@ -49,6 +49,20 @@ contextBridge.exposeInMainWorld('shell', {
   gitPush: (cwd) => ipcRenderer.invoke('shell:git-push', cwd),
   gitPull: (cwd) => ipcRenderer.invoke('shell:git-pull', cwd),
   gitCreateChangeRequest: (cwd, input) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input),
+  ptyCreate: (input) => ipcRenderer.invoke('shell:pty-create', input),
+  ptyWrite: (id, data) => ipcRenderer.invoke('shell:pty-write', id, data),
+  ptyResize: (id, cols, rows) => ipcRenderer.invoke('shell:pty-resize', id, cols, rows),
+  ptyKill: (id) => ipcRenderer.invoke('shell:pty-kill', id),
+  onPtyData: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:pty-data', listener);
+    return () => ipcRenderer.removeListener('shell:pty-data', listener);
+  },
+  onPtyExit: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:pty-exit', listener);
+    return () => ipcRenderer.removeListener('shell:pty-exit', listener);
+  },
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

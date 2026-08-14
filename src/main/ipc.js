@@ -8,6 +8,7 @@ const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = 
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
 const { gitCommit, gitCreateChangeRequest, gitPull, gitPush, gitStatus } = require('./git');
+const { registerPtyIpc } = require('./pty');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -134,6 +135,7 @@ function registerIpc({ dsh, startHarness }) {
   ipcMain.handle('shell:git-push', (_event, cwd) => gitPush(cwd));
   ipcMain.handle('shell:git-pull', (_event, cwd) => gitPull(cwd));
   ipcMain.handle('shell:git-create-change-request', (_event, cwd, input) => gitCreateChangeRequest(cwd, input));
+  registerPtyIpc(ipcMain);
 
   ipcMain.handle('shell:install-update', async (event) => {
     try {
