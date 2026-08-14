@@ -10,7 +10,7 @@ Web UI 只提供浅色／深色／跟随系统。这三个方块放在「通用�
 
 ## 决策
 
-**保留 ThemeRuntime 与别名层约定。** 呈现器仍从 `ThemeSnapshot.active` 涂 `body`。新工作加入 `ThemeFamily` 文档（一张卡、浅／深两半种子色）、写出 `--dsw-alias-*` 的推导步骤，以及可持久化的两半 id。DeepSeek 家族的推导 token 为空，因此只存了 `preference` 的配置文件仍走现有 CSS 表。
+**保留 ThemeRuntime 与别名层约定。** 呈现器仍从 `ThemeSnapshot.active` 涂 `body`。新工作加入 `ThemeFamily` 文档（一张卡、浅／深两半种子色）、写出 `--dsw-alias-*` 的推导步骤，以及可持久化的两半 id。DeepSeek 家族的推导 token 为空，因此只存了 `preference` 的配置文件仍走现有 CSS 表。推导出的家族把画布留在种子背景色上，并把强调色映射到表里原本钉死 DeepSeek 蓝的彩色铬架 token（`--dsw-alias-state-business-primary`、`--dsw-alias-button-info-fill`、`--dsw-specific-bubble`、侧栏选中项），这样自定义颜色会出现在对话里，而不是只出现在外观页滑杆上。
 
 **色制与家族拆开。** `preference` 仍决定现在用哪一半（`light`／`dark`／`system`）。`activeLightThemeId` 与 `activeDarkThemeId` 决定该半由哪个家族来画。点浅色球只写浅色 id，点深色球只写深色 id。`setTheme` 继续写色制（或选中一个进程内扩展 id）。
 
