@@ -1,5 +1,5 @@
 /**
- * Appearance settings section: color scheme, theme library, glass, typography.
+ * Appearance settings section: color scheme, theme library, wallpaper, glass, typography.
  * Registered as `settings.section` id `appearance` by this package.
  */
 import { useEffect, useState } from 'react'
@@ -23,6 +23,7 @@ import type { ThemePreference, ThemeSettings } from '../theme-settings.ts'
 import type { createAppearanceRowStore } from './settings-store.ts'
 import { ColorSchemeTiles } from './ColorSchemeTiles.tsx'
 import { ThemeLibrary } from './ThemeLibrary.tsx'
+import { WallpaperRow } from './WallpaperRow.tsx'
 import css from './AppearanceSection.module.css'
 
 const TYPOGRAPHY_ADVANCED_KEY = 'dsh:typography-advanced'
@@ -55,6 +56,10 @@ export interface AppearanceSectionInjected {
   setCustomThemes: (families: ThemeFamily[]) => void
   /** Persist glass-surface opacity. */
   setGlassOpacity: (value: number) => void
+  /** Persist wallpaper image and/or the two effect sliders. */
+  setWallpaper: (
+    patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>,
+  ) => void
   /** Persist typography extras. */
   setTypography: (
     patch: Partial<Pick<ThemeSettings,
@@ -80,6 +85,7 @@ export function AppearanceSection({
   setThemeHalf,
   setCustomThemes,
   setGlassOpacity,
+  setWallpaper,
   setTypography,
 }: AppearanceSectionComponentProps) {
   const preference = useStore(s => s.preference)
@@ -88,6 +94,9 @@ export function AppearanceSection({
   const activeLightThemeId = useStore(s => s.activeLightThemeId)
   const activeDarkThemeId = useStore(s => s.activeDarkThemeId)
   const glassOpacity = useStore(s => s.glassOpacity)
+  const wallpaperImage = useStore(s => s.wallpaperImage)
+  const wallpaperBlur = useStore(s => s.wallpaperBlur)
+  const wallpaperPixelate = useStore(s => s.wallpaperPixelate)
   const fontFamilySans = useStore(s => s.fontFamilySans)
   const fontFamilyCode = useStore(s => s.fontFamilyCode)
   const fontSizeInterface = useStore(s => s.fontSizeInterface)
@@ -119,6 +128,14 @@ export function AppearanceSection({
           setCustomThemes={setCustomThemes}
         />
       </section>
+
+      <WallpaperRow
+        wallpaperImage={wallpaperImage}
+        wallpaperBlur={wallpaperBlur}
+        wallpaperPixelate={wallpaperPixelate}
+        t={t}
+        setWallpaper={setWallpaper}
+      />
 
       <section className={css.block} aria-labelledby="appearance-glass-heading">
         <div className={css.rowHead}>

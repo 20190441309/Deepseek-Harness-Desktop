@@ -121,6 +121,8 @@ describe('ui-theme apply', () => {
     expect(theme.getTheme().glassOpacity).toBe(55)
     face.setTypography({ fontFamilySans: 'Inter' })
     expect(theme.getTheme().fontFamilySans).toBe('Inter')
+    face.setWallpaper({ wallpaperBlur: 30 })
+    expect(theme.getTheme().wallpaperBlur).toBe(30)
     face.setCustomThemes([])
     expect(theme.getTheme().customThemes).toEqual([])
     const label = b.slots.entries(SLOT).find(e => e.component === AppearanceSection)!.options.label

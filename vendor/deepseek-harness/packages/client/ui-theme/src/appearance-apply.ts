@@ -4,6 +4,7 @@ import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_INTERFACE_FONT_SIZE,
 } from './theme-family.ts'
+import { applyWallpaperLayer } from './wallpaper.ts'
 
 const DEFAULT_SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 const DEFAULT_CODE_STACK = "'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei'"
@@ -56,6 +57,12 @@ export interface AppearanceDocumentExtras {
   fontFamilyComposer?: string
   /** Terminal font preference. */
   fontFamilyTerminal?: string
+  /** Wallpaper data URL; empty clears the layer. */
+  wallpaperImage?: string
+  /** Frosted-glass blur percent. */
+  wallpaperBlur?: number
+  /** Pixelation percent. */
+  wallpaperPixelate?: number
 }
 
 /**
@@ -79,4 +86,9 @@ export function applyAppearanceDocumentExtras(extras: AppearanceDocumentExtras):
     '--dsw-font-family-terminal',
     appearanceFontStack(extras.fontFamilyTerminal ?? '', code),
   )
+  applyWallpaperLayer({
+    wallpaperImage: extras.wallpaperImage ?? '',
+    wallpaperBlur: extras.wallpaperBlur ?? 0,
+    wallpaperPixelate: extras.wallpaperPixelate ?? 0,
+  })
 }

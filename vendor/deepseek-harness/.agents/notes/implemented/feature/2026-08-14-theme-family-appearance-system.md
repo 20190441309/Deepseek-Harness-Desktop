@@ -16,7 +16,7 @@ The Web UI exposed only Light / Dark / System. Those three cubes lived in Genera
 
 **Persist custom families in the same Host section.** `customThemes` is an array of `ThemeFamily` documents on `ui-theme`. Import validates the schema and rewrites colliding ids. Deleting a family that a half is using falls back to DeepSeek. Third-party `register()` ids stay in-process.
 
-**Give Appearance its own settings section.** `ui-theme` registers `settings.section` id `appearance` at order 5. General no longer hosts the three cubes, so there is one entry. The page owns color-scheme tiles, the two-ball library, create / duplicate / edit / import / export, glass opacity, and typography. The typography Advanced disclosure is browser-instance state in `localStorage` (`dsh:typography-advanced`).
+**Give Appearance its own settings section.** `ui-theme` registers `settings.section` id `appearance` at order 5. General no longer hosts the three cubes, so there is one entry. The page owns color-scheme tiles, the two-ball library, create / duplicate / edit / import / export, an optional wallpaper with frost and pixelate sliders, glass opacity, and typography. The typography Advanced disclosure is browser-instance state in `localStorage` (`dsh:typography-advanced`). A wallpaper data URL stays out of the boot script so the index stays small; ThemeRuntime applies the layer after the plugin tree starts and mixes the main chrome fills so the image can show through.
 
 **Bootstrap the active half before React.** Host `tapIndex` embeds preference, both derived token maps, font size, and glass opacity. The inline script resolves only `system` and writes the live half onto `body` so a non-DeepSeek family does not flash the sheet default.
 
