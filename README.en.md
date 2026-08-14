@@ -34,6 +34,8 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Vision fallback model**: when the main model (DeepSeek included) cannot see images, a dedicated vision model describes the picture first, then the main model works from that description
 - **Themes and wallpaper**: Settings → Appearance — pick a built-in family or author your own; drop a wallpaper behind the UI and tune frost, pixelation, and glass opacity
 - **Plugin marketplace**: Settings → Plugins → Marketplace, beside Plugin configuration and Plugin list. Menu / tray / title-bar / `Ctrl+Shift+M` open that tab. Catalog is only the GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, grouped into UI, workflow, tools, notifications, development, and learning. Install uses official `dsh plugin --profile web add github:owner/repo` and restarts Harness. Git installs run the repo's prepare script on this machine — only install plugins you trust. If GitHub rate-limits you, save a token on that tab.
+- **Titlebar Git**: with working-tree changes the primary button is Commit & push; the menu can Commit only, and the default branch asks for confirmation
+- **Bottom terminal and right panel**: titlebar toggles open the bottom PTY and the five-card right panel (Files / Diff / Terminal / Browser / Agents); the drawer and the Terminal card share one session family. Tool details stay in the existing details column and are independent of the right panel
 
 ### Third-party thinking intensity
 

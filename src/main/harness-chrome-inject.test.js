@@ -31,19 +31,35 @@ test('injected chrome script can be evaluated twice in one realm', () => {
   assert.doesNotThrow(() => vm.runInContext(injectSource, context));
 });
 
-function createInjectSandbox() {
+test('injected measure grows --dsh-wco-pad by the trailing cluster plus a gap', () => {
+  const cssVars = {};
+  const context = vm.createContext(createInjectSandbox({ trailingWidth: 72, cssVars }));
+  vm.runInContext(injectSource, context);
+  const controls = dshWindowControlsRight();
+  assert.equal(cssVars['--dsh-wco-controls'], `${controls}px`);
+  assert.equal(cssVars['--dsh-wco-pad'], `${controls + 72 + 8}px`);
+});
+
+function createInjectSandbox(options = {}) {
+  const trailingWidth = options.trailingWidth ?? 0;
+  const cssVars = options.cssVars ?? {};
   class HTMLElement {}
   const store = new Map();
   const html = makeElement('html');
   const body = makeElement('body');
   store.set('html', html);
   store.set('body', body);
+  if (trailingWidth > 0) {
+    makeElement('dsh-shell-titlebar-trailing');
+  }
 
   function makeElement(id) {
     const node = Object.assign(Object.create(HTMLElement.prototype), {
       id: id || '',
       style: {
-        setProperty() {},
+        setProperty(name, value) {
+          cssVars[name] = value;
+        },
         right: '',
         gap: '',
         height: '',
@@ -68,7 +84,8 @@ function createInjectSandbox() {
         return null;
       },
       getBoundingClientRect() {
-        return { top: 12, left: 0, width: 0, height: 32 };
+        const width = this.id === 'dsh-shell-titlebar-trailing' ? trailingWidth : 0;
+        return { top: 12, left: 0, width, height: 32 };
       },
       querySelector() {
         return null;
@@ -123,6 +140,7 @@ function createInjectSandbox() {
   const window = {
     __dshShellChromeBound: false,
     __dshShellMaximized: false,
+    innerWidth: 1280,
     shell: null,
     addEventListener() {},
     clearTimeout() {},
