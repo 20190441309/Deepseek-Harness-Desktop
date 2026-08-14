@@ -6,6 +6,7 @@ const EventEmitter = require('events');
 const { loadConfig, configPath } = require('./config');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
+const { prependPath } = require('../shared/env-path');
 
 const PORT_SCAN_RANGE = 50;
 
@@ -551,9 +552,7 @@ class DshManager extends EventEmitter {
     } catch {
       // app not ready
     }
-    if (extras.length) {
-      env.PATH = `${extras.join(path.delimiter)}${path.delimiter}${env.PATH || ''}`;
-    }
+    prependPath(env, extras);
     return env;
   }
 
