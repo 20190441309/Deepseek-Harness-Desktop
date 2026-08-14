@@ -1,11 +1,12 @@
 /**
- * Three-column shell frame, registered into the built-in 'root' slot (the web
+ * Four-column shell frame, registered into the built-in 'root' slot (the web
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
- * details), the drag handles (pointer capture + rAF throttle), the concession
- * chain (columns.ts), and the child-slot render decisions: the sidebar slot
- * renders HERE with live parameters from the concession solve, and the
- * session-aware occupants render in fixed column positions; strict entries
- * gate themselves on current-session availability while session-maybe
+ * details | surfaces), the conversation-column terminal drawer, the titlebar
+ * trailing cluster, the drag handles (pointer capture + rAF throttle), the
+ * concession chain (columns.ts), and the child-slot render decisions: the
+ * sidebar slot renders HERE with live parameters from the concession solve,
+ * and the session-aware occupants render in fixed column positions; strict
+ * entries gate themselves on current-session availability while session-maybe
  * entries retain identity. Pure component: everything arrives
  * through the three framework shares — zero cordis or framework imports,
  * zero self-made hooks.
@@ -20,7 +21,7 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'surfaces' | 'shell.overlay' | 'shell.titlebar.trailing' | 'shell.terminalDrawer'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
@@ -31,6 +32,16 @@ function CenterColumn(props: { children?: ReactNode }) {
 /** Details column grid item; width 0 keeps the subtree mounted (never unmount on close). */
 function DetailsColumn(props: { children?: ReactNode }) {
   return <div className={css.detailsCol}>{props.children}</div>
+}
+
+/** Surfaces column grid item; width 0 keeps the subtree mounted (never unmount on close). */
+function SurfacesColumn(props: { children?: ReactNode }) {
+  return <div className={css.surfacesCol}>{props.children}</div>
+}
+
+/** Terminal drawer under the conversation column; height 0 keeps the subtree mounted. */
+function TerminalDrawerTrack(props: { children?: ReactNode }) {
+  return <div className={css.terminalDrawerCol}>{props.children}</div>
 }
 
 /**
@@ -83,7 +94,7 @@ function DragHandle(props: { side: 'sidebar' | 'details'; left: number; onStart:
   )
 }
 
-/** The three-column frame (see module doc). */
+/** The four-column frame (see module doc). */
 export function AppFrame({
   useStore,
   useSessions,
@@ -139,7 +150,12 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const cols = computeColumns(
+    viewport,
+    sidebarPreference,
+    detailsSession === undefined ? 0 : panels.details,
+    panels.surfaces,
+  )
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -165,9 +181,14 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
+      style={{
+        gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${cols.surfaces}px`,
+        gridTemplateRows: `minmax(0, 1fr) ${panels.terminalDrawer}px`,
+      }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
+      data-surfaces-collapsed={cols.surfaces === 0 || undefined}
+      data-terminal-drawer-collapsed={panels.terminalDrawer === 0 || undefined}
       data-dragging={dragging || undefined}
     >
       <div className={css.sidebarCol}>
@@ -188,14 +209,19 @@ export function AppFrame({
             is session-maybe; the strict details entry naturally renders
             empty while no session is current. */}
         <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
+        <TerminalDrawerTrack>{renderSlot('shell.terminalDrawer', {})}</TerminalDrawerTrack>
         <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
+        <SurfacesColumn>{renderSlot('surfaces', {})}</SurfacesColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
+      <div className={css.titlebarTrailing} data-titlebar-trailing>
+        {renderSlot('shell.titlebar.trailing', {})}
+      </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details - cols.surfaces} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
     </div>
   )
 }

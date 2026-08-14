@@ -27,6 +27,20 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Toggle the surfaces column (closed ⟷ contract default width). */
+  toggleSurfaces(): void
+  /** Open the surfaces column (no-op when already open). */
+  openSurfaces(): void
+  /** Close the surfaces column. */
+  closeSurfaces(): void
+  /** Toggle the terminal drawer (closed ⟷ contract default height). */
+  toggleTerminalDrawer(): void
+  /**
+   * Set the terminal drawer height in px. Clamps to the contract floor and
+   * never writes closed; use toggleTerminalDrawer to close.
+   * @param px - requested height.
+   */
+  setTerminalDrawer(px: number): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +71,34 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Toggle the surfaces column (closed ⟷ contract default width). */
+  toggleSurfaces(): void {
+    this.#require().toggleSurfaces()
+  }
+
+  /** Open the surfaces column (no-op when already open). */
+  openSurfaces(): void {
+    this.#require().openSurfaces()
+  }
+
+  /** Close the surfaces column. */
+  closeSurfaces(): void {
+    this.#require().closeSurfaces()
+  }
+
+  /** Toggle the terminal drawer (closed ⟷ contract default height). */
+  toggleTerminalDrawer(): void {
+    this.#require().toggleTerminalDrawer()
+  }
+
+  /**
+   * Set the terminal drawer height in px.
+   * @param px - requested height.
+   */
+  setTerminalDrawer(px: number): void {
+    this.#require().setTerminalDrawer(px)
   }
 
   #require(): PanelActions {
