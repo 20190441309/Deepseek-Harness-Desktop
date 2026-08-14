@@ -190,6 +190,10 @@ export class ThemeRuntime {
   private readonly media: MediaQueryList | undefined
   private readonly overrides = new Map<string, { seq: number; tokens: ThemeTokenOverrides }>()
   private overrideSeq = 0
+  private readonly pendingWrites = new Map<string, unknown>()
+  private writeTimer: ReturnType<typeof setTimeout> | undefined
+  private inFlightWrites = 0
+  private previewedFamily: ThemeFamily | null = null
 
   /**
    * @param ctx - owning context (change events are emitted on it; the
@@ -214,7 +218,39 @@ export class ThemeRuntime {
       }, 'ui-theme: prefers-color-scheme listener')
     }
     ctx.effect(() => host.subscribe(() => { this.adopt() }), 'ui-theme: settings scope adoption')
+    ctx.effect(() => () => { this.flushWrites() }, 'ui-theme: flush pending settings writes')
     this.adopt()
+  }
+
+  /**
+   * Queue one durable field write. Continuous controls (sliders, font inputs)
+   * fire on every input tick; the local snapshot publishes immediately while
+   * the Host write is debounced so a drag does not flood the settings RPC.
+   */
+  private queueWrite(field: string, value: unknown): void {
+    this.pendingWrites.set(field, value)
+    if (this.writeTimer !== undefined) clearTimeout(this.writeTimer)
+    this.writeTimer = setTimeout(() => { this.flushWrites() }, 300)
+  }
+
+  /** Send every pending field to the Host scope, preserving queue order. */
+  private flushWrites(): void {
+    if (this.writeTimer !== undefined) {
+      clearTimeout(this.writeTimer)
+      this.writeTimer = undefined
+    }
+    if (this.pendingWrites.size === 0) return
+    const writes = [...this.pendingWrites]
+    this.pendingWrites.clear()
+    for (const [field, value] of writes) {
+      this.inFlightWrites += 1
+      this.host.set(field, value)
+        .catch(() => { /* scope.set already reloads Host state on a failed latest write */ })
+        .finally(() => {
+          this.inFlightWrites -= 1
+          if (this.inFlightWrites === 0 && this.pendingWrites.size === 0) this.adopt()
+        })
+    }
   }
 
   /**
@@ -257,7 +293,7 @@ export class ThemeRuntime {
     this.preference = id as ThemePreference
     if (isThemePreference(id)) {
       this.settings = { ...this.settings, preference: id }
-      void this.host.set(THEME_PREFERENCE_FIELD, id)
+      this.queueWrite(THEME_PREFERENCE_FIELD, id)
     }
     this.publish()
   }
@@ -278,7 +314,21 @@ export class ThemeRuntime {
       ...this.settings,
       [field]: familyId,
     }
-    void this.host.set(field, familyId)
+    this.queueWrite(field, familyId)
+    this.publish()
+  }
+
+  /**
+   * Paint a transient family over the active halves without persisting
+   * anything: the theme editor calls this on every draft change so the user
+   * sees the colors live. `null` restores the durable selection. The preview
+   * never enters the settings scope, so closing the editor (or reloading)
+   * always returns to the stored theme.
+   * @param family - draft family to preview, or null to clear.
+   */
+  setPreviewFamily(family: ThemeFamily | null): void {
+    if (this.previewedFamily === family) return
+    this.previewedFamily = family
     this.publish()
   }
 
@@ -292,14 +342,14 @@ export class ThemeRuntime {
     if (this.settings.activeLightThemeId !== DEFAULT_FAMILY_ID
       && !listThemeFamilies(next).some(family => family.id === this.settings.activeLightThemeId)) {
       this.settings = { ...this.settings, activeLightThemeId: DEFAULT_FAMILY_ID }
-      void this.host.set(THEME_LIGHT_FAMILY_FIELD, DEFAULT_FAMILY_ID)
+      this.queueWrite(THEME_LIGHT_FAMILY_FIELD, DEFAULT_FAMILY_ID)
     }
     if (this.settings.activeDarkThemeId !== DEFAULT_FAMILY_ID
       && !listThemeFamilies(next).some(family => family.id === this.settings.activeDarkThemeId)) {
       this.settings = { ...this.settings, activeDarkThemeId: DEFAULT_FAMILY_ID }
-      void this.host.set(THEME_DARK_FAMILY_FIELD, DEFAULT_FAMILY_ID)
+      this.queueWrite(THEME_DARK_FAMILY_FIELD, DEFAULT_FAMILY_ID)
     }
-    void this.host.set(THEME_CUSTOM_THEMES_FIELD, next)
+    this.queueWrite(THEME_CUSTOM_THEMES_FIELD, next)
     this.publish()
   }
 
@@ -310,7 +360,7 @@ export class ThemeRuntime {
   setGlassOpacity(glassOpacity: number): void {
     if (this.settings.glassOpacity === glassOpacity) return
     this.settings = { ...this.settings, glassOpacity }
-    void this.host.set(THEME_GLASS_OPACITY_FIELD, glassOpacity)
+    this.queueWrite(THEME_GLASS_OPACITY_FIELD, glassOpacity)
     this.publish()
   }
 
@@ -337,9 +387,9 @@ export class ThemeRuntime {
       return
     }
     this.settings = { ...this.settings, ...next }
-    if (patch.wallpaperImage !== undefined) void this.host.set(THEME_WALLPAPER_IMAGE_FIELD, next.wallpaperImage)
-    if (patch.wallpaperBlur !== undefined) void this.host.set(THEME_WALLPAPER_BLUR_FIELD, next.wallpaperBlur)
-    if (patch.wallpaperPixelate !== undefined) void this.host.set(THEME_WALLPAPER_PIXELATE_FIELD, next.wallpaperPixelate)
+    if (patch.wallpaperImage !== undefined) this.queueWrite(THEME_WALLPAPER_IMAGE_FIELD, next.wallpaperImage)
+    if (patch.wallpaperBlur !== undefined) this.queueWrite(THEME_WALLPAPER_BLUR_FIELD, next.wallpaperBlur)
+    if (patch.wallpaperPixelate !== undefined) this.queueWrite(THEME_WALLPAPER_PIXELATE_FIELD, next.wallpaperPixelate)
     this.publish()
   }
 
@@ -350,13 +400,18 @@ export class ThemeRuntime {
   setTypography(patch: Partial<Pick<ThemeSettings, 'fontFamilySans' | 'fontFamilyCode' | 'fontSizeInterface' | 'fontSizeCode' | 'fontFamilyComposer' | 'fontFamilyTerminal'>>): void {
     this.settings = { ...this.settings, ...patch }
     for (const [field, value] of Object.entries(patch)) {
-      void this.host.set(field, value)
+      this.queueWrite(field, value)
     }
     this.publish()
   }
 
-  /** Adopt the scope's accepted durable section without writing it back. */
+  /**
+   * Adopt the scope's accepted durable section without writing it back.
+   * Skipped while local writes are queued or in flight: mid-drag the durable
+   * echo lags the local snapshot, and adopting it would snap the control back.
+   */
   private adopt(): void {
+    if (this.pendingWrites.size > 0 || this.inFlightWrites > 0) return
     const section = this.host.getSnapshot().value
     if (section === undefined) return
     const next = resolveThemeSettings(section)
@@ -419,7 +474,7 @@ export class ThemeRuntime {
   private buildSnapshot(): ThemeSnapshot {
     const mode = this.resolvedMode()
     const familyId = mode === 'dark' ? this.settings.activeDarkThemeId : this.settings.activeLightThemeId
-    const family = resolveThemeFamily(familyId, this.settings.customThemes)
+    const family = this.previewedFamily ?? resolveThemeFamily(familyId, this.settings.customThemes)
     const registered = !isThemePreference(this.preference)
       ? this.themes.find(t => t.id === this.preference)
       : undefined
@@ -458,7 +513,7 @@ export class ThemeRuntime {
     const tokens: ThemeTokens = { ...active.tokens }
     tokens['--dsw-alias-glass-opacity'] = `${this.settings.glassOpacity}%`
     if (isWallpaperDataUrl(this.settings.wallpaperImage)) {
-      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode))
+      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, this.settings.glassOpacity))
     }
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
@@ -573,6 +628,7 @@ export function apply(ctx: ClientContext): void {
       setTheme: (id) => { theme.setTheme(id) },
       setThemeHalf: (mode, id) => { theme.setThemeHalf(mode, id) },
       setCustomThemes: (families) => { theme.setCustomThemes(families) },
+      previewTheme: (family) => { theme.setPreviewFamily(family) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
       setWallpaper: (patch) => { theme.setWallpaper(patch) },
       setTypography: (patch) => { theme.setTypography(patch) },

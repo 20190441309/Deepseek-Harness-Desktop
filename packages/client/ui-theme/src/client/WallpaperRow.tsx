@@ -9,6 +9,7 @@ import {
 } from '../wallpaper.ts'
 import type { ThemeSettings } from '../theme-settings.ts'
 import type { ThemeKey } from './locales.ts'
+import { sliderFillStyle } from './slider.ts'
 import css from './AppearanceSection.module.css'
 
 /** Persist wallpaper image and/or the two effect sliders. */
@@ -91,6 +92,7 @@ export function WallpaperRow({
               max={MAX_WALLPAPER_EFFECT}
               step={WALLPAPER_EFFECT_STEP}
               value={wallpaperBlur}
+              style={sliderFillStyle(wallpaperBlur, MIN_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT)}
               aria-valuemin={MIN_WALLPAPER_EFFECT}
               aria-valuemax={MAX_WALLPAPER_EFFECT}
               aria-valuenow={wallpaperBlur}
@@ -110,6 +112,7 @@ export function WallpaperRow({
               max={MAX_WALLPAPER_EFFECT}
               step={WALLPAPER_EFFECT_STEP}
               value={wallpaperPixelate}
+              style={sliderFillStyle(wallpaperPixelate, MIN_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT)}
               aria-valuemin={MIN_WALLPAPER_EFFECT}
               aria-valuemax={MAX_WALLPAPER_EFFECT}
               aria-valuenow={wallpaperPixelate}

@@ -4,19 +4,16 @@ import {
   MAX_WALLPAPER_DATA_URL_CHARS, WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
   applyWallpaperLayer, clampWallpaperEffect, downscaleWallpaper, encodeWallpaperFile,
   isWallpaperDataUrl, mixWallpaperSurfaces, readFileAsDataUrl, wallpaperBlurPx,
-  wallpaperPixelFactor,
+  wallpaperCanvasSolidity, wallpaperPixelFactor,
 } from '../src/wallpaper.ts'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 afterEach(() => {
+  // Route teardown through the layer so its module-level applied cache resets.
+  applyWallpaperLayer({ wallpaperImage: '', wallpaperBlur: 0, wallpaperPixelate: 0 })
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  document.documentElement.removeAttribute(WALLPAPER_ATTR)
-  document.getElementById(WALLPAPER_LAYER_ID)?.remove()
-  document.documentElement.style.removeProperty('--dsh-wallpaper-image')
-  document.documentElement.style.removeProperty('--dsh-wallpaper-blur')
-  document.documentElement.style.removeProperty('--dsh-wallpaper-pixel')
 })
 
 describe('wallpaper helpers', () => {
@@ -38,16 +35,30 @@ describe('wallpaper helpers', () => {
     expect(isWallpaperDataUrl(`${PNG}${'A'.repeat(MAX_WALLPAPER_DATA_URL_CHARS)}`)).toBe(false)
   })
 
-  it('mixes solid chrome fills and keeps an existing hex', () => {
-    const light = mixWallpaperSurfaces({}, 'light')
+  it('derives the layered canvas solidity from the glass slider', () => {
+    expect(wallpaperCanvasSolidity(0)).toBe(0)
+    expect(wallpaperCanvasSolidity(40)).toBe(15)
+    expect(wallpaperCanvasSolidity(80)).toBe(45)
+    expect(wallpaperCanvasSolidity(100)).toBe(100)
+    expect(wallpaperCanvasSolidity(140)).toBe(100)
+  })
+
+  it('mixes layered chrome fills at the given solidity and keeps an existing hex', () => {
+    const light = mixWallpaperSurfaces({}, 'light', 80)
     expect(light['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
-    const dark = mixWallpaperSurfaces({ '--dsw-alias-bg-base': '#120e18' }, 'dark')
+    // Canvas 45%, sidebar midway 63%, raised layers at the full 80%.
+    expect(light['--dsw-alias-bg-base']).toContain('45%')
+    expect(light['--dsw-specific-sidebar-fill']).toContain('63%')
+    expect(light['--dsw-alias-bg-layer-1']).toContain('80%')
+    const dark = mixWallpaperSurfaces({ '--dsw-alias-bg-base': '#120e18' }, 'dark', 70)
     expect(dark['--dsw-alias-bg-base']).toContain('#120e18')
     expect(dark['--dsw-alias-bg-base']).toContain('color-mix')
+    expect(dark['--dsw-alias-bg-layer-1']).toContain('70%')
     const already = mixWallpaperSurfaces({
       '--dsw-alias-bg-base': 'color-mix(in srgb, #fff 58%, transparent)',
-    }, 'light')
+    }, 'light', 120)
     expect(already['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
+    expect(already['--dsw-alias-bg-base']).toContain('100%')
   })
 })
 
@@ -65,14 +76,58 @@ describe('applyWallpaperLayer', () => {
     expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
     applyWallpaperLayer({ wallpaperImage: PNG, wallpaperBlur: 25, wallpaperPixelate: 50 })
     expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(true)
-    expect(document.getElementById(WALLPAPER_INNER_ID)).not.toBeNull()
+    const inner = document.getElementById(WALLPAPER_INNER_ID)
+    expect(inner?.tagName).toBe('CANVAS')
+    expect((inner as HTMLCanvasElement).style.backgroundImage).toContain('data:image/png')
     expect(document.documentElement.style.getPropertyValue('--dsh-wallpaper-blur')).toBe('10px')
-    expect(document.documentElement.style.getPropertyValue('--dsh-wallpaper-pixel')).toBe('10.5')
     applyWallpaperLayer({ wallpaperImage: PNG, wallpaperBlur: 0, wallpaperPixelate: 0 })
     expect(document.getElementById(WALLPAPER_LAYER_ID)).not.toBeNull()
+    expect(document.documentElement.style.getPropertyValue('--dsh-wallpaper-blur')).toBe('0px')
     applyWallpaperLayer({ wallpaperImage: '', wallpaperBlur: 0, wallpaperPixelate: 0 })
     expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(false)
     expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
+    expect(document.documentElement.style.getPropertyValue('--dsh-wallpaper-blur')).toBe('')
+  })
+
+  it('draws a cover-cropped bitmap at cssSize / factor once the image is decoded', () => {
+    class InstantImage {
+      complete = true
+      width = 200
+      height = 100
+      naturalWidth = 200
+      naturalHeight = 100
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_value: string) { /* decode already finished */ }
+    }
+    vi.stubGlobal('Image', InstantImage)
+    const drawn: unknown[][] = []
+    const context = { drawImage: (...args: unknown[]) => { drawn.push(args) } }
+    const createElement = document.createElement.bind(document)
+    const canvas = createElement('canvas')
+    Object.defineProperty(canvas, 'getContext', { value: () => context })
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) =>
+      tag === 'canvas' ? canvas : createElement(tag))
+
+    // 100% pixelation → factor 20 → bitmap = (viewport + bleed) / 20.
+    applyWallpaperLayer({ wallpaperImage: PNG, wallpaperBlur: 0, wallpaperPixelate: 100 })
+    expect(drawn).toHaveLength(1)
+    expect(canvas.width).toBe(Math.max(1, Math.round((window.innerWidth + 96) / 20)))
+    expect(canvas.height).toBe(Math.max(1, Math.round((window.innerHeight + 96) / 20)))
+    expect(canvas.style.backgroundImage).toBe('')
+
+    // Same state re-applied: no redraw, no DOM churn.
+    applyWallpaperLayer({ wallpaperImage: PNG, wallpaperBlur: 0, wallpaperPixelate: 100 })
+    expect(drawn).toHaveLength(1)
+
+    // Factor change redraws at the new bitmap size.
+    applyWallpaperLayer({ wallpaperImage: PNG, wallpaperBlur: 0, wallpaperPixelate: 0 })
+    expect(drawn).toHaveLength(2)
+    expect(canvas.width).toBe(window.innerWidth + 96)
+
+    // A viewport resize redraws with the applied state.
+    window.dispatchEvent(new Event('resize'))
+    expect(drawn).toHaveLength(3)
   })
 })
 

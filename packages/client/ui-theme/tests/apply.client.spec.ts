@@ -125,6 +125,14 @@ describe('ui-theme apply', () => {
     expect(theme.getTheme().wallpaperBlur).toBe(30)
     face.setCustomThemes([])
     expect(theme.getTheme().customThemes).toEqual([])
+    face.previewTheme({
+      id: 'p', name: 'p', origin: 'custom',
+      light: { accent: '#e60000', background: '#ffffff', foreground: '#0f1115', contrast: 46 },
+      dark: { accent: '#ff8080', background: '#151517', foreground: '#f5f5f5', contrast: 41 },
+    })
+    expect(theme.getTheme().active.id).toBe('p')
+    face.previewTheme(null)
+    expect(theme.getTheme().active.id).not.toBe('p')
     const label = b.slots.entries(SLOT).find(e => e.component === AppearanceSection)!.options.label
     expect(typeof label === 'function' ? label() : label).toBe('外观')
     await vi.waitFor(() => { expect(b.mutate.mock.calls.length).toBeGreaterThanOrEqual(2) })

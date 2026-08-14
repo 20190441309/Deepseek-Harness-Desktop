@@ -8,15 +8,19 @@
   pointer-events: none;
 }
 
+/*
+ * The inner canvas carries a cover-cropped bitmap drawn at cssSize / factor;
+ * CSS stretches it back up and `image-rendering: pixelated` keeps the blocks.
+ * The 48px bleed per side matches WALLPAPER_BLEED so blur has no edge halo.
+ * The background-image is the pre-decode fallback painted until the bitmap
+ * lands (and permanently under jsdom, which has no 2d context).
+ */
 #dsh-wallpaper-inner {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: calc((100% + 96px) / var(--dsh-wallpaper-pixel, 1));
-  height: calc((100% + 96px) / var(--dsh-wallpaper-pixel, 1));
-  transform: translate(-50%, -50%) scale(var(--dsh-wallpaper-pixel, 1));
-  transform-origin: center;
-  background-image: var(--dsh-wallpaper-image);
+  left: -48px;
+  top: -48px;
+  width: calc(100% + 96px);
+  height: calc(100% + 96px);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;

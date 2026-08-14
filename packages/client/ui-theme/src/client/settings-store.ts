@@ -11,6 +11,8 @@ import { DEFAULT_THEME_SETTINGS, type ThemePreference, type ThemeSettings } from
 export interface AppearanceSyncSnapshot {
   /** Persisted color-scheme preference. */
   preference: ThemePreference
+  /** Resolved active theme; only its color scheme is mirrored. */
+  active: { colorScheme: 'light' | 'dark' }
   /** Family painting the light half. */
   activeLightThemeId: string
   /** Family painting the dark half. */
@@ -45,6 +47,8 @@ export interface AppearanceSyncSnapshot {
 export interface AppearanceRowState {
   /** Persisted color-scheme preference. */
   preference: ThemePreference
+  /** Which half is currently painting (`system` resolved). */
+  resolvedMode: 'light' | 'dark'
   /** Family painting the light half. */
   activeLightThemeId: string
   /** Family painting the dark half. */
@@ -84,6 +88,7 @@ type AppearanceRowActions = {
 
 const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   preference: DEFAULT_THEME_SETTINGS.preference,
+  resolvedMode: 'light',
   activeLightThemeId: DEFAULT_FAMILY_ID,
   activeDarkThemeId: DEFAULT_FAMILY_ID,
   families: [],
@@ -111,6 +116,7 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
       sync: (d, snapshot: AppearanceSyncSnapshot, revision: number) => {
         if (revision <= d.revision) return
         d.preference = snapshot.preference
+        d.resolvedMode = snapshot.active.colorScheme
         d.activeLightThemeId = snapshot.activeLightThemeId
         d.activeDarkThemeId = snapshot.activeDarkThemeId
         d.families = snapshot.families
