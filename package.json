@@ -41,7 +41,6 @@
     "afterPack": "./scripts/after-pack.js",
     "win": {
       "icon": "assets/icon.png",
-      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
