@@ -14,7 +14,7 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 `@deepseek-ai/dsh-fs-observation-policy` 是**可选的**：省略时，工具直接使用裸提供方（无条件写入/覆盖/编辑，无已观察状态）。加载这些工具的部署也应加载该插件，从而提供写入/编辑前读取行为。
 
-`read_image` 只在持久 `ctx.attachments` 服务已挂载时注册：没有它，部署无法持久提交图像字节，工具就不会出现。执行时还要求确切路由的模型声明 `image` 输入（通过 `ctx.llm.resolveModelInfo` 从会话最新请求 header 解析，缺失时回退到 agent 选项）；未知或纯文本路由在任何文件系统 I/O 之前就得到拒绝结果，因此文本路由的持久历史不会出现图像块。
+`read_image` 只在持久 `ctx.attachments` 服务已挂载时注册：没有它，部署无法持久提交图像字节，工具就不会出现。执行时还要求确切路由的模型声明 `image` 输入（通过 `ctx.llm.resolveModelInfo` 从会话最新请求 header 解析，缺失时回退到 agent 选项）；未知或纯文本路由在任何文件系统 I/O 之前就得到拒绝结果，因此文本路由的持久历史不会出现图像块；唯一例外是已配置 `visionFallback` 服务时放行，此时请求组装会把图像块替换为已记录的识图描述，路由的持久历史仍可继续承载。
 
 ## 配置
 
@@ -32,7 +32,7 @@ await ctx.plugin(ToolFs)                                  // this package — re
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `read` | `file_path`、`offset?`、`limit?` | 带行号的 UTF-8 内容和分页 footer。`offset` 从 1 开始；`limit` 默认为配置的 `readLimit`（2000），上限也为该值。 |
-| `read_image` | `file_path` | 通过有界字节 seam 读取 PNG/JPEG/WebP/GIF 文件，经 `ctx.attachments.saveImage` 持久保存，并在小型元数据信封旁返回图像块。只有确切路由的模型声明图像输入时才会成功。 |
+| `read_image` | `file_path` | 通过有界字节 seam 读取 PNG/JPEG/WebP/GIF 文件，经 `ctx.attachments.saveImage` 持久保存，并在小型元数据信封旁返回图像块。只有确切路由的模型声明图像输入、或已挂载配置好的 `visionFallback` 服务时才会成功（后者由请求组装用识图模型描述替换图像块）。 |
 | `write` | `file_path`、`content` | 创建文件或完整替换文件。有策略插件时：覆盖现有文件要求先在未变版本上执行 `read`；创建新文件不需要。没有插件时：无条件执行。 |
 | `edit` | `file_path`、非空 `old_string`、`new_string`、`replace_all?` | 字面量替换；除非 `replace_all` 为 true，否则要求唯一匹配。有策略插件时：要求先执行 `read`（任何窗口），且文件此后未变。没有插件时：无条件执行。 |
 
