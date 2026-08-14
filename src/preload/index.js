@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld('shell', {
   installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
   uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
   openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
+  gitStatus: (cwd) => ipcRenderer.invoke('shell:git-status', cwd),
+  gitCommit: (cwd, message) => ipcRenderer.invoke('shell:git-commit', cwd, message),
+  gitPush: (cwd) => ipcRenderer.invoke('shell:git-push', cwd),
+  gitPull: (cwd) => ipcRenderer.invoke('shell:git-pull', cwd),
+  gitCreateChangeRequest: (cwd, input) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input),
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

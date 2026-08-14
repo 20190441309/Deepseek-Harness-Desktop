@@ -7,6 +7,7 @@ const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
+const { gitCommit, gitCreateChangeRequest, gitPull, gitPush, gitStatus } = require('./git');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -127,6 +128,12 @@ function registerIpc({ dsh, startHarness }) {
   });
 
   ipcMain.handle('shell:open-marketplace', () => openMarketplace());
+
+  ipcMain.handle('shell:git-status', (_event, cwd) => gitStatus(cwd));
+  ipcMain.handle('shell:git-commit', (_event, cwd, message) => gitCommit(cwd, message));
+  ipcMain.handle('shell:git-push', (_event, cwd) => gitPush(cwd));
+  ipcMain.handle('shell:git-pull', (_event, cwd) => gitPull(cwd));
+  ipcMain.handle('shell:git-create-change-request', (_event, cwd, input) => gitCreateChangeRequest(cwd, input));
 
   ipcMain.handle('shell:install-update', async (event) => {
     try {
