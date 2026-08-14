@@ -203,6 +203,68 @@ async function gitPull(cwd) {
 
 const MAX_UNTRACKED_BYTES = 256 * 1024;
 
+function unquoteGitPath(spec) {
+  const trimmed = String(spec || '').split('\t')[0].trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).replace(/\\(.)/g, '$1');
+  }
+  return trimmed;
+}
+
+function stripAbPrefix(spec) {
+  if (spec.startsWith('a/') || spec.startsWith('b/')) return spec.slice(2);
+  return spec;
+}
+
+function parseDiffGitArgs(rest) {
+  const tokens = [];
+  let i = 0;
+  while (i < rest.length) {
+    while (rest[i] === ' ') i += 1;
+    if (i >= rest.length) break;
+    if (rest[i] === '"') {
+      let j = i + 1;
+      let out = '';
+      while (j < rest.length) {
+        if (rest[j] === '\\' && j + 1 < rest.length) {
+          out += rest[j + 1];
+          j += 2;
+          continue;
+        }
+        if (rest[j] === '"') {
+          j += 1;
+          break;
+        }
+        out += rest[j];
+        j += 1;
+      }
+      tokens.push(out);
+      i = j;
+      continue;
+    }
+    const space = rest.indexOf(' ', i);
+    if (space < 0) {
+      tokens.push(rest.slice(i));
+      break;
+    }
+    tokens.push(rest.slice(i, space));
+    i = space;
+  }
+  return tokens;
+}
+
+function pathFromDiffGit(line) {
+  const tokens = parseDiffGitArgs(line.slice('diff --git '.length));
+  const dst = tokens[1] || tokens[0] || '';
+  return stripAbPrefix(dst);
+}
+
+function pathFromPlusMinus(spec) {
+  const cleaned = unquoteGitPath(spec);
+  if (cleaned === '' || cleaned === '/dev/null') return null;
+  return stripAbPrefix(cleaned);
+}
+
 function parseUnifiedDiff(text) {
   const files = [];
   let current = null;
@@ -211,7 +273,7 @@ function parseUnifiedDiff(text) {
   for (const line of lines) {
     if (line.startsWith('diff --git ')) {
       if (current) files.push(current);
-      current = { path: '', status: 'modified', hunks: [] };
+      current = { path: pathFromDiffGit(line), status: 'modified', hunks: [] };
       hunk = null;
       continue;
     }
@@ -230,13 +292,13 @@ function parseUnifiedDiff(text) {
       continue;
     }
     if (line.startsWith('+++ ')) {
-      const spec = line.slice(4);
-      if (spec !== '/dev/null') current.path = spec.replace(/^b\//, '');
+      const next = pathFromPlusMinus(line.slice(4));
+      if (next !== null) current.path = next;
       continue;
     }
     if (line.startsWith('--- ')) {
-      const spec = line.slice(4);
-      if (spec !== '/dev/null' && !current.path) current.path = spec.replace(/^a\//, '');
+      const next = pathFromPlusMinus(line.slice(4));
+      if (next !== null && !current.path) current.path = next;
       continue;
     }
     if (line.startsWith('@@')) {
@@ -330,4 +392,5 @@ module.exports = {
   gitPush,
   gitPull,
   gitCreateChangeRequest,
+  parseUnifiedDiff,
 };

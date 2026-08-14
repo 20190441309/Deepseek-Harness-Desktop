@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { gitCommit, gitDiff, gitStatus } = require('./git.js');
+const { gitCommit, gitDiff, gitStatus, parseUnifiedDiff } = require('./git.js');
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-'));
@@ -68,6 +68,44 @@ test('gitDiff lists a working-tree hunk after a committed file is edited', async
     assert.ok(file);
     assert.equal(file.status, 'modified');
     assert.ok(file.hunks.some((hunk) => hunk.lines.some((line) => line.kind === 'add' && line.text === 'world')));
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('parseUnifiedDiff takes path from diff --git when +++ is absent', () => {
+  const files = parseUnifiedDiff([
+    'diff --git a/img.png b/img.png',
+    'index 111..222 100644',
+    'Binary files a/img.png and b/img.png differ',
+    'diff --git a/icon.png b/icon.png',
+    'index 333..444 100644',
+    'Binary files a/icon.png and b/icon.png differ',
+    'diff --git a/tool.sh b/tool.sh',
+    'old mode 100644',
+    'new mode 100755',
+  ].join('\n'));
+  assert.deepEqual(files.map((file) => file.path), ['img.png', 'icon.png', 'tool.sh']);
+  assert.ok(files.every((file) => file.path !== ''));
+});
+
+test('gitDiff keeps a real path for a committed then modified binary', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init']);
+    git(cwd, ['config', 'user.email', 'git-test@example.com']);
+    git(cwd, ['config', 'user.name', 'Git Test']);
+    git(cwd, ['checkout', '-b', 'main']);
+    fs.writeFileSync(path.join(cwd, 'img.bin'), Buffer.from([0, 1, 2, 3]));
+    fs.writeFileSync(path.join(cwd, 'icon.bin'), Buffer.from([9, 8, 7]));
+    git(cwd, ['add', 'img.bin', 'icon.bin']);
+    git(cwd, ['commit', '-m', 'Add binaries']);
+    fs.writeFileSync(path.join(cwd, 'img.bin'), Buffer.from([0, 1, 2, 4]));
+    fs.writeFileSync(path.join(cwd, 'icon.bin'), Buffer.from([9, 8, 6]));
+    const diff = await gitDiff(cwd);
+    assert.ok(diff);
+    const paths = diff.files.map((file) => file.path).sort();
+    assert.deepEqual(paths, ['icon.bin', 'img.bin']);
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
