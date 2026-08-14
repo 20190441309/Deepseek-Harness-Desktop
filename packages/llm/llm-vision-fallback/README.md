@@ -2,7 +2,7 @@
 
 A user-designated vision-capable model describes image attachments so a text-only main model (e.g. DeepSeek) can act on them.
 
-The Models settings page stores the designated route in the `vision-fallback` settings namespace (`provider` + `model`; both absent disables the feature). The apiproxy admission gate admits image prompts for text-only main models whenever `ctx.visionFallback.configured()` is true, and the agent loop calls `ctx.visionFallback.rewriteMessages()` before dispatching each request: image blocks bound for a model whose `inputModalities` excludes `'image'` are replaced with description text generated once by the designated vision model.
+The Models settings page stores the designated route in the `vision-fallback` settings namespace (`provider` + `model`; both absent disables the feature). The apiproxy admission gate admits image prompts for text-only main models whenever `ctx.visionFallback.configured()` is true, and the agent loop calls `ctx.visionFallback.rewriteMessages()` before dispatching each request: image blocks bound for a model whose `inputModalities` excludes `'image'` are replaced with description text generated once by the designated vision model. The `read_image` tool's route gate ([`@deepseek-ai/dsh-tool-fs`](../../fs/tool-fs)) likewise admits text-only routes while the service is configured, so tool-read images flow through the same substitution.
 
 Each generated description is appended to the session log as a `vision/describe` event before the main request dispatches, so rewritten requests remain reconstructable from the log and later steps reuse logged descriptions instead of re-describing.
 

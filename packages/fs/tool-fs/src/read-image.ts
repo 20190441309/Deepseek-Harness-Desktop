@@ -56,7 +56,10 @@ export function imageMediaTypeForPath(filePath: string): ImageMediaType | undefi
 /**
  * Enforce the strict image-capability gate for the calling route. Resolves the
  * session's latest routed provider/model (request header config, then agent
- * options) and requires the exact resolved route to declare `image` input explicitly.
+ * options) and requires the exact resolved route to declare `image` input
+ * explicitly. A configured `visionFallback` service also satisfies the gate:
+ * request assembly then substitutes the resulting image block with a logged
+ * vision-model description, so the route's continuation stays carriable.
  * @param ctx - the plugin context used to resolve the optional `llm` service.
  * @param exec - the tool-execution context supplying the calling agent.
  * @param requestedPath - the raw, not-yet-resolved path rendered in refusal messages.
@@ -71,6 +74,8 @@ export async function assertImageCapableRoute(ctx: Context, exec: ToolExecution,
   }
   const active = await llm.resolveModelInfo(provider, model, exec.signal)
   if (active.inputModalities === undefined || !active.inputModalities.includes('image')) {
+    const visionFallback = ctx.get('visionFallback') as { configured(): boolean } | undefined
+    if (visionFallback?.configured() === true) return
     throw new Error(`cannot read "${requestedPath}" as an image: model "${model}" does not declare image input; switch to an image-capable model to read images`)
   }
 }
@@ -130,7 +135,7 @@ function imageReadContent(value: ImageReadValue): ContentBlock[] {
 export function applyReadImageTool(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'read_image',
-    description: 'Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input.',
+    description: 'Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input; when a vision fallback model is designated, text-only models receive a generated description of the image instead.',
     parameters: {
       file_path: { type: 'string', required: true, description: 'Path to the image file, resolved by the filesystem backend.' },
     },

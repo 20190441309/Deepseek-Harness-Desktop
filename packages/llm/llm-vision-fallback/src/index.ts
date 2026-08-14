@@ -116,10 +116,10 @@ function finishError(finish: FinishReason): Error | undefined {
   }
 }
 
-/** Model-facing framing of one substituted description. */
+/** Model-facing framing of one substituted description. Images may come from user attachments or tool reads, so the framing never claims a source. */
 function substitutionText(name: string | undefined, description: string): string {
   const label = name === undefined || name === '' ? '图片' : `图片「${name}」`
-  return `【${label}——用户发送了一张图片，你无法直接查看；以下是识图模型生成的描述】\n${description}\n【图片描述结束】`
+  return `【${label}——此处有一张你无法直接查看的图片；以下是识图模型生成的描述】\n${description}\n【图片描述结束】`
 }
 
 /**
@@ -203,24 +203,43 @@ export class VisionFallback extends Service {
         out.push(message)
         continue
       }
-      const blocks: ContentBlock[] = []
-      for (const block of message.content) {
-        if (block.type !== 'image') {
-          blocks.push(block)
-          continue
-        }
-        signal.throwIfAborted()
-        const attachmentId = String(block.attachment.attachmentId)
-        let description = described.get(attachmentId)
-        if (description === undefined) {
-          description = await this.describe(session, target, block, signal)
-          described.set(attachmentId, description)
-        }
-        blocks.push({ type: 'text', text: substitutionText(this.attachmentName(block), description) })
-      }
-      out.push({ ...message, content: blocks })
+      out.push({ ...message, content: await this.substituteBlocks(session, target, message.content, described, signal) })
     }
     return out
+  }
+
+  /**
+   * Replace every image block in one content array with its description text,
+   * recursing into tool-result blocks so tool-read images (e.g. `read_image`)
+   * are substituted the same way as user attachments.
+   */
+  private async substituteBlocks(
+    session: Session,
+    target: { provider: string; model: string },
+    content: readonly ContentBlock[],
+    described: Map<string, string>,
+    signal: AbortSignal,
+  ): Promise<ContentBlock[]> {
+    const blocks: ContentBlock[] = []
+    for (const block of content) {
+      if (block.type === 'tool-result' && contentHasImage(block.content)) {
+        blocks.push({ ...block, content: await this.substituteBlocks(session, target, block.content, described, signal) })
+        continue
+      }
+      if (block.type !== 'image') {
+        blocks.push(block)
+        continue
+      }
+      signal.throwIfAborted()
+      const attachmentId = String(block.attachment.attachmentId)
+      let description = described.get(attachmentId)
+      if (description === undefined) {
+        description = await this.describe(session, target, block, signal)
+        described.set(attachmentId, description)
+      }
+      blocks.push({ type: 'text', text: substitutionText(this.attachmentName(block), description) })
+    }
+    return blocks
   }
 
   /** Display name of the attachment, when its ref carries one. */

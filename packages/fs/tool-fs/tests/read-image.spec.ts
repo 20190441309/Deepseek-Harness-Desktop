@@ -276,6 +276,24 @@ describe('strict image-modality gate', () => {
     expect(text(result)).toContain('does not declare image input')
   })
 
+  it('admits a text-only route when a configured vision fallback is mounted', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const ctx = await setup()
+    ctx.reflect.provide('visionFallback', { configured: () => true })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(false)
+    expect(result.content[1]).toMatchObject({ type: 'image' })
+  })
+
+  it('still refuses a text-only route when the mounted vision fallback is unconfigured', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const ctx = await setup()
+    ctx.reflect.provide('visionFallback', { configured: () => false })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('does not declare image input')
+  })
+
   it('refuses when the route cannot be resolved (no agent, or no header and no options)', async () => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup()

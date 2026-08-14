@@ -14,7 +14,7 @@ await ctx.plugin(ToolFs)                                  // this package — re
 
 `@deepseek-ai/dsh-fs-observation-policy` is **optional**: omit it and the tools run against the bare provider (unconditional write/overwrite/edit, no observed-state). A deployment that loads these tools is expected to also load it, so the behavior is read-before-write/edit.
 
-`read_image` registers only while a durable `ctx.attachments` service is mounted — without one the deployment cannot commit image bytes, so the tool never appears. Execution additionally requires the exact routed model to declare `image` input (resolved through `ctx.llm.resolveModelInfo` from the session's latest request header, falling back to agent options); an unknown or text-only route gets a refusal result before any filesystem I/O, so a text route's durable history stays free of image blocks.
+`read_image` registers only while a durable `ctx.attachments` service is mounted — without one the deployment cannot commit image bytes, so the tool never appears. Execution additionally requires the exact routed model to declare `image` input (resolved through `ctx.llm.resolveModelInfo` from the session's latest request header, falling back to agent options); an unknown or text-only route gets a refusal result before any filesystem I/O, so a text route's durable history stays free of image blocks. The one exception: a configured `visionFallback` service admits the read, because request assembly substitutes the image block with its logged vision-model description, keeping the route's durable history carriable.
 
 ## Config
 
@@ -32,7 +32,7 @@ All keys are optional; the defaults are the shipped read caps.
 | Tool | Arguments | Behavior |
 |---|---|---|
 | `read` | `file_path`, `offset?`, `limit?` | Line-numbered UTF-8 content with a pagination footer. `offset` is 1-based; `limit` defaults to and caps at the configured `readLimit` (2000). |
-| `read_image` | `file_path` | Reads a PNG/JPEG/WebP/GIF file through the bounded byte seam, persists it through `ctx.attachments.saveImage`, and returns an image block beside a small metadata envelope. It succeeds only when the exact routed model declares image input. |
+| `read_image` | `file_path` | Reads a PNG/JPEG/WebP/GIF file through the bounded byte seam, persists it through `ctx.attachments.saveImage`, and returns an image block beside a small metadata envelope. It succeeds only when the exact routed model declares image input, or when a configured `visionFallback` service is mounted (request assembly then substitutes the image block with a vision-model description). |
 | `write` | `file_path`, `content` | Create or fully replace a file. With the policy plugin: overwriting an existing file requires a prior `read` at the unchanged version; creating a new file does not. Without it: unconditional. |
 | `edit` | `file_path`, non-empty `old_string`, `new_string`, `replace_all?` | Literal replacement; unique match required unless `replace_all` is true. With the policy plugin: requires a prior `read` (any window) and the file unchanged since. Without it: unconditional. |
 
