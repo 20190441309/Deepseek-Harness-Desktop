@@ -4,7 +4,7 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, and the like. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes and wallpapers, and the like. I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
@@ -32,6 +32,7 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
 - **Third-party thinking intensity**: custom / third-party models can enable Low / Medium / High / Very High / Extreme; the composer then lets you pick a reasoning level
 - **Vision fallback model**: when the main model (DeepSeek included) cannot see images, a dedicated vision model describes the picture first, then the main model works from that description
+- **Themes and wallpaper**: Settings → Appearance — pick a built-in family or author your own; drop a wallpaper behind the UI and tune frost, pixelation, and glass opacity
 
 ### Third-party thinking intensity
 
@@ -55,6 +56,24 @@ Settings → Model → Vision model. Pick a model that accepts images. When the 
 
 <p align="center">
   <img src="assets/screenshot-vision-chat.png" alt="Vision model describes the image for a text-only main model" width="920" />
+</p>
+
+### Themes and wallpaper
+
+Settings → Appearance. Light / Dark / System stay separate from the theme family; each card has a light half and a dark half — click the half you want. Create, duplicate, edit, import, and export custom families. The accent paints the send button, user bubbles, and the selected sidebar item.
+
+A wallpaper sits behind the whole UI. Once set, frost, pixelation, and glass opacity sliders appear: lower opacity makes the sidebar, dialogs, and composer more see-through.
+
+<p align="center">
+  <img src="assets/screenshot-theme-library.png" alt="Appearance theme library: built-in and custom families" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-theme-wallpaper-settings.png" alt="Wallpaper, frost, pixelation, and glass opacity" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-theme-wallpaper-chat.png" alt="Conversation with a wallpaper behind the glass UI" width="920" />
 </p>
 
 ## Install
@@ -91,7 +110,7 @@ The Harness source ships with the repo (`vendor/deepseek-harness`); the first `s
 
 Upstream lives in `vendor/deepseek-harness`; we boot the built `dsh web` (default `127.0.0.1:3080`). Launch order: integrated source build → local `dsh` → `npx`. Once the service is reachable, the window loads the Web UI and registers the workspace.
 
-Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model (low / medium / high / xhigh / max); that lands in `reasoningEfforts` and shows up in the composer. When the main model cannot see images, a dedicated vision model can describe the picture first. Official DeepSeek defaults are left alone.
+Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model (low / medium / high / xhigh / max); that lands in `reasoningEfforts` and shows up in the composer. When the main model cannot see images, a dedicated vision model can describe the picture first. Theme families, wallpaper, and glass opacity live in the `ui-theme` section of `$DSH_HOME/settings.yaml`. Official DeepSeek defaults are left alone.
 
 To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, then restart the desktop app. Harness is still a developer preview — expect it to move.
 

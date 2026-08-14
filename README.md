@@ -4,7 +4,7 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。第三方思考强度、识图模型兜底这类地方补了一点。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。第三方思考强度、识图模型兜底、主题和背景图这类地方补了一点。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
@@ -12,8 +12,9 @@
 目前已开发功能：
 1.支持第三方模型设置思考强度。
 2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
+3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
 
-后续功能开发：颜色和主题功能/插件市场等。也欢迎与需求的朋来提需求，或者提PR。
+后续功能开发：插件市场等。也欢迎有需求的朋友来提需求，或者提 PR。
 
 
 
@@ -31,6 +32,7 @@
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 - **第三方思考强度**：自定义 / 第三方模型可勾 Low / Medium / High / Very High / Extreme，输入栏里就能切推理等级
 - **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
+- **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调
 
 ### 第三方思考强度
 
@@ -54,6 +56,24 @@
 
 <p align="center">
   <img src="assets/screenshot-vision-chat.png" alt="主模型不能识图时由识图模型先看图" width="920" />
+</p>
+
+### 主题与背景
+
+设置 → 外观。浅色 / 深色 / 跟随系统分开选；主题库里每张卡都有浅、深两半，点哪半用哪半。可以创建、复制、编辑、导入导出自己的主题，强调色会铺到发送按钮、用户气泡和侧栏选中项。
+
+背景图铺在整个界面后面，设好之后可以调毛玻璃、像素化和玻璃透明度：数值越低，侧栏、对话框和输入框越通透。
+
+<p align="center">
+  <img src="assets/screenshot-theme-library.png" alt="外观页的主题库：内置主题和自定义主题" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-theme-wallpaper-settings.png" alt="背景图、毛玻璃、像素化和玻璃透明度" width="920" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-theme-wallpaper-chat.png" alt="铺了背景图之后的对话界面" width="920" />
 </p>
 
 ## 安装
@@ -90,7 +110,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 
 官方源码固定在 `vendor/deepseek-harness`，启动时跑构建出来的 `dsh web`（默认 `127.0.0.1:3080`）。启动顺序：集成源码没构建好 → 退回本机 `dsh` → 再退回 `npx`。服务就绪后窗口加载 Web UI，并把工作区注册进去。
 
-第三方 / 自定义供应商走 pi-ai 适配。模型上可以勾思考强度（low / medium / high / xhigh / max），写进 `reasoningEfforts`，输入栏里就能选。主模型不支持图片时，可指定识图模型先看图再交给主模型。官方默认体验基本不动，只在这类地方补了一点。
+第三方 / 自定义供应商走 pi-ai 适配。模型上可以勾思考强度（low / medium / high / xhigh / max），写进 `reasoningEfforts`，输入栏里就能选。主模型不支持图片时，可指定识图模型先看图再交给主模型。外观页的主题家族、背景图和玻璃透明度写在 `$DSH_HOME/settings.yaml` 的 `ui-theme` 分节。官方默认体验基本不动，只在这类地方补了一点。
 
 改界面就改 `vendor/deepseek-harness`，那个目录里 `pnpm run build`，再重启桌面端。Harness 还是开发者预览，随时可能变。
 
