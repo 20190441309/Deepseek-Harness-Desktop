@@ -12,6 +12,7 @@ export const zh = {
   'action.close': '关闭终端',
   'resize': '调整终端高度',
   'session.label': '终端',
+  'error.create': '无法启动终端',
 } satisfies Record<string, string>
 
 /** The terminal namespace key union. */
@@ -29,6 +30,7 @@ export const en = {
   'action.close': 'Close terminal',
   'resize': 'Resize terminal drawer',
   'session.label': 'Terminal',
+  'error.create': 'Could not start a terminal',
 } satisfies Record<TerminalKey, string>
 
 /** Dictionary namespace owned by this plugin. */

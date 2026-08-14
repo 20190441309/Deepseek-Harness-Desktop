@@ -4,8 +4,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  acquireCreate,
   createTerminalSessionStore,
   MAX_TERMINALS_PER_GROUP,
+  releaseCreate,
 } from '../src/client/stores.ts'
 
 function sharedShells() {
@@ -20,6 +22,7 @@ describe('createTerminalSessionStore', () => {
       sessions: [],
       activeId: '',
       groups: [],
+      createFailed: false,
     })
   })
 
@@ -77,6 +80,26 @@ describe('createTerminalSessionStore', () => {
     expect(store.getSnapshot().sessions.map(session => session.id)).toEqual(['t1'])
     expect(store.getSnapshot().activeId).toBe('t1')
     actions.close('t1')
-    expect(store.getSnapshot()).toEqual({ sessions: [], activeId: '', groups: [] })
+    expect(store.getSnapshot()).toEqual({ sessions: [], activeId: '', groups: [], createFailed: false })
+  })
+
+  it('shares one in-flight create lock across two shells on the same actions object', () => {
+    const { drawer, surface } = sharedShells()
+    expect(acquireCreate(drawer.actions)).toBe(true)
+    expect(acquireCreate(surface.actions)).toBe(false)
+    releaseCreate(drawer.actions)
+    expect(acquireCreate(surface.actions)).toBe(true)
+    releaseCreate(surface.actions)
+  })
+
+  it('dispatches PTY data and exit once to the shared instance', () => {
+    const handle = createTerminalSessionStore()
+    const instance = handle.create('session-1')
+    instance.actions.newTerminal('pty-1', '/work')
+    handle.dispatchData('pty-1', 'hello')
+    handle.dispatchData('pty-1', '!')
+    expect(instance.getSnapshot().sessions[0]?.buffer).toBe('hello!')
+    handle.dispatchExit('pty-1')
+    expect(instance.getSnapshot().sessions).toHaveLength(0)
   })
 })

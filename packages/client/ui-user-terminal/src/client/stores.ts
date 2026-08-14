@@ -3,7 +3,7 @@
  * Terminal surface. One handle is seated on both registrations so
  * activate(id) reads the same record from either shell.
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle, type EngineStoreInstance } from '@deepseek-ai/dsh-client-runtime/client'
 
 /** T3code per-group split ceiling. */
 export const MAX_TERMINALS_PER_GROUP = 4
@@ -32,6 +32,7 @@ export type TerminalSessionState = {
   sessions: TerminalSessionRecord[]
   activeId: string
   groups: TerminalGroup[]
+  createFailed: boolean
 }
 
 type TerminalSessionActions = {
@@ -41,10 +42,48 @@ type TerminalSessionActions = {
   close: (draft: TerminalSessionState, id: string) => void
   setSize: (draft: TerminalSessionState, id: string, cols: number, rows: number) => void
   appendData: (draft: TerminalSessionState, id: string, data: string) => void
+  failCreate: (draft: TerminalSessionState) => void
+}
+
+/** Handle that fans PTY events to every live instance created from it. */
+export type TerminalSessionStoreHandle = EngineStoreHandle<TerminalSessionState, TerminalSessionActions> & {
+  dispatchData: (id: string, data: string) => void
+  dispatchExit: (id: string) => void
+}
+
+const createInFlight = new WeakMap<object, boolean>()
+const instanceByActions = new WeakMap<object, EngineStoreInstance<TerminalSessionState, TerminalSessionActions>>()
+
+/**
+ * Live snapshot for the store instance that owns `actions`.
+ * @param actions - the store instance actions.
+ * @returns the current snapshot, or undefined when the instance is unknown.
+ */
+export function snapshotOf(actions: object): TerminalSessionState | undefined {
+  return instanceByActions.get(actions)?.getSnapshot()
+}
+
+/**
+ * Take the shared create lock. Drawer and surface share one actions object.
+ * @param actions - the store instance actions (identity is the lock key).
+ * @returns whether this caller acquired the lock.
+ */
+export function acquireCreate(actions: object): boolean {
+  if (createInFlight.get(actions)) return false
+  createInFlight.set(actions, true)
+  return true
+}
+
+/**
+ * Release the shared create lock.
+ * @param actions - the store instance actions passed to acquireCreate.
+ */
+export function releaseCreate(actions: object): void {
+  createInFlight.delete(actions)
 }
 
 function emptyState(): TerminalSessionState {
-  return { sessions: [], activeId: '', groups: [] }
+  return { sessions: [], activeId: '', groups: [], createFailed: false }
 }
 
 function recordOf(id: string, cwd: string): TerminalSessionRecord {
@@ -74,8 +113,9 @@ function hasSession(state: TerminalSessionState, id: string): boolean {
  * handle on both drawer and surface registrations; tests call create().
  * @returns the store handle.
  */
-export function createTerminalSessionStore(): EngineStoreHandle<TerminalSessionState, TerminalSessionActions> {
-  return defineStore({
+export function createTerminalSessionStore(): TerminalSessionStoreHandle {
+  const live = new Set<EngineStoreInstance<TerminalSessionState, TerminalSessionActions>>()
+  const inner = defineStore({
     init: emptyState,
     actions: {
       activate: (draft, id: string) => {
@@ -83,6 +123,7 @@ export function createTerminalSessionStore(): EngineStoreHandle<TerminalSessionS
         draft.activeId = id
       },
       newTerminal: (draft, id: string, cwd: string) => {
+        draft.createFailed = false
         if (id.trim() === '' || hasSession(draft, id)) {
           if (hasSession(draft, id)) draft.activeId = id
           return
@@ -92,6 +133,7 @@ export function createTerminalSessionStore(): EngineStoreHandle<TerminalSessionS
         draft.activeId = id
       },
       split: (draft, id: string, cwd: string) => {
+        draft.createFailed = false
         if (id.trim() === '' || hasSession(draft, id)) return
         if (draft.sessions.length === 0) {
           draft.sessions.push(recordOf(id, cwd))
@@ -136,6 +178,24 @@ export function createTerminalSessionStore(): EngineStoreHandle<TerminalSessionS
         if (session === undefined) return
         session.buffer += data
       },
+      failCreate: (draft) => {
+        draft.createFailed = true
+      },
     },
   })
+  return {
+    spec: inner.spec,
+    create(scopeKey?: string) {
+      const inst = inner.create(scopeKey)
+      live.add(inst)
+      instanceByActions.set(inst.actions, inst)
+      return inst
+    },
+    dispatchData(id: string, data: string) {
+      for (const inst of live) inst.actions.appendData(id, data)
+    },
+    dispatchExit(id: string) {
+      for (const inst of live) inst.actions.close(id)
+    },
+  }
 }

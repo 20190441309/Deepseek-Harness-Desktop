@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { TerminalDrawer } from './TerminalDrawer.tsx'
 import { TerminalSurface } from './TerminalSurface.tsx'
 import { en, NS, zh, type TerminalKey } from './locales.ts'
+import { bindPtyListeners } from './pty-bridge.ts'
 import { readPtyShell, type TerminalShellInjected } from './shell.ts'
 import { createTerminalSessionStore } from './stores.ts'
 
@@ -45,6 +46,7 @@ function layoutFace(ctx: ClientContext): Pick<TerminalShellInjected, 'toggleTerm
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-user-terminal: dictionaries')
   const store = createTerminalSessionStore()
+  ctx.effect(() => bindPtyListeners(store, readPtyShell()), 'ui-user-terminal: pty bridge')
   const injected = (): TerminalShellInjected => ({
     ...readPtyShell(),
     ...layoutFace(ctx),

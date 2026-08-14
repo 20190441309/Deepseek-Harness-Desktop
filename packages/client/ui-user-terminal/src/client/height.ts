@@ -1,4 +1,7 @@
-import { TERMINAL_DRAWER_MIN } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+/** Floor for setTerminalDrawer; matches ui-layout TERMINAL_DRAWER_MIN. */
+export const TERMINAL_DRAWER_MIN = 180
+/** Open height written by toggleTerminalDrawer; matches ui-layout TERMINAL_DRAWER_DEFAULT. */
+export const TERMINAL_DRAWER_DEFAULT = 280
 
 /** Drawer height ceiling as a fraction of the viewport. */
 export const MAX_DRAWER_HEIGHT_RATIO = 0.75
