@@ -2,13 +2,30 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useSyncExternalStore } from 'react'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import { SessionLogDownloadController } from '../src/client/controller.ts'
 import { SessionLogDownloadHeaderAction } from '../src/client/HeaderAction.tsx'
 import type { SessionLogDownloadDialogProps } from '../src/client/Dialog.tsx'
 import { en } from '../src/client/locales.ts'
 
 const SID = 'session-export-header' as SessionId
+const OTHER = 'session-export-other' as SessionId
+
+function sessionList(current: SessionId | undefined): SessionListState {
+  const ids = current === undefined ? [] : [current]
+  const byId = current === undefined
+    ? {}
+    : { [current]: { id: current, displayTitle: current, running: false, blank: false, updatedAt: 1 } }
+  return {
+    ids,
+    byId,
+    current,
+    phase: 'ready',
+    subagentsByParent: {},
+    jobsBySession: {},
+    currentAddress: undefined,
+  }
+}
 
 function bindSessionExport(controller: SessionLogDownloadController) {
   return function useSessionLogDownload<T>(selector: (state: ReturnType<typeof controller.store.getSnapshot>) => T): T {
@@ -19,27 +36,32 @@ function bindSessionExport(controller: SessionLogDownloadController) {
   }
 }
 
-function bench() {
+function useSessionsStub(list: SessionListState) {
+  return <S,>(selector: (state: SessionListState) => S): S => selector(list)
+}
+
+function bench(current: SessionId | undefined) {
   const controller = new SessionLogDownloadController(async () => new Response('zip'), vi.fn())
   const request = vi.fn((sessionId: SessionId) => controller.download(sessionId))
   const dismiss = vi.fn((sessionId: SessionId) => { controller.dismiss(sessionId) })
   const useSessionLogDownload = bindSessionExport(controller)
+  const list = sessionList(current)
   const props = {
-    sessionId: SID,
+    useSessions: useSessionsStub(list),
     useSessionLogDownload,
     request,
     dismiss,
     t: (key: keyof typeof en): string => en[key],
   } as unknown as SessionLogDownloadDialogProps
   const view = render(<SessionLogDownloadHeaderAction {...props} />)
-  return { controller, request, view }
+  return { controller, request, view, props, list }
 }
 
 afterEach(cleanup)
 
-describe('Session export Header action', () => {
-  it('renders the 111×32 text capsule and downloads through the shared controller', async () => {
-    const b = bench()
+describe('Session export titlebar action', () => {
+  it('renders the 111×32 text capsule and downloads the current session through the shared controller', async () => {
+    const b = bench(SID)
     const button = b.view.getByRole('button', { name: 'Session log' })
     expect(button.querySelector('svg')).not.toBeNull()
     fireEvent.click(button)
@@ -47,14 +69,30 @@ describe('Session export Header action', () => {
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
   })
 
+  it('binds the current session from useSessions on click, not a stale session id prop', async () => {
+    const b = bench(SID)
+    b.view.rerender(<SessionLogDownloadHeaderAction {...({
+      ...b.props,
+      useSessions: useSessionsStub(sessionList(OTHER)),
+    } as unknown as SessionLogDownloadDialogProps)} />)
+    fireEvent.click(b.view.getByRole('button', { name: 'Session log' }))
+    await waitFor(() => { expect(b.request).toHaveBeenCalledWith(OTHER) })
+    expect(b.request).not.toHaveBeenCalledWith(SID)
+  })
+
+  it('renders nothing when no session is current', () => {
+    const b = bench(undefined)
+    expect(b.view.queryByRole('button', { name: 'Session log' })).toBeNull()
+  })
+
   it('disables the capsule while either entry path downloads this Session', async () => {
-    const b = bench()
+    const b = bench(SID)
     let release!: (response: Response) => void
     const pending = new Promise<Response>((resolve) => { release = resolve })
     const controller = new SessionLogDownloadController(() => pending, vi.fn())
     const useSessionLogDownload = bindSessionExport(controller)
     b.view.rerender(<SessionLogDownloadHeaderAction {...({
-      sessionId: SID,
+      useSessions: useSessionsStub(sessionList(SID)),
       useSessionLogDownload,
       request: (sessionId: SessionId) => controller.download(sessionId),
       dismiss: (sessionId: SessionId) => { controller.dismiss(sessionId) },
