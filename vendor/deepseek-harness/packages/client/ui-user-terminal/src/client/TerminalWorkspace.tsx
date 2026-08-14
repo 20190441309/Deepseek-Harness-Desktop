@@ -7,21 +7,20 @@ import {
   IconTrashOutline16,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { TERMINAL_DRAWER_DEFAULT } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { cwdFromSessions } from './cwd.ts'
-import { clampDrawerHeight, maxDrawerHeight } from './height.ts'
+import { clampDrawerHeight, maxDrawerHeight, TERMINAL_DRAWER_DEFAULT } from './height.ts'
 import { NS } from './locales.ts'
 import type { TerminalShellInjected } from './shell.ts'
-import { MAX_TERMINALS_PER_GROUP, type createTerminalSessionStore } from './stores.ts'
+import { acquireCreate, MAX_TERMINALS_PER_GROUP, releaseCreate, snapshotOf, type createTerminalSessionStore } from './stores.ts'
 import css from './TerminalWorkspace.module.css'
 
 export type TerminalWorkspaceProps =
   & Pick<PropsRuntime<'shell.terminalDrawer'>, 'useSessions'>
   & PropsStore<ReturnType<typeof createTerminalSessionStore>>
   & PropsLocale<typeof NS>
-  & TerminalShellInjected
+  & Omit<TerminalShellInjected, 'onPtyData' | 'onPtyExit'>
   & { mode: 'drawer' | 'surface'; sessionId: SessionId | undefined }
 
 function readKeyData(event: KeyboardEvent): string | undefined {
@@ -47,8 +46,6 @@ export function TerminalWorkspace({
   ptyWrite,
   ptyResize,
   ptyKill,
-  onPtyData,
-  onPtyExit,
   setTerminalDrawer,
   t,
 }: TerminalWorkspaceProps): ReactNode {
@@ -56,8 +53,8 @@ export function TerminalWorkspace({
   const sessions = useStore(s => s.sessions)
   const activeId = useStore(s => s.activeId)
   const groups = useStore(s => s.groups)
+  const createFailed = useStore(s => s.createFailed)
   const rootRef = useRef<HTMLElement | null>(null)
-  const creating = useRef(false)
   const drag = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null)
 
   const activeGroup = groups.find(group => group.terminalIds.includes(activeId)) ?? groups[0]
@@ -66,15 +63,19 @@ export function TerminalWorkspace({
   const available = Boolean(cwd)
 
   const create = useCallback(async (kind: 'new' | 'split') => {
-    if (!cwd || creating.current) return
-    if (kind === 'split' && atLimit) return
-    creating.current = true
+    if (!cwd || !acquireCreate(actions)) return
+    if (kind === 'split' && atLimit) {
+      releaseCreate(actions)
+      return
+    }
     try {
       const created = await ptyCreate({ cwd })
       if (kind === 'split') actions.split(created.id, cwd)
       else actions.newTerminal(created.id, cwd)
+    } catch {
+      actions.failCreate()
     } finally {
-      creating.current = false
+      releaseCreate(actions)
     }
   }, [actions, atLimit, cwd, ptyCreate])
 
@@ -86,26 +87,16 @@ export function TerminalWorkspace({
   }, [actions, activeId, ptyKill])
 
   useEffect(() => {
-    const offData = onPtyData(payload => {
-      actions.appendData(payload.id, payload.data)
-    })
-    const offExit = onPtyExit(() => {})
-    return () => {
-      offData()
-      offExit()
-    }
-  }, [actions, onPtyData, onPtyExit])
-
-  useEffect(() => {
     const el = rootRef.current
     if (el === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
-      if (el.clientHeight <= 0 || !cwd || sessions.length > 0) return
+      const snap = snapshotOf(actions)
+      if (el.clientHeight <= 0 || !cwd || !snap || snap.sessions.length > 0 || snap.createFailed) return
       void create('new')
     })
     observer.observe(el)
     return () => { observer.disconnect() }
-  }, [create, cwd, sessions.length])
+  }, [create, createFailed, cwd, sessions.length])
 
   useEffect(() => {
     const el = rootRef.current
@@ -226,7 +217,7 @@ export function TerminalWorkspace({
       <div className={css.body}>
         {sessions.length === 0 ? (
           <div className={css.empty}>
-            <p>{available ? t('empty.title') : t('empty.unavailable')}</p>
+            <p>{!available ? t('empty.unavailable') : createFailed ? t('error.create') : t('empty.title')}</p>
           </div>
         ) : (
           <div className={css.panes}>

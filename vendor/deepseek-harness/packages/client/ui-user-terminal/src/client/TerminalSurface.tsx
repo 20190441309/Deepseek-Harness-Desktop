@@ -29,8 +29,6 @@ export function TerminalSurface(props: TerminalSurfaceProps): ReactNode {
       ptyWrite={props.ptyWrite}
       ptyResize={props.ptyResize}
       ptyKill={props.ptyKill}
-      onPtyData={props.onPtyData}
-      onPtyExit={props.onPtyExit}
       toggleTerminalDrawer={props.toggleTerminalDrawer}
       setTerminalDrawer={props.setTerminalDrawer}
       t={props.t}
