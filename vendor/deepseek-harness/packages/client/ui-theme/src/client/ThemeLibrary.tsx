@@ -49,11 +49,10 @@ export function ThemeLibrary({
     setDraft(duplicateThemeFamily(source, reserved))
   }
 
-  const saveDraft = (): void => {
-    if (draft === null) return
-    setCustomThemes(replaceCustomTheme(customThemes, draft))
-    setThemeHalf('light', draft.id)
-    setThemeHalf('dark', draft.id)
+  const saveDraft = (next: ThemeFamily): void => {
+    setCustomThemes(replaceCustomTheme(customThemes, next))
+    setThemeHalf('light', next.id)
+    setThemeHalf('dark', next.id)
     setDraft(null)
   }
 
@@ -163,7 +162,7 @@ export function ThemeLibrary({
           family={draft}
           t={t}
           onChange={setDraft}
-          onSave={saveDraft}
+          onSave={() => { saveDraft(draft) }}
           onCancel={() => { setDraft(null) }}
         />
       ) : null}

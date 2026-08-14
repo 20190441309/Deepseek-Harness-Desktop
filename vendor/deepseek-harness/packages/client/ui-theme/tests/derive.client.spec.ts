@@ -38,6 +38,16 @@ describe('deriveThemeTokens', () => {
     expect(tokens['--dsw-alias-state-warn-primary']).toBe('#d29922')
   })
 
+  it('accepts 8-digit hex by dropping the alpha channel', () => {
+    const tokens = deriveThemeTokens({
+      accent: '#4176e6ff',
+      background: '#ffffffff',
+      foreground: '#0f1115aa',
+      contrast: 46,
+    })
+    expect(tokens['--dsw-alias-bg-layer-1']).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
   it('lets seed overrides win after derivation', () => {
     const tokens = deriveThemeTokens({
       ...LIGHT,

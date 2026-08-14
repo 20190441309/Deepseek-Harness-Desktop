@@ -48,6 +48,7 @@ describe('theme-family helpers', () => {
       id: 'deepseek',
       light: { ...SAMPLE.light, overrides: { '--dsw-alias-bg-base': '', '--keep': '#111111' } },
     }, getReservedThemeIds())
+    expect(normalizeImportedThemeFamily({ ...SAMPLE, id: '' }, new Set()).id).toBe('grove')
     expect(imported.id).toBe('deepseek-2')
     expect(imported.origin).toBe('custom')
     expect(imported.light.overrides).toEqual({ '--keep': '#111111' })
