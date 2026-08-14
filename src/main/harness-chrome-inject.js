@@ -1,23 +1,4 @@
-const DSH_CONTROL_SIZE = 32;
-const DSH_CONTROL_GAP = 0;
-const DSH_EDGE = 8;
-const DSH_CLUSTER = 8;
-
-function dshWindowControlsRight() {
-  return DSH_EDGE + DSH_CONTROL_SIZE * 4 + DSH_CONTROL_GAP * 3 + DSH_CLUSTER;
-}
-
-function dshReservedRight(trailingWidth) {
-  const controls = dshWindowControlsRight();
-  const width = Math.max(0, Math.round(Number(trailingWidth) || 0));
-  return width > 0 ? controls + width + DSH_CLUSTER : controls;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { dshWindowControlsRight, dshReservedRight };
-}
-
-typeof document !== 'undefined' && (() => {
+(() => {
   const STYLE_ID = 'dsh-shell-integrated-chrome';
   const CONTROLS_ID = 'dsh-shell-controls';
   const DRAG_ID = 'dsh-shell-drag-strip';
@@ -149,7 +130,7 @@ typeof document !== 'undefined' && (() => {
   }
 
   function windowControlsRight() {
-    return dshWindowControlsRight();
+    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
   }
 
   function trailingClusterWidth() {
@@ -161,7 +142,9 @@ typeof document !== 'undefined' && (() => {
   }
 
   function reservedRight() {
-    return dshReservedRight(trailingClusterWidth());
+    const controls = windowControlsRight();
+    const width = trailingClusterWidth();
+    return width > 0 ? controls + width + CLUSTER : controls;
   }
 
   function ensureStyle() {
