@@ -183,8 +183,8 @@ export class FakeApiClient implements IApiClient {
   }
 
   // The archive-set field defaults at the binding below so list stubs keep
-  // the pre-archive `{ items }` shape; a stub carrying the field wins.
-  onWorkspaceList: (payload: unknown) => Promise<RpcResponse<{ items: never[]; archivedSessionIds?: never[] }>> =
+  // the pre-archive `{ items }` shape; a stub carrying SessionId[] wins.
+  onWorkspaceList: (payload: unknown) => Promise<RpcResponse<{ items: never[]; archivedSessionIds?: SessionId[] }>> =
     () => Promise.resolve(ok({ items: [] }))
   onWorkspaceCreate: (payload: unknown) => Promise<RpcResponse<{ workspace: WorkspaceView; created: boolean }>> =
     () => Promise.resolve(ok({ workspace: fakeWorkspace('fk-ws'), created: true }))
