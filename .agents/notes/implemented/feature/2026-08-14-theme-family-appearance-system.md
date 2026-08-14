@@ -10,7 +10,7 @@ The Web UI exposed only Light / Dark / System. Those three cubes lived in Genera
 
 ## Decision
 
-**Keep ThemeRuntime and the alias-layer contract.** The presenter still paints `body` from `ThemeSnapshot.active`. New work adds a `ThemeFamily` document (one card, light and dark seed halves), a derive step that writes `--dsw-alias-*`, and durable half ids. The DeepSeek family ships empty derived tokens so existing CSS sheets remain the look for profiles that only store `preference`.
+**Keep ThemeRuntime and the alias-layer contract.** The presenter still paints `body` from `ThemeSnapshot.active`. New work adds a `ThemeFamily` document (one card, light and dark seed halves), a derive step that writes `--dsw-alias-*`, and durable half ids. The DeepSeek family ships empty derived tokens so existing CSS sheets remain the look for profiles that only store `preference`. Derived families keep the canvas at the seed background and map the accent onto the colorful chrome tokens the sheets otherwise pin to DeepSeek blue (`--dsw-alias-state-business-primary`, `--dsw-alias-button-info-fill`, `--dsw-specific-bubble`, sidebar selection) so a custom color is visible in chat, not only on Appearance sliders.
 
 **Split color scheme from family.** `preference` still chooses which half is live (`light` / `dark` / `system`). `activeLightThemeId` and `activeDarkThemeId` choose which family paints that half. Clicking a light ball writes only the light id; clicking a dark ball writes only the dark id. `setTheme` continues to write color scheme (or select an in-process extension id).
 

@@ -17,9 +17,12 @@ const OVERRIDE_FIELDS = [
   '--dsw-alias-label-primary',
   '--dsw-alias-label-secondary',
   '--dsw-alias-brand-primary',
+  '--dsw-alias-state-business-primary',
+  '--dsw-alias-button-info-fill',
   '--dsw-alias-border-l1',
   '--dsw-alias-border-l2',
   '--dsw-specific-sidebar-fill',
+  '--dsw-specific-bubble',
 ] as const
 
 /**
@@ -54,6 +57,8 @@ export function ThemeEditor({
     <div className={css.editor}>
       <p className={css.hint}>
         {t(resolvedMode === 'dark' ? 'editor.previewHintDark' : 'editor.previewHintLight')}
+        {' '}
+        {t('editor.accentHint')}
       </p>
       <label className={css.field}>
         <span>{t('editor.name')}</span>

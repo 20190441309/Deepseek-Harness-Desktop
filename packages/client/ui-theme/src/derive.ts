@@ -19,27 +19,47 @@ const STATUS_PALETTE = {
 
 /**
  * Derive alias-layer tokens from three seed colors and contrast.
- * Incomplete coverage is intentional: unset names keep the CSS-sheet values.
+ * The canvas stays `seeds.background`. Accent paints every colorful chrome
+ * token the sheets otherwise pin to DeepSeek blue (send, links, user bubble,
+ * sidebar selection) and tints raised surfaces so a custom family is visible
+ * without opening Settings. Incomplete coverage is intentional: unset names
+ * keep the CSS-sheet values.
  * @param seeds - accent / background / foreground plus optional overrides.
  * @returns `--dsw-*` variable map for the active half.
  */
 export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
   const contrastFactor = clamp(seeds.contrast / 100, 0, 1)
   const isDark = getRelativeLuminance(seeds.background) < getRelativeLuminance(seeds.foreground)
+  const wash = isDark ? 0.14 + contrastFactor * 0.10 : 0.10 + contrastFactor * 0.08
+  const washStrong = isDark ? 0.26 + contrastFactor * 0.12 : 0.18 + contrastFactor * 0.10
+  const accentWash = mixColors(seeds.background, seeds.accent, wash)
+  const accentWashStrong = mixColors(seeds.background, seeds.accent, washStrong)
   const card = mixColors(
-    seeds.background,
-    seeds.foreground,
-    isDark ? 0.02 + contrastFactor * 0.04 : 0.006 + contrastFactor * 0.016,
+    mixColors(
+      seeds.background,
+      seeds.foreground,
+      isDark ? 0.02 + contrastFactor * 0.04 : 0.006 + contrastFactor * 0.016,
+    ),
+    seeds.accent,
+    isDark ? 0.08 + contrastFactor * 0.05 : 0.05 + contrastFactor * 0.04,
   )
   const overlay = mixColors(
-    seeds.background,
-    seeds.foreground,
-    isDark ? 0.035 + contrastFactor * 0.05 : 0.012 + contrastFactor * 0.02,
+    mixColors(
+      seeds.background,
+      seeds.foreground,
+      isDark ? 0.035 + contrastFactor * 0.05 : 0.012 + contrastFactor * 0.02,
+    ),
+    seeds.accent,
+    isDark ? 0.10 + contrastFactor * 0.05 : 0.06 + contrastFactor * 0.04,
   )
   const layer2 = mixColors(
-    seeds.background,
-    seeds.foreground,
-    isDark ? 0.05 + contrastFactor * 0.05 : 0.02 + contrastFactor * 0.02,
+    mixColors(
+      seeds.background,
+      seeds.foreground,
+      isDark ? 0.05 + contrastFactor * 0.05 : 0.02 + contrastFactor * 0.02,
+    ),
+    seeds.accent,
+    isDark ? 0.12 + contrastFactor * 0.06 : 0.07 + contrastFactor * 0.04,
   )
   const mutedForeground = mixColors(
     seeds.foreground,
@@ -48,11 +68,9 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
   )
   const border = withAlpha(seeds.foreground, 0.08 + contrastFactor * 0.18)
   const input = withAlpha(seeds.foreground, 0.1 + contrastFactor * 0.2)
-  const sidebar = mixColors(
-    seeds.background,
-    seeds.foreground,
-    isDark ? 0.055 + contrastFactor * 0.055 : 0.045 + contrastFactor * 0.05,
-  )
+  const sidebar = mixColors(seeds.background, seeds.accent, washStrong)
+  const accentHover = mixColors(seeds.accent, isDark ? '#ffffff' : '#000000', 0.18)
+  const onAccent = pickReadableText(seeds.accent, [seeds.foreground, seeds.background, '#ffffff', '#0f1115'])
   const status = isDark ? STATUS_PALETTE.dark : STATUS_PALETTE.light
   const tokens: ThemeTokens = {
     '--dsw-alias-bg-base': seeds.background,
@@ -61,13 +79,28 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
     '--dsw-alias-bg-overlay': overlay,
     '--dsw-alias-label-primary': seeds.foreground,
     '--dsw-alias-label-secondary': mutedForeground,
+    '--dsw-alias-label-primary-foreground': onAccent,
     '--dsw-alias-brand-primary': seeds.accent,
+    '--dsw-alias-brand-primary-invert': onAccent,
+    '--dsw-alias-brand-text': seeds.accent,
+    '--dsw-alias-brand-primary-new-colorprimary-new-color': seeds.accent,
+    '--dsw-alias-button-primary-fill': seeds.accent,
+    '--dsw-alias-button-primary-hover': accentHover,
+    '--dsw-alias-button-info-fill': seeds.accent,
+    '--dsw-alias-button-info-hover': accentHover,
+    '--dsw-alias-state-business-primary': seeds.accent,
+    '--dsw-alias-state-business-tertiary': accentWash,
     '--dsw-alias-border-l1': border,
     '--dsw-alias-border-l2': input,
     '--dsw-alias-state-error-primary': status.destructive,
     '--dsw-alias-state-success-primary': status.success,
     '--dsw-alias-state-warn-primary': status.warning,
+    '--dsw-specific-bubble': accentWash,
+    '--dsw-specific-bubble-highlight': accentWashStrong,
     '--dsw-specific-sidebar-fill': sidebar,
+    '--dsw-specific-sidebar-nav-item-active': accentWash,
+    '--dsw-specific-sidebar-nav-item-active-accent': accentWashStrong,
+    '--dsw-alias-interactive-bg-hover-accent': withAlpha(seeds.accent, isDark ? 0.22 : 0.14),
   }
   if (seeds.overrides) {
     for (const [name, value] of Object.entries(seeds.overrides)) {
