@@ -78,7 +78,7 @@
 
 ## 安装
 
-只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）或免安装的便携版，装完不需要本机 Node 环境。
+只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`），装完不需要本机 Node 环境。
 
 目前只提供 Windows x64 安装包；macOS / Linux 请从源码运行，官方打包暂未提供。
 
@@ -130,7 +130,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 npm run dist
 ```
 
-产物在 `dist/`：NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）+ 便携版。打包时会把 `vendor/deepseek-harness` 解引用复制进 `resources/`，并捆绑一个 `node.exe`——装完不依赖本机 Node 环境。安装包里的 Web UI 若想用官方 Web UI，需要 dsh 构建产物齐全（`apps/cli/lib/bin.js` + `apps/web/dist/index.html`）。
+产物在 `dist/`：NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）。打包时会把 `vendor/deepseek-harness` 解引用复制进 `resources/`，并捆绑一个 `node.exe`——装完不依赖本机 Node 环境。安装包里的 Web UI 若想用官方 Web UI，需要 dsh 构建产物齐全（`apps/cli/lib/bin.js` + `apps/web/dist/index.html`）。
 
 ### CI 打包（推荐）
 

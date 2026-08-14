@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Chisa",
   "license": "MIT",
@@ -51,12 +51,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ]
     },
@@ -67,9 +61,6 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Deepseek-Harness-Desktop",
       "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "Deepseek-Harness-Desktop-Portable.exe"
     }
   }
 }

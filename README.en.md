@@ -78,7 +78,7 @@ A wallpaper sits behind the whole UI. Once set, frost, pixelation, and glass opa
 
 ## Install
 
-Just want to use it? Grab the latest NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) or the portable build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) — no local Node required.
+Just want to use it? Grab the latest NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) — no local Node required.
 
 Only Windows x64 packages are published for now; on macOS / Linux, run from source — official packaging is not provided yet.
 
@@ -130,7 +130,7 @@ Build locally:
 npm run dist
 ```
 
-Output lands in `dist/`: an NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) plus a portable build. Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a `node.exe`, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
+Output lands in `dist/`: an NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`). Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a `node.exe`, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
 
 ### CI builds (recommended)
 

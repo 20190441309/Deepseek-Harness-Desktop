@@ -35,7 +35,7 @@ jobs:
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js
 
-      - name: Build installer (nsis + portable)
+      - name: Build NSIS setup installer
         run: npm run dist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,8 +45,8 @@ jobs:
         with:
           name: DeepSeek-Harness-windows-x64
           path: |
-            dist/*.exe
-            dist/*.blockmap
+            dist/Deepseek-Harness-Desktop-Setup-*.exe
+            dist/Deepseek-Harness-Desktop-Setup-*.exe.blockmap
           if-no-files-found: error
 
       - name: Publish GitHub Release (tag only)
@@ -55,7 +55,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.blockmap \
+          gh release create "$GITHUB_REF_NAME" \
+            dist/Deepseek-Harness-Desktop-Setup-*.exe \
+            dist/Deepseek-Harness-Desktop-Setup-*.exe.blockmap \
             --title "Deepseek-Harness-Desktop $GITHUB_REF_NAME" \
             --generate-notes \
             --latest
