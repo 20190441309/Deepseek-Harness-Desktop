@@ -61,6 +61,9 @@ function mountFrame() {
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'surfaces') return <div data-testid="surfaces-content" />
+    if (key === 'shell.terminalDrawer') return <div data-testid="terminal-drawer-content" />
+    if (key === 'shell.titlebar.trailing') return <div data-testid="titlebar-trailing-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -96,9 +99,21 @@ function mountFrame() {
 }
 
 function tracks(frame: HTMLElement): number[] {
-  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateColumns)
+  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(frame.style.gridTemplateColumns)
   if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
   return [Number(m[1]), Number(m[2])]
+}
+
+function surfacesTrack(frame: HTMLElement): number {
+  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(frame.style.gridTemplateColumns)
+  if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
+  return Number(m[3])
+}
+
+function drawerTrack(frame: HTMLElement): number {
+  const m = /^minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateRows)
+  if (m === null) throw new Error(`unexpected rows: ${frame.style.gridTemplateRows}`)
+  return Number(m[1])
 }
 
 function drag(handle: Element, fromX: number, toX: number): void {
@@ -281,6 +296,39 @@ describe('AppFrame', () => {
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
     act(() => { instance.actions.toggleSidebar() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+
+  it('renders the surfaces column, terminal drawer track, and titlebar trailing slot', () => {
+    const { frame, slotCalls, getByTestId } = mountFrame()
+    expect(getByTestId('surfaces-content')).toBeTruthy()
+    expect(getByTestId('terminal-drawer-content')).toBeTruthy()
+    expect(getByTestId('titlebar-trailing-content')).toBeTruthy()
+    expect(slotCalls.map(c => c.key)).toEqual(expect.arrayContaining([
+      'surfaces', 'shell.terminalDrawer', 'shell.titlebar.trailing',
+    ]))
+    expect(surfacesTrack(frame)).toBe(0)
+    expect(drawerTrack(frame)).toBe(0)
+    expect(frame.querySelector('[data-titlebar-trailing]')).toBeTruthy()
+  })
+
+  it('open surfaces and terminal drawer write their contract default tracks', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.openSurfaces() })
+    expect(surfacesTrack(frame)).toBe(400)
+    expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    act(() => { instance.actions.toggleTerminalDrawer() })
+    expect(drawerTrack(frame)).toBe(280)
+    expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(false)
+  })
+
+  it('keeps surfaces and the terminal drawer mounted at zero size when closed', () => {
+    const { frame, getByTestId } = mountFrame()
+    expect(surfacesTrack(frame)).toBe(0)
+    expect(drawerTrack(frame)).toBe(0)
+    expect(getByTestId('surfaces-content')).toBeTruthy()
+    expect(getByTestId('terminal-drawer-content')).toBeTruthy()
+    expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(true)
   })
 })
 
