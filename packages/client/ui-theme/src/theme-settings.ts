@@ -15,6 +15,9 @@ import {
   ThemeFamilySchema,
   type ThemeFamily,
 } from './theme-family.ts'
+import {
+  DEFAULT_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT, MIN_WALLPAPER_EFFECT,
+} from './wallpaper.ts'
 
 /** Built-in preferences accepted at the registry and settings boundaries. */
 export const THEME_PREFERENCES = ['light', 'dark', 'system'] as const
@@ -37,6 +40,15 @@ export const THEME_CUSTOM_THEMES_FIELD = 'customThemes'
 /** Field carrying glass-surface opacity. */
 export const THEME_GLASS_OPACITY_FIELD = 'glassOpacity'
 
+/** Field carrying the wallpaper data URL. */
+export const THEME_WALLPAPER_IMAGE_FIELD = 'wallpaperImage'
+
+/** Field carrying wallpaper frosted-glass blur. */
+export const THEME_WALLPAPER_BLUR_FIELD = 'wallpaperBlur'
+
+/** Field carrying wallpaper pixelation. */
+export const THEME_WALLPAPER_PIXELATE_FIELD = 'wallpaperPixelate'
+
 /** Theme preference persisted by the product Appearance page. */
 export type ThemePreference = typeof THEME_PREFERENCES[number]
 
@@ -55,6 +67,12 @@ export interface ThemeSettings {
   customThemes: ThemeFamily[]
   /** Overlay / menu / composer solidity, 40–100. */
   glassOpacity: number
+  /** Wallpaper data URL; empty means no wallpaper. */
+  wallpaperImage: string
+  /** Frosted-glass blur on the wallpaper, 0–100. */
+  wallpaperBlur: number
+  /** Pixelation on the wallpaper, 0–100. */
+  wallpaperPixelate: number
   /** Optional interface font-family override; empty keeps the sheet stack. */
   fontFamilySans: string
   /** Optional monospace font-family override; empty keeps the sheet stack. */
@@ -76,6 +94,9 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   activeDarkThemeId: DEFAULT_FAMILY_ID,
   customThemes: [],
   glassOpacity: DEFAULT_GLASS_OPACITY,
+  wallpaperImage: '',
+  wallpaperBlur: DEFAULT_WALLPAPER_EFFECT,
+  wallpaperPixelate: DEFAULT_WALLPAPER_EFFECT,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_INTERFACE_FONT_SIZE,
@@ -92,6 +113,11 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_CUSTOM_THEMES_FIELD]: z.array(ThemeFamilySchema).default([]),
   [THEME_GLASS_OPACITY_FIELD]: z.number().min(MIN_GLASS_OPACITY).max(MAX_GLASS_OPACITY)
     .default(DEFAULT_GLASS_OPACITY),
+  [THEME_WALLPAPER_IMAGE_FIELD]: z.string().default(''),
+  [THEME_WALLPAPER_BLUR_FIELD]: z.number().min(MIN_WALLPAPER_EFFECT).max(MAX_WALLPAPER_EFFECT)
+    .default(DEFAULT_WALLPAPER_EFFECT),
+  [THEME_WALLPAPER_PIXELATE_FIELD]: z.number().min(MIN_WALLPAPER_EFFECT).max(MAX_WALLPAPER_EFFECT)
+    .default(DEFAULT_WALLPAPER_EFFECT),
   fontFamilySans: z.string().default(''),
   fontFamilyCode: z.string().default(''),
   fontSizeInterface: z.number().min(MIN_INTERFACE_FONT_SIZE).max(MAX_INTERFACE_FONT_SIZE)

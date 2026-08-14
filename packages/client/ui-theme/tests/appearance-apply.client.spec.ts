@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   appearanceFontStack, applyAppearanceDocumentExtras, cssFontFamilies, quoteFontFamilyName,
 } from '../src/appearance-apply.ts'
+import { WALLPAPER_ATTR, WALLPAPER_LAYER_ID } from '../src/wallpaper.ts'
 
 afterEach(() => {
   document.documentElement.style.fontSize = ''
@@ -59,5 +60,29 @@ describe('applyAppearanceDocumentExtras', () => {
     })
     expect(document.documentElement.style.fontSize).toBe('16px')
     expect(document.documentElement.style.getPropertyValue('--dsw-font-size-code')).toBe('13px')
+  })
+
+  it('paints and clears the wallpaper layer from appearance extras', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    applyAppearanceDocumentExtras({
+      fontFamilySans: '',
+      fontFamilyCode: '',
+      fontSizeInterface: 16,
+      fontSizeCode: 13,
+      wallpaperImage: png,
+      wallpaperBlur: 50,
+      wallpaperPixelate: 25,
+    })
+    expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(true)
+    expect(document.getElementById(WALLPAPER_LAYER_ID)).not.toBeNull()
+    expect(document.documentElement.style.getPropertyValue('--dsh-wallpaper-blur')).toBe('20px')
+    applyAppearanceDocumentExtras({
+      fontFamilySans: '',
+      fontFamilyCode: '',
+      fontSizeInterface: 16,
+      fontSizeCode: 13,
+    })
+    expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(false)
+    expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
   })
 })

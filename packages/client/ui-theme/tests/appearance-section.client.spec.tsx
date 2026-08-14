@@ -56,6 +56,9 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     families: listThemeFamilies(customThemes),
     customThemes,
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+    wallpaperImage: '',
+    wallpaperBlur: 0,
+    wallpaperPixelate: 0,
     fontFamilySans: '',
     fontFamilyCode: '',
     fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -74,6 +77,7 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
   const setThemeHalf = vi.fn()
   const setCustomThemes = vi.fn()
   const setGlassOpacity = vi.fn()
+  const setWallpaper = vi.fn()
   const setTypography = vi.fn()
   const props: AppearanceSectionComponentProps = {
     useSessions: emptySessions(),
@@ -86,10 +90,11 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
     setThemeHalf,
     setCustomThemes,
     setGlassOpacity,
+    setWallpaper,
     setTypography,
   }
   const view = render(<AppearanceSection {...props} />)
-  return { store, setTheme, setThemeHalf, setCustomThemes, setGlassOpacity, setTypography, ...view }
+  return { store, setTheme, setThemeHalf, setCustomThemes, setGlassOpacity, setWallpaper, setTypography, ...view }
 }
 
 const cube = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}$`) })
@@ -263,5 +268,50 @@ describe('AppearanceSection', () => {
       fontFamilyComposer: '',
       fontFamilyTerminal: '',
     })
+  })
+
+  it('hides wallpaper sliders until an image is set, then writes blur and pixelate', async () => {
+    const b = mount('system')
+    expect(screen.queryByRole('slider', { name: '毛玻璃程度' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '清除' })).toBeNull()
+    const ignored = b.container.querySelector('input[accept="image/png,image/jpeg,image/webp,image/gif"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(ignored, { target: { files: [] } })
+    })
+    expect(b.setWallpaper).not.toHaveBeenCalled()
+
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    act(() => {
+      b.store.actions.sync(snap({ wallpaperImage: png, wallpaperBlur: 20, wallpaperPixelate: 10 }), 1)
+    })
+    expect(screen.getByRole('img', { name: '背景图' })).toBeDefined()
+    fireEvent.change(screen.getByRole('slider', { name: '毛玻璃程度' }), { target: { value: '40' } })
+    expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperBlur: 40 })
+    fireEvent.change(screen.getByRole('slider', { name: '像素化程度' }), { target: { value: '70' } })
+    expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperPixelate: 70 })
+    fireEvent.click(screen.getByRole('button', { name: '清除' }))
+    expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperImage: '' })
+    fireEvent.click(screen.getAllByRole('button', { name: '重置' })[0]!)
+    expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperBlur: 0, wallpaperPixelate: 0 })
+  })
+
+  it('encodes a picked wallpaper file and ignores a rejected file', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const bytes = Uint8Array.from(atob(png.split(',')[1]!), char => char.charCodeAt(0))
+    const b = mount('system')
+    fireEvent.click(screen.getByRole('button', { name: '选择图片' }))
+    const input = b.container.querySelector('input[accept="image/png,image/jpeg,image/webp,image/gif"]') as HTMLInputElement
+    const file = new File([bytes], 'dot.png', { type: 'image/png' })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+    })
+    await vi.waitFor(() => { expect(b.setWallpaper).toHaveBeenCalled() })
+    expect(b.setWallpaper.mock.calls[0]![0]).toMatchObject({ wallpaperImage: expect.stringMatching(/^data:image\//) })
+
+    const bad = new File(['nope'], 'notes.txt', { type: 'text/plain' })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [bad] } })
+    })
+    expect(b.setWallpaper).toHaveBeenCalledTimes(1)
   })
 })

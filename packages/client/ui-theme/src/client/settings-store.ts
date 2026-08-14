@@ -21,6 +21,12 @@ export interface AppearanceSyncSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Wallpaper data URL; empty means no wallpaper. */
+  wallpaperImage: string
+  /** Frosted-glass blur on the wallpaper, 0–100. */
+  wallpaperBlur: number
+  /** Pixelation on the wallpaper, 0–100. */
+  wallpaperPixelate: number
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -49,6 +55,12 @@ export interface AppearanceRowState {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Wallpaper data URL; empty means no wallpaper. */
+  wallpaperImage: string
+  /** Frosted-glass blur on the wallpaper, 0–100. */
+  wallpaperBlur: number
+  /** Pixelation on the wallpaper, 0–100. */
+  wallpaperPixelate: number
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -77,6 +89,9 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   families: [],
   customThemes: [],
   glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+  wallpaperImage: '',
+  wallpaperBlur: DEFAULT_THEME_SETTINGS.wallpaperBlur,
+  wallpaperPixelate: DEFAULT_THEME_SETTINGS.wallpaperPixelate,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -101,6 +116,9 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.families = snapshot.families
         d.customThemes = snapshot.customThemes
         d.glassOpacity = snapshot.glassOpacity
+        d.wallpaperImage = snapshot.wallpaperImage
+        d.wallpaperBlur = snapshot.wallpaperBlur
+        d.wallpaperPixelate = snapshot.wallpaperPixelate
         d.fontFamilySans = snapshot.fontFamilySans
         d.fontFamilyCode = snapshot.fontFamilyCode
         d.fontSizeInterface = snapshot.fontSizeInterface

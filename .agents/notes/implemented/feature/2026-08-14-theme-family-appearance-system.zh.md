@@ -16,7 +16,7 @@ Web UI 只提供浅色／深色／跟随系统。这三个方块放在「通用�
 
 **自定义家族写进同一 Host 分节。** `customThemes` 是 `ui-theme` 上的 `ThemeFamily` 数组。导入会做 schema 校验，并在 id 撞车时改名。删除某半正在使用的家族时回退到 DeepSeek。第三方 `register()` id 仍只存在于进程内。
 
-**外观独立成设置页。** `ui-theme` 注册 `settings.section`，`id: appearance`，`order: 5`。「通用」不再放三个方块，只留一处入口。该页拥有色制三卡、双色球主题库、创建／复制／编辑／导入／导出、玻璃透明度和字体。字体「高级」折叠是浏览器实例状态，存在 `localStorage`（`dsh:typography-advanced`）。
+**外观独立成设置页。** `ui-theme` 注册 `settings.section`，`id: appearance`，`order: 5`。「通用」不再放三个方块，只留一处入口。该页拥有色制三卡、双色球主题库、创建／复制／编辑／导入／导出、可选背景图（设好后出现毛玻璃和像素化滑杆）、玻璃透明度和字体。字体「高级」折叠是浏览器实例状态，存在 `localStorage`（`dsh:typography-advanced`）。背景图 data URL 不进启动脚本，以免撑大 index；插件树起来后由 ThemeRuntime 铺图层，并把主铬架填充混成半透明，好让底图透出来。
 
 **在 React 之前引导当前半。** Host `tapIndex` 嵌入色制、已经推导好的两半 token 字典、字号和玻璃透明度。内联脚本只解析 `system`，并把当前半写到 `body` 上，避免非 DeepSeek 家族先闪默认色板。
 

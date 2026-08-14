@@ -21,10 +21,12 @@ import {
   DEFAULT_FAMILY_ID, type ThemeFamily, type ThemeTokens as FamilyTokens,
 } from '../theme-family.ts'
 import { listThemeFamilies, resolveThemeFamily } from '../builtin-families.ts'
+import { clampWallpaperEffect, isWallpaperDataUrl, mixWallpaperSurfaces } from '../wallpaper.ts'
 import {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, isThemePreference,
   THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
   THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
+  THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
   resolveThemeSettings,
   type ThemePreference, type ThemeSettings,
 } from '../theme-settings.ts'
@@ -97,6 +99,12 @@ export interface ThemeSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Wallpaper data URL; empty means no wallpaper. */
+  wallpaperImage: string
+  /** Frosted-glass blur on the wallpaper, 0–100. */
+  wallpaperBlur: number
+  /** Pixelation on the wallpaper, 0–100. */
+  wallpaperPixelate: number
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -307,6 +315,35 @@ export class ThemeRuntime {
   }
 
   /**
+   * Persist wallpaper image and/or the two effect sliders.
+   * @param patch - one or more wallpaper fields.
+   */
+  setWallpaper(patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>): void {
+    const next: Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'> = {
+      wallpaperImage: this.settings.wallpaperImage,
+      wallpaperBlur: this.settings.wallpaperBlur,
+      wallpaperPixelate: this.settings.wallpaperPixelate,
+    }
+    if (patch.wallpaperImage !== undefined) {
+      next.wallpaperImage = patch.wallpaperImage === '' || isWallpaperDataUrl(patch.wallpaperImage)
+        ? patch.wallpaperImage
+        : ''
+    }
+    if (patch.wallpaperBlur !== undefined) next.wallpaperBlur = clampWallpaperEffect(patch.wallpaperBlur)
+    if (patch.wallpaperPixelate !== undefined) next.wallpaperPixelate = clampWallpaperEffect(patch.wallpaperPixelate)
+    if (next.wallpaperImage === this.settings.wallpaperImage
+      && next.wallpaperBlur === this.settings.wallpaperBlur
+      && next.wallpaperPixelate === this.settings.wallpaperPixelate) {
+      return
+    }
+    this.settings = { ...this.settings, ...next }
+    if (patch.wallpaperImage !== undefined) void this.host.set(THEME_WALLPAPER_IMAGE_FIELD, next.wallpaperImage)
+    if (patch.wallpaperBlur !== undefined) void this.host.set(THEME_WALLPAPER_BLUR_FIELD, next.wallpaperBlur)
+    if (patch.wallpaperPixelate !== undefined) void this.host.set(THEME_WALLPAPER_PIXELATE_FIELD, next.wallpaperPixelate)
+    this.publish()
+  }
+
+  /**
    * Persist typography extras.
    * @param patch - one or more font fields.
    */
@@ -400,6 +437,9 @@ export class ThemeRuntime {
       activeDarkThemeId: this.settings.activeDarkThemeId,
       customThemes: Object.freeze([...this.settings.customThemes]),
       glassOpacity: this.settings.glassOpacity,
+      wallpaperImage: this.settings.wallpaperImage,
+      wallpaperBlur: this.settings.wallpaperBlur,
+      wallpaperPixelate: this.settings.wallpaperPixelate,
       fontFamilySans: this.settings.fontFamilySans,
       fontFamilyCode: this.settings.fontFamilyCode,
       fontSizeInterface: this.settings.fontSizeInterface,
@@ -417,6 +457,9 @@ export class ThemeRuntime {
   private composeActive(active: ThemeDefinition, mode: 'light' | 'dark'): ThemeDefinition {
     const tokens: ThemeTokens = { ...active.tokens }
     tokens['--dsw-alias-glass-opacity'] = `${this.settings.glassOpacity}%`
+    if (isWallpaperDataUrl(this.settings.wallpaperImage)) {
+      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode))
+    }
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
         tokens[name] = modes[mode]
@@ -437,6 +480,9 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.activeLightThemeId === right.activeLightThemeId
     && left.activeDarkThemeId === right.activeDarkThemeId
     && left.glassOpacity === right.glassOpacity
+    && left.wallpaperImage === right.wallpaperImage
+    && left.wallpaperBlur === right.wallpaperBlur
+    && left.wallpaperPixelate === right.wallpaperPixelate
     && left.fontFamilySans === right.fontFamilySans
     && left.fontFamilyCode === right.fontFamilyCode
     && left.fontSizeInterface === right.fontSizeInterface
@@ -505,6 +551,9 @@ export function apply(ctx: ClientContext): void {
       fontSizeCode: snapshot.fontSizeCode,
       fontFamilyComposer: snapshot.fontFamilyComposer,
       fontFamilyTerminal: snapshot.fontFamilyTerminal,
+      wallpaperImage: snapshot.wallpaperImage,
+      wallpaperBlur: snapshot.wallpaperBlur,
+      wallpaperPixelate: snapshot.wallpaperPixelate,
     })
   }
   extras(theme.getTheme())
@@ -525,6 +574,7 @@ export function apply(ctx: ClientContext): void {
       setThemeHalf: (mode, id) => { theme.setThemeHalf(mode, id) },
       setCustomThemes: (families) => { theme.setCustomThemes(families) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
+      setWallpaper: (patch) => { theme.setWallpaper(patch) },
       setTypography: (patch) => { theme.setTypography(patch) },
     }
   }
