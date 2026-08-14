@@ -349,7 +349,7 @@
       const obs = new MutationObserver(schedule);
       obs.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ['class', 'style', 'data-theme', 'data-appearance'],
+        attributeFilter: ['class', 'style', 'data-theme', 'data-appearance', 'data-ds-dark-theme'],
       });
       if (document.body) {
         obs.observe(document.body, { childList: true, subtree: true });

@@ -1,4 +1,4 @@
-const { ipcMain, dialog, app, shell } = require('electron');
+const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
 const { getMainWindow, openHarnessSettings } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
@@ -17,7 +17,9 @@ function configPayload(config) {
     locale: configLocale(config),
     theme: config.theme || 'midnight',
     themes: listThemes(),
-    themeTokens: resolveTheme(config),
+    themeTokens: resolveTheme(config, {
+      systemDark: Boolean(nativeTheme && nativeTheme.shouldUseDarkColors),
+    }),
     nodeDetected: resolveNodeBin(config),
     dshDetected: (() => {
       const source = sourceHarnessStatus();

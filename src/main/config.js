@@ -14,7 +14,7 @@ const DEFAULTS = {
   closeToTray: true,
   openAtLogin: false,
   openDevTools: false,
-  theme: 'midnight',
+  theme: 'deepseek',
   locale: 'zh',
 };
 

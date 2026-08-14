@@ -1,0 +1,36 @@
+/* Wallpaper layer + translucent chrome. Activated by html[data-dsh-wallpaper]. */
+
+#dsh-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#dsh-wallpaper-inner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc((100% + 96px) / var(--dsh-wallpaper-pixel, 1));
+  height: calc((100% + 96px) / var(--dsh-wallpaper-pixel, 1));
+  transform: translate(-50%, -50%) scale(var(--dsh-wallpaper-pixel, 1));
+  transform-origin: center;
+  background-image: var(--dsh-wallpaper-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  image-rendering: pixelated;
+  filter: blur(var(--dsh-wallpaper-blur, 0px));
+}
+
+html[data-dsh-wallpaper],
+html[data-dsh-wallpaper] body,
+html[data-dsh-wallpaper] #root {
+  background: transparent;
+}
+
+html[data-dsh-wallpaper] #root {
+  position: relative;
+  z-index: 1;
+}
