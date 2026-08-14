@@ -17,3 +17,4 @@ Thumbs.db
 .pack-v*/
 release*/
 /resources/
+.worktrees/
