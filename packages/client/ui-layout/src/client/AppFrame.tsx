@@ -216,8 +216,11 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      <div className={css.titlebarTrailing} data-titlebar-trailing>
-        {renderSlot('shell.titlebar.trailing', {})}
+      <div className={css.titlebarTrailing} data-titlebar-trailing id="dsh-shell-titlebar-trailing">
+        {renderSlot('shell.titlebar.trailing', {
+          surfaces: panels.surfaces,
+          terminalDrawer: panels.terminalDrawer,
+        })}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}

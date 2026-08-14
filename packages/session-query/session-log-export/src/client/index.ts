@@ -17,7 +17,7 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    'shell.titlebar.trailing': { kind: 'list'; scope: 'root' }
+    'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: { surfaces: number; terminalDrawer: number } }
   }
   interface LocaleNamespaceMap {
     'session-log-download': SessionLogDownloadKey

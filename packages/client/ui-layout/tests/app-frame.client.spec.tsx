@@ -309,6 +309,10 @@ describe('AppFrame', () => {
     expect(surfacesTrack(frame)).toBe(0)
     expect(drawerTrack(frame)).toBe(0)
     expect(frame.querySelector('[data-titlebar-trailing]')).toBeTruthy()
+    expect(frame.querySelector('#dsh-shell-titlebar-trailing')).toBeTruthy()
+    expect(slotCalls.find(c => c.key === 'shell.titlebar.trailing')?.props).toEqual({
+      surfaces: 0, terminalDrawer: 0,
+    })
   })
 
   it('open surfaces and terminal drawer write their contract default tracks', () => {
