@@ -27,8 +27,11 @@ describe('ThemeRuntime', () => {
     const snapshot = theme.getTheme()
     expect(snapshot.preference).toBe('system')
     // jsdom matchMedia is absent; system resolves to light.
-    expect(snapshot.active.id).toBe('light')
+    expect(snapshot.active.id).toBe('deepseek')
     expect(snapshot.active.colorScheme).toBe('light')
+    expect(snapshot.active.tokens).toMatchObject({ '--dsw-alias-glass-opacity': '80%' })
+    expect(snapshot.activeLightThemeId).toBe('deepseek')
+    expect(snapshot.activeDarkThemeId).toBe('deepseek')
     expect(snapshot.themes.map(t => t.id)).toEqual(['light', 'dark'])
   })
 
@@ -144,10 +147,10 @@ describe('ThemeRuntime', () => {
       '--new': { light: 'new-light', dark: 'new-dark' },
     })
     stale()
-    expect(theme.getTheme().active.tokens).toEqual({ '--new': 'new-light' })
+    expect(theme.getTheme().active.tokens).toMatchObject({ '--new': 'new-light' })
     current()
     current()
-    expect(theme.getTheme().active.tokens).toEqual({})
+    expect(theme.getTheme().active.tokens).toEqual({ '--dsw-alias-glass-opacity': '80%' })
     expect(events).toHaveLength(3)
   })
 
@@ -223,9 +226,10 @@ describe('ThemeRuntime', () => {
       const media = stubMedia(true)
       const { theme, events } = make()
       expect(theme.getTheme().preference).toBe('system')
-      expect(theme.getTheme().active.id).toBe('dark')
+      expect(theme.getTheme().active.id).toBe('deepseek')
+      expect(theme.getTheme().active.colorScheme).toBe('dark')
       media.flip()
-      expect(theme.getTheme().active.id).toBe('light')
+      expect(theme.getTheme().active.colorScheme).toBe('light')
       expect(events).toHaveLength(1)
     })
 
@@ -236,7 +240,7 @@ describe('ThemeRuntime', () => {
       expect(events).toHaveLength(1)
       media.flip()
       expect(events).toHaveLength(1)
-      expect(theme.getTheme().active.id).toBe('light')
+      expect(theme.getTheme().active.colorScheme).toBe('light')
     })
 
     it('context dispose releases the media listener', async () => {
@@ -246,5 +250,63 @@ describe('ThemeRuntime', () => {
       await ctx.fiber.dispose()
       expect(media.listenerCount()).toBe(0)
     })
+  })
+
+  it('setThemeHalf persists one half and derives tokens for non-DeepSeek families', () => {
+    const { theme, host } = make()
+    theme.setTheme('light')
+    theme.setThemeHalf('light', 'celadon')
+    expect(theme.getTheme().activeLightThemeId).toBe('celadon')
+    expect(theme.getTheme().active.id).toBe('celadon')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBe('#f3faf7')
+    expect(host.set).toHaveBeenCalledWith('activeLightThemeId', 'celadon')
+    theme.setThemeHalf('light', 'celadon')
+    expect(host.set).toHaveBeenCalledTimes(2)
+    expect(() => { theme.setThemeHalf('dark', 'missing') }).toThrow('not registered')
+  })
+
+  it('adopts half ids from Host and keeps DeepSeek tokens empty besides glass', () => {
+    const { theme, host } = make()
+    host.publish({
+      status: 'ready',
+      value: { preference: 'dark', activeDarkThemeId: 'violet' },
+      revision: 1,
+      writable: true,
+    })
+    expect(theme.getTheme().activeDarkThemeId).toBe('violet')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBe('#120e18')
+    theme.setTheme('light')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBeUndefined()
+  })
+
+  it('stores custom families and falls back to DeepSeek when the active one is removed', () => {
+    const { theme, host } = make()
+    const custom = {
+      id: 'grove',
+      name: 'Grove',
+      origin: 'custom' as const,
+      light: { accent: '#0f766e', background: '#f3faf7', foreground: '#10211c', contrast: 44 },
+      dark: { accent: '#3dd6b5', background: '#071411', foreground: '#e7f6f1', contrast: 50 },
+    }
+    theme.setCustomThemes([custom])
+    theme.setThemeHalf('light', 'grove')
+    theme.setTheme('light')
+    expect(theme.getTheme().active.id).toBe('grove')
+    theme.setCustomThemes([])
+    expect(theme.getTheme().activeLightThemeId).toBe('deepseek')
+    expect(host.set).toHaveBeenCalledWith('activeLightThemeId', 'deepseek')
+  })
+
+  it('persists glass opacity and typography extras', () => {
+    const { theme, host } = make()
+    theme.setGlassOpacity(60)
+    expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('60%')
+    expect(host.set).toHaveBeenCalledWith('glassOpacity', 60)
+    theme.setGlassOpacity(60)
+    theme.setTypography({ fontFamilySans: 'Inter', fontSizeInterface: 18, fontFamilyComposer: 'Georgia' })
+    expect(theme.getTheme().fontFamilySans).toBe('Inter')
+    expect(theme.getTheme().fontSizeInterface).toBe(18)
+    expect(theme.getTheme().fontFamilyComposer).toBe('Georgia')
+    expect(host.set).toHaveBeenCalledWith('fontFamilySans', 'Inter')
   })
 })

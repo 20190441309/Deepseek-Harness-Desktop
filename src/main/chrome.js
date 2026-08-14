@@ -1,4 +1,4 @@
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('./config');
@@ -9,7 +9,9 @@ const injectScript = fs.readFileSync(path.join(__dirname, 'harness-chrome-inject
 let ipcBound = false;
 
 function currentTheme() {
-  return resolveTheme(loadConfig());
+  return resolveTheme(loadConfig(), {
+    systemDark: Boolean(nativeTheme && nativeTheme.shouldUseDarkColors),
+  });
 }
 
 function windowChrome(overrides = {}) {

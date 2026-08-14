@@ -16,9 +16,10 @@ export const inject = ['invariants']
 
 /**
  * No runtime invariant: the settings scope validates and publishes the durable
- * theme section, while the registry emits `theme/change` synchronously with
- * its own mutations. Store/registry agreement is covered directly by this
- * package's Host, scope, and service behavior specs.
+ * theme section (preference, halves, custom families, glass, typography),
+ * while the registry emits `theme/change` synchronously with its own
+ * mutations. Store/registry agreement is covered directly by this package's
+ * Host, scope, and service behavior specs.
  */
 const install: InvariantInstaller = () => {}
 

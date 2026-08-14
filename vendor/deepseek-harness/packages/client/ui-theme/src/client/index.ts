@@ -1,46 +1,52 @@
 /**
  * Browser theme registry over the `--dsw-*` token stylesheets. The service
- * owns the live theme preference (light/dark/system), resolves `system` through
- * `prefers-color-scheme`, and publishes immutable snapshots; it never touches
- * the DOM — ui-layout's presenter consumes the resolved snapshot. The Host
- * settings scope loads and stores the preference in the user-settings
- * document. The plugin also registers the Appearance preference row into the
- * settings General section — the theme feature owns its own settings surface.
+ * owns the live color-scheme preference (`light`/`dark`/`system`), the
+ * light/dark theme-family halves, and derived alias tokens; it resolves
+ * `system` through `prefers-color-scheme` and publishes immutable snapshots.
+ * It never touches the DOM — ui-layout's presenter consumes the resolved
+ * snapshot. Durable fields live in the Host `ui-theme` settings section.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
-// goes through the service, never a value import (client bundle purity gate).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-// Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { AppearanceRowInjected } from './AppearanceRow.tsx'
-import { AppearanceRow } from './AppearanceRow.tsx'
+import type { AppearanceSectionInjected } from './AppearanceSection.tsx'
+import { AppearanceSection } from './AppearanceSection.tsx'
+import { applyAppearanceDocumentExtras } from '../appearance-apply.ts'
 import { createAppearanceRowStore } from './settings-store.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
+import { deriveThemeTokens } from '../derive.ts'
 import {
-  DEFAULT_PREFERENCE, isThemePreference, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
+  DEFAULT_FAMILY_ID, type ThemeFamily, type ThemeTokens as FamilyTokens,
+} from '../theme-family.ts'
+import { listThemeFamilies, resolveThemeFamily } from '../builtin-families.ts'
+import {
+  DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, isThemePreference,
+  THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
+  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
+  resolveThemeSettings,
   type ThemePreference, type ThemeSettings,
 } from '../theme-settings.ts'
 
-export type { AppearanceRowComponentProps, AppearanceRowInjected } from './AppearanceRow.tsx'
+export type { AppearanceSectionComponentProps, AppearanceSectionInjected } from './AppearanceSection.tsx'
 export type { AppearanceRowState } from './settings-store.ts'
 export type { ThemeKey } from './locales.ts'
 export type { ThemePreference, ThemeSettings } from '../theme-settings.ts'
+export type { ThemeFamily, ThemeSeeds, ThemeTokens as FamilyThemeTokens } from '../theme-family.ts'
 
-/** Namespace owning this feature's settings-row copy. */
+/** Namespace owning this feature's settings copy. */
 export const SETTINGS_NS = 'settings.theme'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** The Appearance settings row's copy. */
+    /** The Appearance settings page copy. */
     'settings.theme': ThemeKey
   }
 }
 
 /** Theme token dictionary: --dsw-alias-* overrides keyed by variable name. */
-export type ThemeTokens = Record<string, string>
+export type ThemeTokens = FamilyTokens
 
 /**
  * One override-layer token value: both palette modes are mandatory (repeat
@@ -72,16 +78,37 @@ export interface ThemeDefinition {
 
 /** Immutable theme state published on every change. */
 export interface ThemeSnapshot {
-  /** The persisted preference (may be `system`). */
+  /** The persisted color-scheme preference (may be `system`). */
   preference: ThemePreference
   /**
    * The resolved active theme (`system` resolved via prefers-color-scheme)
-   * with override layers folded into its tokens (seq order, later layers win
-   * per-token; each value picked for the active color scheme).
+   * with family tokens and override layers folded in.
    */
   active: ThemeDefinition
-  /** Registered themes in registration order. */
+  /** Registered extension themes in registration order (includes light/dark). */
   themes: readonly ThemeDefinition[]
+  /** Builtin plus custom families in library order. */
+  families: readonly ThemeFamily[]
+  /** Family painting the light half. */
+  activeLightThemeId: string
+  /** Family painting the dark half. */
+  activeDarkThemeId: string
+  /** User-created families. */
+  customThemes: readonly ThemeFamily[]
+  /** Overlay solidity percent. */
+  glassOpacity: number
+  /** Interface font preference. */
+  fontFamilySans: string
+  /** Monospace font preference. */
+  fontFamilyCode: string
+  /** Root font size in px. */
+  fontSizeInterface: number
+  /** Code font size in px. */
+  fontSizeCode: number
+  /** Composer font preference. */
+  fontFamilyComposer: string
+  /** Terminal font preference. */
+  fontFamilyTerminal: string
   /** Monotonic change counter (registry or active changes). */
   revision: number
 }
@@ -134,28 +161,25 @@ const BUILTIN_INSPECT_TOKENS: readonly ThemeTokenInspection[] = Object.freeze([
   { name: '--dsw-alias-state-success-primary', description: 'Primary success state color.', valueType: 'CSS color', requiresLightAndDark: true, cssVariable: '--dsw-alias-state-success-primary' },
   { name: '--dsw-alias-state-warn-primary', description: 'Primary warning state color.', valueType: 'CSS color', requiresLightAndDark: true, cssVariable: '--dsw-alias-state-warn-primary' },
   { name: '--dsw-specific-sidebar-fill', description: 'Sidebar column and title-row background.', valueType: 'CSS color', requiresLightAndDark: true, cssVariable: '--dsw-specific-sidebar-fill' },
+  { name: '--dsw-alias-glass-opacity', description: 'Overlay and composer solidity percent.', valueType: 'CSS percentage', requiresLightAndDark: true, cssVariable: '--dsw-alias-glass-opacity' },
 ])
 
 /**
  * Theme registry and preference owner. `light`/`dark` are built in (the base
- * stylesheets carry both palettes); third-party themes register alias-layer
- * overrides. Reads go through {@link getTheme}; preference writes only
- * through {@link setTheme}; continuous sync only through the `theme/change`
- * event. {@link overrideTokens} stacks partial token layers over the active
- * theme without touching the registry.
- * The service holds the `prefers-color-scheme` media query (environment
- * sensing, not presentation) and re-emits when the OS scheme flips while the
- * preference is `system`.
+ * stylesheets carry both palettes); product families derive alias-layer
+ * overrides. Reads go through {@link getTheme}; color-scheme writes through
+ * {@link setTheme}; half writes through {@link setThemeHalf}; continuous sync
+ * only through the `theme/change` event.
  */
 export class ThemeRuntime {
   private readonly ctx: Context
   private readonly host: SettingsScope<ThemeSettings>
   private themes: ThemeDefinition[] = [...BUILTIN_THEMES]
+  private settings: ThemeSettings = { ...DEFAULT_THEME_SETTINGS, customThemes: [] }
   private preference: ThemePreference
   private revision = 0
   private snapshot: ThemeSnapshot
   private readonly media: MediaQueryList | undefined
-  /** Override layers by source; seq (monotonic) is the stacking order. */
   private readonly overrides = new Map<string, { seq: number; tokens: ThemeTokenOverrides }>()
   private overrideSeq = 0
 
@@ -168,7 +192,6 @@ export class ThemeRuntime {
     this.ctx = ctx
     this.host = host
     this.preference = DEFAULT_PREFERENCE
-    // Non-browser runs (node e2e booting the client tree) have no matchMedia.
     this.media = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)')
     this.snapshot = this.buildSnapshot()
     if (this.media !== undefined) {
@@ -214,9 +237,8 @@ export class ThemeRuntime {
   }
 
   /**
-   * Switch the theme preference — the only user preference write entry.
-   * Built-in preferences are written through the settings scope and every
-   * accepted value emits `theme/change`.
+   * Switch the color-scheme preference — or select a registered extension
+   * theme id. Built-in preferences are written through the settings scope.
    * @param id - a registered theme id or `system`; unknown ids throw.
    */
   setTheme(id: string): void {
@@ -225,15 +247,85 @@ export class ThemeRuntime {
     }
     if (this.preference === id) return
     this.preference = id as ThemePreference
-    if (isThemePreference(id)) void this.host.set(THEME_PREFERENCE_FIELD, id)
+    if (isThemePreference(id)) {
+      this.settings = { ...this.settings, preference: id }
+      void this.host.set(THEME_PREFERENCE_FIELD, id)
+    }
     this.publish()
   }
 
-  /** Adopt the scope's accepted durable preference without writing it back. */
+  /**
+   * Assign a family to one color-scheme half.
+   * @param mode - which half to paint.
+   * @param familyId - builtin or custom family id.
+   */
+  setThemeHalf(mode: 'light' | 'dark', familyId: string): void {
+    const family = resolveThemeFamily(familyId, this.settings.customThemes)
+    if (family.id !== familyId && familyId !== DEFAULT_FAMILY_ID) {
+      throw new Error(`theme family "${familyId}" is not registered`)
+    }
+    const field = mode === 'dark' ? THEME_DARK_FAMILY_FIELD : THEME_LIGHT_FAMILY_FIELD
+    if (this.settings[field] === familyId) return
+    this.settings = {
+      ...this.settings,
+      [field]: familyId,
+    }
+    void this.host.set(field, familyId)
+    this.publish()
+  }
+
+  /**
+   * Replace the durable custom-family list.
+   * @param customThemes - next custom families.
+   */
+  setCustomThemes(customThemes: readonly ThemeFamily[]): void {
+    const next = customThemes.map(family => ({ ...family, origin: 'custom' as const }))
+    this.settings = { ...this.settings, customThemes: next }
+    if (this.settings.activeLightThemeId !== DEFAULT_FAMILY_ID
+      && !listThemeFamilies(next).some(family => family.id === this.settings.activeLightThemeId)) {
+      this.settings = { ...this.settings, activeLightThemeId: DEFAULT_FAMILY_ID }
+      void this.host.set(THEME_LIGHT_FAMILY_FIELD, DEFAULT_FAMILY_ID)
+    }
+    if (this.settings.activeDarkThemeId !== DEFAULT_FAMILY_ID
+      && !listThemeFamilies(next).some(family => family.id === this.settings.activeDarkThemeId)) {
+      this.settings = { ...this.settings, activeDarkThemeId: DEFAULT_FAMILY_ID }
+      void this.host.set(THEME_DARK_FAMILY_FIELD, DEFAULT_FAMILY_ID)
+    }
+    void this.host.set(THEME_CUSTOM_THEMES_FIELD, next)
+    this.publish()
+  }
+
+  /**
+   * Persist glass-surface opacity.
+   * @param glassOpacity - integer percent 40–100.
+   */
+  setGlassOpacity(glassOpacity: number): void {
+    if (this.settings.glassOpacity === glassOpacity) return
+    this.settings = { ...this.settings, glassOpacity }
+    void this.host.set(THEME_GLASS_OPACITY_FIELD, glassOpacity)
+    this.publish()
+  }
+
+  /**
+   * Persist typography extras.
+   * @param patch - one or more font fields.
+   */
+  setTypography(patch: Partial<Pick<ThemeSettings, 'fontFamilySans' | 'fontFamilyCode' | 'fontSizeInterface' | 'fontSizeCode' | 'fontFamilyComposer' | 'fontFamilyTerminal'>>): void {
+    this.settings = { ...this.settings, ...patch }
+    for (const [field, value] of Object.entries(patch)) {
+      void this.host.set(field, value)
+    }
+    this.publish()
+  }
+
+  /** Adopt the scope's accepted durable section without writing it back. */
   private adopt(): void {
     const section = this.host.getSnapshot().value
-    if (section === undefined || this.preference === section.preference) return
-    this.preference = section.preference
+    if (section === undefined) return
+    const next = resolveThemeSettings(section)
+    if (sameSettings(this.settings, next) && this.preference === next.preference) return
+    this.settings = next
+    this.preference = next.preference
     this.publish()
   }
 
@@ -257,26 +349,17 @@ export class ThemeRuntime {
       this.themes = this.themes.filter(t => t.id !== definition.id)
       if (this.preference === definition.id) {
         this.preference = DEFAULT_PREFERENCE
+        this.settings = { ...this.settings, preference: DEFAULT_PREFERENCE }
       }
       this.publish()
     }
   }
 
   /**
-   * Stack a token override layer on top of the active theme — the token-level
-   * analogue of slot shading: the base theme stays untouched, layers compose
-   * in seq order with later layers winning per-token, and removing a layer
-   * restores whatever it covered. Calling again with the same source replaces
-   * that source's whole layer and restacks it on top (effect re-registration
-   * semantics). Emits `theme/change` with the recomposed snapshot.
-   * @param source - layer identity; one layer per source (dynamic packages
-   * pass their package id — the façade pins it, so it also names the layer's
-   * origin for inspection).
-   * @param tokens - token-name → `{ light, dark }` value pairs. Validated at
-   * runtime (model-authored callers reach this boundary with untyped JS);
-   * a bare string value throws a teaching error.
-   * @returns disposer removing exactly the layer this call created; a no-op
-   * once the source has re-overridden (the newer layer is not torn down).
+   * Stack a token override layer on top of the active theme.
+   * @param source - layer identity.
+   * @param tokens - token-name → `{ light, dark }` value pairs.
+   * @returns disposer removing exactly the layer this call created.
    */
   overrideTokens(source: string, tokens: ThemeTokenOverrides): () => void {
     const layer = { seq: this.overrideSeq++, tokens: validateOverrides(source, tokens) }
@@ -289,38 +372,57 @@ export class ThemeRuntime {
     }
   }
 
+  private resolvedMode(): 'light' | 'dark' {
+    if (this.preference === 'system') return this.media?.matches === true ? 'dark' : 'light'
+    if (this.preference === 'dark' || this.preference === 'light') return this.preference
+    const registered = this.themes.find(t => t.id === this.preference)
+    return registered?.colorScheme ?? 'light'
+  }
+
   private buildSnapshot(): ThemeSnapshot {
-    const resolvedId = this.preference === 'system'
-      ? (this.media?.matches === true ? 'dark' : 'light')
-      : this.preference
-    // Both built-ins always exist; a registered preference id resolves or has
-    // been reset by its disposer, so the lookup cannot miss.
-    const active = this.themes.find(t => t.id === resolvedId)
-    /* v8 ignore next 2 -- needs a registry without light/dark, which register()/dispose() cannot produce */
-    if (active === undefined) throw new Error(`theme registry lost "${resolvedId}"`)
+    const mode = this.resolvedMode()
+    const familyId = mode === 'dark' ? this.settings.activeDarkThemeId : this.settings.activeLightThemeId
+    const family = resolveThemeFamily(familyId, this.settings.customThemes)
+    const registered = !isThemePreference(this.preference)
+      ? this.themes.find(t => t.id === this.preference)
+      : undefined
+    const base: ThemeDefinition = registered ?? {
+      id: family.id,
+      colorScheme: mode,
+      tokens: family.id === DEFAULT_FAMILY_ID ? {} : deriveThemeTokens(family[mode]),
+    }
     return Object.freeze({
-      preference: this.preference,
-      active: this.composeActive(active),
+      preference: isThemePreference(this.preference) ? this.preference : this.settings.preference,
+      active: this.composeActive(base, mode),
       themes: Object.freeze([...this.themes]),
+      families: Object.freeze(listThemeFamilies(this.settings.customThemes)),
+      activeLightThemeId: this.settings.activeLightThemeId,
+      activeDarkThemeId: this.settings.activeDarkThemeId,
+      customThemes: Object.freeze([...this.settings.customThemes]),
+      glassOpacity: this.settings.glassOpacity,
+      fontFamilySans: this.settings.fontFamilySans,
+      fontFamilyCode: this.settings.fontFamilyCode,
+      fontSizeInterface: this.settings.fontSizeInterface,
+      fontSizeCode: this.settings.fontSizeCode,
+      fontFamilyComposer: this.settings.fontFamilyComposer,
+      fontFamilyTerminal: this.settings.fontFamilyTerminal,
       revision: this.revision,
     })
   }
 
   /**
-   * Fold the override layers into the active definition: seq order, later
-   * layers win per-token, each value picked for the active color scheme (the
-   * presenter consumes the composed snapshot and needs no override awareness).
-   * Without layers the registered definition passes through by identity.
+   * Fold family tokens, glass/font extras, and override layers into the
+   * active definition.
    */
-  private composeActive(active: ThemeDefinition): ThemeDefinition {
-    if (this.overrides.size === 0) return active
+  private composeActive(active: ThemeDefinition, mode: 'light' | 'dark'): ThemeDefinition {
     const tokens: ThemeTokens = { ...active.tokens }
+    tokens['--dsw-alias-glass-opacity'] = `${this.settings.glassOpacity}%`
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
-        tokens[name] = modes[active.colorScheme]
+        tokens[name] = modes[mode]
       }
     }
-    return Object.freeze({ ...active, tokens: Object.freeze(tokens) })
+    return Object.freeze({ ...active, colorScheme: mode, tokens: Object.freeze(tokens) })
   }
 
   private publish(): void {
@@ -330,12 +432,20 @@ export class ThemeRuntime {
   }
 }
 
-/**
- * Runtime shape check for one override layer (model-authored callers pass
- * untyped JS through the dynamic-package façade, so the static type cannot
- * enforce the pair shape there). Returns a defensive per-token copy so later
- * caller mutation cannot reach the stored layer.
- */
+function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
+  return left.preference === right.preference
+    && left.activeLightThemeId === right.activeLightThemeId
+    && left.activeDarkThemeId === right.activeDarkThemeId
+    && left.glassOpacity === right.glassOpacity
+    && left.fontFamilySans === right.fontFamilySans
+    && left.fontFamilyCode === right.fontFamilyCode
+    && left.fontSizeInterface === right.fontSizeInterface
+    && left.fontSizeCode === right.fontSizeCode
+    && left.fontFamilyComposer === right.fontFamilyComposer
+    && left.fontFamilyTerminal === right.fontFamilyTerminal
+    && JSON.stringify(left.customThemes) === JSON.stringify(right.customThemes)
+}
+
 function validateOverrides(source: string, tokens: ThemeTokenOverrides): ThemeTokenOverrides {
   const validated: ThemeTokenOverrides = {}
   for (const [name, value] of Object.entries<unknown>(tokens)) {
@@ -370,15 +480,14 @@ function dynamicToken(name: string): ThemeTokenInspection {
 
 /**
  * Required services: settings transport plus slots/locale for the Appearance
- * row. `remote` carries the forwarded settings invalidation that
+ * page. `remote` carries the forwarded settings invalidation that
  * `bindSettingsScope` subscribes to on this context.
  */
 export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope']
 
 /**
  * Client plugin body: provide the theme service and register the
- * feature-owned Appearance preference row into the General section's item
- * slot (a feature owns its settings surface).
+ * feature-owned Appearance settings section.
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {
@@ -386,29 +495,46 @@ export function apply(ctx: ClientContext): void {
   const theme = new ThemeRuntime(ctx, host)
   ctx.provide('theme', theme)
 
-  ctx.effect(() => ctx.locale.register(SETTINGS_NS, { zh, en }), 'ui-theme: settings row dictionaries')
+  ctx.effect(() => ctx.locale.register(SETTINGS_NS, { zh, en }), 'ui-theme: settings page dictionaries')
+
+  const extras = (snapshot: ThemeSnapshot): void => {
+    applyAppearanceDocumentExtras({
+      fontFamilySans: snapshot.fontFamilySans,
+      fontFamilyCode: snapshot.fontFamilyCode,
+      fontSizeInterface: snapshot.fontSizeInterface,
+      fontSizeCode: snapshot.fontSizeCode,
+      fontFamilyComposer: snapshot.fontFamilyComposer,
+      fontFamilyTerminal: snapshot.fontFamilyTerminal,
+    })
+  }
+  extras(theme.getTheme())
+  ctx.on('theme/change', extras)
 
   const store = createAppearanceRowStore()
   let bound: BoundActions<typeof store> | undefined
   const sync = (snapshot: ThemeSnapshot): void => {
-    bound?.sync(snapshot.preference, snapshot.revision)
+    bound?.sync(snapshot, snapshot.revision)
   }
   ctx.on('theme/change', sync)
-  const injected = (actions: BoundActions<typeof store>): AppearanceRowInjected => {
+  const t = ctx.locale.bind(SETTINGS_NS)
+  const injected = (actions: BoundActions<typeof store>): AppearanceSectionInjected => {
     bound = actions
-    // Re-sync from the getter so no event is lost between registration and
-    // first render (the store's revision guard drops stale duplicates).
     sync(theme.getTheme())
     return {
       setTheme: (id) => { theme.setTheme(id) },
+      setThemeHalf: (mode, id) => { theme.setThemeHalf(mode, id) },
+      setCustomThemes: (families) => { theme.setCustomThemes(families) },
+      setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
+      setTypography: (patch) => { theme.setTypography(patch) },
     }
   }
-  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
     id: 'appearance',
-    order: 10,
+    order: 5,
+    label: () => t('nav'),
     store,
     locale: SETTINGS_NS,
     inject: injected,
-  }, AppearanceRow))
+  }, AppearanceSection))
 }
