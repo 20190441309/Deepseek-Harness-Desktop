@@ -66,6 +66,12 @@ contextBridge.exposeInMainWorld('shell', {
     ipcRenderer.on('shell:pty-exit', listener);
     return () => ipcRenderer.removeListener('shell:pty-exit', listener);
   },
+  previewOpen: (input) => ipcRenderer.invoke('shell:preview-open', input),
+  previewNavigate: (id, url) => ipcRenderer.invoke('shell:preview-navigate', id, url),
+  previewResize: (id, bounds) => ipcRenderer.invoke('shell:preview-resize', id, bounds),
+  previewHide: (id) => ipcRenderer.invoke('shell:preview-hide', id),
+  previewShow: (id, bounds) => ipcRenderer.invoke('shell:preview-show', id, bounds),
+  previewClose: (id) => ipcRenderer.invoke('shell:preview-close', id),
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

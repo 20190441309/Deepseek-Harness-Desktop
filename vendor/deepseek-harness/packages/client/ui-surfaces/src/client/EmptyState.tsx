@@ -16,6 +16,8 @@ import css from './EmptyState.module.css'
 export type EmptyStateProps = PropsLocale<typeof NS> & {
   /** Open the chosen kind and the surfaces column. */
   onOpen: (kind: OpenableKind) => void
+  /** False outside the desktop app (no preview IPC). */
+  browserAvailable?: boolean
   /** False when the workspace is not a git repository. */
   diffAvailable?: boolean
 }
@@ -42,10 +44,12 @@ const CARDS: readonly CardSpec[] = [
 
 /**
  * 2×N empty-state cards for the five surfaces.
- * @param props - locale seat, the open callback, and Diff availability.
+ * @param props - locale seat, the open callback, and Browser / Diff availability.
  * @returns the empty-state grid.
  */
-export function EmptyState({ onOpen, t, diffAvailable = true }: EmptyStateProps): ReactNode {
+export function EmptyState({
+  onOpen, t, browserAvailable = true, diffAvailable = true,
+}: EmptyStateProps): ReactNode {
   return (
     <div className={css.root} data-surfaces-empty>
       <div className={css.inner}>
@@ -55,8 +59,12 @@ export function EmptyState({ onOpen, t, diffAvailable = true }: EmptyStateProps)
         </div>
         <div className={css.grid}>
           {CARDS.map(card => {
-            const available = card.kind !== 'diff' || diffAvailable
-            const reason = available ? undefined : t('card.diff.disabled')
+            const available = card.kind === 'preview'
+              ? browserAvailable
+              : card.kind !== 'diff' || diffAvailable
+            const reason = available
+              ? undefined
+              : card.kind === 'preview' ? t('card.browser.disabled') : t('card.diff.disabled')
             const button = (
               <button
                 type="button"

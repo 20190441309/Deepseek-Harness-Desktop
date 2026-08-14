@@ -9,6 +9,7 @@ const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
 const { gitCommit, gitCreateChangeRequest, gitDiff, gitPull, gitPush, gitStatus } = require('./git');
 const { registerPtyIpc } = require('./pty');
+const { registerPreviewIpc } = require('./preview');
 const { listDir, readFile } = require('./workspace-fs');
 
 function configLocale(config = loadConfig()) {
@@ -140,6 +141,7 @@ function registerIpc({ dsh, startHarness }) {
   ipcMain.handle('shell:list-dir', (_event, cwd, relativePath) => listDir(cwd, relativePath));
   ipcMain.handle('shell:read-file', (_event, cwd, relativePath) => readFile(cwd, relativePath));
   registerPtyIpc(ipcMain);
+  registerPreviewIpc(ipcMain);
 
   ipcMain.handle('shell:install-update', async (event) => {
     try {

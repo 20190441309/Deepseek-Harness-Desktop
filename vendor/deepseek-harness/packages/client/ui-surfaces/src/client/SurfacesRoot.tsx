@@ -10,9 +10,11 @@ import { sessionSurfaces } from './stores.ts'
 import { SurfaceTabs } from './SurfaceTabs.tsx'
 import css from './SurfacesRoot.module.css'
 
-/** Layout write and git probe injected so cards can open the column and disable Diff. */
+/** Layout write and probes injected so cards can open the column and disable Browser / Diff. */
 export interface SurfacesRootInjected {
   openSurfaces: () => void
+  /** True when desktop `window.shell.previewOpen` exists. */
+  previewAvailable: boolean
   gitStatus: (cwd: string) => Promise<unknown | null>
 }
 
@@ -80,7 +82,12 @@ export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
   if (props.useStore === undefined || props.actions === undefined) {
     return (
       <div className={css.root} data-surfaces-root>
-        <EmptyState onOpen={() => { props.openSurfaces() }} t={props.t} diffAvailable={diffAvailable} />
+        <EmptyState
+          onOpen={() => { props.openSurfaces() }}
+          t={props.t}
+          browserAvailable={props.previewAvailable}
+          diffAvailable={diffAvailable}
+        />
       </div>
     )
   }
@@ -104,6 +111,7 @@ function SurfacesBody({
   actions,
   renderSlot,
   openSurfaces,
+  previewAvailable,
   t,
   diffAvailable,
 }: SurfacesBodyProps): ReactNode {
@@ -122,7 +130,12 @@ function SurfacesBody({
   return (
     <div className={css.root} data-surfaces-root>
       {bucket.surfaces.length === 0 ? (
-        <EmptyState onOpen={open} t={t} diffAvailable={diffAvailable} />
+        <EmptyState
+          onOpen={open}
+          t={t}
+          browserAvailable={previewAvailable}
+          diffAvailable={diffAvailable}
+        />
       ) : (
         <>
           <SurfaceTabs
