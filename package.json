@@ -9,6 +9,7 @@
   "private": true,
   "scripts": {
     "start": "node scripts/run-electron.js",
+    "test": "node --test \"src/**/*.test.js\"",
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "electron-builder --dir",

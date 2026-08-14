@@ -153,10 +153,11 @@
 .titlebarTrailing {
   position: absolute;
   top: 12px;
-  right: var(--dsh-wco-pad);
+  right: var(--dsh-wco-controls, var(--dsh-wco-pad));
   z-index: 21;
   display: flex;
   align-items: center;
+  gap: 8px;
   height: 32px;
   -webkit-app-region: no-drag;
 }

@@ -1,4 +1,23 @@
-(() => {
+const DSH_CONTROL_SIZE = 32;
+const DSH_CONTROL_GAP = 0;
+const DSH_EDGE = 8;
+const DSH_CLUSTER = 8;
+
+function dshWindowControlsRight() {
+  return DSH_EDGE + DSH_CONTROL_SIZE * 4 + DSH_CONTROL_GAP * 3 + DSH_CLUSTER;
+}
+
+function dshReservedRight(trailingWidth) {
+  const controls = dshWindowControlsRight();
+  const width = Math.max(0, Math.round(Number(trailingWidth) || 0));
+  return width > 0 ? controls + width + DSH_CLUSTER : controls;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { dshWindowControlsRight, dshReservedRight };
+}
+
+typeof document !== 'undefined' && (() => {
   const STYLE_ID = 'dsh-shell-integrated-chrome';
   const CONTROLS_ID = 'dsh-shell-controls';
   const DRAG_ID = 'dsh-shell-drag-strip';
@@ -129,8 +148,20 @@
     return r.top <= 8 && r.height >= 24 && r.width >= 24;
   }
 
+  function windowControlsRight() {
+    return dshWindowControlsRight();
+  }
+
+  function trailingClusterWidth() {
+    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
+    if (trailing == null || typeof trailing.getBoundingClientRect !== 'function') {
+      return 0;
+    }
+    return Math.max(0, Math.round(trailing.getBoundingClientRect().width));
+  }
+
   function reservedRight() {
-    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
+    return dshReservedRight(trailingClusterWidth());
   }
 
   function ensureStyle() {
@@ -141,7 +172,7 @@
       document.documentElement.appendChild(style);
     }
     style.textContent = `
-      :root { --dsh-wco-pad: ${reservedRight()}px; }
+      :root { --dsh-wco-pad: ${reservedRight()}px; --dsh-wco-controls: ${windowControlsRight()}px; }
       #${CONTROLS_ID} {
         position: fixed;
         top: 12px;
@@ -312,6 +343,7 @@
     const logo = findLogoRow();
     const inset = placeControls(host, sessionLog);
     document.documentElement.style.setProperty('--dsh-wco-pad', `${inset}px`);
+    document.documentElement.style.setProperty('--dsh-wco-controls', `${windowControlsRight()}px`);
 
     let bg = opaqueBg(document.body);
     if (bar) {
@@ -329,6 +361,11 @@
     if (sessionLog) {
       sessionLog.style.marginRight = '';
       sessionLog.setAttribute(HIT, '');
+    }
+    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
+    if (trailing instanceof HTMLElement) {
+      trailing.setAttribute(HIT, '');
+      markInteractive(trailing);
     }
 
     const maximized = Boolean(window.__dshShellMaximized);

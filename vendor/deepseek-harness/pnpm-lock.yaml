@@ -1357,6 +1357,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-theme':
         specifier: workspace:^
         version: link:../../client/ui-theme
+      '@deepseek-ai/dsh-client-ui-titlebar':
+        specifier: workspace:^
+        version: link:../../client/ui-titlebar
       '@deepseek-ai/dsh-client-ui-tool':
         specifier: workspace:^
         version: link:../../client/ui-tool
@@ -2811,6 +2814,43 @@ importers:
       '@deepseek-ai/dsh-host-webserver':
         specifier: workspace:^
         version: link:../../host/webserver
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+
+  packages/client/ui-titlebar:
+    dependencies:
+      clsx:
+        specifier: ^2.0.0
+        version: 2.1.1
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../locale
+      '@deepseek-ai/dsh-client-runtime':
+        specifier: workspace:^
+        version: link:../runtime
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:^
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:^
+        version: link:../ui-layout
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../ui-slots
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
