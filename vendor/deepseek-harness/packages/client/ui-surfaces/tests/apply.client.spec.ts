@@ -34,7 +34,7 @@ describe('ui-surfaces apply', () => {
     expect(inject).toEqual(['slots', 'layout', 'locale'])
   })
 
-  it('occupies surfaces and declares five single session-maybe children', async () => {
+  it('occupies surfaces and declares six single session-maybe children', async () => {
     const b = await bench()
     const entry = b.slots.entries('surfaces')[0]
     expect(entry?.component).toBe(SurfacesRoot)
@@ -42,6 +42,7 @@ describe('ui-surfaces apply', () => {
       'surfaces.browser': { kind: 'single', scope: 'session-maybe' },
       'surfaces.terminal': { kind: 'single', scope: 'session-maybe' },
       'surfaces.files': { kind: 'single', scope: 'session-maybe' },
+      'surfaces.file': { kind: 'single', scope: 'session-maybe' },
       'surfaces.diff': { kind: 'single', scope: 'session-maybe' },
       'surfaces.agents': { kind: 'single', scope: 'session-maybe' },
     })

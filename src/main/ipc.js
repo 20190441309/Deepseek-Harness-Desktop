@@ -7,8 +7,9 @@ const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
-const { gitCommit, gitCreateChangeRequest, gitPull, gitPush, gitStatus } = require('./git');
+const { gitCommit, gitCreateChangeRequest, gitDiff, gitPull, gitPush, gitStatus } = require('./git');
 const { registerPtyIpc } = require('./pty');
+const { listDir, readFile } = require('./workspace-fs');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -131,10 +132,13 @@ function registerIpc({ dsh, startHarness }) {
   ipcMain.handle('shell:open-marketplace', () => openMarketplace());
 
   ipcMain.handle('shell:git-status', (_event, cwd) => gitStatus(cwd));
+  ipcMain.handle('shell:git-diff', (_event, cwd) => gitDiff(cwd));
   ipcMain.handle('shell:git-commit', (_event, cwd, message) => gitCommit(cwd, message));
   ipcMain.handle('shell:git-push', (_event, cwd) => gitPush(cwd));
   ipcMain.handle('shell:git-pull', (_event, cwd) => gitPull(cwd));
   ipcMain.handle('shell:git-create-change-request', (_event, cwd, input) => gitCreateChangeRequest(cwd, input));
+  ipcMain.handle('shell:list-dir', (_event, cwd, relativePath) => listDir(cwd, relativePath));
+  ipcMain.handle('shell:read-file', (_event, cwd, relativePath) => readFile(cwd, relativePath));
   registerPtyIpc(ipcMain);
 
   ipcMain.handle('shell:install-update', async (event) => {

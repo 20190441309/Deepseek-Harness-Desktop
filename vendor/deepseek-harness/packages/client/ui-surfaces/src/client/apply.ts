@@ -12,6 +12,16 @@ export type { SurfacesKey } from './locales.ts'
 export type { OpenableKind, Surface, SurfaceKind, SurfacesState } from './stores.ts'
 export { createSurfacesStore } from './stores.ts'
 
+/** Owner props the Files occupant receives so it can open a file surface. */
+export interface FilesOwnerProps {
+  openFile: (relativePath: string) => void
+}
+
+/** Owner props the single-file occupant receives. */
+export interface FileOwnerProps {
+  relativePath: string
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Right-panel surfaces copy. */
@@ -28,11 +38,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'surfaces.terminal': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
     /**
-     * Workspace files occupant. Later ui-files injects here.
+     * Workspace files occupant. ui-files injects here.
      */
-    'surfaces.files': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
+    'surfaces.files': { kind: 'single'; scope: 'session-maybe'; owner: FilesOwnerProps }
     /**
-     * Git diff occupant. Later ui-diff injects here.
+     * Single-file preview occupant. ui-files injects here.
+     */
+    'surfaces.file': { kind: 'single'; scope: 'session-maybe'; owner: FileOwnerProps }
+    /**
+     * Git diff occupant. ui-diff injects here.
      */
     'surfaces.diff': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
     /**
@@ -40,6 +54,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'surfaces.agents': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
   }
+}
+
+interface GitShell {
+  gitStatus?: (cwd: string) => Promise<unknown | null>
+}
+
+/**
+ * Bind desktop gitStatus when `window.shell` is present.
+ * @returns a probe that resolves null outside the desktop app or when git is missing.
+ */
+function readGitStatus(): SurfacesRootInjected['gitStatus'] {
+  const shell = typeof window === 'undefined'
+    ? undefined
+    : (window as Window & { shell?: GitShell }).shell
+  return cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null)
 }
 
 /** Services required by the surfaces plugin. */
@@ -60,11 +89,13 @@ export function apply(ctx: ClientContext): void {
       'surfaces.browser': { kind: 'single', scope: 'session-maybe' },
       'surfaces.terminal': { kind: 'single', scope: 'session-maybe' },
       'surfaces.files': { kind: 'single', scope: 'session-maybe' },
+      'surfaces.file': { kind: 'single', scope: 'session-maybe' },
       'surfaces.diff': { kind: 'single', scope: 'session-maybe' },
       'surfaces.agents': { kind: 'single', scope: 'session-maybe' },
     },
     inject: (): SurfacesRootInjected => ({
       openSurfaces: () => { ctx.layout.openSurfaces() },
+      gitStatus: readGitStatus(),
     }),
   }, SurfacesRoot))
 }

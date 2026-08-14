@@ -2,6 +2,6 @@
 
 export { apply, inject } from './apply.ts'
 export type {
-  OpenableKind, Surface, SurfaceKind, SurfacesKey, SurfacesRootInjected, SurfacesRootProps, SurfacesState,
+  FileOwnerProps, FilesOwnerProps, OpenableKind, Surface, SurfaceKind, SurfacesKey, SurfacesRootInjected, SurfacesRootProps, SurfacesState,
 } from './apply.ts'
 export { createSurfacesStore } from './apply.ts'

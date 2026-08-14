@@ -76,6 +76,8 @@
     "@deepseek-ai/dsh-client-ui-git": "workspace:^",
     "@deepseek-ai/dsh-client-ui-user-terminal": "workspace:^",
     "@deepseek-ai/dsh-client-ui-surfaces": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-files": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-diff": "workspace:^",
     "@deepseek-ai/dsh-client-ui-skill": "workspace:^",
     "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:^",
     "@deepseek-ai/dsh-client-ui-subagent": "workspace:^",

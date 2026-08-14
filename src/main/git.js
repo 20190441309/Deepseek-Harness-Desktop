@@ -1,5 +1,6 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
+const path = require('node:path');
 
 function asCwd(cwd) {
   if (typeof cwd !== 'string' || cwd.trim() === '') return null;
@@ -200,6 +201,115 @@ async function gitPull(cwd) {
   return ok();
 }
 
+const MAX_UNTRACKED_BYTES = 256 * 1024;
+
+function parseUnifiedDiff(text) {
+  const files = [];
+  let current = null;
+  let hunk = null;
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      if (current) files.push(current);
+      current = { path: '', status: 'modified', hunks: [] };
+      hunk = null;
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith('new file mode')) {
+      current.status = 'added';
+      continue;
+    }
+    if (line.startsWith('deleted file mode')) {
+      current.status = 'deleted';
+      continue;
+    }
+    if (line.startsWith('rename from ')) {
+      current.status = 'renamed';
+      current.oldPath = line.slice('rename from '.length);
+      continue;
+    }
+    if (line.startsWith('+++ ')) {
+      const spec = line.slice(4);
+      if (spec !== '/dev/null') current.path = spec.replace(/^b\//, '');
+      continue;
+    }
+    if (line.startsWith('--- ')) {
+      const spec = line.slice(4);
+      if (spec !== '/dev/null' && !current.path) current.path = spec.replace(/^a\//, '');
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      hunk = { header: line, lines: [] };
+      current.hunks.push(hunk);
+      continue;
+    }
+    if (!hunk) continue;
+    if (line.startsWith('+')) hunk.lines.push({ kind: 'add', text: line.slice(1) });
+    else if (line.startsWith('-')) hunk.lines.push({ kind: 'del', text: line.slice(1) });
+    else if (line.startsWith(' ')) hunk.lines.push({ kind: 'context', text: line.slice(1) });
+  }
+  if (current) files.push(current);
+  return files;
+}
+
+function untrackedAsDiff(root, rel) {
+  const target = path.join(root, rel);
+  let stat;
+  try {
+    stat = fs.statSync(target);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile()) return null;
+  if (stat.size > MAX_UNTRACKED_BYTES) {
+    return { path: rel, status: 'added', hunks: [] };
+  }
+  const buf = fs.readFileSync(target);
+  if (buf.includes(0)) {
+    return { path: rel, status: 'added', hunks: [] };
+  }
+  const body = buf.toString('utf8').replace(/\r\n/g, '\n');
+  const rows = body.split('\n');
+  if (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
+  return {
+    path: rel,
+    status: 'added',
+    hunks: [{
+      header: `@@ -0,0 +1,${rows.length} @@`,
+      lines: rows.map((text) => ({ kind: 'add', text })),
+    }],
+  };
+}
+
+async function gitDiff(cwd) {
+  const root = asCwd(cwd);
+  if (!root) return null;
+  const inside = await runGit(root, ['rev-parse', '--is-inside-work-tree']);
+  if (inside.missing || inside.code !== 0 || inside.stdout.trim() !== 'true') return null;
+
+  const files = [];
+  const head = await runGit(root, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+  if (head.code === 0) {
+    const diff = await runGit(root, ['diff', 'HEAD', '--no-color', '--no-ext-diff', '--find-renames']);
+    files.push(...parseUnifiedDiff(diff.stdout));
+  } else {
+    const staged = await runGit(root, ['diff', '--cached', '--no-color', '--no-ext-diff']);
+    const unstaged = await runGit(root, ['diff', '--no-color', '--no-ext-diff']);
+    files.push(...parseUnifiedDiff(staged.stdout), ...parseUnifiedDiff(unstaged.stdout));
+  }
+
+  const untracked = await runGit(root, ['ls-files', '--others', '--exclude-standard', '-z']);
+  if (untracked.code === 0 && untracked.stdout) {
+    for (const rel of untracked.stdout.split('\0').filter(Boolean)) {
+      if (files.some((file) => file.path === rel)) continue;
+      const added = untrackedAsDiff(root, rel);
+      if (added) files.push(added);
+    }
+  }
+  return { files };
+}
+
 async function gitCreateChangeRequest(cwd, input) {
   const root = asCwd(cwd);
   if (!root) return fail('Git status is unavailable.');
@@ -215,6 +325,7 @@ async function gitCreateChangeRequest(cwd, input) {
 
 module.exports = {
   gitStatus,
+  gitDiff,
   gitCommit,
   gitPush,
   gitPull,

@@ -195,6 +195,12 @@
     - id: ui-surfaces
       name: '@deepseek-ai/dsh-client-ui-surfaces'
 
+    - id: ui-files
+      name: '@deepseek-ai/dsh-client-ui-files'
+
+    - id: ui-diff
+      name: '@deepseek-ai/dsh-client-ui-diff'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 

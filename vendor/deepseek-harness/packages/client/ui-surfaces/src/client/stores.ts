@@ -32,6 +32,7 @@ export type SurfacesState = {
 
 type SurfacesActions = {
   open: (draft: SurfacesState, sessionId: string, kind: OpenableKind) => void
+  openFile: (draft: SurfacesState, sessionId: string, relativePath: string) => void
   activate: (draft: SurfacesState, sessionId: string, id: string) => void
   close: (draft: SurfacesState, sessionId: string, id: string) => void
   closeOthers: (draft: SurfacesState, sessionId: string, id: string) => void
@@ -108,6 +109,15 @@ export function createSurfacesStore(): EngineStoreHandle<SurfacesState, Surfaces
           bucket.surfaces.push(surface)
         }
         bucket.activeId = surface.id
+      },
+      openFile: (draft, sessionId: string, relativePath: string) => {
+        const bucket = ensure(draft, sessionId)
+        bucket.surfaces = bucket.surfaces.filter(surface => surface.kind !== 'files')
+        const id = `file:${relativePath}`
+        if (!bucket.surfaces.some(surface => surface.id === id)) {
+          bucket.surfaces.push({ id, kind: 'file', relativePath })
+        }
+        bucket.activeId = id
       },
       activate: (draft, sessionId: string, id: string) => {
         const bucket = draft.bySession[sessionId]

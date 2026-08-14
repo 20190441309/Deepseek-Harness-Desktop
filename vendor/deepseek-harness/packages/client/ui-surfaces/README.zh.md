@@ -6,7 +6,7 @@
 
 store 用 `sessionId` 做 key（`bySession`）。`open` 会 upsert 单例的 files／diff／agents、一个 preview、以及一个 terminal 占位。`activate`／`close`／`closeOthers`／`closeToRight`／`closeAll` 只改该会话的列表。标题栏 `toggleSurfaces` 只写布局宽度，不清这个 store。
 
-声明的子座都是 `single` + `session-maybe`：`surfaces.browser`、`surfaces.terminal`、`surfaces.files`、`surfaces.diff`、`surfaces.agents`。`surfaces.terminal` 与 ui-user-terminal 的 inject 一致，现有 Terminal occupant 才能挂上。Files／Diff／Browser／Agents 的内容由后续包注入；本壳不渲染它们。
+声明的子座都是 `single` + `session-maybe`：`surfaces.browser`、`surfaces.terminal`、`surfaces.files`、`surfaces.file`、`surfaces.diff`、`surfaces.agents`。`surfaces.terminal` 与 ui-user-terminal 的 inject 一致，现有 Terminal occupant 才能挂上。`surfaces.files` 的 owner 是 `openFile(relativePath)`；`surfaces.file` 的 owner 是 `relativePath`。`gitStatus(cwd)` 为 null 时禁用差异空态卡，理由与 T3code 相同：`Diff is only available for server threads in Git repositories.` Files／Diff／Browser／Agents 的内容由后续包注入；本壳不渲染它们。
 
 `/client` 导出表层只包含插件主体（`apply`／`inject`）、store 工厂及约定类型；SurfacesRoot、EmptyState 与 SurfaceTabs 仍由 slot 注册封装在包内。
 
