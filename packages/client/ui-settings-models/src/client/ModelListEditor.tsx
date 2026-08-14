@@ -117,6 +117,30 @@ function IconTrash(): ReactNode {
 type CapacityField = 'contextWindow' | 'maxTokens'
 
 /**
+ * Thinking levels this form can declare. Ids are pi-ai's canonical keys; the
+ * wire spelling is the same string (`high: high`). `off` / `minimal` stay
+ * YAML-only — a checked box here is a thinking intensity, not "don't think".
+ */
+const EFFORT_CHOICES = [
+  { id: 'low', key: 'effort.low' },
+  { id: 'medium', key: 'effort.medium' },
+  { id: 'high', key: 'effort.high' },
+  { id: 'xhigh', key: 'effort.xhigh' },
+  { id: 'max', key: 'effort.max' },
+] as const satisfies readonly { id: string; key: keyof typeof en }[]
+
+type EffortId = (typeof EFFORT_CHOICES)[number]['id']
+
+/** One model's `reasoningEfforts` dict, or empty when the field is absent / false. */
+function effortsOf(model: ModelDraft): Record<string, string | null> {
+  const value = model['reasoningEfforts']
+  if (value === false || value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return { ...(value as Record<string, string | null>) }
+}
+
+/**
  * What an empty capacity field is worth, shown as its placeholder so a row left
  * blank does not read as a model with no capacity at all.
  *
@@ -210,7 +234,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
-  const patch = (index: number, next: Record<string, string | number | undefined>): void => {
+  const patch = (index: number, next: Record<string, unknown>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
       // Rebuilt rather than spread over: an emptied optional field has to leave
@@ -225,6 +249,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         Object.entries({ ...model, ...next }).filter(([key]) => !cleared.has(key)),
       )
     }))
+  }
+
+  const toggleEffort = (index: number, model: ModelDraft, id: EffortId): void => {
+    const dict = effortsOf(model)
+    if (Object.prototype.hasOwnProperty.call(dict, id)) delete dict[id]
+    else dict[id] = id
+    const stillOffers = EFFORT_CHOICES.some(choice => Object.prototype.hasOwnProperty.call(dict, choice.id))
+    patch(index, { reasoningEfforts: stillOffers ? dict : undefined })
   }
 
   const fetchModels = async (): Promise<void> => {
@@ -388,6 +420,26 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               <IconTrash />
             </button>
           </div>
+          <fieldset className={styles['effortGroup']}>
+            <legend className={styles['modelFieldLabel']}>{t('effortTitle')}</legend>
+            <div className={styles['effortOptions']}>
+              {EFFORT_CHOICES.map((choice) => {
+                const checked = Object.prototype.hasOwnProperty.call(effortsOf(model), choice.id)
+                return (
+                  <label className={styles['effortOption']} key={choice.id}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      aria-label={`${t(choice.key)} ${index + 1}`}
+                      onChange={() => { toggleEffort(index, model, choice.id) }}
+                    />
+                    <span>{t(choice.key)}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
           {expanded.has(index)
             ? (
               <div className={styles['modelAdvanced']}>

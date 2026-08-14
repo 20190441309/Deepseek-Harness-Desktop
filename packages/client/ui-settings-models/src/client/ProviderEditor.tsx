@@ -11,11 +11,10 @@
  * display name and wire protocol of a pi-ai route the adapter does not ship —
  * the two fields the create card asked that route for, editable here for the
  * same reason).
- * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
- * the models under one provider disagree about it, so a provider-scoped
- * control can only be set to a value some of them reject. The composer's
- * model picker offers each model its own levels; `settings.yaml` keeps the
- * profile field for a deployment that knows its route. Everything else stays
+ * Reasoning effort is per-MODEL: the pi-ai catalog list writes
+ * `reasoningEfforts` on each row, and the composer's picker offers exactly
+ * those levels. A provider-scoped control would still be wrong — the models
+ * under one provider disagree about what they accept. Everything else stays
  * owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
  * path ops against the stored section — the card names only the fields it can
  * see instead of rebuilding the whole subtree from a partial descriptor.
@@ -161,6 +160,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const fallback = getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
   const layout = layoutOf(namespace.ns)
+  const [customizedOpen, setCustomizedOpen] = useState(layout === 'pi-ai')
   const keyRef = refFor(namespace, settingsPath, props.provider)
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -376,7 +376,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           />
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
         </div>
-        {props.credentialOnly === true ? null : <details className={styles['customized']}>
+        {props.credentialOnly === true ? null : (
+          <details
+            className={styles['customized']}
+            open={customizedOpen}
+            onToggle={(event) => { setCustomizedOpen(event.currentTarget.open) }}
+          >
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>
           <div className={styles['customizedBody']}>
             {/* The name and the protocol are the create card's two remaining
@@ -462,7 +467,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
               )
               : <ModelListEditor {...catalogProps} probe={probe} probeBlocked={keyFailure} api={api} />}
           </div>
-        </details>}
+          </details>
+        )}
       </>
     )
   }
