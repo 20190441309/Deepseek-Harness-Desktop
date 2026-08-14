@@ -647,6 +647,18 @@ describe('handler carrier-layer statuses', () => {
 })
 
 describe('SSE streams through the carrier', () => {
+  it('sends Accept text/event-stream on downlink GETs', async () => {
+    const seen: string[] = []
+    const c = new InProcessApiClient({
+      fetch: async (_input, init) => {
+        seen.push(new Headers(init?.headers).get('accept') ?? '')
+        return new Response(': connected\n\n', { headers: { 'content-type': 'text/event-stream' } })
+      },
+    })
+    await collect(c.events.host({}, new AbortController().signal))
+    expect(seen).toEqual(['text/event-stream'])
+  })
+
   it('yields mux frames as ServerRequest narrow forms and completes', async () => {
     const ac = new AbortController()
     const frames = await collect(client().events.mux({}, ac.signal))

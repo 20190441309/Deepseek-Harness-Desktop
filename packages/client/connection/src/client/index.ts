@@ -124,7 +124,7 @@ export function apply(ctx: Context): void {
           // generation, so do not leak its stale connected notification to
           // the consumer sink afterward.
           if (!Object.is(description, next)) return
-          sinks.onConnected?.(next)
+          return sinks.onConnected?.(next)
         },
         onStateChange: (state) => {
           if (state === 'reconnecting') publishDescription(undefined)

@@ -20,7 +20,7 @@ function subscribedFrame(lastSeq = 0) {
 }
 
 describe('connection lifecycle', () => {
-  it('announces connected after describe + both streams open, then pumps frames to sinks', async () => {
+  it('announces connected after describe, then pumps frames to sinks', async () => {
     const api = new FakeApiClient()
     const muxSeen: string[] = []
     const descriptions: boolean[] = []
@@ -163,24 +163,22 @@ describe('connection lifecycle', () => {
     }
   })
 
-  it('holds onConnected until both streams establish even after describe succeeds', async () => {
+  it('announces connected from describe without waiting for stream onOpen', async () => {
     const api = new FakeApiClient()
-    api.holdStreamOpen = true // describe resolves immediately; stream establishment is in the case's hand
+    api.holdStreamOpen = true
     let connected = 0
     const controller = new ConnectionController(api, { onConnected: () => { connected++ } }, FAST)
     controller.start()
     try {
-      await vi.waitFor(() => { expect(api.callsOf('host.describe')).toHaveLength(1) })
-      await new Promise(resolve => setTimeout(resolve, 30))
-      expect(connected).toBe(0) // describe alone must not announce
-      api.releaseStreamOpens()
       await vi.waitFor(() => { expect(connected).toBe(1) })
+      expect(api.callsOf('host.describe')).toHaveLength(1)
+      api.releaseStreamOpens()
     } finally {
       controller.stop()
     }
   })
 
-  it('rejects a generation whose streams end during readiness and retries', async () => {
+  it('does not open downlinks until host.describe succeeds', async () => {
     const api = new FakeApiClient()
     const firstDescribe = deferred<Awaited<ReturnType<FakeApiClient['onDescribe']>>>()
     let describeCalls = 0
@@ -190,25 +188,57 @@ describe('connection lifecycle', () => {
         ? firstDescribe.promise
         : Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
     }
-    const states: ConnectionState[] = []
     let connected = 0
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const controller = new ConnectionController(api, { onConnected: () => { connected++ } }, FAST)
+    controller.start()
+    try {
+      await vi.waitFor(() => { expect(describeCalls).toBe(1) })
+      expect(api.openMuxCount).toBe(0)
+      expect(connected).toBe(0)
+      firstDescribe.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+      await vi.waitFor(() => { expect(connected).toBe(1) })
+      await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
+    } finally {
+      controller.stop()
+    }
+  })
+
+  it('does not open downlinks until onConnected settles', async () => {
+    const api = new FakeApiClient()
+    const hydrate = deferred<void>()
+    let connected = 0
     const controller = new ConnectionController(api, {
-      onConnected: () => { connected++ },
-      onStateChange: state => states.push(state),
+      onConnected: () => {
+        connected++
+        return hydrate.promise
+      },
+    }, FAST)
+    controller.start()
+    try {
+      await vi.waitFor(() => { expect(connected).toBe(1) })
+      expect(api.openMuxCount).toBe(0)
+      hydrate.resolve()
+      await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
+    } finally {
+      controller.stop()
+    }
+  })
+
+  it('opens downlinks after an onConnected throw', async () => {
+    const api = new FakeApiClient()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const controller = new ConnectionController(api, {
+      onConnected: () => {
+        throw new Error('hydrate failed')
+      },
     }, FAST)
     controller.start()
     try {
       await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
-      api.endStreams()
-      firstDescribe.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
-
-      await vi.waitFor(() => { expect(describeCalls).toBe(2) })
-      await vi.waitFor(() => { expect(connected).toBe(1) })
-      expect(states).toEqual(['reconnecting', 'connected'])
+      expect(errorSpy).toHaveBeenCalled()
     } finally {
       controller.stop()
-      warnSpy.mockRestore()
+      errorSpy.mockRestore()
     }
   })
 

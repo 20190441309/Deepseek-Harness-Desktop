@@ -215,9 +215,11 @@ export function apply(ctx: Context): void {
       const frame = envelope.payload
       if (frame.type === 'host/remote-event') ctx.remote.$dispatch(frame.event, frame.args)
     },
-    onConnected: () => {
-      sessions.handleConnected()
-      workspaces.handleConnected()
+    onConnected: async () => {
+      await Promise.all([
+        sessions.handleConnected(),
+        workspaces.handleConnected(),
+      ])
       ctx.emit('connection/reset')
     },
     onStateChange: (state) => {

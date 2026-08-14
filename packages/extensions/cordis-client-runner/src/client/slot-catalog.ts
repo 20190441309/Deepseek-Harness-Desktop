@@ -1352,6 +1352,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'settings.section\' (client-ui-settings-plugins), so it exists while that entry is mounted',
     occupants: [
       'client-ui-settings-plugin-inventory PluginInventorySettingsTab id \'all\'',
+      'client-ui-settings-plugin-inventory MarketplaceSettingsTab id \'marketplace\'',
       'client-ui-settings-plugins ConfigurablePluginsTab id \'configurable\'',
     ],
     replaceRisk: 'none',
@@ -1540,6 +1541,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-settings-remote RemoteSection id \'remote\'',
       'client-ui-cordis CordisPanel id \'cordis-panel\'',
     ],
     replaceRisk: 'none',
