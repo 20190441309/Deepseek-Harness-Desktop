@@ -30,7 +30,7 @@
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-inverted);
   border-radius: 24px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) var(--dsw-alias-glass-opacity, 80%), transparent);
   box-shadow: var(--dsw-shadow-lv3);
 }
 
