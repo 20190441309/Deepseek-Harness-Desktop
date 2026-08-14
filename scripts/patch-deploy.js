@@ -3,8 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const vendorRoot = path.resolve('C:/ai/deepseek-harness-gui/vendor/deepseek-harness');
-const deploy = path.resolve(process.argv[2] || 'C:/ai/deepseek-harness-gui/.pack-v3');
+const repoRoot = path.join(__dirname, '..');
+const deploy = path.resolve(process.argv[2] || path.join(repoRoot, '.pack-v3'));
+const vendorRoot = path.resolve(process.argv[3] || path.join(repoRoot, 'vendor', 'deepseek-harness'));
 const MAX_ROUNDS = 30;
 const skipped = new Set();
 
