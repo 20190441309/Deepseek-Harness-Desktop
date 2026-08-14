@@ -23,7 +23,11 @@
 - **自动更新**：Harness 设置 → 关于里检查 GitHub Releases，有新版本可在线安装
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 
-## 跑起来
+## 安装
+
+只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）或免安装的便携版，装完不需要本机 Node 环境。
+
+## 从源码跑
 
 Windows 10+，Node 22.19+ / 24+，pnpm 11。
 
@@ -35,7 +39,7 @@ npm run setup:harness
 npm start
 ```
 
-第一次 `setup:harness` 会克隆官方源码并构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。
+Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `setup:harness` 装依赖并完整构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。
 
 ### 日常使用
 
@@ -91,6 +95,7 @@ npm run dist
 扫码进群，聊用法、踩坑和需求。
 
 </div>
+
 ## 许可证
 
 [MIT](LICENSE)

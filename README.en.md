@@ -31,7 +31,11 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Auto-update**: Settings → About checks GitHub Releases and can install online
 - **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
 
-## Run
+## Install
+
+Just want to use it? Grab the latest NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) or the portable build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) — no local Node required.
+
+## Run from source
 
 Windows 10+, Node 22.19+ / 24+, pnpm 11. Get an API key from [DeepSeek](https://platform.deepseek.com/).
 
@@ -43,7 +47,7 @@ npm run setup:harness
 npm start
 ```
 
-First `setup:harness` clones and builds upstream — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`.
+The Harness source ships with the repo (`vendor/deepseek-harness`); the first `setup:harness` installs dependencies and runs a full build — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`.
 
 ### Everyday usage
 
