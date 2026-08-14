@@ -20,6 +20,11 @@ function readBounds(el: HTMLElement | null): PreviewBounds | undefined {
   }
 }
 
+function visibleBounds(bounds: PreviewBounds | undefined): PreviewBounds | undefined {
+  if (bounds === undefined || bounds.width <= 0 || bounds.height <= 0) return undefined
+  return bounds
+}
+
 /**
  * Desktop-only local URL occupant of `surfaces.browser`. The guest paints in
  * a main-process BrowserView over `host`; the renderer never loads Node.
@@ -43,18 +48,33 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (previewId === null) return
+    let visible = false
+    const sync = (): void => {
+      const bounds = visibleBounds(readBounds(hostRef.current))
+      if (bounds === undefined) {
+        if (visible) {
+          visible = false
+          void previewHide(previewId)
+        }
+        return
+      }
+      if (!visible) {
+        visible = true
+        void previewShow(previewId, bounds)
+        return
+      }
+      void previewResize(previewId, bounds)
+    }
+    sync()
     const host = hostRef.current
-    const bounds = readBounds(host)
-    void previewShow(previewId, bounds)
     const observer = host === null || typeof ResizeObserver === 'undefined'
       ? undefined
-      : new ResizeObserver(() => {
-        const next = readBounds(hostRef.current)
-        if (next) void previewResize(previewId, next)
-      })
+      : new ResizeObserver(() => { sync() })
     if (host !== null) observer?.observe(host)
+    window.addEventListener('resize', sync)
     return () => {
       observer?.disconnect()
+      window.removeEventListener('resize', sync)
       void previewHide(previewId)
     }
   }, [previewId, previewHide, previewResize, previewShow])
