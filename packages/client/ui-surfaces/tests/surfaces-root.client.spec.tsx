@@ -65,6 +65,7 @@ function mount(opts: {
       {...bindStore(instance)}
       renderSlot={renderSlot}
       openSurfaces={openSurfaces}
+      previewAvailable
       gitStatus={gitStatus}
       t={t}
     />,
@@ -133,6 +134,31 @@ describe('SurfacesRoot', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Files' }))
     expect(instance.getSnapshot()).toEqual({ bySession: {} })
     expect(screen.getByText('Open a surface')).toBeTruthy()
+  })
+
+  it('disables Browser when preview IPC is absent', () => {
+    const instance = createSurfacesStore().create()
+    const openSurfaces = vi.fn()
+    render(
+      <SurfacesRoot
+        sessionId={'session-1' as SessionId}
+        useSession={neverHook}
+        useSessions={sessions('/tmp/proj')}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        {...bindStore(instance)}
+        renderSlot={vi.fn(() => null)}
+        openSurfaces={openSurfaces}
+        previewAvailable={false}
+        gitStatus={vi.fn(async () => null)}
+        t={t}
+      />,
+    )
+    const browser = screen.getByRole('button', { name: /Browser/ })
+    expect(browser).toHaveProperty('disabled', true)
+    fireEvent.click(browser)
+    expect(openSurfaces).not.toHaveBeenCalled()
+    expect(browser.getAttribute('title')).toBe('Browser previews are only available in the desktop app.')
   })
 
   it('disables Diff when gitStatus is null and enables it for a repository', async () => {

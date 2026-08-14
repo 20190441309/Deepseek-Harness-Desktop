@@ -30,6 +30,17 @@ describe('EmptyState', () => {
     expect(screen.getByText('Inspect running agents.')).toBeTruthy()
   })
 
+  it('disables the Browser card with the T3code reason outside the desktop app', () => {
+    const onOpen = vi.fn<(kind: OpenableKind) => void>()
+    render(<EmptyState onOpen={onOpen} t={t} browserAvailable={false} />)
+
+    const browser = screen.getByRole('button', { name: /Browser/ })
+    expect(browser).toHaveProperty('disabled', true)
+    fireEvent.click(browser)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(browser.getAttribute('title')).toBe('Browser previews are only available in the desktop app.')
+  })
+
   it('disables the Diff card with the T3code reason when the workspace is not a git repository', () => {
     const onOpen = vi.fn<(kind: OpenableKind) => void>()
     render(<EmptyState onOpen={onOpen} t={t} diffAvailable={false} />)

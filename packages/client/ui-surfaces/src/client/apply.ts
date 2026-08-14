@@ -29,7 +29,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
   interface SlotMap {
     /**
-     * Browser / preview occupant. Later ui-preview injects here.
+     * Browser / preview occupant. ui-preview injects here.
      */
     'surfaces.browser': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
     /**
@@ -50,25 +50,29 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'surfaces.diff': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
     /**
-     * Running-agents occupant. Later ui-agents-panel injects here.
+     * Running-agents occupant. ui-agents-panel injects here.
      */
     'surfaces.agents': { kind: 'single'; scope: 'session-maybe'; owner: Record<string, never> }
   }
 }
 
-interface GitShell {
+interface DesktopShell {
   gitStatus?: (cwd: string) => Promise<unknown | null>
+  previewOpen?: (input: { url: string }) => Promise<unknown>
 }
 
 /**
  * Bind desktop gitStatus when `window.shell` is present.
  * @returns a probe that resolves null outside the desktop app or when git is missing.
  */
-function readGitStatus(): SurfacesRootInjected['gitStatus'] {
+function readDesktopShell(): Pick<SurfacesRootInjected, 'gitStatus' | 'previewAvailable'> {
   const shell = typeof window === 'undefined'
     ? undefined
-    : (window as Window & { shell?: GitShell }).shell
-  return cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null)
+    : (window as Window & { shell?: DesktopShell }).shell
+  return {
+    previewAvailable: typeof shell?.previewOpen === 'function',
+    gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
+  }
 }
 
 /** Services required by the surfaces plugin. */
@@ -95,7 +99,7 @@ export function apply(ctx: ClientContext): void {
     },
     inject: (): SurfacesRootInjected => ({
       openSurfaces: () => { ctx.layout.openSurfaces() },
-      gitStatus: readGitStatus(),
+      ...readDesktopShell(),
     }),
   }, SurfacesRoot))
 }

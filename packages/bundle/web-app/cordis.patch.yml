@@ -201,6 +201,12 @@
     - id: ui-diff
       name: '@deepseek-ai/dsh-client-ui-diff'
 
+    - id: ui-preview
+      name: '@deepseek-ai/dsh-client-ui-preview'
+
+    - id: ui-agents-panel
+      name: '@deepseek-ai/dsh-client-ui-agents-panel'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 
