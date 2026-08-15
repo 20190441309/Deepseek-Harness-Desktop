@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { canPersistCloseBehavior, canPersistRemoteAccess, desktopShell } from '../src/client/desktop-shell.ts'
+import { canPersistCloseBehavior, desktopShell } from '../src/client/desktop-shell.ts'
 
 afterEach(() => {
   delete (window as Window & { shell?: unknown }).shell
@@ -32,15 +32,5 @@ describe('desktopShell', () => {
     }
     expect(canPersistCloseBehavior()).toBe(false)
     expect(canPersistCloseBehavior(null)).toBe(false)
-  })
-
-  it('requires remote-access methods to persist pairing', () => {
-    expect(canPersistRemoteAccess()).toBe(false)
-    ;(window as Window & { shell?: unknown }).shell = {
-      getRemoteAccess: async () => ({ enabled: false }),
-      setRemoteEnabled: async () => ({ enabled: true }),
-      revokeRemoteDevice: async () => ({ enabled: true, devices: [] }),
-    }
-    expect(canPersistRemoteAccess()).toBe(true)
   })
 })

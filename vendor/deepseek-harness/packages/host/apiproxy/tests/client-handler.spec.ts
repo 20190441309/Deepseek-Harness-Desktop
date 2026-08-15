@@ -53,7 +53,7 @@ function scriptedApi(overrides: {
         selected: { provider: r.payload.provider, model: r.payload.model },
       }),
       rename: r => ok(r, { title: 'renamed', seq: 0 }),
-      fork: r => ok(r, { sessionId: sid('s-fork') }),
+      fork: r => ok(r, { sessionId: sid('s-fork'), blank: false }),
       prompt: r => ok(r, { accepted: true as const }),
       attachment: r => ok(r, {
         attachment: { attachmentId: 'a' as never, mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
@@ -210,13 +210,40 @@ describe('unary round trip', () => {
       sessions: {
         fork: (request) => {
           seen = request
-          return ok(request, { sessionId: sid('s-child') })
+          return ok(request, { sessionId: sid('s-child'), blank: false })
         },
       },
     })
     const response = await client(api).sessions.fork({ sessionId: sid('s-parent'), atSeq: 7 })
     expect(seen?.payload).toEqual({ sessionId: 's-parent', atSeq: 7 })
-    expect(response.result).toEqual({ ok: true, value: { sessionId: 's-child' } })
+    expect(response.result).toEqual({ ok: true, value: { sessionId: 's-child', blank: false } })
+  })
+
+  it('routes a beforeSeq fork cut and its blank child through the wire', async () => {
+    let seen: RpcRequest<{ sessionId: SessionId; beforeSeq?: number }> | undefined
+    const api = scriptedApi({
+      sessions: {
+        fork: (request) => {
+          seen = request
+          // An anchor before the first turn forks an empty (blank) child.
+          return ok(request, { sessionId: sid('s-child'), blank: true })
+        },
+      },
+    })
+    const response = await client(api).sessions.fork({ sessionId: sid('s-parent'), beforeSeq: 3 })
+    expect(seen?.payload).toEqual({ sessionId: 's-parent', beforeSeq: 3 })
+    expect(response.result).toEqual({ ok: true, value: { sessionId: 's-child', blank: true } })
+  })
+
+  it('rejects atSeq and beforeSeq supplied together at the wire schema', async () => {
+    const api = scriptedApi()
+    const response = await client(api).sessions.fork({
+      sessionId: sid('s-parent'), atSeq: 4, beforeSeq: 3,
+    })
+    expect(response.result).toMatchObject({
+      ok: false,
+      error: { code: 'bad-request', message: 'invalid payload for session.fork' },
+    })
   })
 
   it('routes workspace rename, delete, and ordering through the wire', async () => {

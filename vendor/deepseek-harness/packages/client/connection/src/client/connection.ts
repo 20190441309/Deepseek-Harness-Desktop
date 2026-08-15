@@ -9,10 +9,9 @@ export interface ConnectionConfig {
   backoffFactor?: number
   /** Upper bound for the backoff cap in ms. */
   backoffMaxMs?: number
-  /** Cap on waiting for both streams' onOpen before onConnected, in ms. The strict handshake
-   *  waits for mux+host stream establishment plus describe; a carrier that never
-   *  fires onOpen (misbehaving proxy) must not wedge the connection forever — on timeout the
-   *  generation proceeds as connected and the live-gap repair path covers stragglers. */
+  /** Cap on waiting for both streams' onOpen after the unary handshake, in ms.
+   *  onConnected already fired from `host.describe`; this timeout only avoids
+   *  waiting forever for a carrier that never fires onOpen. */
   streamOpenTimeoutMs?: number
 }
 
@@ -21,6 +20,10 @@ const CONNECTION_DEFAULTS: Required<ConnectionConfig> = {
   backoffFactor: 2,
   backoffMaxMs: 10_000,
   streamOpenTimeoutMs: 3_000,
+}
+
+function readBootGate(): Promise<void> | undefined {
+  return (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -44,19 +47,22 @@ export type ConnectionState = 'connected' | 'reconnecting'
 export interface ConnectionSinks {
   onMuxEnvelope?: (envelope: RpcRequest<MuxFrame>) => void
   onHostEnvelope?: (envelope: RpcRequest<HostFrame>) => void
-  /** After each connection generation is established (both streams open + describe succeeded), first connect included. */
-  onConnected?: (description: HostDescription) => void
+  /** After `host.describe` succeeds for this generation (first connect included). Session list
+   *  and history are unary and must not wait for event downlinks. A returned promise is awaited
+   *  before mux/host sockets open, so those unary calls occupy the HTTP pool first. */
+  onConnected?: (description: HostDescription) => void | Promise<void>
   /** Coarse state transitions (deduplicated: fires only on change). The initial pre-connect
    *  span reports nothing — the UI treats "no state yet" as connecting, not as an outage. */
   onStateChange?: (state: ConnectionState) => void
 }
 
 /**
- * Opens both streams and keeps iterating (pull mode: nothing reads the socket and the tap
- * never fires unless someone for-awaits), reconnecting with exponential backoff on loss.
- * State (generation/attempt) is instance-private, never in the store.
- * The pump body feeds each frame to a sink (sink exceptions must
- * not kill the pump — a broken business layer must not drag down the connection layer).
+ * Completes the unary handshake first, awaits `onConnected`, then opens both
+ * event streams and keeps iterating (pull mode: nothing reads the socket and
+ * the tap never fires unless someone for-awaits), reconnecting with exponential
+ * backoff on loss. State (generation/attempt) is instance-private, never in the
+ * store. The pump body feeds each frame to a sink (sink exceptions must not
+ * kill the pump — a broken business layer must not drag down the connection layer).
  */
 export class ConnectionController {
   private generation = 0
@@ -110,6 +116,53 @@ export class ConnectionController {
       const ac = new AbortController()
       this.current = ac
 
+      const bootGate = readBootGate()
+      if (bootGate !== undefined) {
+        await Promise.race([
+          bootGate,
+          new Promise<void>((resolve) => {
+            if (ac.signal.aborted) {
+              resolve()
+              return
+            }
+            ac.signal.addEventListener('abort', () => { resolve() }, { once: true })
+          }),
+        ])
+        if (!this.isGenerationActive(ac)) {
+          await this.recover()
+          continue
+        }
+      }
+
+      try {
+        // Unary first: session.list / history ride host.describe's HTTP path.
+        // Opening downlinks before this handshake lets two long-lived HTTP
+        // streams occupy a mobile browser's per-origin slots so describe never
+        // starts and the sidebar stays empty.
+        const description = await this.api.host.describe({})
+        const descriptionResult = description.result
+        if (!descriptionResult.ok) {
+          throw new Error(`host.describe failed: ${descriptionResult.error.code}: ${descriptionResult.error.message}`)
+        }
+        if (ac.signal.aborted) throw new Error('generation aborted during readiness handshake')
+        this.attempt = 0
+        this.emitState('connected')
+        // A state sink may synchronously stop this controller. Do not publish
+        // a description for a generation that no longer exists afterward.
+        if (this.isGenerationActive(ac)) {
+          await this.callConnectedSink(descriptionResult.value)
+        }
+      } catch {
+        if (!ac.signal.aborted) ac.abort()
+        await this.recover()
+        continue
+      }
+
+      if (!this.isGenerationActive(ac)) {
+        await this.recover()
+        continue
+      }
+
       /* v8 ignore next -- initializer placeholder: the Promise executor
        * below runs synchronously and replaces it before anyone can call it. */
       let muxOpened = (): void => {}
@@ -129,50 +182,30 @@ export class ConnectionController {
         void this.pumpStream(this.api.events.host({}, ac.signal, hostOpened), this.sinks.onHostEnvelope, settle)
       })
 
-      try {
-        // Strict readiness handshake: describe proves unary reachability, onOpen
-        // proves each physical stream is established before any frame —
-        // only then may onConnected fire, so the resync it triggers cannot outrun the
-        // subscribed baseline. The timeout guards against a carrier that never fires onOpen
-        // (see ConnectionConfig.streamOpenTimeoutMs).
-        const timeout = new AbortController()
-        const [description] = await Promise.all([
-          this.api.host.describe({}),
-          Promise.race([streamsOpen, sleep(this.config.streamOpenTimeoutMs, timeout.signal)]),
-        ])
-        timeout.abort()
-        const descriptionResult = description.result
-        if (!descriptionResult.ok) {
-          throw new Error(`host.describe failed: ${descriptionResult.error.code}: ${descriptionResult.error.message}`)
-        }
-        if (ac.signal.aborted) throw new Error('generation aborted during readiness handshake')
-        this.attempt = 0
-        this.emitState('connected')
-        // A state sink may synchronously stop this controller. Do not publish
-        // a description for a generation that no longer exists afterward.
-        if (this.isGenerationActive(ac)) {
-          this.callSink(() => { this.sinks.onConnected?.(descriptionResult.value) })
-        }
-      } catch {
-        // Transport failure: treat as generation failure, fall through to the shared backoff.
-        if (!ac.signal.aborted) ac.abort()
-      }
+      const timeout = new AbortController()
+      await Promise.race([streamsOpen, sleep(this.config.streamOpenTimeoutMs, timeout.signal)])
+      timeout.abort()
 
       await failed
-      if (!this.isRunning()) return
-      this.emitState('reconnecting')
-      this.attempt += 1
-      console.warn(`[web-runtime] connection lost, retry #${this.attempt}`)
-      const idle = new AbortController()
-      await sleep(this.backoffDelay(this.attempt), idle.signal)
+      await this.recover()
     }
+  }
+
+  /** Shared reconnect backoff after a failed or torn generation. */
+  private async recover(): Promise<void> {
+    if (!this.isRunning()) return
+    this.emitState('reconnecting')
+    this.attempt += 1
+    console.warn(`[web-runtime] connection lost, retry #${this.attempt}`)
+    const idle = new AbortController()
+    await sleep(this.backoffDelay(this.attempt), idle.signal)
   }
 
   /** Deduplicated state emission (sink isolation applies). */
   private emitState(state: ConnectionState): void {
     if (this.lastState === state) return
     this.lastState = state
-    this.callSink(() => this.sinks.onStateChange?.(state))
+    this.callSink(() => { this.sinks.onStateChange?.(state) })
   }
 
   private async pumpStream<F extends { type: string }>(
@@ -195,6 +228,15 @@ export class ConnectionController {
   private callSink(fn: () => void): void {
     try {
       fn()
+    } catch (error) {
+      console.error('[web-runtime] connection sink threw:', error)
+    }
+  }
+
+  /** Same isolation for the connected sink, including a returned hydration promise. */
+  private async callConnectedSink(description: HostDescription): Promise<void> {
+    try {
+      await this.sinks.onConnected?.(description)
     } catch (error) {
       console.error('[web-runtime] connection sink threw:', error)
     }

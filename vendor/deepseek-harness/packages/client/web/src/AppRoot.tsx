@@ -31,6 +31,8 @@ export function AppRoot(props: AppRootProps) {
   const status = useSyncExternalStore(props.status.subscribe, props.status.getSnapshot)
   const error = useSyncExternalStore(props.error.subscribe, props.error.getSnapshot)
   const failed = Object.entries(status).filter(([, s]) => s === 'failed')
+  const total = Object.keys(status).length
+  const ready = Object.values(status).filter(state => state === 'active').length
 
   if (settled) return <>{props.renderApp()}</>
 
@@ -44,7 +46,9 @@ export function AppRoot(props: AppRootProps) {
           ? (
             <>
               <div className={css.spinner} />
-              <div className={css.hint}>Loading plugins…</div>
+              <div className={css.hint}>
+                {total > 0 ? `正在加载插件 ${ready}/${total}` : '正在加载插件…'}
+              </div>
             </>
           )
           : (

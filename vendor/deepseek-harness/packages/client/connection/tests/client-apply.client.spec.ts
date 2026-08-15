@@ -84,7 +84,7 @@ describe('connection client apply', () => {
     expect((await mount()).isLoopback).toBe(false)
   })
 
-  it('start() hands out one loop, rejects a second consumer, and stop() aborts the streams', async () => {
+  it('start() hands out a loop, stop() aborts it, and a later start() owns a new loop', async () => {
     ;(globalThis as Win).location = { hostname: 'localhost', search: '?fixture' }
     const handle = await mount()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -97,7 +97,6 @@ describe('connection client apply', () => {
     // config omitted: the `config ?? {}` default arm is part of the surface.
     let connected = 0
     const loop = handle.start({ onConnected: () => { connected++ } })
-    expect(() => handle.start({})).toThrow(/already owned by another consumer/)
     await vi.waitFor(() => {
       expect(handle.hostDescription.getSnapshot()?.canOpenPath).toBe(true)
     })
@@ -107,8 +106,33 @@ describe('connection client apply', () => {
     expect(connected).toBe(1)
     expect(errorSpy).toHaveBeenCalledTimes(2)
     stopThrowing()
+    const again = handle.start({ onConnected: () => { connected++ } })
+    await vi.waitFor(() => {
+      expect(handle.hostDescription.getSnapshot()?.canOpenPath).toBe(true)
+    })
+    expect(connected).toBe(2)
+    again.stop()
+    expect(handle.hostDescription.getSnapshot()).toBeUndefined()
     stopDescription()
     errorSpy.mockRestore()
+  })
+
+  it('a second start() while running replaces the previous loop', async () => {
+    ;(globalThis as Win).location = { hostname: 'localhost', search: '?fixture' }
+    const handle = await mount()
+    let connected = 0
+    const first = handle.start({ onConnected: () => { connected++ } })
+    await vi.waitFor(() => {
+      expect(handle.hostDescription.getSnapshot()?.canOpenPath).toBe(true)
+    })
+    const second = handle.start({ onConnected: () => { connected++ } })
+    first.stop()
+    await vi.waitFor(() => {
+      expect(handle.hostDescription.getSnapshot()?.canOpenPath).toBe(true)
+    })
+    expect(connected).toBeGreaterThanOrEqual(2)
+    second.stop()
+    expect(handle.hostDescription.getSnapshot()).toBeUndefined()
   })
 
   it('does not announce a generation synchronously stopped by a description subscriber', async () => {
@@ -253,16 +277,30 @@ describe('connection client apply', () => {
     fetch.mockRestore()
   })
 
-  it('maps an HTTPS page origin to a secure WebSocket URL', async () => {
+  it('maps an HTTPS loopback origin to a secure WebSocket URL', async () => {
     ;(globalThis as Win).location = {
-      hostname: 'harness.example', search: '', origin: 'https://harness.example',
+      hostname: 'localhost', search: '', origin: 'https://localhost',
     }
     ;(globalThis as WebSocketGlobal).WebSocket = FakeWebSocket as unknown as typeof WebSocket
     const client = (await mount()).api
     const abort = new AbortController()
     const iterator = client.events.mux({}, abort.signal)[Symbol.asyncIterator]()
     const pending = iterator.next()
-    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('wss://harness.example/api/events.mux') })
+    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('wss://localhost/api/events.mux') })
+    abort.abort()
+    await expect(pending).resolves.toMatchObject({ done: true })
+  })
+
+  it('opens WebSocket downlinks on a non-loopback origin', async () => {
+    ;(globalThis as Win).location = {
+      hostname: '125.124.85.212', search: '', origin: 'http://125.124.85.212:8411',
+    }
+    ;(globalThis as WebSocketGlobal).WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    const client = (await mount()).api
+    const abort = new AbortController()
+    const iterator = client.events.host({}, abort.signal, () => undefined)[Symbol.asyncIterator]()
+    const pending = iterator.next()
+    await vi.waitFor(() => { expect(sockets[0]?.url).toBe('ws://125.124.85.212:8411/api/events.host') })
     abort.abort()
     await expect(pending).resolves.toMatchObject({ done: true })
   })
@@ -279,6 +317,39 @@ describe('connection client apply', () => {
     await expect(iterator.next()).resolves.toMatchObject({ done: true })
     expect(sockets).toHaveLength(1)
     expect(sockets[0]?.readyState).toBe(FakeWebSocket.CLOSED)
+  })
+
+  it('mints host.describe rpcIds without requiring secure-context randomUUID', async () => {
+    ;(globalThis as Win).location = { hostname: '125.124.85.212', search: '', origin: 'http://125.124.85.212:8411' }
+    vi.stubGlobal('crypto', {
+      getRandomValues(bytes: Uint8Array) {
+        return bytes.fill(0)
+      },
+    })
+    const handle = await mount()
+    const original = globalThis.fetch
+    const seen: { url: string; rpcId: string }[] = []
+    globalThis.fetch = async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (typeof init?.body !== 'string') throw new TypeError('expected a JSON string request body')
+      const body = JSON.parse(init.body) as { rpcId: string }
+      seen.push({ url, rpcId: body.rpcId })
+      return Response.json({
+        type: 'server-response',
+        rpcId: body.rpcId,
+        result: { ok: true, value: { version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: false } },
+      })
+    }
+    try {
+      const response = await handle.api.host.describe({})
+      expect(response.result.ok).toBe(true)
+    } finally {
+      globalThis.fetch = original
+      vi.unstubAllGlobals()
+    }
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.url).toBe('http://125.124.85.212:8411/api/host.describe')
+    expect(seen[0]?.rpcId).toBe('00000000-0000-4000-8000-000000000000')
   })
 
   it('carries RPC calls without requiring secure-context randomUUID', async () => {

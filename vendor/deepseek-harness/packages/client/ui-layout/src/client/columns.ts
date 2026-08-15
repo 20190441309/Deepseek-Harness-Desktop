@@ -30,8 +30,15 @@ export const SIDEBAR_DEFAULT = 280
 export const SIDEBAR_COLLAPSED = 56
 /** Viewport width below which the sidebar auto-collapses to the rail (deepsuite
  * LG breakpoint); a manual toggle below it re-expands over the squeezed center
- * (stores.ts narrowExpanded). */
+ * (stores.ts narrowExpanded). Phone mode (`PHONE_MAX`) is a stricter band
+ * inside this range and takes the sidebar out of the grid entirely. */
 export const SIDEBAR_AUTO_COLLAPSE = 1024
+/** Viewport width below which AppFrame uses the phone overlay shell: no rail,
+ * conversation is full width, sidebar and details paint as drawers. */
+export const PHONE_MAX = 768
+/** Phone sidebar drawer width; clamped to the frame so a 320px panel still
+ * leaves a tap strip of backdrop on the right. */
+export const PHONE_DRAWER = 320
 /** Details drag clamp floor. */
 export const DETAILS_MIN = 300
 /** Details drag clamp ceiling. */

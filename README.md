@@ -103,7 +103,7 @@ npm run setup:harness
 npm start
 ```
 
-Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `setup:harness` 装依赖并完整构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。桌面壳单测门槛是 `npm test`（不启动 Electron）；改关闭行为、托盘或主题遮罩后先跑它。
+Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `setup:harness` 装依赖并完整构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。桌面壳单测门槛是 `npm test`（不启动 Electron）；改关闭行为、托盘或主题遮罩后先跑它。安装版和源码启动共用同一个 `appId`，会抢单例锁：开发前先退出已安装的 Deepseek-Harness-Desktop。改了 `packages/client/*/src` 之后要在 `vendor/deepseek-harness` 里跑 `pnpm run build:lib:client`（或至少编对应包的 `lib/client.js`），只编 `apps/web/dist` 看不到布局和设置页改动。
 
 ### 日常使用
 

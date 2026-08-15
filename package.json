@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Chisa",
   "license": "MIT",
@@ -9,10 +9,7 @@
   "private": true,
   "scripts": {
     "start": "node scripts/run-electron.js",
-    "test": "node --test \"src/**/*.test.js\" \"packages/**/*.test.js\" \"apps/mobile/src/**/*.test.js\"",
-    "relay": "node packages/relay/bin.js",
-    "mobile:web": "npm --prefix apps/mobile run web",
-    "mobile:android": "npm --prefix apps/mobile run android",
+    "test": "node --test \"src/**/*.test.js\"",
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "electron-builder --dir",
@@ -22,10 +19,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "dependencies": {
-    "pnpm": "11.7.0",
-    "qrcode": "^1.5.4",
-    "tweetnacl": "^1.0.3",
-    "ws": "^8.21.3"
+    "pnpm": "11.8.0"
   },
   "optionalDependencies": {
     "node-pty": "^1.0.0"
@@ -45,14 +39,19 @@
     },
     "files": [
       "src/**/*",
-      "packages/protocol/**/*",
-      "packages/relay/server.js",
       "assets/**/*",
+      "phone-web/dist/**/*",
       "package.json"
     ],
     "extraMetadata": {
       "main": "src/main/index.js"
     },
+    "extraResources": [
+      {
+        "from": "phone-web/dist",
+        "to": "phone-web/dist"
+      }
+    ],
     "electronDist": "node_modules/electron/dist",
     "compression": "maximum",
     "electronLanguages": [

@@ -128,8 +128,8 @@ describe('wire event bridge', () => {
     let resets = 0
     bench.ctx.on('connection/reset', () => { resets++ })
     const description = { version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }
-    bench.sinks?.onConnected?.(description)
-    bench.sinks?.onConnected?.(description) // second generation after a reconnect
+    await bench.sinks?.onConnected?.(description)
+    await bench.sinks?.onConnected?.(description) // second generation after a reconnect
     expect(resets).toBe(2)
   })
 })

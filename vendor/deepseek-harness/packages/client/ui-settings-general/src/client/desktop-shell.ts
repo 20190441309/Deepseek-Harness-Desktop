@@ -24,22 +24,53 @@ export type ProgressPayload = {
   percent?: number
 }
 
-/** One phone or browser that has completed pairing. */
-export type RemoteDevice = {
-  deviceId: string
-  createdAt?: number
-  label?: string
+/**
+ * Harness auto-recovery policy the desktop shell persists and enforces: when
+ * the Harness process exits unexpectedly, restart it up to
+ * `harnessRestartMaxAttempts` times, backing off `harnessRestartBaseDelayMs`
+ * between attempts. Values are optional on the wire; the row normalizes them
+ * (see `normalizeHarnessRestart`).
+ */
+export type HarnessRestartConfig = {
+  harnessAutoRestart: boolean
+  harnessRestartMaxAttempts: number
+  harnessRestartBaseDelayMs: number
 }
 
-/** Remote-access snapshot returned by the desktop sidecar. */
-export type RemoteAccessStatus = {
-  enabled?: boolean
-  connected?: boolean
-  pairingUrl?: string | null
-  pairingExpiresAtMs?: number | null
-  qrDataUrl?: string | null
-  devices?: RemoteDevice[]
-  relayEndpoint?: string
+/** The max-attempt choices the settings row offers. */
+export const HARNESS_RESTART_MAX_ATTEMPTS = [1, 3, 5] as const
+
+/** The base-delay choices the settings row offers (ms). */
+export const HARNESS_RESTART_BASE_DELAYS_MS = [1000, 2000, 5000] as const
+
+/** Fallback policy for a shell that reports nothing for a preference. */
+export const HARNESS_RESTART_DEFAULTS: HarnessRestartConfig = {
+  harnessAutoRestart: true,
+  harnessRestartMaxAttempts: 3,
+  harnessRestartBaseDelayMs: 1000,
+}
+
+/**
+ * Coerce a shell-reported (possibly partial) harness restart configuration
+ * into the row's canonical values: any value outside the offered option sets
+ * falls back to the product defaults, including an enabled switch.
+ * @param input - the raw config from getConfig/saveConfig, or nothing.
+ * @returns the normalized policy the row renders and writes from.
+ */
+export function normalizeHarnessRestart(input?: Partial<HarnessRestartConfig> | null): HarnessRestartConfig {
+  const attempts = input?.harnessRestartMaxAttempts
+  const delay = input?.harnessRestartBaseDelayMs
+  return {
+    harnessAutoRestart: typeof input?.harnessAutoRestart === 'boolean'
+      ? input.harnessAutoRestart
+      : HARNESS_RESTART_DEFAULTS.harnessAutoRestart,
+    harnessRestartMaxAttempts: attempts === 1 || attempts === 3 || attempts === 5
+      ? attempts
+      : HARNESS_RESTART_DEFAULTS.harnessRestartMaxAttempts,
+    harnessRestartBaseDelayMs: delay === 1000 || delay === 2000 || delay === 5000
+      ? delay
+      : HARNESS_RESTART_DEFAULTS.harnessRestartBaseDelayMs,
+  }
 }
 
 /** Public desktop config fields the settings UI reads or writes. */
@@ -48,19 +79,15 @@ export type DesktopConfig = {
   repoUrl?: string
   releasesUrl?: string
   closeToTray?: boolean
-}
+} & Partial<HarnessRestartConfig>
 
 /** The preload-exposed desktop API surface used by the settings UI. */
 export type DesktopShell = {
   getConfig?: () => Promise<DesktopConfig>
-  saveConfig?: (patch: { closeToTray?: boolean }) => Promise<DesktopConfig>
+  saveConfig?: (patch: Partial<DesktopConfig>) => Promise<DesktopConfig>
   checkUpdate?: () => Promise<UpdateInfo>
   installUpdate?: () => Promise<UpdateInfo>
   onUpdateProgress?: (handler: (payload: ProgressPayload) => void) => () => void
-  getRemoteAccess?: () => Promise<RemoteAccessStatus>
-  setRemoteEnabled?: (enabled: boolean) => Promise<RemoteAccessStatus>
-  refreshRemoteOffer?: () => Promise<RemoteAccessStatus>
-  revokeRemoteDevice?: (deviceId: string) => Promise<RemoteAccessStatus>
 }
 
 /**
@@ -81,13 +108,4 @@ export function desktopShell(): DesktopShell | null {
  */
 export function canPersistCloseBehavior(shell: DesktopShell | null = desktopShell()): boolean {
   return Boolean(shell?.getConfig && shell?.saveConfig)
-}
-
-/**
- * Whether the desktop bridge can show and persist remote-access pairing.
- * @param shell - preload API, or the live bridge when omitted.
- * @returns true only when status, enable, and revoke exist.
- */
-export function canPersistRemoteAccess(shell: DesktopShell | null = desktopShell()): boolean {
-  return Boolean(shell?.getRemoteAccess && shell?.setRemoteEnabled && shell?.revokeRemoteDevice)
 }

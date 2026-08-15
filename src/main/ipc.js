@@ -1,6 +1,6 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, openHarnessSettings, openMarketplace } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
@@ -46,8 +46,8 @@ function sendPluginProgress(event, payload) {
   }
 }
 
-function registerIpc({ dsh, startHarness, remoteAccess }) {
-  ipcMain.handle('shell:get-state', () => dsh.snapshot());
+function registerIpc({ dsh, harness, startHarness, remote }) {
+  ipcMain.handle('shell:get-state', () => (harness ? harness.snapshot() : dsh.snapshot()));
 
   ipcMain.handle('shell:get-config', () => configPayload(loadConfig()));
 
@@ -56,6 +56,13 @@ function registerIpc({ dsh, startHarness, remoteAccess }) {
     app.setLoginItemSettings({ openAtLogin: Boolean(next.openAtLogin) });
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'theme')) {
       applyAppTheme();
+    }
+    if (harness && patch && [
+      'harnessAutoRestart',
+      'harnessRestartMaxAttempts',
+      'harnessRestartBaseDelayMs',
+    ].some((key) => Object.prototype.hasOwnProperty.call(patch, key))) {
+      harness.refreshPolicy();
     }
     return configPayload(next);
   });
@@ -83,8 +90,12 @@ function registerIpc({ dsh, startHarness, remoteAccess }) {
 
   ipcMain.handle('shell:restart', async () => {
     await startHarness();
-    return dsh.snapshot();
+    return harness ? harness.snapshot() : dsh.snapshot();
   });
+
+  ipcMain.handle('shell:cancel-restart', () => (
+    harness ? harness.cancelRecovery() : dsh.snapshot()
+  ));
 
   ipcMain.handle('shell:open-settings', () => openHarnessSettings());
 
@@ -143,38 +154,31 @@ function registerIpc({ dsh, startHarness, remoteAccess }) {
   const pty = registerPtyIpc(ipcMain);
   const preview = registerPreviewIpc(ipcMain);
 
-  ipcMain.handle('shell:remote-status', async () => {
-    if (!remoteAccess) {
-      return { enabled: false, connected: false, devices: [] };
+  ipcMain.handle('shell:open-remote', () => openRemote());
+
+  ipcMain.handle('shell:get-remote', () => (remote ? remote.snapshot() : null));
+
+  ipcMain.handle('shell:save-remote', async (_event, patch) => {
+    saveConfig(patch || {});
+    if (remote && typeof remote.sync === 'function') {
+      return remote.sync();
     }
-    return remoteAccess.snapshot();
+    return remote ? remote.snapshot() : null;
   });
 
-  ipcMain.handle('shell:remote-set-enabled', async (_event, enabled) => {
-    const next = saveConfig({ remoteAccessEnabled: Boolean(enabled) });
-    if (remoteAccess) {
-      if (next.remoteAccessEnabled) {
-        remoteAccess.start();
-      } else {
-        remoteAccess.stop();
-      }
-      return remoteAccess.snapshot();
+  ipcMain.handle('shell:rotate-remote-token', async () => {
+    if (remote && typeof remote.rotateToken === 'function') {
+      remote.rotateToken();
+      return remote.sync();
     }
-    return { enabled: Boolean(next.remoteAccessEnabled), connected: false, devices: [] };
+    return null;
   });
 
-  ipcMain.handle('shell:remote-refresh-offer', async () => {
-    if (!remoteAccess) {
-      return { enabled: false, devices: [] };
+  ipcMain.handle('shell:unbind-remote-device', async (_event, id) => {
+    if (remote && typeof remote.unbindDevice === 'function') {
+      return remote.unbindDevice(id);
     }
-    return remoteAccess.snapshot();
-  });
-
-  ipcMain.handle('shell:remote-revoke-device', async (_event, deviceId) => {
-    if (!remoteAccess) {
-      return { enabled: false, devices: [] };
-    }
-    return remoteAccess.revokeDevice(deviceId);
+    return remote ? remote.snapshot() : null;
   });
 
   ipcMain.handle('shell:install-update', async (event) => {

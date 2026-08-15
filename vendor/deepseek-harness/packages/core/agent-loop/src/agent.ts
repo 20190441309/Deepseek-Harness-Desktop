@@ -28,7 +28,7 @@ import {
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
-import { canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session'
+import { assertToolTranscriptValid, canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { Context } from '@deepseek-ai/cordis'
@@ -512,6 +512,10 @@ export class ReactLoopAgent implements Agent {
         signal,
       )
     signal.throwIfAborted()
+    // Provider-validity gate: `deriveMessages` canonicalizes the history, so a
+    // known-invalid tool-call pairing here is a bug worth failing loud over
+    // instead of delivering a payload the provider must reject.
+    assertToolTranscriptValid(requestMessages)
 
     const request = markAgentLoopRequest(deepFreeze({
       ...header.config,

@@ -53,7 +53,7 @@ export interface HostDescriptionSource {
 export const inject: string[] = []
 
 /**
- * The ctx.connection service API: the API client plus a one-shot
+ * The ctx.connection service API: the API client plus a restartable
  * controller starter (the runtime plugin supplies sinks when its object layer
  * is ready — connection stays consumer-agnostic).
  */
@@ -68,11 +68,13 @@ export interface ConnectionHandle {
   readonly rpc: ClientConnectionRpc
   /**
    * Start the connect/pump/reconnect loop with the consumer's frame sinks.
-   * One consumer owns the streams (the runtime object layer); a second call
-   * throws.
+   * A later `start` after `stop` creates a new loop. A second `start` while
+   * a loop is running stops that loop first, then starts the new one. The
+   * previous stop handle becomes a no-op so a remount cannot kill the
+   * replacement.
    * @param sinks - frame/state callbacks.
    * @param config - reconnect/backoff tunables.
-   * @returns stop handle for the loop.
+   * @returns stop handle for the loop this call started.
    */
   start(sinks: ConnectionSinks, config?: ConnectionConfig): { stop(): void }
 }
@@ -87,7 +89,7 @@ export function apply(ctx: Context): void {
   const fixtureClient = fixture ? new FixtureApiClient() : undefined
   const api: IApiClient = fixtureClient ?? new WebApiClient()
   const rpc = fixtureClient?.rpc ?? createWebConnectionRpc()
-  let started = false
+  let active: { stop(): void } | undefined
   let description: HostDescription | undefined
   const descriptionListeners = new Set<() => void>()
   const publishDescription = (next: HostDescription | undefined): void => {
@@ -113,8 +115,7 @@ export function apply(ctx: Context): void {
     },
     rpc,
     start(sinks, config) {
-      if (started) throw new Error('connection: the stream loop is already owned by another consumer')
-      started = true
+      active?.stop()
       const controller = new ConnectionController(api, {
         ...sinks,
         onConnected: (next) => {
@@ -124,20 +125,28 @@ export function apply(ctx: Context): void {
           // generation, so do not leak its stale connected notification to
           // the consumer sink afterward.
           if (!Object.is(description, next)) return
-          sinks.onConnected?.(next)
+          return sinks.onConnected?.(next)
         },
         onStateChange: (state) => {
           if (state === 'reconnecting') publishDescription(undefined)
           sinks.onStateChange?.(state)
         },
       }, config ?? {})
-      controller.start()
-      return {
+      let closed = false
+      const loop = {
         stop: () => {
+          if (closed) return
+          closed = true
           controller.stop()
-          publishDescription(undefined)
+          if (active === loop) {
+            active = undefined
+            publishDescription(undefined)
+          }
         },
       }
+      active = loop
+      controller.start()
+      return loop
     },
   }
   ctx.provide('connection', handle)

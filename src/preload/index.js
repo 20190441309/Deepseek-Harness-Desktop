@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('shell', {
   pickWorkspace: () => ipcRenderer.invoke('shell:pick-workspace'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   restart: () => ipcRenderer.invoke('shell:restart'),
+  cancelRestart: () => ipcRenderer.invoke('shell:cancel-restart'),
   openSettings: () => ipcRenderer.invoke('shell:open-settings'),
   checkUpdate: () => ipcRenderer.invoke('shell:check-update'),
   installUpdate: () => ipcRenderer.invoke('shell:install-update'),
@@ -72,10 +73,10 @@ contextBridge.exposeInMainWorld('shell', {
   previewHide: (id) => ipcRenderer.invoke('shell:preview-hide', id),
   previewShow: (id, bounds) => ipcRenderer.invoke('shell:preview-show', id, bounds),
   previewClose: (id) => ipcRenderer.invoke('shell:preview-close', id),
-  getRemoteAccess: () => ipcRenderer.invoke('shell:remote-status'),
-  setRemoteEnabled: (enabled) => ipcRenderer.invoke('shell:remote-set-enabled', enabled),
-  refreshRemoteOffer: () => ipcRenderer.invoke('shell:remote-refresh-offer'),
-  revokeRemoteDevice: (deviceId) => ipcRenderer.invoke('shell:remote-revoke-device', deviceId),
+  getRemote: () => ipcRenderer.invoke('shell:get-remote'),
+  saveRemote: (patch) => ipcRenderer.invoke('shell:save-remote', patch),
+  rotateRemoteToken: () => ipcRenderer.invoke('shell:rotate-remote-token'),
+  unbindRemoteDevice: (id) => ipcRenderer.invoke('shell:unbind-remote-device', id),
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

@@ -9,6 +9,7 @@ const { projectRoot, harnessRoot } = require('./paths');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
+const { prependPath } = require('../shared/env-path');
 
 const ALLOW_HINT = /ignored build scripts|allowbuilds|approve-builds|blocked.*prepare|pnpm-workspace\.yaml/i;
 
@@ -90,9 +91,7 @@ function pluginEnv(nodeBin) {
   if (process.env.APPDATA) {
     extras.push(path.join(process.env.APPDATA, 'npm'));
   }
-  if (extras.length) {
-    env.PATH = `${extras.join(path.delimiter)}${path.delimiter}${env.PATH || ''}`;
-  }
+  prependPath(env, extras);
   return env;
 }
 

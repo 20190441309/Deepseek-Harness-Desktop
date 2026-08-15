@@ -167,3 +167,79 @@
   height: 32px;
   -webkit-app-region: no-drag;
 }
+
+/* Phone overlay shell: conversation owns the grid; sidebar and details leave
+   the tracks and paint as drawers. Handles stay unmounted (AppFrame.tsx). */
+.phoneMenu {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv2);
+  cursor: pointer;
+}
+
+.phoneMenu:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+.phoneBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 0;
+  border: none;
+  background: var(--dsw-alias-bg-mask-1);
+  cursor: pointer;
+}
+
+.frame[data-phone] .sidebarCol {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  width: min(320px, calc(100% - 48px));
+  pointer-events: none;
+  transform: translateX(-100%);
+  transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.frame[data-phone-sidebar] .sidebarCol {
+  pointer-events: auto;
+  transform: none;
+}
+
+.frame[data-phone] .detailsCol {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  width: auto;
+  pointer-events: none;
+  background: var(--dsw-alias-bg-base);
+  transform: translateX(100%);
+  transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.frame[data-phone-details] .detailsCol {
+  pointer-events: auto;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-phone] .sidebarCol,
+  .frame[data-phone] .detailsCol {
+    transition: none;
+  }
+}

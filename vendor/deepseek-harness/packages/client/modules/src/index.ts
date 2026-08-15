@@ -30,6 +30,7 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { missingHostFeatures, parseCompatibilityFeatures } from '@deepseek-ai/dsh-app-boot/features'
 import type { WebBootEntry, WebBootGraph } from './client/manifest.ts'
 
 export type {
@@ -75,6 +76,21 @@ class MissingClientBundleError extends Error {
         `  path: ${clientPath}`,
       ].join('\n'),
       { cause },
+    )
+  }
+}
+
+/** Host-feature gate failure: the package requires features this host does not support. */
+class ClientCompatibilityError extends Error {
+  constructor(
+    readonly packageName: string,
+    readonly missing: readonly string[],
+  ) {
+    super(
+      [
+        `client-modules: ${packageName} requires host features this dsh host does not support: ${missing.join(', ')}`,
+        '  the package is not part of the boot graph — update dsh to a host that provides them, or remove the plugin',
+      ].join('\n'),
     )
   }
 }
@@ -350,6 +366,19 @@ export class ClientModuleRegistry extends Service {
     if (decl === undefined || decl.platform !== 'web') {
       this.pkgMeta.set(pkgName, null)
       return null
+    }
+    // Host-feature gate before the package enters the boot graph: a
+    // malformed dsh.compatibility declaration (parseCompatibilityFeatures
+    // names the package) or unsupported required features reject the package
+    // before any bundle is read or served. The activation pass aggregates
+    // these throws into ClientPackageCompositionError.
+    const dshCompatibility = dsh !== null && typeof dsh === 'object'
+      ? (dsh as Record<string, unknown>).compatibility
+      : undefined
+    const required = parseCompatibilityFeatures(pkgName, dshCompatibility)
+    if (required !== undefined) {
+      const missing = missingHostFeatures(required)
+      if (missing.length > 0) throw new ClientCompatibilityError(pkgName, missing)
     }
     const clientRel = clientExportOf(pkgName, pkg.exports)
     if (clientRel === undefined) {

@@ -18,12 +18,31 @@ const DEFAULTS = {
   theme: 'deepseek',
   locale: 'zh',
   githubToken: '',
-  remoteAccessEnabled: false,
-  relayEndpoint: '127.0.0.1:8411',
-  relayPublicEndpoint: '',
-  relayUseTls: false,
-  remoteAppBaseUrl: 'http://127.0.0.1:8081',
+  remoteEnabled: false,
+  remotePort: 3180,
+  remoteToken: '',
+  remoteMode: 'lan',
+  remoteRelayUrl: 'http://125.124.85.212:8411',
+  harnessAutoRestart: true,
+  harnessRestartMaxAttempts: 3,
+  harnessRestartBaseDelayMs: 1000,
 };
+
+function normalizeHarnessRecovery(config) {
+  const next = { ...config };
+  next.harnessAutoRestart = typeof next.harnessAutoRestart === 'boolean'
+    ? next.harnessAutoRestart
+    : DEFAULTS.harnessAutoRestart;
+  const maxAttempts = Number(next.harnessRestartMaxAttempts);
+  next.harnessRestartMaxAttempts = Number.isInteger(maxAttempts) && maxAttempts >= 1 && maxAttempts <= 10
+    ? maxAttempts
+    : DEFAULTS.harnessRestartMaxAttempts;
+  const baseDelayMs = Number(next.harnessRestartBaseDelayMs);
+  next.harnessRestartBaseDelayMs = Number.isInteger(baseDelayMs) && baseDelayMs >= 500 && baseDelayMs <= 30_000
+    ? baseDelayMs
+    : DEFAULTS.harnessRestartBaseDelayMs;
+  return next;
+}
 
 function configPath() {
   return path.join(app.getPath('userData'), 'config.json');
@@ -67,13 +86,33 @@ function defaultWorkspace() {
 function loadConfig() {
   const stored = readJson(configPath(), {});
   const creds = readJson(credentialsPath(), {});
-  const config = {
+  let config = {
     ...DEFAULTS,
     ...stored,
     apiKey: typeof creds.apiKey === 'string' ? creds.apiKey : stored.apiKey || '',
     baseUrl: typeof creds.baseUrl === 'string' ? creds.baseUrl : stored.baseUrl || '',
     githubToken: typeof creds.githubToken === 'string' ? creds.githubToken : stored.githubToken || '',
+    remoteToken: typeof creds.remoteToken === 'string' ? creds.remoteToken : stored.remoteToken || '',
+    remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
+  config.remoteEnabled = Boolean(config.remoteEnabled);
+  config.remoteMode = config.remoteMode === 'relay' ? 'relay' : 'lan';
+  try {
+    const relay = String(config.remoteRelayUrl || '').trim();
+    if (!relay) {
+      config.remoteRelayUrl = DEFAULTS.remoteRelayUrl;
+    } else {
+      const url = new URL(relay);
+      config.remoteRelayUrl = (url.protocol === 'http:' || url.protocol === 'https:') ? url.origin : '';
+    }
+  } catch {
+    config.remoteRelayUrl = '';
+  }
+  const remotePort = Number(config.remotePort);
+  config.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
+    ? remotePort
+    : DEFAULTS.remotePort;
+  config = normalizeHarnessRecovery(config);
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -87,7 +126,7 @@ function loadConfig() {
 
 function saveConfig(next) {
   const current = loadConfig();
-  const merged = { ...current, ...next };
+  const merged = normalizeHarnessRecovery({ ...current, ...next });
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
   }
@@ -97,12 +136,14 @@ function saveConfig(next) {
   merged.locale = merged.locale === 'en' ? 'en' : 'zh';
   delete merged.pluginSubagent;
   delete merged.pluginGenUi;
-  const { apiKey, baseUrl, githubToken, ...publicLayer } = merged;
+  const { apiKey, baseUrl, githubToken, remoteToken, remoteDevices, ...publicLayer } = merged;
   writeJson(configPath(), publicLayer);
   writeJson(credentialsPath(), {
     apiKey: apiKey || '',
     baseUrl: baseUrl || '',
     githubToken: githubToken || '',
+    remoteToken: remoteToken || '',
+    remoteDevices: Array.isArray(remoteDevices) ? remoteDevices : [],
   });
   return merged;
 }
@@ -114,6 +155,12 @@ function publicConfig(config) {
     githubToken: config.githubToken ? '********' : '',
     hasApiKey: Boolean(config.apiKey),
     hasGithubToken: Boolean(config.githubToken),
+    remoteEnabled: Boolean(config.remoteEnabled),
+    remotePort: Number(config.remotePort) || DEFAULTS.remotePort,
+    remoteMode: config.remoteMode === 'relay' ? 'relay' : 'lan',
+    remoteRelayUrl: config.remoteRelayUrl || '',
+    remoteToken: '',
+    remoteDevices: [],
   };
 }
 
@@ -124,4 +171,5 @@ module.exports = {
   publicConfig,
   defaultWorkspace,
   configPath,
+  normalizeHarnessRecovery,
 };

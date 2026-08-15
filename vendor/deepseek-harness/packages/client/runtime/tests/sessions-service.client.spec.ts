@@ -533,7 +533,7 @@ describe('fork', () => {
       payload: { type: 'session/projection', sessionId: sid('source'), key: 'title', value: sourceTitle, seq: 2 } as never,
     })
     await feedList(b, [{ id: 'source', cwd: '/work' }])
-    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child') }))
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: false }))
     b.api.onRename = (payload) => {
       const { title } = payload as { title: string }
       return Promise.resolve(ok({ title, seq: 3 }))
@@ -550,13 +550,14 @@ describe('fork', () => {
       title: childTitle,
       displayTitle: childTitle,
       parentId: 'source',
+      blank: false,
     })
   })
 
   it('floors a fractional anchor to the real event seq the wire accepts', async () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])
-    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child') }))
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: false }))
 
     // The frozen node of an interrupted turn carries turnEnd.seq - 0.9.
     await expect(b.svc.fork({ sessionId: sid('source'), atSeq: 41.1 })).resolves.toBe('child')
@@ -564,14 +565,43 @@ describe('fork', () => {
     expect(b.api.callsOf('session.fork')).toEqual([{ sessionId: 'source', atSeq: 41 }])
   })
 
+  it('passes a beforeSeq anchor through, flooring a fractional one', async () => {
+    const b = bench()
+    await feedList(b, [{ id: 'source', cwd: '/work' }])
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: false }))
+
+    // The last user message of the open turn sits below its frozen tail node.
+    await expect(b.svc.fork({ sessionId: sid('source'), beforeSeq: 41.9 })).resolves.toBe('child')
+
+    expect(b.api.callsOf('session.fork')).toEqual([{ sessionId: 'source', beforeSeq: 41 }])
+  })
+
+  it('merges a blank fork child into the list from the response bit', async () => {
+    const b = bench()
+    await feedList(b, [{ id: 'source', cwd: '/work' }])
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: true }))
+
+    // An anchor before the first turn/start forks an empty (blank) child.
+    await expect(b.svc.fork({ sessionId: sid('source'), beforeSeq: 0 })).resolves.toBe('child')
+
+    expect(b.api.callsOf('session.fork')).toEqual([{ sessionId: 'source', beforeSeq: 0 }])
+    await Promise.resolve()
+    expect(b.svc.list.getSnapshot().byId[sid('child')]).toMatchObject({
+      id: 'child',
+      parentId: 'source',
+      blank: true,
+      cwd: '/work',
+    })
+  })
+
   it('does not rename without the title policy or a durable source title', async () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])
-    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child') }))
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: false }))
     await expect(b.svc.fork({ sessionId: sid('source'), increaseTitle: true })).resolves.toBe('child')
     expect(b.api.callsOf('session.rename')).toEqual([])
 
-    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child-2') }))
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child-2'), blank: false }))
     await expect(b.svc.fork({ sessionId: sid('source') })).resolves.toBe('child-2')
     expect(b.api.callsOf('session.rename')).toEqual([])
   })
@@ -583,7 +613,7 @@ describe('fork', () => {
       payload: { type: 'session/projection', sessionId: sid('source'), key: 'title', value: 'Roadmap', seq: 2 } as never,
     })
     await feedList(b, [{ id: 'source' }])
-    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child') }))
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: false }))
     b.api.onRename = () => Promise.resolve(err({
       code: 'title-invalid', message: 'rejected', details: { sessionId: sid('child') },
     }))

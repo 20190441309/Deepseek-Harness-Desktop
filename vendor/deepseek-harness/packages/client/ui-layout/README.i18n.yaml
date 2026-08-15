@@ -4,3 +4,4 @@
 #   pnpm run verify-translation-pairing --write packages/client/ui-layout/README.md
 README.md: 32dd52e469cbde249c7e4ee2c576636d5630c210
 README.zh.md: 7119031914beb414ff45aafe5cab8b04ef5e99d7
+README.zh.md: 47ce01a7a68ebe2a9466782b218fa7087814aca9

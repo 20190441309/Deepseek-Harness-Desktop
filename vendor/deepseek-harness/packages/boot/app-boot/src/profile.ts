@@ -44,6 +44,12 @@ export interface DshBundleManifest {
   patch: string
 }
 
+/** The compatibility half of the `dsh` manifest section: what host features a package requires. */
+export interface DshCompatibilityManifest {
+  /** Host feature ids this package requires; the host refuses to activate it without all of them. */
+  features?: string[]
+}
+
 /** The profile half of the `dsh` manifest section: what a profile directory composes. */
 export interface DshProfileManifest {
   /** Ordered bundle layer list (package names). */
@@ -59,6 +65,8 @@ export interface DshManifestSection {
   bundle?: DshBundleManifest
   /** Profile metadata consumed by the profile launcher. */
   profile?: DshProfileManifest
+  /** Host-feature requirements consumed by the install and boot gates. */
+  compatibility?: DshCompatibilityManifest
 }
 
 /** The slice of package.json both profiles and bundles use. */

@@ -28,6 +28,12 @@
   padding: 0 var(--dsh-composer-side-clearance) 8px;
 }
 
+@media (max-width: 767px) {
+  .root {
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .hero {
   /* No bottom pad in the centered hero, but the side clearance must survive:
      the hero wrapper is full-width on narrow viewports, so this padding is

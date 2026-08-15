@@ -18,8 +18,8 @@ import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,
 } from '../src/client/chat/message-chrome.ts'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, UnknownNodeView,
-  UserMessageNodeView,
+  CompactionNodeView, ContextMessageNodeView, PendingSteeringBubble, RetryNodeView, SteeringMessageNodeView,
+  UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
 import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
@@ -49,6 +49,13 @@ interface MessageItemProps {
   readonly t: ChatNodeViewProps['t']
 }
 
+/** The user renderer's slot seat, stubbed inert: no plugin mounted on the seat. */
+const renderUserActions = (() => null) as unknown as
+  React.ComponentProps<typeof UserMessageNodeView>['renderSlot']
+/** The framework-injected session-area seat of the user renderer's child slot. */
+const stubSessionProvider = (() => null) as unknown as
+  React.ComponentProps<typeof UserMessageNodeView>['SessionProvider']
+
 /** Legacy-node fixture adapter for the independently registered renderers. */
 function MessageItem({ node, t: translate }: MessageItemProps) {
   const kind = node.kind === 'assistant' ? 'assistant-step' : node.kind
@@ -65,8 +72,15 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
   const props = { node: viewNode, t: translate } as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
+      return (
+        <UserMessageNodeView
+          {...props as ChatNodeViewProps<'user'>}
+          renderSlot={renderUserActions}
+          SessionProvider={stubSessionProvider}
+        />
+      )
     case 'steering':
-      return <UserMessageNodeView {...props as ChatNodeViewProps<'user' | 'steering'>} />
+      return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />
     case 'context':
       return <ContextMessageNodeView {...props as ChatNodeViewProps<'context'>} />
     case 'compaction':
@@ -81,7 +95,7 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
 }
 
 describe('MessageItem arms', () => {
-  it('user bubbles expose clock / copy and neither branch nor edit; copy writes the text', () => {
+  it('user bubbles expose clock / copy and neither branch nor built-in edit; copy writes the text', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -101,9 +115,68 @@ describe('MessageItem arms', () => {
     expect(screen.getByText('14:24')).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    // The core ships no edit control of its own: with no plugin mounted on
+    // the user-actions seat there is still nothing but copy here.
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('hello bubble')
+  })
+
+  it('hands the user-actions seat the message seq and frozen content, rendered after copy in the same actions row', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const content = [{ type: 'text', text: 'editable bubble' }] as never
+    const renderUserActions = vi.fn(() => (
+      <button data-testid="user-edit-probe" type="button">编辑</button>
+    ))
+    const node = {
+      key: 'fixture:user:7',
+      kind: 'user',
+      id: '7',
+      target: 'chat',
+      anchorSeq: 7,
+      location: { kind: 'session' },
+      visibility: 'visible',
+      data: { kind: 'user', seq: 7, time: 1_000, content, source: null },
+    }
+    const view = render(
+      <UserMessageNodeView
+        {...{ node, t } as unknown as ChatNodeViewProps<'user'>}
+        renderSlot={renderUserActions as unknown as React.ComponentProps<typeof UserMessageNodeView>['renderSlot']}
+        SessionProvider={stubSessionProvider}
+      />,
+    )
+    // The render site dispatches exactly this owner currency: the durable
+    // message seq plus the frozen content blocks the bubble renders.
+    expect(renderUserActions).toHaveBeenCalledOnce()
+    expect(renderUserActions).toHaveBeenCalledWith('conversation.chat.user-actions', { seq: 7, content })
+    // extraActions lands inside the same IconActions row, after the copy
+    // button (the strip's position between copy and branch).
+    const copy = view.getByRole('button', { name: '复制' })
+    const probe = view.getByTestId('user-edit-probe')
+    expect(probe.parentElement).toBe(copy.parentElement)
+    expect(copy.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
+  it('pending steering keeps copy-only chrome and never hosts the user-actions seat', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const view = render(
+      <PendingSteeringBubble
+        content={[{ type: 'text', text: 'interrupt now' }] as never}
+        t={t}
+      />,
+    )
+    expect(view.getByText('interrupt now')).toBeTruthy()
+    expect(view.container.querySelector('[data-pending-steering]')).not.toBeNull()
+    // The pre-admission projection carries no slot seat: no anchor at all.
+    expect(view.container.querySelector('[data-slot="conversation.chat.user-actions"]')).toBeNull()
   })
 
   it('user copy falls back to execCommand when clipboard.writeText is unavailable', () => {
@@ -248,6 +321,9 @@ describe('MessageItem arms', () => {
     fireEvent.click(view.getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('steer!')
     expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    // The steering renderer owns no user-actions seat: no slot anchor, so a
+    // per-message action plugin can never attach to an admitted steering row.
+    expect(view.container.querySelector('[data-slot="conversation.chat.user-actions"]')).toBeNull()
   })
 
   it('context uses the Tool calls disclosure chrome and keeps its body collapsed by default', () => {

@@ -3,11 +3,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { LocaleRuntime, COMMON_NS } from '@deepseek-ai/dsh-client-locale/client'
+import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
-import { apply, inject, type EmptyWorkspaceOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { apply, inject, type EmptyWorkspaceOwnerProps, type UserActionOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -46,6 +48,12 @@ function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
       {String(open)}:{count}
     </button>
   )
+}
+
+/** Registers on `conversation.chat.user-actions` and echoes its owner currency. */
+function UserActionsProbe({ seq, content }: UserActionOwnerProps) {
+  const text = content.map(block => (block as { text?: string }).text ?? '').join('')
+  return <button data-testid="user-actions-probe" type="button">{String(seq)}:{text}</button>
 }
 
 async function bench(opts?: { blank?: boolean }) {
@@ -229,6 +237,45 @@ describe('title projection across assembled surfaces', () => {
       expect(within(hierarchy).getByRole('button', { name: '修订标题' }).hasAttribute('disabled')).toBe(true)
     })
     expect(within(hierarchy).queryByRole('button', { name: 'S' })).toBeNull()
+    await runtime.dispose()
+  })
+})
+
+describe('user-message action strip assembly', () => {
+  it('renders registered user actions inside the user row with the message owner currency; steering stays strip-free', async () => {
+    const runtime = await bench()
+    // The production locale plugin registers the shared common vocabulary;
+    // the test runtime starts bare, so add it for the bubble chrome labels.
+    const locale = runtime.ctx.get('locale') as LocaleRuntime
+    locale.register(COMMON_NS, 'zh', commonZh)
+    const content = [{ type: 'text', text: 'editable bubble' }] as never
+    await runtime.sessions.updateSnapshot(SID, (draft) => {
+      draft.chat = chatSnapshotFixture({
+        nodes: [
+          { kind: 'user', seq: 7, time: 7_000, content, source: null },
+          { kind: 'steering', messageId: 'steer-1', seq: 9, time: 9_000, turn: 1, content: [{ type: 'text', text: 'steer!' }], source: null },
+        ] as never,
+      })
+    })
+    // A plugin's per-message action: registers on the seat the user renderer
+    // declared, and receives the message's durable seq + frozen content.
+    runtime.slots.register({ name: 'conversation.chat.user-actions', id: 'probe' }, UserActionsProbe)
+    const view = runtime.renderRoot()
+
+    const probe = view.getByTestId('user-actions-probe')
+    expect(probe.textContent).toBe('7:editable bubble')
+    const userItem = probe.closest('[data-chat-flow-kind="user"]')
+    expect(userItem).not.toBeNull()
+    // extraActions lands inside the user row's IconActions strip, after copy.
+    const copy = within(userItem as HTMLElement).getByRole('button', { name: '复制' })
+    expect(copy.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    // The steering row keeps the same bubble chrome but no slot seat: no
+    // anchor, so no action can attach to an admitted steering message.
+    const steeringItem = view.container.querySelector('[data-chat-flow-kind="steering"]')
+    expect(steeringItem).not.toBeNull()
+    expect(steeringItem!.querySelector('[data-slot="conversation.chat.user-actions"]')).toBeNull()
+    // Exactly one slot anchor in the whole tree: the user row only.
+    expect(view.container.querySelectorAll('[data-slot="conversation.chat.user-actions"]')).toHaveLength(1)
     await runtime.dispose()
   })
 })

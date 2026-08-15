@@ -1,0 +1,130 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const {
+  assertHarnessRuntime,
+  collectFiles,
+  deployCliEntries,
+  resolveDeployDir,
+} = require('../../scripts/after-pack');
+
+function makeFixture(t) {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-test-'));
+  const source = path.join(workspace, 'source');
+  const shared = path.join(workspace, 'shared');
+  const destination = path.join(workspace, 'destination');
+  fs.mkdirSync(source, { recursive: true });
+  fs.mkdirSync(shared, { recursive: true });
+  fs.writeFileSync(path.join(shared, 'package.json'), '{"name":"shared"}\n');
+  fs.writeFileSync(path.join(shared, 'index.js'), 'module.exports = true;\n');
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  return { source, shared, destination };
+}
+
+function linkPackage(source, shared, branch) {
+  const nodeModules = path.join(source, branch, 'node_modules');
+  fs.mkdirSync(nodeModules, { recursive: true });
+  fs.symlinkSync(shared, path.join(nodeModules, 'shared'), 'junction');
+}
+
+test('deployCliEntries excludes runtime state and separately assembled directories', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-entries-'));
+  for (const name of ['.dsh-home', '.cache', 'node_modules', 'vendor', 'config', 'lib']) {
+    fs.mkdirSync(path.join(workspace, name), { recursive: true });
+  }
+  fs.writeFileSync(path.join(workspace, 'package.json'), '{}\n');
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+
+  assert.deepEqual(
+    deployCliEntries(workspace).map(({ name }) => name).sort(),
+    ['config', 'lib', 'package.json'],
+  );
+});
+
+test('collectFiles deduplicates a linked package flattened to the same destination', (t) => {
+  const fixture = makeFixture(t);
+  linkPackage(fixture.source, fixture.shared, 'a');
+  linkPackage(fixture.source, fixture.shared, 'b');
+
+  const files = collectFiles(fixture.source, fixture.destination, false, true);
+  const destinations = files.map(({ dest }) => path.relative(fixture.destination, dest)).sort();
+
+  assert.deepEqual(
+    destinations,
+    [path.join('node_modules', 'shared', 'index.js'), path.join('node_modules', 'shared', 'package.json')],
+  );
+});
+
+test('collectFiles preserves a linked package copied to distinct destinations', (t) => {
+  const fixture = makeFixture(t);
+  linkPackage(fixture.source, fixture.shared, 'a');
+  linkPackage(fixture.source, fixture.shared, 'b');
+
+  const files = collectFiles(fixture.source, fixture.destination, false, false);
+  const destinations = files.map(({ dest }) => path.relative(fixture.destination, dest)).sort();
+
+  assert.deepEqual(
+    destinations,
+    [
+      path.join('a', 'node_modules', 'shared', 'index.js'),
+      path.join('a', 'node_modules', 'shared', 'package.json'),
+      path.join('b', 'node_modules', 'shared', 'index.js'),
+      path.join('b', 'node_modules', 'shared', 'package.json'),
+    ],
+  );
+});
+
+test('resolveDeployDir ignores local caches unless a deploy directory is explicit', () => {
+  assert.equal(resolveDeployDir(undefined), null);
+  assert.equal(resolveDeployDir(''), null);
+  assert.equal(resolveDeployDir('off'), null);
+  assert.equal(resolveDeployDir('.pack-release'), path.resolve('.pack-release'));
+});
+
+test('assertHarnessRuntime accepts a complete compatible host', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-runtime-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+
+  assert.doesNotThrow(() => assertHarnessRuntime(root));
+});
+
+test('assertHarnessRuntime rejects stale deploy output before archiving', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-stale-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'apps', 'cli', 'lib'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'apps', 'web', 'dist'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apps', 'cli', 'lib', 'bin.js'), 'export {}\n');
+  fs.writeFileSync(path.join(root, 'apps', 'web', 'dist', 'index.html'), '<!doctype html>\n');
+
+  assert.throws(
+    () => assertHarnessRuntime(root),
+    /dsh-app-boot.*features\.js/,
+  );
+});

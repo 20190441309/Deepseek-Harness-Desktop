@@ -461,9 +461,10 @@ export class SessionRuntime implements ISessions {
     this.manager.handleHostEnvelope(envelope)
   }
 
-  /** Rebuild the Session baseline and every opened window after connection. */
-  handleConnected(): void {
-    this.manager.handleConnected()
+  /** Rebuild the Session baseline and every opened window after connection.
+   * @returns once the list refresh and opened-window resync have settled. */
+  handleConnected(): Promise<void> {
+    return this.manager.handleConnected()
   }
 
   /** Drop generation-scoped live interaction state the moment a connection generation dies. */
@@ -490,16 +491,19 @@ export class SessionRuntime implements ISessions {
   }
 
   /**
-   * Fork a session from a completed-turn prefix of the source (same
+   * Fork a session from a prefix of the source (same
    * synchronous-addressability guarantee as {@link SessionRuntime.create}:
    * on resolution the child is in the list store and open() can target it).
-   * @param opts - source session id, the optional event seq anchoring the
-   *   cut (the boundary is the first turn/end at or after it; an in-log
-   *   anchor in an open turn is unavailable rather than clipped backward),
-   *   and whether to increment an inherited durable title before resolving.
-   *   A fractional anchor floors to a real event seq: the frozen nodes of an
-   *   interrupted turn carry flow-ordering seqs between two events, and the
-   *   wire takes integers only.
+   * @param opts - source session id, an optional cut anchor, and whether to
+   *   increment an inherited durable title before resolving. `atSeq` anchors
+   *   a completed-turn cut (the boundary is the first turn/end at or after
+   *   it; an in-log anchor in an open turn is unavailable rather than
+   *   clipped backward). `beforeSeq` is the mutually exclusive complement:
+   *   it cuts before the anchored event's turn, so that turn is excluded
+   *   whole and may be open, and an anchor before the first turn forks an
+   *   empty (blank) child. A fractional anchor floors to a real event seq:
+   *   the frozen nodes of an interrupted turn carry flow-ordering seqs
+   *   between two events, and the wire takes integers only.
    * @returns the child session id.
    * @throws {SessionForkError} with the source id.
    * @throws {Error} when a requested child-title rename fails after creation.
@@ -507,6 +511,7 @@ export class SessionRuntime implements ISessions {
   async fork(opts: {
     sessionId: SessionId
     atSeq?: number
+    beforeSeq?: number
     increaseTitle?: boolean
   }): Promise<SessionId> {
     const sourceTitle = opts.increaseTitle
@@ -516,8 +521,11 @@ export class SessionRuntime implements ISessions {
       sessionId: opts.sessionId,
       // Flooring lands inside the anchor's own turn (every turn opens with a
       // turn/start), so the host's first-turn/end-at-or-after cut still ends
-      // on that turn — never clipped back to the previous one.
+      // on that turn — never clipped back to the previous one. beforeSeq's
+      // turn/start lookup floors into the same turn, so the host cuts before
+      // the identical boundary either way.
       ...(opts.atSeq === undefined ? {} : { atSeq: Math.floor(opts.atSeq) }),
+      ...(opts.beforeSeq === undefined ? {} : { beforeSeq: Math.floor(opts.beforeSeq) }),
     })
     if (!result.ok) throw new SessionForkError(result.error, opts.sessionId)
     this.projectList()

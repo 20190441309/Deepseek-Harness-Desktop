@@ -3,9 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
+const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins } = require('./plugins');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
+const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, showMain } = require('./tray');
 const {
@@ -14,20 +16,23 @@ const {
   showBoot,
   showHarness,
   sendToBoot,
+  isBootLoaded,
 } = require('./window');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
-const { createRemoteAccess } = require('./remote');
 
 const dsh = new DshManager();
-let remoteAccess = null;
-let desktopResources = null;
+const remote = new RemoteGateway({
+  getTarget: () => (dsh.state === 'ready' && dsh.port ? { port: dsh.port } : null),
+  getConfig: loadConfig,
+  saveConfig,
+});
+remote.on('error', (error) => {
+  dsh.log(`手机 Remote 错误：${error.message || String(error)}`, 'error');
+});
 let quitting = false;
-let starting = null;
 let stoppingForQuit = false;
-
-dsh.on('state', (snapshot) => sendToBoot('shell:state', snapshot));
-dsh.on('log', (line) => sendToBoot('shell:log', line));
+let desktopResources = null;
 
 async function resolveLaunchTarget() {
   const config = loadConfig();
@@ -37,6 +42,21 @@ async function resolveLaunchTarget() {
   const port = await ensureOwnedPort(host, wanted, (line) => dsh.log(line));
   return { port };
 }
+
+const harness = new HarnessController({
+  dsh,
+  remote,
+  loadConfig,
+  createMainWindow,
+  getMainWindow,
+  showBoot,
+  showHarness,
+  sendToBoot,
+  isBootLoaded,
+  resolveLaunchTarget,
+  stripDroppedPlugins,
+  ensureWorkspace,
+});
 
 async function pickWorkspace() {
   const win = getMainWindow();
@@ -49,56 +69,8 @@ async function pickWorkspace() {
     return null;
   }
   saveConfig({ workspace: result.filePaths[0] });
-  await restartHarness();
+  await harness.restart();
   return result.filePaths[0];
-}
-
-async function startHarness() {
-  if (starting) {
-    return starting;
-  }
-  starting = (async () => {
-    const win = createMainWindow();
-    await showBoot();
-    dsh.setState('starting');
-    try {
-      const target = await resolveLaunchTarget();
-      try {
-        stripDroppedPlugins();
-      } catch (error) {
-        dsh.log(`插件清理失败：${error.message}`, 'app');
-      }
-      const url = await dsh.start(target);
-      const { workspace } = loadConfig();
-      try {
-        await ensureWorkspace(url, workspace);
-        dsh.log(`已注册工作区 ${workspace}`);
-      } catch (error) {
-        dsh.log(`工作区自动注册跳过：${error.message}`, 'app');
-      }
-      await showHarness(url);
-      if (loadConfig().openDevTools) {
-        win.webContents.openDevTools({ mode: 'detach' });
-      }
-      if (process.env.DSH_SMOKE === '1') {
-        void runSmoke(win);
-      }
-      return url;
-    } catch (error) {
-      dsh.setState('error', { error: error.message });
-      dsh.log(error.message, 'error');
-      throw error;
-    } finally {
-      starting = null;
-    }
-  })();
-  return starting;
-}
-
-async function restartHarness() {
-  cleanupDesktopResources();
-  await dsh.stop();
-  return startHarness();
 }
 
 /** Tear down desktop-bound child processes and views (PTY, BrowserView). */
@@ -114,6 +86,16 @@ function cleanupDesktopResources() {
   void Promise.resolve(desktopResources.preview.closeAll()).catch((error) => {
     dsh.log(`预览清理失败：${error.message}`, 'app');
   });
+}
+
+function restartWithCleanup() {
+  cleanupDesktopResources();
+  return harness.restart();
+}
+
+function reloadWithCleanup() {
+  cleanupDesktopResources();
+  return harness.reload();
 }
 
 /** One-shot launch smoke: report the assembled chrome and exit with its status. */
@@ -169,7 +151,6 @@ async function runSmoke(win) {
     console.log('[DSH_SMOKE_PTY]', ptyStatus);
     const ok = result.hasFrame && result.hasTitlebar && result.hasSessionLog && pageErrors.length === 0;
     try {
-      const fs = require('node:fs');
       fs.writeFileSync(path.join(app.getPath('userData'), 'dsh-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));
     } catch {
       // Best-effort: the exit code still carries the verdict.
@@ -181,26 +162,20 @@ async function runSmoke(win) {
   }
 }
 
-function reloadUi() {
-  const win = getMainWindow();
-  if (!win) {
-    return;
-  }
-  cleanupDesktopResources();
-  if (dsh.state === 'ready' && dsh.baseUrl) {
-    win.loadURL(dsh.baseUrl);
-    return;
-  }
-  startHarness().catch(() => {});
-}
-
 function quitApp() {
   quitting = true;
   app.quit();
 }
 
+function ignoreFailure(promise) {
+  Promise.resolve(promise).catch((error) => {
+    dsh.log(error.message || String(error), 'error');
+  });
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  console.error('Deepseek-Harness-Desktop is already running. Quit the installed app before npm start (same appId single-instance lock).');
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -216,22 +191,14 @@ if (!gotLock) {
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
 
-    remoteAccess = createRemoteAccess({
-      userData: app.getPath('userData'),
-      loadConfig,
-      getBaseUrl: () => dsh.baseUrl,
-    });
-    desktopResources = registerIpc({ dsh, startHarness: restartHarness, remoteAccess });
-    if (loadConfig().remoteAccessEnabled) {
-      remoteAccess.start();
-    }
+    desktopResources = registerIpc({ dsh, harness, startHarness: restartWithCleanup, remote });
     buildMenu({
-      onOpenWorkspace: () => pickWorkspace(),
-      onRestart: () => restartHarness(),
-      onReload: () => reloadUi(),
+      onOpenWorkspace: () => ignoreFailure(pickWorkspace()),
+      onRestart: () => ignoreFailure(restartWithCleanup()),
+      onReload: () => ignoreFailure(reloadWithCleanup()),
     });
     createTray({
-      onRestart: () => restartHarness(),
+      onRestart: () => ignoreFailure(restartWithCleanup()),
       onQuit: () => quitApp(),
     });
 
@@ -260,7 +227,10 @@ if (!gotLock) {
     });
 
     try {
-      await startHarness();
+      await harness.start();
+      if (process.env.DSH_SMOKE === '1') {
+        void runSmoke(getMainWindow());
+      }
     } catch {
       // boot page already shows the error
     }
@@ -271,7 +241,7 @@ if (!gotLock) {
     if (win) {
       win.show();
     } else {
-      startHarness().catch(() => {});
+      ignoreFailure(harness.start());
     }
   });
 
@@ -284,12 +254,9 @@ if (!gotLock) {
     event.preventDefault();
     stoppingForQuit = true;
     cleanupDesktopResources();
-    if (remoteAccess) {
-      remoteAccess.stop();
-    }
     showClosingOverlay(getMainWindow(), loadConfig().locale)
       .catch(() => {})
-      .then(() => dsh.stop())
+      .then(() => harness.shutdown())
       .finally(() => app.quit());
   });
 

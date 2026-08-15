@@ -96,7 +96,7 @@ npm run setup:harness
 npm start
 ```
 
-The Harness source ships with the repo (`vendor/deepseek-harness`); the first `setup:harness` installs dependencies and runs a full build — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`. The desktop unit-test gate is `npm test` (no Electron); run it after changing close behavior, the tray, or the themed overlay.
+The Harness source ships with the repo (`vendor/deepseek-harness`); the first `setup:harness` installs dependencies and runs a full build — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`. The desktop unit-test gate is `npm test` (no Electron); run it after changing close behavior, the tray, or the themed overlay. The installed NSIS app and `npm start` share one `appId` and a single-instance lock: quit the installed app before a source launch. After editing `packages/client/*/src`, run `pnpm run build:lib:client` in `vendor/deepseek-harness` (or at least rebuild that package's `lib/client.js`); rebuilding only `apps/web/dist` will not show layout or Settings changes.
 
 ### Everyday usage
 

@@ -139,6 +139,7 @@ function realOf(target) {
 function collectFiles(root, destRoot, expandNested = false, flat = false) {
   const files = [];
   const ancestors = new Set();
+  const visitedDirectories = new Set();
   const topNodeModules = path.join(path.resolve(destRoot), 'node_modules');
 
   function walk(src, dest) {
@@ -162,6 +163,11 @@ function collectFiles(root, destRoot, expandNested = false, flat = false) {
       if (ancestors.has(real)) {
         return; // 环
       }
+      const visitKey = `${real}\0${path.resolve(dest)}`;
+      if (visitedDirectories.has(visitKey)) {
+        return;
+      }
+      visitedDirectories.add(visitKey);
       let realStat;
       try {
         realStat = fs.statSync(real);
@@ -234,6 +240,11 @@ async function copyFiles(files, limit = 32) {
   return files.length;
 }
 
+function deployCliEntries(deployDir) {
+  return fs.readdirSync(deployDir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'vendor');
+}
+
 /**
  * 用精简 deploy 目录组装 resources/vendor/deepseek-harness：
  *   apps/cli     <- deploy 根内容（lib/ config/ package.json，不含 node_modules）
@@ -247,10 +258,7 @@ async function assembleFromDeploy(projectDir, deployDir, harnessDest) {
   // 1) apps/cli <- deploy 根内容（排除 node_modules 与 vendor，它们单独复制）
   const cliDest = path.join(harnessDest, 'apps', 'cli');
   let total = 0;
-  for (const n of fs.readdirSync(deployDir, { withFileTypes: true })) {
-    if (n.name === 'node_modules' || n.name === 'vendor') {
-      continue;
-    }
+  for (const n of deployCliEntries(deployDir)) {
     const files = collectFiles(path.join(deployDir, n.name), path.join(cliDest, n.name), true);
     total += await copyFiles(files, 32);
   }
@@ -365,17 +373,70 @@ function copyBundledPnpm(projectDir, destDir) {
   return dest;
 }
 
+function resolveDeployDir(deployEnv) {
+  if (!deployEnv || deployEnv === 'off') {
+    return null;
+  }
+  return path.resolve(deployEnv);
+}
+
+function assertHarnessRuntime(harnessDest) {
+  const requiredFiles = [
+    path.join('apps', 'cli', 'lib', 'bin.js'),
+    path.join('apps', 'web', 'dist', 'index.html'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+  ];
+  const missing = requiredFiles.filter((relative) => !fs.existsSync(path.join(harnessDest, relative)));
+  if (missing.length > 0) {
+    throw new Error(`安装包缺少 Harness 运行时产物：${missing.join(', ')}`);
+  }
+
+  const features = fs.readFileSync(
+    path.join(harnessDest, 'node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+    'utf8',
+  );
+  const modules = fs.readFileSync(
+    path.join(harnessDest, 'node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+    'utf8',
+  );
+  const conversation = fs.readFileSync(
+    path.join(harnessDest, 'node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+    'utf8',
+  );
+  const requiredFeatures = [
+    'conversation.chat.user-actions',
+    'session.fork.beforeSeq',
+    'session.fork.blank',
+  ];
+  const missingFeatures = requiredFeatures.filter((feature) => !features.includes(feature));
+  if (missingFeatures.length > 0) {
+    throw new Error(`安装包的 Harness 缺少宿主能力：${missingFeatures.join(', ')}`);
+  }
+  const cliLib = path.join(harnessDest, 'apps', 'cli', 'lib');
+  const cliGatePresent = fs.readdirSync(cliLib)
+    .filter((name) => name.endsWith('.js'))
+    .some((name) => {
+      const code = fs.readFileSync(path.join(cliLib, name), 'utf8');
+      return code.includes('missingHostFeatures') && code.includes('parseCompatibilityFeatures');
+    });
+  if (!cliGatePresent) {
+    throw new Error('安装包的 dsh CLI 缺少插件兼容性门禁');
+  }
+  if (!modules.includes('missingHostFeatures') || !modules.includes('parseCompatibilityFeatures')) {
+    throw new Error('安装包的 Browser 模块图缺少插件兼容性门禁');
+  }
+  if (!conversation.includes('conversation.chat.user-actions')) {
+    throw new Error('安装包的会话 UI 缺少用户消息 action slot');
+  }
+}
+
 module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
   const resources = path.join(context.appOutDir, 'resources');
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
-  const deployEnv = process.env.DSH_DEPLOY_DIR;
-  const deployDir = deployEnv && deployEnv !== 'off'
-    ? deployEnv
-    : (!deployEnv
-      ? [path.join(projectDir, '.pack-v3'), path.join(projectDir, '.pack-tmp')]
-        .find((d) => fs.existsSync(path.join(d, 'lib', 'bin.js')))
-      : null);
+  const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();
 
   let copied;
@@ -383,7 +444,7 @@ module.exports = async function afterPack(context) {
     console.log(`使用精简目录 ${deployDir} 组装 resources/vendor`);
     copied = await assembleFromDeploy(projectDir, deployDir, harnessDest);
   } else {
-    console.log('未找到精简目录，回退全量复制（拍平 .pnpm 到顶层，避免超长路径）');
+    console.log('使用当前 vendored Harness 全量复制（拍平 .pnpm 到顶层，避免超长路径）');
     const harnessSrc = path.join(projectDir, 'vendor', 'deepseek-harness');
     console.log('收集文件清单（解引用 pnpm 链接，跳过循环与 dev-only 包）...');
     const files = collectFiles(harnessSrc, harnessDest, false, true);
@@ -393,25 +454,13 @@ module.exports = async function afterPack(context) {
 
   const nodeDest = copyBundledNode(resources);
   const pnpmDest = copyBundledPnpm(projectDir, resources);
-  const binJs = path.join(harnessDest, 'apps', 'cli', 'lib', 'bin.js');
-  const webDist = path.join(harnessDest, 'apps', 'web', 'dist', 'index.html');
-  if (!fs.existsSync(binJs) || !fs.existsSync(webDist)) {
-    throw new Error('安装包缺少 dsh 构建产物，请先在 vendor/deepseek-harness 跑 pnpm run build');
-  }
+  assertHarnessRuntime(harnessDest);
 
   const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
   console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
-  // Run tar from the archive's own directory with BOTH `-f` and `-C` spelled
-  // as relative paths: GNU tar treats a `C:` drive prefix on either argument
-  // as a remote host (or fails to open it), while the bundled Windows bsdtar
-  // rejects GNU's `--force-local`. Relative spellings work on both.
-  const archiveDir = path.dirname(archive);
-  // GNU tar (Git for Windows) only understands forward-slash paths; the
-  // Windows default `path.relative` returns backslashes.
-  const harnessRel = path.relative(archiveDir, harnessDest).replace(/\\/g, '/');
-  execFileSync('tar', ['-cf', path.basename(archive), '-C', harnessRel, '.'], {
+  execFileSync('tar', ['-cf', path.basename(archive), '-C', path.basename(harnessDest), '.'], {
+    cwd: path.dirname(harnessDest),
     stdio: 'inherit',
-    cwd: archiveDir,
   });
   if (!fs.existsSync(archive) || fs.statSync(archive).size < 1024) {
     throw new Error('运行时 tar 生成失败');
@@ -425,3 +474,6 @@ module.exports = async function afterPack(context) {
 
 module.exports.collectFiles = collectFiles;
 module.exports.copyFiles = copyFiles;
+module.exports.deployCliEntries = deployCliEntries;
+module.exports.resolveDeployDir = resolveDeployDir;
+module.exports.assertHarnessRuntime = assertHarnessRuntime;

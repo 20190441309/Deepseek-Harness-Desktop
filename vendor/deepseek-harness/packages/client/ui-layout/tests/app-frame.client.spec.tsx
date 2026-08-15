@@ -15,7 +15,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { PHONE_DRAWER, SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
@@ -386,6 +386,46 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     frameWidth = 1920
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     expect(tracks(frame)).toEqual([400, 0])
+  })
+})
+
+describe('AppFrame — phone overlay shell', () => {
+  it('drops both grid tracks and shows a menu instead of the rail', () => {
+    frameWidth = 390
+    const { frame, slotCalls, getByRole } = mountFrame()
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-phone-sidebar')).toBe(false)
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: 0 })
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('toggle opens the drawer over the conversation and closes from the backdrop', () => {
+    frameWidth = 390
+    const { frame, instance, slotCalls, getByRole, queryByRole } = mountFrame()
+    act(() => { instance.actions.toggleSidebar() })
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.hasAttribute('data-phone-sidebar')).toBe(true)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(false)
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: false, width: PHONE_DRAWER })
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    expect(getByRole('button', { name: 'Close sidebar' })).toBeTruthy()
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    act(() => { getByRole('button', { name: 'Close sidebar' }).click() })
+    expect(frame.hasAttribute('data-phone-sidebar')).toBe(false)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('open details stays a full-frame overlay with no drag handles', () => {
+    frameWidth = 390
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.openDetails() })
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.hasAttribute('data-phone-details')).toBe(true)
+    expect(frame.hasAttribute('data-details-collapsed')).toBe(false)
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 })
 

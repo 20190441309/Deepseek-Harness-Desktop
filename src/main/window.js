@@ -94,6 +94,11 @@ function isHarnessLoaded(win) {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\b/i.test(win?.webContents.getURL() || '');
 }
 
+function isBootLoaded(win) {
+  const url = win?.webContents.getURL() || '';
+  return url.startsWith('file:') && url.includes('boot.html');
+}
+
 function openHarnessSettings(sectionId) {
   const win = showMain();
   if (!win || !isHarnessLoaded(win)) {
@@ -174,6 +179,10 @@ function openMarketplaceWindow() {
   return marketplaceWindow;
 }
 
+function openRemote() {
+  return showMain();
+}
+
 function openMarketplace() {
   const win = showMain();
   if (!win || !isHarnessLoaded(win)) {
@@ -231,6 +240,9 @@ module.exports = {
   showMain,
   openHarnessSettings,
   openMarketplace,
+  openRemote,
   sendToBoot,
+  isBootLoaded,
+  isHarnessLoaded,
   iconImage,
 };
