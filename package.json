@@ -19,7 +19,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "dependencies": {
-    "pnpm": "11.7.0"
+    "pnpm": "11.8.0"
   },
   "devDependencies": {
     "electron": "^33.4.11",
