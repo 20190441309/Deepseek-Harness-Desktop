@@ -25,9 +25,9 @@ import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { CloseBehaviorRow } from './CloseBehaviorRow.tsx'
-import { RemoteAccessRow } from './RemoteAccessRow.tsx'
 import { AboutSection } from './AboutSection.tsx'
-import { canPersistCloseBehavior, canPersistRemoteAccess } from './desktop-shell.ts'
+import { HarnessRestartRow } from './HarnessRestartRow.tsx'
+import { canPersistCloseBehavior, desktopShell } from './desktop-shell.ts'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { refreshDocumentIfLoaded, SettingsDocumentStore } from './settings-document-store.ts'
@@ -39,6 +39,7 @@ export type {
 export type {
   GeneralSectionComponentProps,
 } from './GeneralSection.tsx'
+export type { HarnessRestartRowProps } from './HarnessRestartRow.tsx'
 export type { AboutSectionProps } from './AboutSection.tsx'
 export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
 export type { SettingsDocumentState } from './settings-document-store.ts'
@@ -190,13 +191,17 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
     }, CloseBehaviorRow))
   }
-  if (canPersistRemoteAccess()) {
+  // The desktop-only Harness auto-recovery row: registered only when the
+  // desktop bridge exposes both config directions — a plain browser has no
+  // Harness process to restart. Feature-owned rows keep their earlier orders.
+  const shell = desktopShell()
+  if (shell?.getConfig && shell.saveConfig) {
     ctx.slots.inject('settings.general.item', () => ctx.slots.register({
       name: 'settings.general.item',
-      id: 'remote-access',
-      order: 26,
+      id: 'harness-restart',
+      order: 100,
       locale: NS,
-    }, RemoteAccessRow))
+    }, HarnessRestartRow))
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

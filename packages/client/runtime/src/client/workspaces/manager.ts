@@ -248,9 +248,10 @@ export class WorkspaceManager {
     }
   }
 
-  /** Re-pull the baseline after each connection generation. */
-  handleConnected(): void {
-    void this.refresh()
+  /** Re-pull the baseline after each connection generation.
+   * @returns once the workspace list refresh has settled. */
+  handleConnected(): Promise<void> {
+    return this.refresh()
   }
 
   /**

@@ -549,6 +549,51 @@ describe('startInitialSelection', () => {
     stop()
   })
 
+  it('opens the latest non-blank session instead of minting a blank one', async () => {
+    const b = bench()
+    b.api.onList = () => Promise.resolve(ok({
+      items: [
+        { sessionId: sid('blank'), updatedAt: 300, running: false, blank: true },
+        { sessionId: sid('old'), updatedAt: 100, running: false, blank: false },
+        { sessionId: sid('latest'), updatedAt: 200, running: false, blank: false },
+        { sessionId: sid('archived'), updatedAt: 400, running: false, blank: false },
+      ] as never[],
+    }))
+    b.api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [workspace('recent', [sid('blank'), sid('old'), sid('latest'), sid('archived')])] as never[],
+      archivedSessionIds: [sid('archived')],
+    }))
+    const stop = b.workspaces.startInitialSelection()
+    await b.workspaces.refresh()
+    await b.sessions.refresh()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(b.api.callsOf('session.create')).toHaveLength(0)
+    expect(b.sessions.list.getSnapshot().current).toBe('latest')
+    stop()
+  })
+
+  it('replaces a restored blank current with the latest live session', async () => {
+    const b = bench()
+    b.api.onList = () => Promise.resolve(ok({
+      items: [
+        { sessionId: sid('blank'), updatedAt: 300, running: false, blank: true },
+        { sessionId: sid('old'), updatedAt: 100, running: false, blank: false },
+        { sessionId: sid('latest'), updatedAt: 200, running: false, blank: false },
+      ] as never[],
+    }))
+    b.api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [workspace('recent', [sid('blank'), sid('old'), sid('latest')])] as never[],
+    }))
+    await b.sessions.refresh()
+    b.sessions.open(sid('blank'))
+    const stop = b.workspaces.startInitialSelection()
+    await b.workspaces.refresh()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(b.api.callsOf('session.create')).toHaveLength(0)
+    expect(b.sessions.list.getSnapshot().current).toBe('latest')
+    stop()
+  })
+
   it('stays idle when a session is already current or no recent Workspace exists', async () => {
     const withCurrent = bench()
     withCurrent.api.onList = () => Promise.resolve(ok({

@@ -701,13 +701,18 @@ export function fixtureUserPrompts(fixtureText: string): string[] {
  * @returns the realized fixture text.
  */
 export function realizeSeedFixture(scaffold: WebScaffold, fixtureText: string, id: string): string {
+  // A Windows workspace path must reach the fixture's JSON lines with its
+  // backslashes escaped; the parse below would otherwise reject `\U`-style
+  // escapes. POSIX paths are unaffected (no backslashes to escape).
+  const escapedWorkspace = scaffold.workspaceCwd.replace(/\\/g, '\\\\')
   const realized = fixtureText
     .split('{{sessionId}}').join(id)
-    .split('{{cwd}}').join(scaffold.workspaceCwd)
+    .split('{{cwd}}').join(escapedWorkspace)
   const fixtureCwd = (JSON.parse(realized.split('\n', 1)[0]!) as { cwd?: string }).cwd
-  return fixtureCwd === undefined
-    ? realized
-    : realized.split(fixtureCwd).join(scaffold.workspaceCwd)
+  if (fixtureCwd === undefined) return realized
+  // The recorded cwd (fixture text) is also escaped, so the rewrite must
+  // match in the escaped text domain to stay correct on Windows.
+  return realized.split(fixtureCwd.replace(/\\/g, '\\\\')).join(escapedWorkspace)
 }
 
 export async function seedSession(

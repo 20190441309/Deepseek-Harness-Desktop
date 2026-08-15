@@ -104,7 +104,7 @@ describe('runtime client apply', () => {
     }))
     bench.api.onList = () => Promise.resolve(ok({ items: [] }))
 
-    bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true })
+    await bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true })
     await flushMicrotasks()
 
     const sessions = bench.ctx.get('sessions') as SessionRuntime
@@ -152,5 +152,39 @@ describe('runtime client apply', () => {
     await bench.ctx.fiber.dispose()
     expect(bench.stopped).toBe(1)
     void fiber
+  })
+
+  it('waits for the boot gate before starting the stream loop', async () => {
+    let release!: () => void
+    ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      const bench = await mount()
+      expect(bench.sinks).toBeUndefined()
+      release()
+      await vi.waitFor(() => { expect(bench.sinks).toBeDefined() })
+      await bench.ctx.fiber.dispose()
+      expect(bench.stopped).toBe(1)
+    } finally {
+      delete (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
+    }
+  })
+
+  it('does not start the stream loop when the fiber unloads before the boot gate', async () => {
+    let release!: () => void
+    ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      const bench = await mount()
+      await bench.ctx.fiber.dispose()
+      release()
+      await flushMicrotasks()
+      expect(bench.sinks).toBeUndefined()
+      expect(bench.stopped).toBe(0)
+    } finally {
+      delete (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
+    }
   })
 })

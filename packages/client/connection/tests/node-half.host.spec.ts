@@ -136,6 +136,29 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('lets an SSE GET through to the API proxy instead of 426', async () => {
+    const ctx = new Context()
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {
+      events: {
+        async *mux() {},
+        async *host() {},
+      },
+    } as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(fakeRequest({
+      host: '127.0.0.1:3080',
+      accept: 'text/event-stream',
+    }, HOST_EVENTS_PATH), response)
+    expect(state.status).toBe(200)
+    expect(String(state.body)).toContain(': connected')
+    await fiber.dispose()
+  })
+
   it('rejects an untrusted WebSocket upgrade before protocol negotiation', async () => {
     const { upgrades, dispose } = await mounted()
     const socket = new PassThrough()

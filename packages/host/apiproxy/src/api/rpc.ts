@@ -36,7 +36,14 @@ export interface RpcErrorDetailsMap {
   'model-unavailable': { provider: string; model: string }
   'session-conflict': { sessionId: SessionId; requestedCwd: string; existingCwd?: string }
   'invalid-time-zone': { value: string }
-  'workspace-attach-failed': { sessionId: SessionId; workspaceId: string }
+  /**
+   * The session was created/forked but could not join its target Workspace;
+   * details name the already-published session id. `blank` is the published
+   * session's empty-log bit (a fork's beforeSeq cut can publish a blank
+   * child); it is omitted when the emitter has no blank fact, and clients
+   * keep their per-method defaults when it is absent.
+   */
+  'workspace-attach-failed': { sessionId: SessionId; workspaceId: string; blank?: boolean }
   'workspace-not-found': { workspaceId: string }
   'workspace-invalid-path': { path: string }
   'workspace-name-conflict': { name: string }

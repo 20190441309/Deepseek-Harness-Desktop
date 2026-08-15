@@ -321,21 +321,34 @@ export interface SessionsApi {
    * RPC error with code command-error; an unrecognized name is an RPC error with code unknown-command.
    */
   /**
-   * Forks a new session from a completed-turn prefix of the source. `atSeq`
-   * anchors the cut: the boundary is the first `turn/end` at or after it
+   * Forks a new session from a prefix of the source. `atSeq` anchors a
+   * completed-turn cut: the boundary is the first `turn/end` at or after it
    * (a message's fork button passes the message seq, so the fork includes
    * that whole turn); a boundary past the log end, or an omitted `atSeq`,
    * falls back to the source's last completed turn. An in-log anchor whose
    * turn is still open fails with `fork-unavailable` instead of clipping to
-   * an earlier turn. The child inherits the source cwd, latest logged model
-   * target and `parentSessionId` lineage; the seed prefix carries the source
-   * title. Reading the source uses attached state or persistence inspection
-   * without acquiring an Agent. Workspace attachment follows the source
-   * directly, or the nearest workspace-owning ancestor when the source is a
-   * subagent.
+   * an earlier turn.
+   *
+   * `beforeSeq` is the mutually exclusive complement: it cuts BEFORE the
+   * `turn/start` of the turn containing the anchored event, so that turn is
+   * excluded whole and may still be open. An anchor before the first
+   * `turn/start` forks an empty (blank) child; an anchor that is not an
+   * in-log contiguous seq, or that names a between-turn out-of-band event
+   * no turn owns, fails with `fork-unavailable`. Supplying both anchors
+   * together is rejected by the wire schema (bad-request).
+   *
+   * The child inherits the source cwd, latest logged model target and
+   * `parentSessionId` lineage; the seed prefix carries the source title.
+   * `blank` reports whether the seed contains no `turn/start` (an empty
+   * beforeSeq cut). Reading the source uses attached state or persistence
+   * inspection without acquiring an Agent. Workspace attachment follows the
+   * source directly, or the nearest workspace-owning ancestor when the
+   * source is a subagent; a failed attachment returns
+   * `workspace-attach-failed` with the already-published child id and its
+   * `blank` bit.
    */
-  fork(request: RpcRequest<{ sessionId: SessionId; atSeq?: number }>):
-  Promise<RpcResponse<{ sessionId: SessionId }>>
+  fork(request: RpcRequest<{ sessionId: SessionId; atSeq?: number; beforeSeq?: number }>):
+  Promise<RpcResponse<{ sessionId: SessionId; blank: boolean }>>
 
   /**
    * Sends text and temporary image bytes to an ordinary session Agent after durable host admission.
