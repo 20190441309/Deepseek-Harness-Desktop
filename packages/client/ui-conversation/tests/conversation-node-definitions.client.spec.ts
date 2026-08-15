@@ -344,6 +344,25 @@ describe('built-in conversation node Definitions', () => {
     expect((withSecondChild?.data as ToolChatData).root.subCalls[0]).toBe(firstChild)
   })
 
+  it('projects a running tool card as an interrupted error when its turn closes in error (legacy orphan log)', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'step/start', { turn: 1, step: 1 }),
+      at(3, 'tool/call', { turn: 1, step: 1, callId: 'c1', name: 'read', arguments: '{}' }),
+      // No tool/result follows: the scheduler failed and the turn closed in
+      // error — exactly the log shape the legacy bug left behind.
+      at(4, 'step/end', { turn: 1, step: 1 }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'scheduler exploded', code: 'UNKNOWN' } } }),
+    ])
+    const tool = node(snapshot(value), 'tool-call')
+    expect((tool?.data as ToolChatData).root).toMatchObject({
+      kind: 'tool-result',
+      callId: 'c1',
+      isError: true,
+      error: { name: 'Interrupted', code: 'interrupted' },
+    })
+  })
+
   it('prepends an older turn without replacing already materialized nodes', () => {
     const value = assembler([
       at(20, 'turn/start', { turn: 2 }),
