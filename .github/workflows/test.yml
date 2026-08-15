@@ -1,0 +1,48 @@
+name: Desktop tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install app dependencies
+        run: npm ci
+      - name: Run desktop unit tests
+        run: npm test
+
+  vendor-gui:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - name: Install vendor dependencies
+        working-directory: vendor/deepseek-harness
+        run: pnpm install --frozen-lockfile
+      - name: Build vendor client + host libs
+        working-directory: vendor/deepseek-harness
+        run: pnpm run build:lib
+      - name: GUI component suites
+        working-directory: vendor/deepseek-harness
+        run: pnpm run test:gui
+      - name: Client catalog and notices up to date
+        working-directory: vendor/deepseek-harness
+        run: |
+          pnpm run gen-client-catalog --check
+          pnpm run gen-third-party-notices --check

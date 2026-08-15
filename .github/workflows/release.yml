@@ -24,6 +24,9 @@ jobs:
       - name: Install app dependencies
         run: npm ci
 
+      - name: Run desktop unit tests
+        run: npm test
+
       # .npmrc 设置了 electron_skip_binary_download，CI 需显式拉取 Electron 二进制
       - name: Download Electron binary
         run: node node_modules/electron/install.js
@@ -34,6 +37,10 @@ jobs:
 
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js
+
+      - name: Vendor GUI gate (client + host suites)
+        working-directory: vendor/deepseek-harness
+        run: pnpm run test:gui
 
       - name: Build NSIS setup installer
         run: npm run dist

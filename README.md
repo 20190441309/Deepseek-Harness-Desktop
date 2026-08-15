@@ -14,6 +14,9 @@
 2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
 3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
 4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选，一键安装 / 卸载到 web profile。
+5.设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
+6.设置 → 通用可开启远程访问：电脑出站连产品中继，手机 / 网页扫码后继续本机会话、发消息和审批工具。`dsh web` 仍只听 `127.0.0.1`。
+7.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、ANSI 终端（xterm）、Files / Diff / Browser / Agents 面板，所有文件与命令都限定在当前工作区内。
 
 也欢迎有需求的朋友来提需求，或者提 PR。
 
@@ -28,13 +31,17 @@
 - **三重启动链**：优先跑 `vendor/deepseek-harness` 构建产物 → 本机 `dsh` → `npx @deepseek-ai/dsh`，总有一条能起来
 - **工作区自动注册**：启动时通过 RPC 把工作区目录注册进 Harness，不用手动建
 - **设置就是 Harness 设置**（`Ctrl+,`）：模型、插件、关于、检测更新和在线安装都在官方设置里
-- **托盘常驻**：显示窗口、设置、重启 Harness、退出
+- **托盘常驻**：显示窗口、设置、重启 Harness、退出。设置 → 通用 →「关闭窗口时」可选最小化到托盘（默认）或直接退出；退出会先停本机 Harness，全屏「关闭中」遮罩跟随当前浅/深主题
 - **自动更新**：有新版本时设置按钮旁出现绿色"有新版本"按钮，点击即可在线更新；设置 → 关于里也可手动检查 GitHub Releases
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 - **第三方思考强度**：自定义 / 第三方模型可勾 Low / Medium / High / Very High / Extreme，输入栏里就能切推理等级
 - **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
 - **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调
 - **插件市场**：在设置 → 插件 →「插件市场」里，和插件配置、插件列表并排。菜单 / 托盘 / 标题栏 / `Ctrl+Shift+M` 会打开这一页。目录只认 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按界面、工作流、工具、通知、开发、学习分类；安装走官方 `dsh plugin --profile web add github:owner/repo`，装完会重启 Harness。git 安装会在本机执行仓库的 prepare 脚本，只装你信任的插件。GitHub API 被限流时可把 Token 写进这一页。
+- **远程办公**：设置 → 通用 →「远程访问」。开启后桌面端出站连接中继，展示配对二维码。Android / Web 客户端在 `apps/mobile`。中继部署见 [`packages/relay/README.md`](packages/relay/README.md)。
+- **标题栏 Git 操作**：有 Git 仓库的工作区里，标题栏出现 Commit / Commit & push / Push / 变更请求按钮与下拉菜单；无 Git 或非仓库时自动禁用。状态在窗口聚焦、操作完成后自动刷新。
+- **完整 VT 终端**：底栏终端抽屉与右栏 Terminal 共用同一批 PTY 会话（Windows ConPTY），基于 xterm 的完整 ANSI/VT 渲染，支持方向键、历史、Home/End、粘贴、Ctrl+C 与窗口缩放自适应。终端只在当前工作区内启动。
+- **纯右边栏**：标题栏开关打开右栏，空态五卡可开 Browser（本地 URL 预览）、Terminal、Files、Diff、Agents。文件浏览 / 读取、Git 状态与命令全部锁定在工作区根目录内，预览页仅允许本地回环地址且使用隔离会话，不会携带你的 API Key。
 
 ### 第三方思考强度
 
@@ -96,7 +103,7 @@ npm run setup:harness
 npm start
 ```
 
-Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `setup:harness` 装依赖并完整构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。
+Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `setup:harness` 装依赖并完整构建，比较慢；之后 `npm start` 就行。本机没有 Electron 的话，把 `ELECTRON_PATH` 指到 `electron.exe`。桌面壳单测门槛是 `npm test`（不启动 Electron）；改关闭行为、托盘或主题遮罩后先跑它。
 
 ### 日常使用
 
@@ -107,7 +114,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 | 重启 Harness | `Ctrl+Shift+R` |
 | 重新加载界面 | `Ctrl+R` |
 | 开发者工具 | `Ctrl+Shift+I` |
-| 关闭窗口 | 默认最小化到托盘（可在设置里改） |
+| 关闭窗口 | 设置 → 通用 →「关闭窗口时」：默认最小化到托盘；选「直接退出」会停掉本机服务并显示跟随主题的关闭中遮罩 |
 
 ## 工作原理
 
@@ -139,7 +146,8 @@ npm run dist
 
 本地打包要把 1.4GB 的官方源码搬进安装包，很慢。用 GitHub Actions（`.github/workflows/release.yml`）在云端构建：
 
-- **手动构建**：Actions 页 → Build Windows Installer → Run workflow，安装包在 artifacts 里下载
+- **PR / 推 main**：`.github/workflows/test.yml` 跑 `npm test`（桌面壳单测，不启动 Electron）
+- **手动构建**：Actions 页 → Build Windows Installer → Run workflow；打包前同样先跑 `npm test`，安装包在 artifacts 里下载
 - **自动发布**：推送 `v*` 标签（如 `v0.1.0`）自动构建并发布 GitHub Release
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
