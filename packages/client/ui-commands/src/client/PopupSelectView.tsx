@@ -12,7 +12,7 @@
 import { useEffect, useRef } from 'react'
 import { useSyncExternalStore } from 'react'
 import clsx from 'clsx'
-import { IconCheckOutline16, RiskConfirmation, useAnchoredMaxHeight } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCheckOutline16, RiskConfirmation, useAnchoredMaxHeight, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { filterOptions } from './popup.ts'
 import type { PopupSelectController } from './popup.ts'
@@ -42,9 +42,13 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
   )
   const cardRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const lastOpen = useRef(state)
+  if (state.open) lastOpen.current = state
+  const view = state.open ? state : lastOpen.current
+  const { mounted, state: motionState } = usePresence(state.open)
   // The card is bottom-anchored above the composer; clamp the design cap to
   // the space above it, re-measured on every store update.
-  const maxHeight = useAnchoredMaxHeight(cardRef, MAX_HEIGHT, state)
+  const maxHeight = useAnchoredMaxHeight(cardRef, MAX_HEIGHT, mounted)
   const active = state.open ? state.active : null
 
   // The search input keeps focus while arrows move a virtual highlight, so
@@ -71,13 +75,13 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
 
   // Focus the search input after it mounts (separate effect so the ref is populated).
   useEffect(() => {
-    if (state.open && state.confirming === null) searchRef.current?.focus()
-  }, [state.open, state.confirming])
+    if (mounted && state.open && state.confirming === null) searchRef.current?.focus()
+  }, [mounted, state.open, state.confirming])
 
-  if (!state.open) return null
+  if (!mounted) return null
 
-  const rows = filterOptions(state.options, state.search)
-  const confirmation = state.confirming?.confirmation
+  const rows = filterOptions(view.options, view.search)
+  const confirmation = view.confirming?.confirmation
 
   const onKeyDown = (ev: React.KeyboardEvent<HTMLDivElement>): void => {
     // ArrowLeft/ArrowRight fall through on purpose: the search input keeps
@@ -105,12 +109,15 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
 
   return (
     <>
-      {state.confirming === null && (
+      {view.confirming === null && (
         <div
           ref={cardRef}
           className={css.card}
           style={{ maxHeight }}
-          aria-label={t('overlay.aria', { command: String(state.command) })}
+          data-dsh-motion="popover"
+          data-state={motionState}
+          aria-hidden={state.open ? undefined : true}
+          aria-label={t('overlay.aria', { command: String(view.command) })}
           onKeyDown={onKeyDown}
         >
           <input
@@ -119,29 +126,29 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
             type="text"
             placeholder={t('search.placeholder')}
             aria-label={t('search.aria')}
-            value={state.search}
-            readOnly={state.submitting}
+            value={view.search}
+            readOnly={view.submitting}
             onChange={(ev) => { popup.setSearch(ev.currentTarget.value) }}
           />
-          {state.error !== null && (
+          {view.error !== null && (
             <div className={css.error} role="alert">
-              <span className={css.errorText}>{state.error}</span>
-              {state.status === 'failed' && (
+              <span className={css.errorText}>{view.error}</span>
+              {view.status === 'failed' && (
                 <button type="button" className={css.retry} onClick={() => { popup.retry() }}>{t('retry')}</button>
               )}
             </div>
           )}
-          {state.status === 'pending' && <div className={css.status}>{t('status.loading')}</div>}
-          {state.submitting && <div className={css.status}>{t('status.applying')}</div>}
-          {state.status === 'ready' && rows.length === 0 && <div className={css.status}>{t('status.empty')}</div>}
-          {state.status === 'ready' && (
-            <div role="listbox" aria-label={t('listbox.aria', { command: String(state.command) })} className={css.viewport}>
+          {view.status === 'pending' && <div className={css.status}>{t('status.loading')}</div>}
+          {view.submitting && <div className={css.status}>{t('status.applying')}</div>}
+          {view.status === 'ready' && rows.length === 0 && <div className={css.status}>{t('status.empty')}</div>}
+          {view.status === 'ready' && (
+            <div role="listbox" aria-label={t('listbox.aria', { command: String(view.command) })} className={css.viewport}>
               {rows.map((option, index) => (
                 <div
                   key={option.id}
                   role="option"
-                  aria-selected={index === state.active}
-                  className={clsx(css.row, index === state.active && css.rowActive)}
+                  aria-selected={index === view.active}
+                  className={clsx(css.row, index === view.active && css.rowActive)}
                   // mousedown would race the document capture listener; the shell
                   // owns focus anyway, so a plain click (inside the card → no
                   // dismiss) works.
@@ -165,7 +172,7 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
           acknowledgeLabel={confirmation.acknowledgeLabel}
           cancelLabel={confirmation.cancelLabel}
           confirmLabel={confirmation.confirmLabel}
-          acknowledged={state.acknowledged}
+          acknowledged={view.acknowledged}
           onAcknowledgedChange={(value) => { popup.acknowledge(value) }}
           onCancel={() => { popup.cancelConfirmation() }}
           onConfirm={() => { void popup.confirm() }}

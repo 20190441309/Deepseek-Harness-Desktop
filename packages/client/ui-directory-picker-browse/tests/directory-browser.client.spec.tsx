@@ -1233,7 +1233,7 @@ describe('DirectoryBrowser', () => {
     expect(screen.getByLabelText('browser.folderName')).toBeTruthy()
     fireEvent.keyDown(document, { key: 'Escape' })
     // The nested dialog consumed Escape; the browser stays up.
-    expect(screen.queryByLabelText('browser.folderName')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull()
     expect(b.onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(b.onClose).toHaveBeenCalledOnce()
@@ -1275,7 +1275,7 @@ describe('DirectoryBrowser', () => {
       }))
     fireEvent.change(screen.getByLabelText('browser.folderName'), { target: { value: 'fresh' } })
     fireEvent.click(screen.getByRole('button', { name: 'browser.create' }))
-    await waitFor(() => { expect(screen.queryByLabelText('browser.folderName')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull() })
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'browser.newFolder' }).disabled).toBe(true)
     // Drain the relist and the follow-up selection listing; only then does
     // the affordance return.
@@ -1519,7 +1519,7 @@ describe('DirectoryBrowser', () => {
     // nested dialog's state inside the fresh flow.
     await act(async () => { settleCreate(`${HOME}/slow`) })
     expect(b.listDirectory.mock.calls.length).toBe(listCallsBefore)
-    expect(screen.queryByLabelText('browser.folderName')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull()
     expect(screen.getByText('Documents')).toBeTruthy()
   })
 
@@ -1587,17 +1587,17 @@ describe('DirectoryBrowser', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('taken already') })
     fireEvent.keyDown(screen.getByLabelText('browser.folderName'), { key: 'Escape' })
-    await waitFor(() => { expect(screen.queryByLabelText('browser.folderName')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull() })
 
     // The nested Cancel button and the nested mask both close only the child dialog.
     fireEvent.click(screen.getByRole('button', { name: 'browser.newFolder' }))
     const nested = screen.getByRole('dialog', { name: 'browser.newFolder' })
     fireEvent.click(within(nested).getByRole('button', { name: 'browser.cancel' }))
-    await waitFor(() => { expect(screen.queryByLabelText('browser.folderName')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull() })
     fireEvent.click(screen.getByRole('button', { name: 'browser.newFolder' }))
     const masks = document.querySelectorAll('[aria-hidden="true"]')
     fireEvent.click(masks[masks.length - 1]!)
-    await waitFor(() => { expect(screen.queryByLabelText('browser.folderName')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull() })
     expect(screen.getByRole('dialog', { name: 'browser.title' })).toBeTruthy()
   })
 
@@ -1706,7 +1706,7 @@ describe('DirectoryBrowser', () => {
     fireEvent.click(masks[masks.length - 1]!)
     expect(screen.getByLabelText('browser.folderName')).toBeTruthy()
     settleCreate(`${HOME}/slow`)
-    await waitFor(() => { expect(screen.queryByLabelText('browser.folderName')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('textbox', { name: 'browser.folderName' })).toBeNull() })
   })
 
   it('says a level is incomplete when the backend cut it at its bound', async () => {

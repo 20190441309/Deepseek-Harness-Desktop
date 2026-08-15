@@ -23,7 +23,6 @@
   /* Unbreakable tokens (URLs, paths) must not push past max-width. */
   overflow-wrap: break-word;
   pointer-events: none;
-  animation: tooltip-in 150ms var(--ds-ease-in-out);
 }
 
 .bubble[data-side='right'] {
@@ -38,12 +37,3 @@
   transform: translate(-50%, -100%);
 }
 
-@keyframes tooltip-in {
-  from { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bubble {
-    animation: none;
-  }
-}

@@ -95,7 +95,7 @@ export function MessageImage({ attachment, load, variant, labels }: {
           ? <span className={css.loading}>{labels.loading}</span>
           : <img src={src} alt={label} style={fit === undefined ? undefined : { objectPosition: fit.objectPosition }} />}
       </button>
-      {open && src !== null && <ImageLightbox src={src} alt={label} labels={labels.lightbox} onClose={close} />}
+      {src !== null && <ImageLightbox open={open} src={src} alt={label} labels={labels.lightbox} onClose={close} />}
     </>
   )
 }

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HoverCard } from '@deepseek-ai/dsh-client-ui-primitives'
 import { POINTER_GRACE_MS } from '../src/pointer-grace.ts'
+import { PRESENCE_EXIT_MS } from '../src/usePresence.ts'
 
 afterEach(cleanup)
 beforeEach(() => { vi.useFakeTimers() })
@@ -14,6 +15,21 @@ function stubAnchorRect(anchor: HTMLElement, rect: { top: number; right: number 
   wrapper.getBoundingClientRect = () => ({
     top: rect.top, right: rect.right, left: rect.right - 100, bottom: rect.top + 34,
     width: 100, height: 34, x: rect.right - 100, y: rect.top, toJSON: () => ({}),
+  })
+}
+
+/** Presence keeps the card mounted through exit; text queries still find it. */
+function expectCardClosed(): void {
+  const node = screen.queryByText('card body')
+  if (node === null) return
+  expect(node.closest('[data-dsh-motion]')?.getAttribute('aria-hidden')).toBe('true')
+}
+
+/** Flush the two enter frames so pending rAF timers do not inflate getTimerCount. */
+function settlePresenceEnter(): void {
+  act(() => {
+    vi.advanceTimersToNextFrame()
+    vi.advanceTimersToNextFrame()
   })
 }
 
@@ -83,7 +99,7 @@ describe('HoverCard', () => {
     act(() => { vi.advanceTimersByTime(POINTER_GRACE_MS - 1) })
     expect(screen.getByText('card body')).toBeTruthy()
     act(() => { vi.advanceTimersByTime(1) })
-    expect(screen.queryByText('card body')).toBeNull()
+    expectCardClosed()
     fireEvent.pointerEnter(wrapper)
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.getByText('card body')).toBeTruthy()
@@ -110,6 +126,7 @@ describe('HoverCard', () => {
     fireEvent.pointerEnter(wrapper)
     fireEvent.pointerLeave(wrapper)
     act(() => { vi.advanceTimersByTime(POINTER_GRACE_MS) })
+    expectCardClosed()
     // A dwell restarted by the redundant enter would reopen the card here.
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.queryByText('card body')).toBeNull()
@@ -121,7 +138,7 @@ describe('HoverCard', () => {
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.getByText('card body')).toBeTruthy()
     fireEvent.pointerDown(screen.getByText('row'))
-    expect(screen.queryByText('card body')).toBeNull()
+    expectCardClosed()
     // The pending timer is also cleared: no reopen after the dwell.
     act(() => { vi.advanceTimersByTime(1000) })
     expect(screen.queryByText('card body')).toBeNull()
@@ -271,6 +288,7 @@ describe('HoverCard', () => {
       const { view, wrapper } = mount({ copyText: 'value' })
       fireEvent.pointerEnter(wrapper)
       act(() => { vi.advanceTimersByTime(500) })
+      settlePresenceEnter()
       await act(async () => { fireEvent.click(screen.getByRole('button')) })
       expect(vi.getTimerCount()).toBe(1)
       view.unmount()
@@ -331,6 +349,7 @@ describe('HoverCard', () => {
       act(() => { vi.advanceTimersByTime(POINTER_GRACE_MS) })
       fireEvent.pointerEnter(wrapper)
       act(() => { vi.advanceTimersByTime(500) })
+      settlePresenceEnter()
       await act(async () => { acceptWrite?.() })
       expect(vi.getTimerCount()).toBe(0)
       expect(screen.getByText('card body')).toBeTruthy()
@@ -371,6 +390,8 @@ describe('HoverCard', () => {
     act(() => { vi.advanceTimersByTime(500) })
     expect(screen.getByText('card body')).toBeTruthy()
     view.rerender(<HoverCard anchor={<span>row</span>} content={<div>card body</div>} disabled />)
+    expectCardClosed()
+    act(() => { vi.advanceTimersByTime(PRESENCE_EXIT_MS) })
     expect(screen.queryByText('card body')).toBeNull()
   })
 
@@ -416,6 +437,8 @@ describe('HoverCard', () => {
     expect(card.style.top).toBe('90px')
     fireEvent.pointerLeave(wrapper)
     act(() => { vi.advanceTimersByTime(POINTER_GRACE_MS) })
+    expectCardClosed()
+    act(() => { vi.advanceTimersByTime(PRESENCE_EXIT_MS) })
     expect(screen.queryByText('card body')).toBeNull()
   })
 

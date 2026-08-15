@@ -74,6 +74,7 @@ export function InputBar({
   )
   const empty = draft.trim() === '' && attachments.length === 0
   const [preview, setPreview] = useState<ComposerAttachment | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   // Transient error banner (image-intake rejections and prompt failures): the
   // seq keys the Toast so an identical repeated message restarts the
@@ -157,7 +158,10 @@ export function InputBar({
   }, [attachments, input?.imageIds, inputActions])
 
   useEffect(() => {
-    if (preview !== null && !attachments.some(attachment => attachment.id === preview.id)) setPreview(null)
+    if (preview !== null && !attachments.some(attachment => attachment.id === preview.id)) {
+      setPreview(null)
+      setPreviewOpen(false)
+    }
   }, [attachments, preview])
 
   // Scroll the draft scrollport the minimum that brings `caret` into view — the
@@ -507,7 +511,7 @@ export function InputBar({
     }
   }, [canAcceptDrop, intakeImages])
 
-  const closePreview = useCallback(() => { setPreview(null) }, [])
+  const closePreview = useCallback(() => { setPreviewOpen(false) }, [])
 
   // Rail thumbnails with their strings resolved here: the attachment atoms are
   // zero-cordis and read no locale.
@@ -691,7 +695,7 @@ export function InputBar({
             <AttachmentRail
               items={railItems}
               labels={attachmentRailLabels(t)}
-              onOpen={(item) => { setPreview(item.attachment) }}
+              onOpen={(item) => { setPreview(item.attachment); setPreviewOpen(true) }}
               onRemove={(item) => { removeImage?.(item.attachment.id) }}
             />
           </div>
@@ -806,6 +810,7 @@ export function InputBar({
       </div>
       {preview !== null && (
         <ImageLightbox
+          open={previewOpen}
           src={preview.previewUrl}
           alt={preview.file.name || t('image.original')}
           labels={lightboxLabels(t)}

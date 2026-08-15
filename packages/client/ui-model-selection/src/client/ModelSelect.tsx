@@ -18,8 +18,8 @@ import {
 import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
-  IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
-  IconWarningOutline16, Toast,
+  FlipText, IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
+  IconWarningOutline16, Toast, usePresence,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from './slots.ts'
@@ -51,6 +51,7 @@ export function ModelSelect(
     () => directory.getSnapshot(),
   )
   const [open, setOpen] = useState(false)
+  const { mounted, state: motionState } = usePresence(open)
   const [pane, setPane] = useState<Pane>('root')
   // The in-menu error strip serves catalog loads (its Retry re-runs the
   // load); a rejected SELECTION announces through the transient toast
@@ -124,6 +125,10 @@ export function ModelSelect(
     return () => { document.removeEventListener('mousedown', closeOutside) }
   }, [open])
 
+  useEffect(() => {
+    if (!mounted) setPane('root')
+  }, [mounted])
+
   if (!available) return null
 
   const show = (): void => {
@@ -134,7 +139,6 @@ export function ModelSelect(
 
   const close = (restoreFocus = false): void => {
     setOpen(false)
-    setPane('root')
     if (restoreFocus) queueMicrotask(() => { triggerRef.current?.focus() })
   }
 
@@ -236,18 +240,21 @@ export function ModelSelect(
           }
         }}
       >
-        <span className={css.triggerLabel}>{modelLabel}</span>
-        {effortLabel !== undefined && <span className={css.triggerEffort}>{effortLabel}</span>}
+        <FlipText className={css.triggerLabel} text={modelLabel} />
+        {effortLabel !== undefined && <FlipText className={css.triggerEffort} text={effortLabel} />}
         <IconChevronDownOutline14 className={clsx(css.chevron, open && css.chevronOpen)} />
       </button>
 
-      {open && (
+      {mounted && (
         <div
           id={`${id}-menu`}
           className={css.menu}
           role="menu"
           aria-label={t('menu.aria')}
           aria-busy={state.status === 'loading' || busy}
+          data-dsh-motion="popover"
+          data-state={motionState}
+          aria-hidden={open ? undefined : true}
         >
           {pane === 'root' && (
             <>

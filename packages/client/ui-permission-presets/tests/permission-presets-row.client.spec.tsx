@@ -99,13 +99,12 @@ describe('PermissionRow', () => {
     expect(screen.queryByRole('dialog', { name: 'Enable Full access?' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Read Only' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Full access' }))
-    const dialog = screen.getByRole('dialog', { name: 'Enable Full access?' })
     const enable = screen.getByRole('button', { name: 'Enable Full access' })
     expect((enable as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(enable)
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
-    expect(dialog.isConnected).toBe(false)
+    expect(screen.queryByRole('dialog', { name: 'Enable Full access?' })).toBeNull()
   })
 
   it('hides an unavailable namespace and disables a read-only provider', async () => {

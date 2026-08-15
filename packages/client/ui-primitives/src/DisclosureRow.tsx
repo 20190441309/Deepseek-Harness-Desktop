@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14 } from './icons/index.tsx'
+import { usePresence } from './usePresence.ts'
 import css from './DisclosureRow.module.css'
 
 /** Shared 24px disclosure chrome for compact flow rows. */
@@ -47,6 +48,7 @@ export function DisclosureRow({
   chevronClassName,
   titleClassName,
 }: DisclosureRowProps) {
+  const { mounted, state } = usePresence(open)
   const rowExpands = expandable && expandOnRowClick
   const toggleFromLeading = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -98,7 +100,9 @@ export function DisclosureRow({
         <span className={clsx(css.title, titleClassName)}>{title}</span>
         {(keepContentWhenOpen || !open) && collapsedContent}
       </div>
-      {open && children}
+      {mounted && children != null && (
+        <div data-dsh-motion="fade" data-state={state} aria-hidden={open ? undefined : true}>{children}</div>
+      )}
     </div>
   )
 }
