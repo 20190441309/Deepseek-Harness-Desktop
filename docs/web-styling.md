@@ -20,6 +20,10 @@ Global style sheets belong in `ui-theme/src/styles/`. Component styles live besi
 - Put presentation in CSS. Inline React styles may pass component-local custom-property values but must not encode theme branches.
 - Preserve keyboard focus visibility and reduced-motion behavior when adding transitions or hover-only controls.
 
+## Motion
+
+Shared enter/exit motion lives in [`ui-theme` `motion.css`](../packages/client/ui-theme/src/styles/motion.css) and [`usePresence`](../packages/client/ui-primitives/src/usePresence.ts). Overlay, popover, fade, swap, and flip recipes animate only `opacity` and `transform`. A surface sets `data-dsh-motion` and `data-state` from `usePresence`; it does not invent another duration or easing. The composer plus, permission, model, and context-meter popovers all use `popover`. `FlipText` plays the 400ms flip recipe (`--ds-motion-duration-flip`) when a permission, model, or effort trigger label changes. `prefers-reduced-motion: reduce` zeros the `--ds-transition-duration*` and `--ds-motion-duration-*` tokens. Do not animate `backdrop-filter`, large-panel width/height, or add an animation library. New dialogs, menus, and in-place swaps reuse a primitive or the same hook and recipe. Rationale: [the motion-system Agent Note](../.agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.md).
+
 ## Changing the system
 
-Add or change a shared token in the owning `ui-theme` sheet, then consume its semantic alias from feature packages. Update the owning package reference when a public styling contract changes. Visual behavior follows the [testing policy](testing.md); the [styling-system Agent Note](../.agents/notes/implemented/process/2026-07-19-web-styling-system.md) records framework rationale.
+Add or change a shared token in the owning `ui-theme` sheet, then consume its semantic alias from feature packages. Update the owning package reference when a public styling contract changes. Visual behavior follows the [testing policy](testing.md). Motion recipes, Presence, and FlipText are pinned by their package suites under `test:gui` and by role / `aria-hidden` close assertions, not by browser goldens. The [styling-system Agent Note](../.agents/notes/implemented/process/2026-07-19-web-styling-system.md) records framework rationale.
