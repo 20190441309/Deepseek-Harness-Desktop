@@ -9,6 +9,7 @@ import { apply, inject } from '@deepseek-ai/dsh-client-ui-settings-general/clien
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 import { AboutSection } from '../src/client/AboutSection.tsx'
+import { HarnessRestartRow } from '../src/client/HarnessRestartRow.tsx'
 import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocumentAction.tsx'
 
@@ -183,6 +184,44 @@ describe('ui-settings-general apply', () => {
     expect(b.settingsDescribe).not.toHaveBeenCalled()
     await fiber.dispose()
     for (const [name] of SEATS) expect(b.slots.entries(name)).toEqual([])
+  })
+
+  it('registers the desktop-only harness-restart row only for a shell with both config directions', async () => {
+    // No desktop bridge in this node environment: the General item list stays
+    // empty (the plain-browser composition has no process to restart).
+    const b = await bench()
+    declare(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    expect(b.slots.entries('settings.general.item')).toEqual([])
+    await b.ctx.fiber.dispose()
+
+    const getConfig = vi.fn()
+    // The row needs the whole config pair; a one-direction bridge still
+    // withholds it (apply reads the bridge at activation time, so each case
+    // gets its own plugin instance).
+    ;(globalThis as { window?: unknown }).window = { shell: { getConfig } }
+    try {
+      const partial = await bench()
+      declare(partial.slots)
+      await partial.ctx.plugin({ inject: [...inject], apply }).await()
+      expect(partial.slots.entries('settings.general.item')).toEqual([])
+      await partial.ctx.fiber.dispose()
+
+      ;(globalThis as { window?: unknown }).window = { shell: { getConfig, saveConfig: vi.fn() } }
+      const desktop = await bench()
+      declare(desktop.slots)
+      await desktop.ctx.plugin({ inject: [...inject], apply }).await()
+      const entries = desktop.slots.entries('settings.general.item')
+      expect(entries).toHaveLength(1)
+      const entry = entries[0]!
+      expect(entry.component).toBe(HarnessRestartRow)
+      expect(entry.options).toMatchObject({ id: 'harness-restart', order: 100 })
+      // The row rides the shell-owned settings dictionary.
+      expect(entry.locale).toBe('settings')
+      await desktop.ctx.fiber.dispose()
+    } finally {
+      delete (globalThis as { window?: unknown }).window
+    }
   })
 
   it('re-registers after an HMR collapse of the declaring chain (stale disposers must not block)', async () => {

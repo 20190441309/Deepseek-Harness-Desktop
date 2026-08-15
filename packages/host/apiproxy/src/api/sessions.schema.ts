@@ -127,15 +127,26 @@ export const sessionRenameValueSchema = z.object({
   seq: z.number().int().nonnegative(),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.rename'>>>
 
-/** session.fork request payload (atSeq anchors the completed-turn cut). */
+/**
+ * session.fork request payload. `atSeq` / `beforeSeq` are mutually exclusive
+ * cut anchors: `atSeq` includes the anchored event's completed turn, while
+ * `beforeSeq` excludes the anchored event's turn entirely (which may be
+ * open). Supplying both is a bad-request, like session.create's
+ * workspaceId/cwd conflict.
+ */
 export const sessionForkRequestSchema = z.object({
   sessionId: sessionIdSchema,
   atSeq: z.number().int().nonnegative().optional(),
-}) satisfies z.ZodType<Wire<RequestPayload<'session.fork'>>>
+  beforeSeq: z.number().int().nonnegative().optional(),
+}).refine(
+  payload => payload.atSeq === undefined || payload.beforeSeq === undefined,
+  { message: 'session.fork accepts atSeq or beforeSeq, not both' },
+) satisfies z.ZodType<Wire<RequestPayload<'session.fork'>>>
 
-/** session.fork response value (the child session id). */
+/** session.fork response value (the child session id and its empty-log bit). */
 export const sessionForkValueSchema = z.object({
   sessionId: sessionIdSchema,
+  blank: z.boolean(),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.fork'>>>
 
 /** session.history request payload (beforeSeq/maxMessages page backwards from the window tail). */

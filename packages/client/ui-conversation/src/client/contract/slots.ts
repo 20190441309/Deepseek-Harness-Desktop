@@ -8,7 +8,7 @@ import type {
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
   ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
-  TurnLocation, WorkspaceId,
+  TurnLocation, UserMessageNode, WorkspaceId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
@@ -110,6 +110,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       kind: 'list'
       scope: 'session'
       owner: AssistantActionOwnerProps
+    }
+    /**
+     * Action strip attached to one finalized USER message, rendered inside
+     * that message's IconActions row (after copy, before branch — the same
+     * `extraActions` seat the assistant strip uses). The user node renderer
+     * owns the render site and passes the message's durable seq and frozen
+     * content; contributors add per-message actions without importing the
+     * conversation implementation. Entries render by ascending `order`. Only
+     * the `user` node declares this seat — steering bubbles and pending
+     * steering projections carry no user action strip.
+     */
+    'conversation.chat.user-actions': {
+      kind: 'list'
+      scope: 'session'
+      owner: UserActionOwnerProps
     }
     /**
      * The body of the details panel for the tool call the user selected —
@@ -338,6 +353,26 @@ export interface TurnTailOwnerProps {
 export interface AssistantActionOwnerProps {
   /** Stable identity carried from the `assistant/message` event. */
   messageId: MessageId
+}
+
+/**
+ * Content-block currency of one addressed user message — the runtime's
+ * `ContentBlock` (indexed off {@link UserMessageNode} so this contract adds no
+ * dependency on the llm package for one alias).
+ */
+export type UserActionContentBlock = UserMessageNode['content'][number]
+
+/**
+ * Owner currency of the user-message action strip: the durable seq and the
+ * frozen content blocks of the one user message the contributed actions
+ * address (the same node payload reference the bubble renders — a
+ * content-sensitive action can diff against what the user actually sent).
+ */
+export interface UserActionOwnerProps {
+  /** Durable `user/message` event seq the contributed actions address. */
+  seq: number
+  /** The user message's content blocks (frozen node payload). */
+  content: readonly UserActionContentBlock[]
 }
 
 /** Hook constrained to business data published on the current Chat Node's Turn. */

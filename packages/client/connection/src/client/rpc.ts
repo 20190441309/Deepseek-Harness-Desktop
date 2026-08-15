@@ -32,6 +32,7 @@ export function createWebConnectionRpc(): ClientConnectionRpc {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(message),
           ...signal === undefined ? {} : { signal },
         },

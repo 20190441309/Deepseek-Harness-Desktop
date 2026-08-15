@@ -130,6 +130,11 @@ export class AppWebEntry {
     // runPluginBoot awaits it before creating entries (see module comment:
     // cross-package synchronous require edges need every immediately-tier
     // factory registered before any materialization).
+    let releaseBootGate = (): void => {}
+    ;(globalThis as DshWindow).__DSH_BOOT_GATE__ = new Promise<void>((resolve) => {
+      releaseBootGate = resolve
+    })
+
     const prefetching = this.prefetchImmediateTier()
     this.ctx = new Context()
     try {
@@ -139,6 +144,8 @@ export class AppWebEntry {
       // Stay on the loading page; surface the sweep report (fail loud).
       console.error(reason)
       this.error.set(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      releaseBootGate()
     }
   }
 

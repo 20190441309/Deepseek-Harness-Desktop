@@ -126,6 +126,24 @@ export class SlotRegistry extends Service {
   declare readonly register: SlotCore['register']
 
   /**
+   * Synchronously require a slot to be currently declared — the fail-fast
+   * complement of {@link inject} for callers that must act now and cannot
+   * wait for (or depend on) a later declaration: a plugin asserting its
+   * integration seat exists before registering into it. The check is the
+   * same "live declaration" the inject reconcile uses, so collapse and
+   * re-declaration are seen immediately; an undeclared key throws.
+   * @param key - declared SlotMap key to depend on.
+   * @throws when the key has no live declaration.
+   */
+  require(key: keyof SlotMap & string): void {
+    if (this._core.specDynamic(key) === undefined) {
+      throw new Error(
+        `slot ${JSON.stringify(key)} is not declared — the owning plugin must register it before this code runs`,
+      )
+    }
+  }
+
+  /**
    * Install an effect for each declaration lifetime of a slot. The callback
    * runs synchronously when the declaration already exists; otherwise it runs
    * inside the declaring `register()` call after the declaration is committed.

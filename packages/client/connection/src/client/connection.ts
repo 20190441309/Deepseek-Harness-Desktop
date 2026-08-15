@@ -22,6 +22,10 @@ const CONNECTION_DEFAULTS: Required<ConnectionConfig> = {
   streamOpenTimeoutMs: 3_000,
 }
 
+function readBootGate(): Promise<void> | undefined {
+  return (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
+}
+
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const t = setTimeout(done, ms)
@@ -111,6 +115,24 @@ export class ConnectionController {
       const gen = ++this.generation
       const ac = new AbortController()
       this.current = ac
+
+      const bootGate = readBootGate()
+      if (bootGate !== undefined) {
+        await Promise.race([
+          bootGate,
+          new Promise<void>((resolve) => {
+            if (ac.signal.aborted) {
+              resolve()
+              return
+            }
+            ac.signal.addEventListener('abort', () => { resolve() }, { once: true })
+          }),
+        ])
+        if (!this.isGenerationActive(ac)) {
+          await this.recover()
+          continue
+        }
+      }
 
       try {
         // Unary first: session.list / history ride host.describe's HTTP path.

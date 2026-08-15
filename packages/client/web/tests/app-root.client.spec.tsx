@@ -34,8 +34,18 @@ describe('AppRoot', () => {
   it('shows the loading page and never calls renderApp before settled', () => {
     const { queryByTestId, counts, getByText } = mount()
     expect(getByText('HARNESS')).toBeTruthy()
+    expect(getByText('正在加载插件…')).toBeTruthy()
     expect(queryByTestId('real-ui')).toBeNull()
     expect(counts()).toBe(0)
+  })
+
+  it('counts projected entries while plugins are still loading', () => {
+    const { status, getByText } = mount()
+    act(() => {
+      status.set('a', 'active')
+      status.set('b', 'loading')
+    })
+    expect(getByText('正在加载插件 1/2')).toBeTruthy()
   })
 
   it('all-active status alone does not open the gate (settled signal is the only key)', () => {

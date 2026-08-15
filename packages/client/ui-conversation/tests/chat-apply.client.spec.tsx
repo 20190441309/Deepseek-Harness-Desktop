@@ -72,6 +72,25 @@ describe('apply wiring', () => {
     await b.runtime.dispose()
   })
 
+  it('declares the user-message action strip on the user node renderer only', async () => {
+    const b = await bench()
+    const entries = b.slots.entries('conversation.chat.node')
+    const user = entries.find(entry => entry.options.key === 'user')
+    const steering = entries.find(entry => entry.options.key === 'steering')
+    expect(user).toBeDefined()
+    expect(steering).toBeDefined()
+    // Declaring is claiming: the user renderer's registration put the list
+    // seat on the ledger (kind/scope) and authorized its own renderSlot for
+    // it — the render site of a plugin's per-message user actions.
+    expect(b.slots.spec('conversation.chat.user-actions')).toEqual({ kind: 'list', scope: 'session' })
+    expect(user?.children?.['conversation.chat.user-actions']).toEqual({ kind: 'list', scope: 'session' })
+    // Steering carries no strip: no children declaration, so its renderer
+    // receives no renderSlot seat and a plugin can never attach there.
+    expect(steering?.children?.['conversation.chat.user-actions']).toBeUndefined()
+    expect(steering?.children).toBeUndefined()
+    await b.runtime.dispose()
+  })
+
   it('occupies the slots + the ring; session entries share one store handle', async () => {
     const b = await bench()
     const conversation = renderEntryOf(b.slots, 'conversation')
