@@ -1,7 +1,7 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
+ * child slots (declaration = exclusive render authority), seats the
  * layout store (panel geometry), and wires the panel-action service face.
  * ctx.layout is the cross-plugin panel-action contract; navigation state lives
  * with the runtime sessions service. A second effect seats the theme
@@ -33,7 +33,7 @@ declare module '@deepseek-ai/cordis' {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     // The 'root' entry itself is the runtime's built-in slot (declared
-    // there); these four are the frame's children, declared by the same
+    // there); these are the frame's children, declared by the same
     // register() call that contributes AppFrame. Session owners never pass
     // sessionId: the framework injects it as a standard prop.
     /**
@@ -71,6 +71,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
+     * The far-right surfaces column, shown when the layout opens it. Absent
+     * an occupant the column still mounts at its solved width (0 when closed).
+     * Session-optional: the occupant owns both the no-session and live-session
+     * states without changing its React identity.
+     *
+     * No owner props: the framework injects the session id and hooks for the
+     * `session-maybe` scope, and `ctx.layout` owns whether the column is open.
+     */
+    'surfaces': { kind: 'single'; scope: 'session-maybe'; owner: SurfacesOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -81,6 +91,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `id` is added beside the shipped entries instead of replacing them.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
+    /**
+     * Fixed top-right titlebar cluster, left of the window controls
+     * (`right: var(--dsh-wco-controls, var(--dsh-wco-pad))`). List slot: entries
+     * order among themselves. The cluster is `-webkit-app-region: no-drag` so
+     * its controls stay clickable on the desktop chrome drag strip. Owner
+     * props are the live layout widths so toggles can derive pressed state.
+     */
+    'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: TitlebarTrailingOwnerProps }
+    /**
+     * Terminal drawer track under the conversation column only. Height 0 when
+     * closed keeps the subtree mounted. Session-optional: the occupant owns
+     * both the no-session and live-session states without changing identity.
+     */
+    'shell.terminalDrawer': { kind: 'single'; scope: 'session-maybe'; owner: TerminalDrawerOwnerProps }
   }
 }
 
@@ -104,12 +128,26 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Surfaces owner share: empty — session facts arrive through session-maybe hooks. */
+export interface SurfacesOwnerProps {}
+
+/** Terminal drawer owner share: empty — session facts arrive through session-maybe hooks. */
+export interface TerminalDrawerOwnerProps {}
+
+/** Titlebar trailing owner share: live layout widths (0 = closed). This is the SlotMap home; session-log-export copies the owner fields because it does not depend on this package. */
+export interface TitlebarTrailingOwnerProps {
+  /** Surfaces column width in px (0 when closed). */
+  surfaces: number
+  /** Terminal drawer height in px (0 when closed). */
+  terminalDrawer: number
+}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
- * into 'root' with the four child-slot declarations, the layout store seat,
+ * into 'root' with the child-slot declarations, the layout store seat,
  * and the inject hook that hands the store's bound actions to the service.
  * @param ctx - client root context.
  */
@@ -123,7 +161,10 @@ export function apply(ctx: ClientContext): void {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'surfaces': { kind: 'single', scope: 'session-maybe' },
         'shell.overlay': { kind: 'list', scope: 'root' },
+        'shell.titlebar.trailing': { kind: 'list', scope: 'root' },
+        'shell.terminalDrawer': { kind: 'single', scope: 'session-maybe' },
       },
       // Exclusive store: the factory itself — the framework instantiates per
       // entry and delivers useStore/actions to AppFrame as standard props.

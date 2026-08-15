@@ -149,7 +149,7 @@ export function MarketplaceSettingsTab({
     void load(false)
     void hasGithubToken().then(setTokenSaved)
     return onProgress((payload) => {
-      if (payload.line) setLog(current => current ? `${current}\n${payload.line}` : payload.line)
+      if (payload.line) setLog(current => current ? `${current}\n${payload.line}` : (payload.line ?? ''))
     })
   }, [listMarketplace, listInstalled, hasGithubToken, onProgress, t])
 

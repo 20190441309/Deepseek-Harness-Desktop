@@ -4,13 +4,17 @@ import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './
 import css from './HeaderAction.module.css'
 
 /**
- * Render the Session Header export capsule and its shared result dialog.
- * @param props - Session runtime, download controller, and localized dialog copy.
- * @returns the persistent Header action and Session-scoped dialog.
+ * Render the titlebar Session log capsule and its shared result dialog.
+ * @param props - Root runtime seats, download controller, and localized dialog copy.
+ * @returns the titlebar action and current-session dialog, or nothing when no session is selected.
  */
 export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogProps): ReactNode {
-  const { sessionId, useSessionLogDownload, request } = props
-  const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
+  const { useSessions, useSessionLogDownload, request } = props
+  const sessionId = useSessions(s => s.current)
+  const entry = useSessionLogDownload(state =>
+    sessionId === undefined ? undefined : state.bySession[String(sessionId)])
+  if (sessionId === undefined) return null
+
   const busy = entry?.status === 'downloading'
 
   return (
@@ -25,7 +29,7 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogPr
         <span>Session log</span>
         <IconDownloadOutline16 size={12} />
       </button>
-      <SessionLogDownloadDialog {...props} />
+      <SessionLogDownloadDialog {...props} sessionId={sessionId} />
     </>
   )
 }

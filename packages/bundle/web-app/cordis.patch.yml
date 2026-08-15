@@ -183,6 +183,30 @@
     - id: ui-sidebar
       name: '@deepseek-ai/dsh-client-ui-sidebar'
 
+    - id: ui-titlebar
+      name: '@deepseek-ai/dsh-client-ui-titlebar'
+
+    - id: ui-git
+      name: '@deepseek-ai/dsh-client-ui-git'
+
+    - id: ui-user-terminal
+      name: '@deepseek-ai/dsh-client-ui-user-terminal'
+
+    - id: ui-surfaces
+      name: '@deepseek-ai/dsh-client-ui-surfaces'
+
+    - id: ui-files
+      name: '@deepseek-ai/dsh-client-ui-files'
+
+    - id: ui-diff
+      name: '@deepseek-ai/dsh-client-ui-diff'
+
+    - id: ui-preview
+      name: '@deepseek-ai/dsh-client-ui-preview'
+
+    - id: ui-agents-panel
+      name: '@deepseek-ai/dsh-client-ui-agents-panel'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 

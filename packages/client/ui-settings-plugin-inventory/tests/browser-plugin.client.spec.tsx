@@ -98,8 +98,8 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     const shell = {
       listMarketplace: vi.fn(async () => ({ items: [] })),
       listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
-      installPlugin: vi.fn(async () => ({ ok: true })),
-      uninstallPlugin: vi.fn(async () => ({ ok: true })),
+      installPlugin: vi.fn(async (_spec: string, _options?: { allowBuilds?: string[] }) => ({ ok: true })),
+      uninstallPlugin: vi.fn(async (_name: string) => ({ ok: true })),
     }
     ;(window as Window & { shell?: unknown }).shell = shell
     await b.ctx.plugin({ inject: [...inject], apply }).await()
@@ -138,8 +138,8 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     const shell = {
       listMarketplace: vi.fn(async () => ({ items: [] })),
       listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
-      installPlugin: vi.fn(async () => ({ ok: true })),
-      uninstallPlugin: vi.fn(async () => ({ ok: true })),
+      installPlugin: vi.fn(async (_spec: string, _options?: { allowBuilds?: string[] }) => ({ ok: true })),
+      uninstallPlugin: vi.fn(async (_name: string) => ({ ok: true })),
       openExternal: vi.fn(async () => true),
       saveConfig: vi.fn(async () => ({ hasGithubToken: true })),
       getConfig: vi.fn(async () => ({ hasGithubToken: true })),

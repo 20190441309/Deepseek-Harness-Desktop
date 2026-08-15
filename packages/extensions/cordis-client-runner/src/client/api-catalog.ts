@@ -101,6 +101,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Close the details panel.',
         parameters: [],
       },
+      {
+        signature: 'toggleSurfaces(): void',
+        description: 'Toggle the surfaces column (closed ⟷ contract default width).',
+        parameters: [],
+      },
+      {
+        signature: 'openSurfaces(): void',
+        description: 'Open the surfaces column (no-op when already open).',
+        parameters: [],
+      },
+      {
+        signature: 'closeSurfaces(): void',
+        description: 'Close the surfaces column.',
+        parameters: [],
+      },
+      {
+        signature: 'toggleTerminalDrawer(): void',
+        description: 'Toggle the terminal drawer (closed ⟷ contract default height).',
+        parameters: [],
+      },
+      {
+        signature: 'setTerminalDrawer(px: number): void',
+        description: 'Set the terminal drawer height in px. Clamps to the contract floor and never writes closed; use toggleTerminalDrawer to close.',
+        parameters: [{ name: 'px', description: 'requested height.' }],
+      },
     ],
   },
   {
