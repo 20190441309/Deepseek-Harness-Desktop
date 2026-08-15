@@ -401,7 +401,18 @@ module.exports = async function afterPack(context) {
 
   const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
   console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
-  execFileSync('tar', ['-cf', archive, '-C', harnessDest, '.'], { stdio: 'inherit' });
+  // Run tar from the archive's own directory with BOTH `-f` and `-C` spelled
+  // as relative paths: GNU tar treats a `C:` drive prefix on either argument
+  // as a remote host (or fails to open it), while the bundled Windows bsdtar
+  // rejects GNU's `--force-local`. Relative spellings work on both.
+  const archiveDir = path.dirname(archive);
+  // GNU tar (Git for Windows) only understands forward-slash paths; the
+  // Windows default `path.relative` returns backslashes.
+  const harnessRel = path.relative(archiveDir, harnessDest).replace(/\\/g, '/');
+  execFileSync('tar', ['-cf', path.basename(archive), '-C', harnessRel, '.'], {
+    stdio: 'inherit',
+    cwd: archiveDir,
+  });
   if (!fs.existsSync(archive) || fs.statSync(archive).size < 1024) {
     throw new Error('运行时 tar 生成失败');
   }

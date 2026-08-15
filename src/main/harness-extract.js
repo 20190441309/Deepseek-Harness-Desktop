@@ -32,11 +32,12 @@ function packagedHarnessRoot() {
   return extracted;
 }
 
-function runTar(args) {
+function runTar(args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn('tar', args, {
       windowsHide: true,
       stdio: ['ignore', 'ignore', 'pipe'],
+      ...options,
     });
     let stderr = '';
     child.stderr.on('data', (chunk) => {
@@ -72,7 +73,15 @@ async function ensurePackagedHarness(log = () => {}) {
   log('正在解压运行时（仅首次，之后会变快）…');
   fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(dest, { recursive: true });
-  await runTar(['-xf', archive, '-C', dest]);
+  // Run tar from the archive's own directory with BOTH `-f` and `-C` spelled
+  // as relative paths: GNU tar treats a `C:` drive prefix on either argument
+  // as a remote host (or fails to open it), while the bundled Windows bsdtar
+  // rejects GNU's `--force-local`. Relative spellings work on both.
+  const archiveDir = path.dirname(archive);
+  // GNU tar (Git for Windows) only understands forward-slash paths; the
+  // Windows default `path.relative` returns backslashes.
+  const destRel = path.relative(archiveDir, dest).replace(/\\/g, '/');
+  await runTar(['-xf', path.basename(archive), '-C', destRel], { cwd: archiveDir });
   if (!hasBuiltHarness(dest)) {
     throw new Error('运行时解压不完整，请重新安装');
   }
