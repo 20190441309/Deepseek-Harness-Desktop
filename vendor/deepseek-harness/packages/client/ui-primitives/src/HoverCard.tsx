@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { writeClipboard } from './clipboard.ts'
 import { usePointerGrace } from './pointer-grace.ts'
+import { usePresence } from './usePresence.ts'
 import css from './HoverCard.module.css'
 
 /**
@@ -68,6 +69,7 @@ export function HoverCard({
   }, [clearCopied])
 
   const { arm: armClose, cancel: cancelClose } = usePointerGrace(close)
+  const { mounted, state } = usePresence(open)
 
   const clearTimer = () => {
     if (timerRef.current !== null) {
@@ -100,7 +102,7 @@ export function HoverCard({
   // Fixed-position from the anchor rect before paint; track the anchor while
   // open (capture-phase scroll catches nested panes), as in Menu portal mode.
   useLayoutEffect(() => {
-    if (!open) { setPos(null); return }
+    if (!mounted) { setPos(null); return }
     const place = () => {
       const wrapper = rootRef.current
       /* v8 ignore next -- the ref is attached before the layout effect runs and the listeners die with it. */
@@ -117,19 +119,19 @@ export function HoverCard({
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [open])
+  }, [mounted])
 
   // The first placement ran before the card mounted (height read 0): once the
   // card's real height is measurable, correct the bottom-edge clamp. The
   // correction converges — a clamped top satisfies the guard, so it runs once.
   useLayoutEffect(() => {
-    if (!open || pos === null) return
+    if (!mounted || pos === null) return
     /* v8 ignore next -- the card is mounted whenever pos is set, so the ref is attached here. */
     const h = cardRef.current?.offsetHeight ?? 0
     if (pos.top + h > window.innerHeight - 8) {
       setPos({ left: pos.left, top: window.innerHeight - h - 8 })
     }
-  }, [open, pos])
+  }, [mounted, pos])
 
   const copy = async (text: string): Promise<void> => {
     if (copied || copyingRef.current) return
@@ -146,11 +148,14 @@ export function HoverCard({
   }
 
   const copyable = copyText !== undefined
-  const card = open && pos !== null && (
+  const card = mounted && pos !== null && (
     <div
       ref={cardRef}
       className={`${css.card}${copyable ? ` ${css.copyable}` : ''}${copied ? ` ${css.feedback}` : ''}`}
       style={{ ...pos, minHeight: copied && copyHeightRef.current !== null ? copyHeightRef.current : undefined }}
+      data-dsh-motion="popover"
+      data-state={state}
+      aria-hidden={open ? undefined : true}
       role={copyable ? 'button' : undefined}
       tabIndex={copyable ? 0 : undefined}
       aria-label={copyable ? `${copyLabel}: ${copyText}` : undefined}

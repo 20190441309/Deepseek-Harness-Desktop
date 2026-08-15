@@ -56,7 +56,7 @@ describe('ContextMeter', () => {
     expect(panel.getElementsByClassName(segmentClass)).toHaveLength(3)
     // Clicking the trigger again toggles the panel shut.
     fireEvent.click(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
   })
 
   it('lets each locale own the headline word order around the reading', () => {
@@ -131,7 +131,7 @@ describe('ContextMeter', () => {
     }
     view.rerender(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
     expect(view.getByRole('button', { name: '上下文已用 25%' }).getAttribute('aria-expanded')).toBe('false')
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
   })
 
   it('closes on outside pointerdown and Escape — but not inside clicks', () => {
@@ -149,10 +149,10 @@ describe('ContextMeter', () => {
     fireEvent.pointerDown(again)
     expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
     fireEvent.pointerDown(document.body)
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
     // Escape.
     openPanel()
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutline16, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './ImageLightbox.module.css'
 
 /** Lightbox strings the owner resolves from its own locale namespace. */
@@ -21,10 +21,12 @@ export interface ImageLightboxLabels {
  * @param props.src - the original image URL.
  * @param props.alt - the image's alt text.
  * @param props.labels - dialog and close-control strings.
+ * @param props.open - whether the preview is showing; default true for mount-as-open callers.
  * @param props.onClose - dismiss callback owned by the opener.
- * @returns the modal preview dialog.
+ * @returns the modal preview dialog, or null after the exit hold.
  */
-export function ImageLightbox({ src, alt, labels, onClose }: {
+export function ImageLightbox({ open = true, src, alt, labels, onClose }: {
+  open?: boolean
   src: string
   alt: string
   labels: ImageLightboxLabels
@@ -32,8 +34,10 @@ export function ImageLightbox({ src, alt, labels, onClose }: {
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
+  const { mounted, state } = usePresence(open)
 
   useEffect(() => {
+    if (!open) return
     restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeRef.current?.focus()
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
@@ -44,7 +48,9 @@ export function ImageLightbox({ src, alt, labels, onClose }: {
       window.removeEventListener('keydown', onKeyDown)
       restoreRef.current?.focus()
     }
-  }, [onClose])
+  }, [open, onClose])
+
+  if (!mounted) return null
 
   return createPortal(
     <div
@@ -52,9 +58,12 @@ export function ImageLightbox({ src, alt, labels, onClose }: {
       role="dialog"
       aria-modal="true"
       aria-label={labels.dialog}
+      data-dsh-motion="overlay"
+      data-state={state}
+      aria-hidden={open ? undefined : true}
     >
-      <div className={css.mask} aria-hidden="true" onMouseDown={onClose} />
-      <img className={css.image} src={src} alt={alt} />
+      <div className={css.mask} data-dsh-motion-part="mask" aria-hidden="true" onMouseDown={onClose} />
+      <img className={css.image} data-dsh-motion-part="panel" src={src} alt={alt} />
       <button ref={closeRef} type="button" className={css.close} aria-label={labels.close} onClick={onClose}>
         <IconCloseOutline16 size={16} />
       </button>

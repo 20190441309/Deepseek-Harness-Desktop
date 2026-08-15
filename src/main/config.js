@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { projectRoot } = require('./paths');
+const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 
 const DEFAULTS = {
   workspace: '',
@@ -11,12 +12,17 @@ const DEFAULTS = {
   baseUrl: '',
   dshBin: '',
   nodeBin: '',
-  closeToTray: true,
+  closeToTray: DEFAULT_CLOSE_TO_TRAY,
   openAtLogin: false,
   openDevTools: false,
   theme: 'deepseek',
   locale: 'zh',
   githubToken: '',
+  remoteAccessEnabled: false,
+  relayEndpoint: '127.0.0.1:8411',
+  relayPublicEndpoint: '',
+  relayUseTls: false,
+  remoteAppBaseUrl: 'http://127.0.0.1:8081',
 };
 
 function configPath() {

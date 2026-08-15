@@ -138,7 +138,7 @@ describe('PopupSelectView', () => {
 
   it('Enter selects the highlighted row: onSelect, consume, close, focusComposer', async () => {
     const seen: Array<{ option: SelectOption; context: string }> = []
-    const { view, search, consume, focusComposer } = await mountOpen({
+    const { search, consume, focusComposer } = await mountOpen({
       onSelect: (option, context) => { seen.push({ option, context }) },
     })
     act(() => { fireEvent.keyDown(search, { key: 'ArrowDown' }) })
@@ -146,18 +146,18 @@ describe('PopupSelectView', () => {
     expect(seen).toEqual([{ option: OPTIONS[1], context: 'ctx-A' }])
     expect(consume).toHaveBeenCalledExactlyOnceWith(SEGMENT)
     expect(focusComposer).toHaveBeenCalledTimes(1)
-    expect(view.container.childElementCount).toBe(0)
+    expect(screen.queryByRole('textbox', { name: '筛选选项' })).toBeNull()
   })
 
   it('click selects a row; mouseenter moves the highlight', async () => {
     const seen: SelectOption[] = []
-    const { view } = await mountOpen({ onSelect: (option) => { seen.push(option) } })
+    await mountOpen({ onSelect: (option) => { seen.push(option) } })
     const options = screen.getAllByRole('option')
     act(() => { fireEvent.mouseEnter(options[2]!) })
     expect(screen.getAllByRole('option')[2]!.getAttribute('aria-selected')).toBe('true')
     await act(async () => { fireEvent.click(options[2]!) })
     expect(seen).toEqual([OPTIONS[2]])
-    expect(view.container.childElementCount).toBe(0)
+    expect(screen.queryByRole('textbox', { name: '筛选选项' })).toBeNull()
   })
 
   it('renders a gated option as an in-page modal and requires the checkbox before onSelect', async () => {
@@ -237,9 +237,9 @@ describe('PopupSelectView', () => {
   })
 
   it('Escape dismisses and restores composer focus', async () => {
-    const { view, search, focusComposer } = await mountOpen()
+    const { search, focusComposer } = await mountOpen()
     act(() => { fireEvent.keyDown(search, { key: 'Escape' }) })
-    expect(view.container.childElementCount).toBe(0)
+    expect(screen.queryByRole('textbox', { name: '筛选选项' })).toBeNull()
     expect(focusComposer).toHaveBeenCalledTimes(1)
   })
 
@@ -248,7 +248,7 @@ describe('PopupSelectView', () => {
     act(() => { fireEvent.pointerDown(screen.getAllByRole('option')[0]!) })
     expect(view.container.childElementCount).not.toBe(0)
     act(() => { fireEvent.pointerDown(document.body) })
-    expect(view.container.childElementCount).toBe(0)
+    expect(screen.queryByRole('textbox', { name: '筛选选项' })).toBeNull()
     expect(focusComposer).not.toHaveBeenCalled()
   })
 })

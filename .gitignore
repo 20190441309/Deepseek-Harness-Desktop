@@ -1,6 +1,12 @@
 node_modules/
 vendor/deepseek-harness/node_modules/
 vendor/deepseek-harness/apps/web/dist/
+# host-side tsc emits declaration/map artifacts beside the sources; keep the
+# sources tracked and ignore the emitted build droppings.
+vendor/deepseek-harness/**/src/*.js
+vendor/deepseek-harness/**/src/*.js.map
+vendor/deepseek-harness/**/src/*.d.ts
+vendor/deepseek-harness/**/src/*.d.ts.map
 dist/
 dist-release/
 out/
@@ -18,3 +24,5 @@ Thumbs.db
 release*/
 /resources/
 .worktrees/
+apps/mobile/.expo/
+apps/mobile/dist/

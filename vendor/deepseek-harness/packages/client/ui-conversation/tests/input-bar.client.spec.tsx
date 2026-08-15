@@ -1201,7 +1201,7 @@ describe('command launcher chrome and control seats', () => {
     fireEvent.click(items[1]!)
     // Optimistic pick + disable until admission resolves (command stub resolves true).
     const busy = view.getByLabelText(/^访问模式/) as HTMLButtonElement
-    expect(busy.textContent).toBe('Workspace Write')
+    expect(busy.querySelector('[data-dsh-motion-part="current"]')?.textContent).toBe('Workspace Write')
     expect(busy.disabled).toBe(true)
     expect(command).toHaveBeenCalledWith('/permission workspace-write')
     await act(async () => {})
@@ -1233,7 +1233,7 @@ describe('command launcher chrome and control seats', () => {
     expect(command).toHaveBeenCalledOnce()
     expect(command).toHaveBeenCalledWith('/permission danger-full-access')
     expect(view.queryByRole('dialog')).toBeNull()
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).textContent).toBe('Full access')
+    expect(view.getByLabelText(/^访问模式/).querySelector('[data-dsh-motion-part="current"]')?.textContent).toBe('Full access')
     await act(async () => {})
   })
 

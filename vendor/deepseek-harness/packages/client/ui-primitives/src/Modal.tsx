@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { IconCloseOutline16 } from './icons/index.tsx'
+import { usePresence } from './usePresence.ts'
 import css from './Modal.module.css'
 
 /**
@@ -25,7 +26,7 @@ import css from './Modal.module.css'
  * header structure; mask, card, Escape, and aria-label remain.
  * @param props.closeLabel - close-button aria label; the owner passes
  * localized copy (this package is cordis-free, so copy arrives via props).
- * @returns null when closed; otherwise the overlay tree.
+ * @returns null when unmounted; otherwise the overlay tree (including the exit frame).
  */
 export function Modal({
   open, onClose, title, closeLabel = 'Close', description, children, footer, className, contentClassName, headless = false,
@@ -41,6 +42,8 @@ export function Modal({
   contentClassName?: string
   headless?: boolean
 }) {
+  const { mounted, state } = usePresence(open)
+
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -50,13 +53,20 @@ export function Modal({
     return () => { document.removeEventListener('keydown', onKeyDown) }
   }, [open, onClose])
 
-  if (!open) return null
+  if (!mounted) return null
 
   return createPortal((
-    <div className={css.root} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
+    <div
+      className={css.root}
+      role="presentation"
+      data-dsh-motion="overlay"
+      data-state={state}
+      aria-hidden={open ? undefined : true}
+    >
+      <div className={css.mask} data-dsh-motion-part="mask" aria-hidden="true" onClick={onClose} />
       <div
         className={clsx(css.dialog, className)}
+        data-dsh-motion-part="panel"
         role="dialog"
         aria-modal="true"
         aria-label={title}

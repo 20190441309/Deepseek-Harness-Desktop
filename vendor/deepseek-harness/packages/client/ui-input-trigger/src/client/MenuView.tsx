@@ -9,7 +9,7 @@
  */
 import { Fragment, useEffect, useRef, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
-import { useAnchoredMaxHeight } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useAnchoredMaxHeight, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './MenuView.module.css'
 import type { MenuViewInjected } from './slots.ts'
@@ -37,11 +37,15 @@ export function MenuView({ menu, onPick, onDismiss, t }: MenuViewProps) {
     () => menu.getSnapshot(),
   )
   const listRef = useRef<HTMLDivElement>(null)
+  const lastOpen = useRef(state)
+  if (state.open) lastOpen.current = state
+  const view = state.open ? state : lastOpen.current
+  const { mounted, state: motionState } = usePresence(state.open)
   // The list is bottom-anchored above the composer; clamp the design cap to
   // the space above it, re-measured on every store update (the anchor moves
   // when the composer grows).
-  const maxHeight = useAnchoredMaxHeight(listRef, MAX_HEIGHT, state)
-  const highlight = state.open ? state.highlight : null
+  const maxHeight = useAnchoredMaxHeight(listRef, MAX_HEIGHT, mounted)
+  const highlight = state.open ? state.highlight : view.highlight
   // Focus stays in the textarea (combobox pattern), so the browser never
   // scrolls the active option into view on keyboard moves — do it here.
   useEffect(() => {
@@ -63,18 +67,21 @@ export function MenuView({ menu, onPick, onDismiss, t }: MenuViewProps) {
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => { document.removeEventListener('pointerdown', onPointerDown, true) }
   }, [state.open, onDismiss])
-  if (!state.open) return null
+  if (!mounted) return null
   return (
     <div
       ref={listRef}
       className={css.menu}
       style={{ maxHeight }}
+      data-dsh-motion="popover"
+      data-state={motionState}
+      aria-hidden={state.open ? undefined : true}
       role="listbox"
       aria-label={t('suggestions.aria')}
       aria-activedescendant={highlight !== null ? optionId(highlight.source, highlight.index) : undefined}
     >
       <div className={css.viewport}>
-        {state.groups.map(group => (group.status === 'ready' && group.items.length === 0)
+        {view.groups.map(group => (group.status === 'ready' && group.items.length === 0)
           ? null
           : (
             <Fragment key={group.source}>

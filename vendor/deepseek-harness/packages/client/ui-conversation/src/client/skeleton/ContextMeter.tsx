@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: the `contextPressure` / `contextBreakdown` projection key merges.
 import type {} from '@deepseek-ai/dsh-token-meter/client'
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Tooltip, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ComposerBarProps } from '../contract/slots.ts'
 import { contextOccupancy, formatTokens } from '../chat/StatsLine.tsx'
 import css from './ContextMeter.module.css'
@@ -37,23 +37,36 @@ export interface ContextMeterProps {
   t: ComposerBarProps['t']
 }
 
+interface ContextMeterControlProps {
+  context: NonNullable<ReturnType<typeof contextOccupancy>>
+  breakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | undefined
+  t: ComposerBarProps['t']
+}
+
 export function ContextMeter({ useProjection, t }: ContextMeterProps) {
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLSpanElement | null>(null)
   const context = contextOccupancy(pressure)
-  const available = context !== null
-
   // A model switch can temporarily remove capacity while this component stays
-  // mounted. Close the now-unavailable panel instead of preserving stale UI.
-  useEffect(() => {
-    if (!available && open) setOpen(false)
-  }, [available, open])
+  // mounted. Drop the control (and its Presence hold) instead of resurrecting
+  // a closing panel when capacity returns.
+  if (context === null) return null
+  return <ContextMeterControl context={context} breakdown={breakdown} t={t} />
+}
+
+function ContextMeterControl({ context, breakdown, t }: ContextMeterControlProps) {
+  const [open, setOpen] = useState(false)
+  const { mounted, state } = usePresence(open)
+  const rootRef = useRef<HTMLSpanElement | null>(null)
+  const percent = context.percent
+  const reading = `${percent}%`
+  const [headBefore = '', headAfter = ''] = t('context.aria', { percent: READING_SLOT })
+    .split(READING_SLOT)
+    .map(part => part.trim())
 
   // Outside click / Escape close, one document listener while open (Menu's pattern).
   useEffect(() => {
-    if (!open || !available) return
+    if (!open) return
     const onPointerDown = (e: PointerEvent): void => {
       if (e.target instanceof Node && rootRef.current?.contains(e.target) === true) return
       setOpen(false)
@@ -67,14 +80,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [available, open])
-
-  if (context === null) return null
-  const percent = context.percent
-  const reading = `${percent}%`
-  const [headBefore = '', headAfter = ''] = t('context.aria', { percent: READING_SLOT })
-    .split(READING_SLOT)
-    .map(part => part.trim())
+  }, [open])
 
   // The bar's overall length stays the provider-exact percent; the heuristic
   // breakdown only proportions its colored parts. A zero-width part is dropped
@@ -112,8 +118,15 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
           </svg>
         </button>
       </Tooltip>
-      {open && (
-        <div className={css.panel} role="dialog" aria-label={t('context.used')}>
+      {mounted && (
+        <div
+          className={css.panel}
+          role="dialog"
+          aria-label={t('context.used')}
+          data-dsh-motion="popover"
+          data-state={state}
+          aria-hidden={open ? undefined : true}
+        >
           <div className={css.header}>
             {/* Empty sides collapse through `.headline:empty` so the locale that
                 needs no leading (or trailing) text spends no header gap. */}

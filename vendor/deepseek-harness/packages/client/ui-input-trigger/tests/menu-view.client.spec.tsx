@@ -77,7 +77,7 @@ describe('MenuView', () => {
     act(() => { menu.set(openState()) })
     expect(screen.queryByRole('listbox')).not.toBeNull()
     act(() => { menu.set(CLOSED) })
-    expect(view.container.childElementCount).toBe(0)
+    expect(screen.queryByRole('listbox')).toBeNull()
   })
 
   it('renders ready groups as option rows and pending groups as loading rows', () => {

@@ -460,7 +460,7 @@ describe('WorkflowRunPanel', () => {
     expect(screen.getByText('空成员名')).toBeTruthy()
     expect(screen.getByText('second')).toBeTruthy()
     fireEvent.click(cleanPhase)
-    expect(screen.queryByText('空成员名')).toBeNull()
+    expect(screen.getByText('空成员名').closest('[data-dsh-motion]')?.getAttribute('aria-hidden')).toBe('true')
     expect(screen.getByText('second')).toBeTruthy()
   })
 

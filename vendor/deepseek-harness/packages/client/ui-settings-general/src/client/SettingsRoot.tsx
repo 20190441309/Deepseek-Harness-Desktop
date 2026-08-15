@@ -15,7 +15,9 @@ import clsx from 'clsx'
 import {
   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
   IconPersonalizationOutline16, IconSettingsOutline16,
+  usePresence,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PresenceState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
 import { UpdateAction } from './UpdateAction.tsx'
 import css from './SettingsRoot.module.css'
@@ -32,6 +34,8 @@ type PanelProps = {
   rows: readonly SettingsSectionRow[]
   renderSlot: SettingsRootComponentProps['renderSlot']
   activeId: string | undefined
+  motionState: PresenceState
+  open: boolean
   onSelect: (id: string) => void
   onClose: () => void
 }
@@ -41,7 +45,7 @@ type PanelProps = {
  * header button, a mask click, and document-level Escape (mounted only while
  * open, so the listener lifetime is the panel's).
  */
-function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelProps) {
+function SettingsPanel({ rows, renderSlot, activeId, motionState, open, onSelect, onClose }: PanelProps) {
   // Entries can unmount underneath the requested id, so the render-time
   // projection falls back to the first row when the id is gone.
   const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
@@ -57,12 +61,20 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
 
   // Baseline focus management: entering the dialog lands on the close button.
   const closeButton = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => { closeButton.current?.focus() }, [])
+  useEffect(() => {
+    if (open) closeButton.current?.focus()
+  }, [open])
 
   return (
-    <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div
+      className={css.overlay}
+      role="presentation"
+      data-dsh-motion="overlay"
+      data-state={motionState}
+      aria-hidden={open ? undefined : true}
+    >
+      <div className={css.mask} data-dsh-motion-part="mask" aria-hidden="true" onClick={onClose} />
+      <div className={css.panel} data-dsh-motion-part="panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <nav className={css.nav}>
           <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
           <div className={css.navList}>
@@ -90,7 +102,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
             </button>
           </div>
           <div className={css.options}>
-            {active !== undefined && renderSlot('settings.section', { close: onClose }, { only: active })}
+            {active !== undefined && (
+              <div key={active} data-dsh-motion="swap">
+                {renderSlot('settings.section', { close: onClose }, { only: active })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -108,9 +124,9 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
+  const { mounted, state } = usePresence(open)
   const close = useCallback(() => {
     setOpen(false)
-    setActiveId(undefined)
   }, [])
   const openSection = useCallback((id: string) => {
     setActiveId(id)
@@ -156,11 +172,13 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
         </button>
         <UpdateAction wide={wide} t={t} />
       </div>
-      {open && (
+      {mounted && (
         <SettingsPanel
           rows={rows}
           renderSlot={renderSlot}
           activeId={activeId}
+          motionState={state}
+          open={open}
           onSelect={setActiveId}
           onClose={close}
         />

@@ -3,7 +3,8 @@
  * `sidebar.settings` occupant — panel chrome, section navigation, and the
  * onboarding stage — and registers everything on the Settings pages that
  * belongs to no single feature: the trigger/header chrome content,
- * local-document action, General section, and `settings` dictionaries.
+ * local-document action, General section, desktop close-window row, and
+ * `settings` dictionaries.
  * Feature-owned rows and sections stay with their features.
  * Export discipline: packages/client/AGENTS.md.
  */
@@ -23,7 +24,10 @@ import type {
 import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
+import { CloseBehaviorRow } from './CloseBehaviorRow.tsx'
+import { RemoteAccessRow } from './RemoteAccessRow.tsx'
 import { AboutSection } from './AboutSection.tsx'
+import { canPersistCloseBehavior, canPersistRemoteAccess } from './desktop-shell.ts'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { refreshDocumentIfLoaded, SettingsDocumentStore } from './settings-document-store.ts'
@@ -178,6 +182,22 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     children: { 'settings.general.item': { kind: 'list', scope: 'root' } },
   }, GeneralSection))
+  if (canPersistCloseBehavior()) {
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item',
+      id: 'close-behavior',
+      order: 25,
+      locale: NS,
+    }, CloseBehaviorRow))
+  }
+  if (canPersistRemoteAccess()) {
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item',
+      id: 'remote-access',
+      order: 26,
+      locale: NS,
+    }, RemoteAccessRow))
+  }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'about',
