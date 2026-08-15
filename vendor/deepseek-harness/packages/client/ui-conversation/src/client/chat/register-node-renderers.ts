@@ -3,8 +3,8 @@ import { NS } from '../locales.ts'
 import { AssistantNodeView } from './AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from './CommandNodeView.tsx'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
-  TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView,
+  TurnErrorNodeView, TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from './MessageItem.tsx'
 import { TurnTailNodeView } from './TurnTailNodeView.tsx'
 
@@ -13,10 +13,17 @@ import { TurnTailNodeView } from './TurnTailNodeView.tsx'
  * @param ctx - owning UI Conversation context.
  */
 export function registerChatNodeRenderers(ctx: Context): void {
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'user',
+    locale: NS,
+    // Declaring is claiming: the user bubble is the render site of the
+    // per-message user action strip. Only the finalized user node declares
+    // the seat — steering and pending steering bubbles carry no strip.
+    children: { 'conversation.chat.user-actions': { kind: 'list', scope: 'session' } },
+  }, UserMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
-    { name: 'conversation.chat.node', key: 'user', locale: NS }, UserMessageNodeView))
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
-    { name: 'conversation.chat.node', key: 'steering', locale: NS }, UserMessageNodeView))
+    { name: 'conversation.chat.node', key: 'steering', locale: NS }, SteeringMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
     { name: 'conversation.chat.node', key: 'context', locale: NS }, ContextMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(

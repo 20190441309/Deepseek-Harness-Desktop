@@ -409,17 +409,66 @@ async function ensureOwnedPort(host, wantedPort, log = () => {}) {
   return next;
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function cancelledError(message = '启动已取消') {
+  const error = new Error(message);
+  error.code = 'DSH_CANCELLED';
+  return error;
+}
+
+function failureRecord(phase, message, code, signal) {
+  return {
+    phase,
+    message,
+    code: code === undefined || code === null ? null : code,
+    signal: signal || null,
+    occurredAt: new Date().toISOString(),
+  };
+}
+
 class DshManager extends EventEmitter {
-  constructor() {
+  /**
+   * @param {object} [options] 窄依赖注入；不传任何选项时全部使用生产默认实现。
+   *   可注入：loadConfig、ensurePackagedHarness、spawnHarness、isReachable、
+   *   sleep、readPidFile、writePidFile、clearPidFile、killTree、killOwnedListeners、
+   *   buildLaunch（测试需要绕过 electron 依赖时按需注入）。
+   */
+  constructor(options = {}) {
     super();
     this.child = null;
     this.state = 'idle';
     this.logs = [];
     this.error = '';
+    this.failure = null;
     this.baseUrl = '';
     this.attached = false;
     this.host = '127.0.0.1';
     this.port = 3080;
+    this.generation = 0;
+    this.inFlight = null;
+    this._stopPromise = null;
+    this._deps = {
+      loadConfig: options.loadConfig || loadConfig,
+      ensurePackagedHarness: options.ensurePackagedHarness || ensurePackagedHarness,
+      spawnHarness: options.spawnHarness || spawnHarness,
+      isReachable: options.isReachable || ((url) => this.isReachable(url)),
+      sleep: options.sleep || sleep,
+      readPidFile: options.readPidFile || readPidFile,
+      writePidFile: options.writePidFile || writePidFile,
+      clearPidFile: options.clearPidFile || clearPidFile,
+      killTree: options.killTree || killTree,
+      killOwnedListeners: options.killOwnedListeners || killOwnedListeners,
+      buildLaunch: options.buildLaunch || ((config) => this.buildLaunch(config)),
+    };
   }
 
   snapshot() {
@@ -429,6 +478,7 @@ class DshManager extends EventEmitter {
       baseUrl: this.baseUrl,
       attached: this.attached,
       logs: this.logs.slice(-80),
+      failure: this.failure,
     };
   }
 
@@ -442,6 +492,9 @@ class DshManager extends EventEmitter {
     }
     if (extra.attached !== undefined) {
       this.attached = extra.attached;
+    }
+    if (extra.failure !== undefined) {
+      this.failure = extra.failure;
     }
     this.emit('state', this.snapshot());
   }
@@ -571,57 +624,74 @@ class DshManager extends EventEmitter {
     child.stderr?.on('data', (chunk) => onChunk(chunk, 'dsh'));
   }
 
-  async waitUntilReady(baseUrl, child) {
-    const started = Date.now();
-    while (Date.now() - started < READY_TIMEOUT_MS) {
-      if (child && child.exitCode !== null) {
-        throw new Error(this.error || `dsh 已退出（code ${child.exitCode}）`);
-      }
-      const target = this.baseUrl || baseUrl;
-      if (await this.isReachable(target)) {
-        this.baseUrl = target;
-        return target;
-      }
-      await sleep(400);
+  /**
+   * 单飞入口：已有 in-flight start 时直接复用；ready 且子进程存活时直接返回。
+   */
+  async start(options = {}) {
+    if (this.inFlight) {
+      return this.inFlight;
     }
-    throw new Error('启动超时。若本机已安装 dsh，检查端口占用；否则确认 npx 能运行 @deepseek-ai/dsh。');
+    if (this.state === 'ready' && this.child && this.child.exitCode === null) {
+      return this.baseUrl;
+    }
+    const run = this._start(options);
+    this.inFlight = run;
+    try {
+      return await run;
+    } finally {
+      if (this.inFlight === run) {
+        this.inFlight = null;
+      }
+    }
   }
 
-  async start(options = {}) {
-    if (this.state === 'ready') {
-      return this.baseUrl;
+  async _start(options = {}) {
+    if (this._stopPromise) {
+      // 与 stop 重叠：等 stop 收尾后再启动，避免互相踩踏
+      await this._stopPromise;
     }
-    if (this.state === 'starting' && this.child && this.child.exitCode === null) {
-      return this.baseUrl;
-    }
+    const gen = ++this.generation;
+    const isCurrent = () => gen === this.generation;
 
     if (this.child) {
       const leftover = this.child.pid;
       this.log(`清理残留 dsh 进程（pid ${leftover}）`);
       this.child = null;
-      killTree(leftover);
-      await sleep(300);
+      this._killTree(leftover);
+      await this._sleep(300);
+      if (!isCurrent()) {
+        throw cancelledError();
+      }
     }
 
-    const config = loadConfig();
+    const config = this._loadConfig();
     if (!config.workspace || !fs.existsSync(config.workspace)) {
       throw new Error(`工作区不存在：${config.workspace || '(空)'}`);
     }
 
     try {
-      await ensurePackagedHarness((line) => this.log(line));
+      await this._ensurePackagedHarness((line) => this.log(line));
+      if (!isCurrent()) {
+        throw cancelledError();
+      }
     } catch (error) {
+      if (!isCurrent()) {
+        throw cancelledError();
+      }
+      if (error?.code === 'DSH_CANCELLED') {
+        throw error;
+      }
       throw new Error(`准备运行时失败：${error.message}`);
     }
 
     const port = Number(options.port) || Number(config.port) || 3080;
-    const launch = this.buildLaunch({ ...config, port });
+    const launch = this._buildLaunch({ ...config, port });
     const expectedUrl = `http://${launch.host}:${launch.port}`;
     this.host = launch.host;
     this.port = launch.port;
     this.error = '';
     this.attached = false;
-    this.setState('starting', { baseUrl: expectedUrl, attached: false });
+    this.setState('starting', { baseUrl: expectedUrl, attached: false, failure: null });
     this.log(`工作区 ${config.workspace}`);
     this.log(`启动本机服务 ${expectedUrl}`);
 
@@ -633,57 +703,145 @@ class DshManager extends EventEmitter {
       this.log('通过 npx 启动 @deepseek-ai/dsh（首次会下载运行时）');
     }
 
+    const readiness = deferred();
     let child = null;
     try {
-      child = spawnHarness(launch.command, launch.args, {
+      child = this._spawnHarness(launch.command, launch.args, {
         cwd: config.workspace,
         env: this.spawnEnv(config, launch.nodeBin),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.child = child;
       this.attachOutput(child);
-      writePidFile(child.pid);
+      this._writePidFile(child.pid);
 
-      child.on('error', (error) => {
-        this.error = error.message;
-        this.log(error.message, 'error');
-        this.setState('error', { error: error.message });
-      });
+      child.on('error', (error) => this._onChildError(gen, child, error, readiness));
+      child.on('exit', (code, signal) => this._onChildExit(gen, child, code, signal, readiness));
 
-      child.on('exit', (code, signal) => {
-        if (this.child === child) {
-          this.child = null;
-        }
-        if (this.state === 'stopping' || this.state === 'idle') {
-          this.setState('idle');
-          return;
-        }
-        if (this.state === 'error') {
-          return;
-        }
-        const message = `dsh 进程结束（code ${code ?? 'null'}, signal ${signal || 'none'}）`;
-        this.error = message;
-        this.log(message, 'error');
-        this.setState('error', { error: message });
-      });
+      this.waitUntilReady(expectedUrl, child, gen).then(
+        (url) => readiness.resolve(url),
+        (error) => readiness.reject(error),
+      );
 
-      const url = await this.waitUntilReady(expectedUrl, child);
-      this.setState('ready', { baseUrl: url, attached: false });
+      const url = await readiness.promise;
+      if (!isCurrent()) {
+        throw cancelledError();
+      }
+      this.setState('ready', { baseUrl: url, attached: false, failure: null });
       this.log(`Web UI 就绪 ${url}`);
       return url;
     } catch (error) {
+      if (!isCurrent()) {
+        const stalePid = child?.pid;
+        if (stalePid && this.child === child) {
+          this.child = null;
+          this._clearPidFile();
+          this._killTree(stalePid);
+        }
+        // 本代已被 stop/restart 取消：状态由 stop 收尾为 idle，这里绝不改写
+        throw error;
+      }
       const pid = (child || this.child)?.pid;
       this.child = null;
-      clearPidFile();
-      this.setState('error', { error: error.message });
-      killTree(pid);
+      this._clearPidFile();
+      if (!this.failure) {
+        const message = error && error.message ? error.message : String(error);
+        this.error = message;
+        this.log(message, 'error');
+        this.setState('error', {
+          error: message,
+          failure: failureRecord('startup', message, null, null),
+        });
+      }
+      if (pid) {
+        this._killTree(pid);
+      }
       throw error;
     }
   }
 
+  /** 当前代 child 的 error 事件：立即失败，保留真实错误，不等超时。 */
+  _onChildError(gen, child, error, readiness) {
+    if (gen !== this.generation || this.child !== child) {
+      return; // 旧 child 或已失效 generation 的事件，一律无效
+    }
+    const message = error && error.message ? error.message : String(error);
+    this.child = null;
+    this._clearPidFile();
+    this.error = message;
+    this.log(message, 'error');
+    const phase = this.state === 'ready' ? 'runtime' : 'startup';
+    const failure = failureRecord(phase, message, null, null);
+    this.setState('error', { error: message, failure });
+    readiness.reject(error instanceof Error ? error : new Error(message));
+  }
+
+  /** 当前代 child 的 exit 事件：就绪前立即失败；就绪后记录 runtime failure；同时清 PID。 */
+  _onChildExit(gen, child, code, signal, readiness) {
+    if (gen !== this.generation || this.child !== child) {
+      return; // 旧 child 或已失效 generation 的事件，一律无效
+    }
+    this.child = null;
+    this._clearPidFile();
+    if (this.state === 'stopping' || this.state === 'idle') {
+      return; // stop 主动结束，状态由 stop() 收尾
+    }
+    const message = `dsh 进程结束（code ${code ?? 'null'}, signal ${signal || 'none'}）`;
+    const phase = this.state === 'ready' ? 'runtime' : 'startup';
+    const failure = failureRecord(phase, message, code, signal);
+    this.error = message;
+    this.log(message, 'error');
+    this.setState('error', { error: message, failure });
+    if (phase === 'startup') {
+      readiness.reject(new Error(message));
+    }
+  }
+
+  /**
+   * 就绪轮询：每一轮都校验 generation 与 child 身份；被 stop 取消时抛 DSH_CANCELLED。
+   * 启动期失败由 error/exit 处理器即时 reject readiness，这里负责正常就绪与超时。
+   */
+  async waitUntilReady(baseUrl, child, gen) {
+    const started = Date.now();
+    while (true) {
+      if (gen !== this.generation || this.child !== child) {
+        throw cancelledError();
+      }
+      if (child.exitCode !== null) {
+        throw new Error(this.error || `dsh 已退出（code ${child.exitCode}）`);
+      }
+      const target = this.baseUrl || baseUrl;
+      if (await this._isReachable(target)) {
+        this.baseUrl = target;
+        return target;
+      }
+      if (Date.now() - started >= READY_TIMEOUT_MS) {
+        throw new Error('启动超时。若本机已安装 dsh，检查端口占用；否则确认 npx 能运行 @deepseek-ai/dsh。');
+      }
+      await this._sleep(400);
+    }
+  }
+
   async stop() {
+    if (this._stopPromise) {
+      return this._stopPromise;
+    }
+    const run = this._doStop();
+    this._stopPromise = run;
+    try {
+      await run;
+    } finally {
+      if (this._stopPromise === run) {
+        this._stopPromise = null;
+      }
+    }
+  }
+
+  async _doStop() {
+    this.generation += 1; // 使 in-flight start 与旧 child 事件全部失效
+    this.inFlight = null; // 下一次 start 从全新代开始
     this.attached = false;
-    const pid = this.child?.pid || readPidFile();
+    const pid = this.child?.pid || this._readPidFile();
     if (pid) {
       this.setState('stopping');
       this.log(`停止 dsh（pid ${pid}）`);
@@ -693,16 +851,16 @@ class DshManager extends EventEmitter {
         } catch {
           // ignore
         }
-        await sleep(800);
+        await this._sleep(800);
       }
-      killTree(pid);
+      this._killTree(pid);
     }
     this.child = null;
-    clearPidFile();
-    const leftover = killOwnedListeners(this.port);
+    this._clearPidFile();
+    const leftover = this._killOwnedListeners(this.port);
     if (leftover) {
       this.log(`已清理端口 ${this.port} 上的残留进程`);
-      await sleep(300);
+      await this._sleep(300);
     }
     if (this.state !== 'idle') {
       this.setState('idle');
@@ -711,8 +869,53 @@ class DshManager extends EventEmitter {
 
   async restart() {
     await this.stop();
-    await sleep(300);
+    await this._sleep(300);
     return this.start();
+  }
+
+  // 依赖访问器（默认即生产实现，测试可注入）
+  _loadConfig() {
+    return this._deps.loadConfig();
+  }
+
+  _ensurePackagedHarness(log) {
+    return this._deps.ensurePackagedHarness(log);
+  }
+
+  _spawnHarness(command, args, options) {
+    return this._deps.spawnHarness(command, args, options);
+  }
+
+  _isReachable(url) {
+    return this._deps.isReachable(url);
+  }
+
+  _sleep(ms) {
+    return this._deps.sleep(ms);
+  }
+
+  _readPidFile() {
+    return this._deps.readPidFile();
+  }
+
+  _writePidFile(pid) {
+    return this._deps.writePidFile(pid);
+  }
+
+  _clearPidFile() {
+    return this._deps.clearPidFile();
+  }
+
+  _killTree(pid) {
+    return this._deps.killTree(pid);
+  }
+
+  _killOwnedListeners(port) {
+    return this._deps.killOwnedListeners(port);
+  }
+
+  _buildLaunch(config) {
+    return this._deps.buildLaunch(config);
   }
 }
 

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('shell', {
   pickWorkspace: () => ipcRenderer.invoke('shell:pick-workspace'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   restart: () => ipcRenderer.invoke('shell:restart'),
+  cancelRestart: () => ipcRenderer.invoke('shell:cancel-restart'),
   openSettings: () => ipcRenderer.invoke('shell:open-settings'),
   checkUpdate: () => ipcRenderer.invoke('shell:check-update'),
   installUpdate: () => ipcRenderer.invoke('shell:install-update'),
@@ -44,6 +45,10 @@ contextBridge.exposeInMainWorld('shell', {
   installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
   uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
   openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
+  getRemote: () => ipcRenderer.invoke('shell:get-remote'),
+  saveRemote: (patch) => ipcRenderer.invoke('shell:save-remote', patch),
+  rotateRemoteToken: () => ipcRenderer.invoke('shell:rotate-remote-token'),
+  unbindRemoteDevice: (id) => ipcRenderer.invoke('shell:unbind-remote-device', id),
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

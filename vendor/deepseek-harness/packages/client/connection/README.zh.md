@@ -10,7 +10,7 @@ node 半侧在桥接或 upgrade 前守卫 `/api` 下的每个入口（`src/api-r
 
 ## `/api` WebSocket 下行
 
-`/api/events.mux` 与 `/api/events.host` 各接受一条 WebSocket upgrade，并只向浏览器发送对应的 `ServerRequest` 文本消息；客户端不会在这些 socket 上发送业务数据。官方页面在每个源上（包括经 HTTP 中继的手机远程）都走这些 upgrade。`ConnectionController` 先完成 `host.describe` 并等待 `onConnected`（含其返回的 Promise）再打开 socket，因此 `session.list` 与 `session.history` 不会排在两条下行后面。未带 `Accept: text/event-stream` 的普通网络 GET 仍返回 426。任一流出错都会使当前 connection generation 失败并重建两条流。Host teardown 会终止两条 socket、中止各自的 source，并等待 source 清理完成后再返回。
+`/api/events.mux` 与 `/api/events.host` 各接受一条 WebSocket upgrade，并只向浏览器发送对应的 `ServerRequest` 文本消息；客户端不会在这些 socket 上发送业务数据。官方页面在每个源上（包括经 HTTP 中继的手机远程）都走这些 upgrade。`ConnectionController` 在外壳安装了 `window.__DSH_BOOT_GATE__` 时先等它兑现，再完成 `host.describe` 并等待 `onConnected`（含其返回的 Promise）再打开 socket，因此插件 `<script>` 加载、`session.list` 与 `session.history` 不会排在两条下行后面。未带 `Accept: text/event-stream` 的普通网络 GET 仍返回 426。任一流出错都会使当前 connection generation 失败并重建两条流。Host teardown 会终止两条 socket、中止各自的 source，并等待 source 清理完成后再返回。
 
 ## 模型体验
 

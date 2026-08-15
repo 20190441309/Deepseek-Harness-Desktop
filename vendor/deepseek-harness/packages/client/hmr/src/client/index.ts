@@ -1,9 +1,9 @@
 /**
  * client-hmr, browser half: hot-reload driver for client plugin entries.
  *
- * Listens on the host's system SSE channel (`GET /plugins/events`); on a
- * `rebuilt` frame it reloads the entry's bundle and swaps the cordis
- * fiber in place. Every graph entry is a plugin bundle
+ * On loopback, listens on the host's system SSE channel (`GET /plugins/events`);
+ * on a `rebuilt` frame it reloads the entry's bundle and swaps the cordis
+ * fiber in place. A phone or relay origin never opens that EventSource. Every graph entry is a plugin bundle
  * — `immediately` rows differ only in stage-one prefetch (a boot
  * optimization), so all rostered plugin packages share these reload semantics;
  * normal packages (react family, cordis, shell, pure libs) are not entries
@@ -74,6 +74,21 @@ export const name = 'client-hmr'
 
 /** Required services: the vendored Loader (entry governance) and the client module system (boot provide, service name `modules`). */
 export const inject = ['loader', 'modules']
+
+/**
+ * Whether the page authority is loopback. Duplicates the connection-package
+ * predicate so this immediately-tier plugin does not import another client
+ * plugin; a phone or relay origin must not hold `/plugins/events`.
+ */
+function pageIsLoopback(): boolean {
+  if (typeof location === 'undefined') return true
+  const hostname = location.hostname
+  if (hostname === 'localhost' || hostname === '[::1]') return true
+  const parts = hostname.split('.')
+  return parts.length === 4
+    && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
 
 /** Find the loader entry whose module specifier is `id` (entry tree ids are random; the package name lives in `options.name`). */
 function findEntry(loader: Loader, id: string): Entry | undefined {
@@ -162,6 +177,8 @@ export function apply(ctx: Context): void {
         break
     }
   }
+
+  if (!pageIsLoopback()) return
 
   ctx.effect(() => {
     const source = new EventSource(EVENTS_ENDPOINT)

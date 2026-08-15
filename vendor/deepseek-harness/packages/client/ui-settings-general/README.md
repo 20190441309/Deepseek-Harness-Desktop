@@ -10,6 +10,8 @@ A loopback browser loads the provider's `hasDocument` capability through `settin
 
 The Host half registers `ui-onboarding` in the user-settings seam. The welcome step contributed by `ui-settings-models` reads and writes its `welcomeNoticeVersion` through the existing public settings boundary; the shell itself remains policy-free.
 
+The General section's one built-in row is the desktop-only **Harness auto-restart** preference: whether a crashed Harness process restarts itself, and the bounded retry schedule behind it (max attempts 1/3/5, base delay 1/2/5 s). The row registers only when the desktop bridge exposes both `getConfig` and `saveConfig` — a plain browser has no Harness process to restart. It reads the persisted policy on mount and writes each change through `saveConfig`, applying the echoed (normalized) values to its controls, with reading/saving/error states exposed for accessibility.
+
 ## Model Experience
 
 None, as the plugin renders browser settings UI; nothing here reaches a model request.
@@ -20,4 +22,4 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- The General section has no built-in rows; each row appears only when its owning feature plugin is mounted.
+- Beyond the desktop-only Harness auto-restart row, the General section has no built-in rows; each row appears only when its owning feature plugin is mounted.

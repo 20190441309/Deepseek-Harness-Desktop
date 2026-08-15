@@ -9,6 +9,7 @@
   "private": true,
   "scripts": {
     "start": "node scripts/run-electron.js",
+    "test": "node --test \"src/**/*.test.js\"",
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "electron-builder --dir",
@@ -34,11 +35,18 @@
     "files": [
       "src/**/*",
       "assets/**/*",
+      "phone-web/dist/**/*",
       "package.json"
     ],
     "extraMetadata": {
       "main": "src/main/index.js"
     },
+    "extraResources": [
+      {
+        "from": "phone-web/dist",
+        "to": "phone-web/dist"
+      }
+    ],
     "electronDist": "node_modules/electron/dist",
     "compression": "maximum",
     "electronLanguages": [

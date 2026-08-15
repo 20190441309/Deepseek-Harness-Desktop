@@ -21,8 +21,11 @@
     <p class="brand">Deepseek-Harness-Desktop</p>
     <p class="status" id="status" role="status">正在启动运行时</p>
     <p class="hint" id="hint">正在启动本机 dsh web；关闭应用时会一并退出服务。</p>
+    <p class="failure" id="failure" hidden></p>
+    <p class="recovery" id="recovery" aria-live="polite" hidden></p>
     <div class="actions" id="actions" hidden>
       <button type="button" id="retry">重试</button>
+      <button type="button" class="ghost" id="cancel-restart" hidden>取消自动重启</button>
     </div>
     <ol class="log" id="log" aria-label="最近日志" aria-live="polite"></ol>
   </main>

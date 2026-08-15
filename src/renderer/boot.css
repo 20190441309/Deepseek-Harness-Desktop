@@ -109,6 +109,27 @@ body[data-state="error"] .mark {
   animation: rise 700ms ease 180ms both;
 }
 
+.failure,
+.recovery {
+  margin: 8px 0 0;
+  max-width: 42rem;
+  text-align: center;
+  font-size: 13px;
+}
+
+.failure {
+  color: var(--danger);
+}
+
+.recovery {
+  color: var(--accent);
+}
+
+.failure[hidden],
+.recovery[hidden] {
+  display: none;
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -133,8 +154,13 @@ button {
   -webkit-app-region: no-drag;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 82%, white);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 button.ghost {

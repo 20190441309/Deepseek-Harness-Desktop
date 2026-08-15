@@ -3,9 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
+const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins } = require('./plugins');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
+const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, showMain } = require('./tray');
 const {
@@ -14,17 +16,20 @@ const {
   showBoot,
   showHarness,
   sendToBoot,
+  isBootLoaded,
 } = require('./window');
 
 const dsh = new DshManager();
-let quitting = false;
-let starting = null;
-let stoppingForQuit = false;
-
-dsh.on('state', (snapshot) => {
-  sendToBoot('shell:state', snapshot);
+const remote = new RemoteGateway({
+  getTarget: () => (dsh.state === 'ready' && dsh.port ? { port: dsh.port } : null),
+  getConfig: loadConfig,
+  saveConfig,
 });
-dsh.on('log', (line) => sendToBoot('shell:log', line));
+remote.on('error', (error) => {
+  dsh.log(`手机 Remote 错误：${error.message || String(error)}`, 'error');
+});
+let quitting = false;
+let stoppingForQuit = false;
 
 async function resolveLaunchTarget() {
   const config = loadConfig();
@@ -34,6 +39,21 @@ async function resolveLaunchTarget() {
   const port = await ensureOwnedPort(host, wanted, (line) => dsh.log(line));
   return { port };
 }
+
+const harness = new HarnessController({
+  dsh,
+  remote,
+  loadConfig,
+  createMainWindow,
+  getMainWindow,
+  showBoot,
+  showHarness,
+  sendToBoot,
+  isBootLoaded,
+  resolveLaunchTarget,
+  stripDroppedPlugins,
+  ensureWorkspace,
+});
 
 async function pickWorkspace() {
   const win = getMainWindow();
@@ -46,69 +66,19 @@ async function pickWorkspace() {
     return null;
   }
   saveConfig({ workspace: result.filePaths[0] });
-  await restartHarness();
+  await harness.restart();
   return result.filePaths[0];
-}
-
-async function startHarness() {
-  if (starting) {
-    return starting;
-  }
-  starting = (async () => {
-    const win = createMainWindow();
-    await showBoot();
-    dsh.setState('starting');
-    try {
-      const target = await resolveLaunchTarget();
-      try {
-        stripDroppedPlugins();
-      } catch (error) {
-        dsh.log(`插件清理失败：${error.message}`, 'app');
-      }
-      const url = await dsh.start(target);
-      const { workspace } = loadConfig();
-      try {
-        await ensureWorkspace(url, workspace);
-        dsh.log(`已注册工作区 ${workspace}`);
-      } catch (error) {
-        dsh.log(`工作区自动注册跳过：${error.message}`, 'app');
-      }
-      await showHarness(url);
-      if (loadConfig().openDevTools) {
-        win.webContents.openDevTools({ mode: 'detach' });
-      }
-      return url;
-    } catch (error) {
-      dsh.setState('error', { error: error.message });
-      dsh.log(error.message, 'error');
-      throw error;
-    } finally {
-      starting = null;
-    }
-  })();
-  return starting;
-}
-
-async function restartHarness() {
-  await dsh.stop();
-  return startHarness();
-}
-
-function reloadUi() {
-  const win = getMainWindow();
-  if (!win) {
-    return;
-  }
-  if (dsh.state === 'ready' && dsh.baseUrl) {
-    win.loadURL(dsh.baseUrl);
-    return;
-  }
-  startHarness().catch(() => {});
 }
 
 function quitApp() {
   quitting = true;
   app.quit();
+}
+
+function ignoreFailure(promise) {
+  Promise.resolve(promise).catch((error) => {
+    dsh.log(error.message || String(error), 'error');
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -129,14 +99,14 @@ if (!gotLock) {
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
 
-    registerIpc({ dsh, startHarness: restartHarness });
+    registerIpc({ dsh, harness, startHarness: () => harness.restart(), remote });
     buildMenu({
-      onOpenWorkspace: () => pickWorkspace(),
-      onRestart: () => restartHarness(),
-      onReload: () => reloadUi(),
+      onOpenWorkspace: () => ignoreFailure(pickWorkspace()),
+      onRestart: () => ignoreFailure(harness.restart()),
+      onReload: () => ignoreFailure(harness.reload()),
     });
     createTray({
-      onRestart: () => restartHarness(),
+      onRestart: () => ignoreFailure(harness.restart()),
       onQuit: () => quitApp(),
     });
 
@@ -159,7 +129,7 @@ if (!gotLock) {
     });
 
     try {
-      await startHarness();
+      await harness.start();
     } catch {
       // boot page already shows the error
     }
@@ -170,7 +140,7 @@ if (!gotLock) {
     if (win) {
       win.show();
     } else {
-      startHarness().catch(() => {});
+      ignoreFailure(harness.start());
     }
   });
 
@@ -182,7 +152,7 @@ if (!gotLock) {
     }
     event.preventDefault();
     stoppingForQuit = true;
-    dsh.stop().finally(() => app.quit());
+    harness.shutdown().finally(() => app.quit());
   });
 
   app.on('window-all-closed', () => {

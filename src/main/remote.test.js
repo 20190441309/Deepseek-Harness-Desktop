@@ -4,7 +4,10 @@ const http = require('http');
 const { generateToken } = require('../shared/remote-auth');
 const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
-const { RemoteGateway, rewriteProxyHeaders } = require('./remote');
+const path = require('path');
+const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
+
+const PHONE_WEB_FIXTURE = path.join(__dirname, 'phone-web-fixture');
 const { RelayClient } = require('./relay-client');
 const { RelayServer } = require('../relay/server');
 
@@ -23,6 +26,15 @@ async function request(port, path, options = {}) {
   const body = await response.text();
   return { status: response.status, body, headers: response.headers };
 }
+
+test('shouldGzipProxy gzips script and html when the client asks for gzip', () => {
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip, deflate' }, 'text/javascript; charset=utf-8'), true);
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'text/html; charset=utf-8'), true);
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'identity' }, 'text/javascript'), false);
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'application/json'), false);
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'text/plain'), false);
+  assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip', 'content-encoding': 'br' }, 'text/javascript'), false);
+});
 
 test('rewriteProxyHeaders forces loopback Host and Origin', () => {
   const headers = rewriteProxyHeaders({
@@ -69,6 +81,33 @@ test('offer encode/decode round-trips and rejects junk', () => {
 test('gateway refuses to start without a token', async () => {
   const gateway = new RemoteGateway();
   await assert.rejects(() => gateway.start({ port: 0, token: '', target: { port: 1 } }), /令牌/);
+});
+
+test('gateway sync stops an active listener when Harness is no longer ready', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  let target = { port: upstreamPort };
+  const gateway = new RemoteGateway({
+    getTarget: () => target,
+    getConfig: () => ({
+      remoteEnabled: true,
+      remoteToken: token,
+      remoteMode: 'lan',
+    }),
+  });
+  try {
+    await gateway.start({ port: 0, token, target });
+    assert.equal(gateway.snapshot().listening, true);
+
+    target = null;
+    await gateway.sync();
+    assert.equal(gateway.snapshot().listening, false);
+    assert.equal(gateway.snapshot().target, null);
+  } finally {
+    await gateway.stop();
+    await close(upstream);
+  }
 });
 
 test('gateway proxies an authorized request and rewrites Host', async () => {
@@ -326,6 +365,57 @@ test('an HTML visit with the pairing cookie upgrades into a bound device', async
   const deviceToken = cookieFrom(upgrade);
   assert.ok(deviceToken);
   assert.notEqual(deviceToken, token);
+
+  await gateway.stop();
+  await close(upstream);
+});
+
+test('HTML and static files come from phone-web, not the official UI', async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html>Into the Unknown</html>');
+  });
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
+  const gateway = new RemoteGateway({ ...config, phoneWebDir: PHONE_WEB_FIXTURE });
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port || gateway.server.address().port;
+
+  const page = await request(port, '/', { headers: { accept: 'text/html' } });
+  assert.equal(page.status, 200);
+  assert.match(page.body, /data-phone-web/);
+  assert.match(page.body, /#offer=/);
+  assert.doesNotMatch(page.body, /Into the Unknown/);
+
+  const asset = await request(port, '/assets/app.js');
+  assert.equal(asset.status, 200);
+  assert.match(asset.body, /__PHONE_WEB__/);
+
+  const login = await request(port, '/__remote__/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `token=${token}`,
+    redirect: 'manual',
+  });
+  const deviceToken = cookieFrom(login);
+  const authed = await request(port, '/', {
+    headers: { accept: 'text/html', cookie: `dsh_remote=${deviceToken}` },
+  });
+  assert.equal(authed.status, 200);
+  assert.match(authed.body, /data-phone-web/);
+  assert.doesNotMatch(authed.body, /Into the Unknown/);
+
+  const api = await request(port, '/api/session.list', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `dsh_remote=${deviceToken}`,
+    },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'r1', method: 'session.list', payload: {} }),
+  });
+  assert.equal(api.status, 200);
+  assert.equal(api.body, '<html>Into the Unknown</html>');
 
   await gateway.stop();
   await close(upstream);

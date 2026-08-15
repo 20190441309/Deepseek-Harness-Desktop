@@ -1,6 +1,6 @@
 /** Browser runtime services for slots, sessions, workspaces, and connection-stream delivery. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionHandle, SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ConnectionHandle, ConnectionSinks, SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: the ctx.remote merge. Deliberately the gateway's Client half rather
 // than api-remotes': that face imports a Host-tsdown-generated artifact, and this
 // project sits in the Host build graph.
@@ -201,7 +201,7 @@ export function apply(ctx: Context): void {
     () => workspaces.startInitialSelection(),
     'runtime: initial Workspace selection',
   )
-  const loop = connection.start({
+  const sinks: ConnectionSinks = {
     onMuxEnvelope: (envelope) => {
       sessions.handleMuxEnvelope(envelope)
     },
@@ -230,6 +230,20 @@ export function apply(ctx: Context): void {
         sessions.handleDisconnected()
       }
     },
-  })
-  ctx.effect(() => () => { loop.stop() }, 'runtime: connection stream loop')
+  }
+  ctx.effect(() => {
+    let cancelled = false
+    let loop: { stop(): void } | undefined
+    const begin = (): void => {
+      if (cancelled) return
+      loop = connection.start(sinks)
+    }
+    const bootGate = (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
+    if (bootGate === undefined) begin()
+    else void bootGate.then(begin, begin)
+    return () => {
+      cancelled = true
+      loop?.stop()
+    }
+  }, 'runtime: connection stream loop')
 }

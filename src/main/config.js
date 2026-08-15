@@ -22,7 +22,26 @@ const DEFAULTS = {
   remoteToken: '',
   remoteMode: 'lan',
   remoteRelayUrl: 'http://125.124.85.212:8411',
+  harnessAutoRestart: true,
+  harnessRestartMaxAttempts: 3,
+  harnessRestartBaseDelayMs: 1000,
 };
+
+function normalizeHarnessRecovery(config) {
+  const next = { ...config };
+  next.harnessAutoRestart = typeof next.harnessAutoRestart === 'boolean'
+    ? next.harnessAutoRestart
+    : DEFAULTS.harnessAutoRestart;
+  const maxAttempts = Number(next.harnessRestartMaxAttempts);
+  next.harnessRestartMaxAttempts = Number.isInteger(maxAttempts) && maxAttempts >= 1 && maxAttempts <= 10
+    ? maxAttempts
+    : DEFAULTS.harnessRestartMaxAttempts;
+  const baseDelayMs = Number(next.harnessRestartBaseDelayMs);
+  next.harnessRestartBaseDelayMs = Number.isInteger(baseDelayMs) && baseDelayMs >= 500 && baseDelayMs <= 30_000
+    ? baseDelayMs
+    : DEFAULTS.harnessRestartBaseDelayMs;
+  return next;
+}
 
 function configPath() {
   return path.join(app.getPath('userData'), 'config.json');
@@ -66,7 +85,7 @@ function defaultWorkspace() {
 function loadConfig() {
   const stored = readJson(configPath(), {});
   const creds = readJson(credentialsPath(), {});
-  const config = {
+  let config = {
     ...DEFAULTS,
     ...stored,
     apiKey: typeof creds.apiKey === 'string' ? creds.apiKey : stored.apiKey || '',
@@ -92,6 +111,7 @@ function loadConfig() {
   config.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
     ? remotePort
     : DEFAULTS.remotePort;
+  config = normalizeHarnessRecovery(config);
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -105,7 +125,7 @@ function loadConfig() {
 
 function saveConfig(next) {
   const current = loadConfig();
-  const merged = { ...current, ...next };
+  const merged = normalizeHarnessRecovery({ ...current, ...next });
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
   }
@@ -150,4 +170,5 @@ module.exports = {
   publicConfig,
   defaultWorkspace,
   configPath,
+  normalizeHarnessRecovery,
 };

@@ -42,12 +42,22 @@ export {
   resolveProfileDir,
   writeProfileManifest,
   type DshBundleManifest,
+  type DshCompatibilityManifest,
   type DshManifestSection,
   type DshProfileManifest,
   type Profile,
   type ProfileLayer,
   type ProfileManifest,
 } from './profile.ts'
+
+export {
+  assertHostFeatures,
+  HOST_FEATURES,
+  isHostFeature,
+  missingHostFeatures,
+  parseCompatibilityFeatures,
+  type HostFeature,
+} from './features.ts'
 
 /**
  * Resolve the config to boot. Replay swaps a `cordis.yml` basename for

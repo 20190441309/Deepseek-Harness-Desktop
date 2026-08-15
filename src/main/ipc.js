@@ -42,8 +42,8 @@ function sendPluginProgress(event, payload) {
   }
 }
 
-function registerIpc({ dsh, startHarness, remote }) {
-  ipcMain.handle('shell:get-state', () => dsh.snapshot());
+function registerIpc({ dsh, harness, startHarness, remote }) {
+  ipcMain.handle('shell:get-state', () => (harness ? harness.snapshot() : dsh.snapshot()));
 
   ipcMain.handle('shell:get-config', () => configPayload(loadConfig()));
 
@@ -52,6 +52,13 @@ function registerIpc({ dsh, startHarness, remote }) {
     app.setLoginItemSettings({ openAtLogin: Boolean(next.openAtLogin) });
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'theme')) {
       applyAppTheme();
+    }
+    if (harness && patch && [
+      'harnessAutoRestart',
+      'harnessRestartMaxAttempts',
+      'harnessRestartBaseDelayMs',
+    ].some((key) => Object.prototype.hasOwnProperty.call(patch, key))) {
+      harness.refreshPolicy();
     }
     return configPayload(next);
   });
@@ -79,8 +86,12 @@ function registerIpc({ dsh, startHarness, remote }) {
 
   ipcMain.handle('shell:restart', async () => {
     await startHarness();
-    return dsh.snapshot();
+    return harness ? harness.snapshot() : dsh.snapshot();
   });
+
+  ipcMain.handle('shell:cancel-restart', () => (
+    harness ? harness.cancelRecovery() : dsh.snapshot()
+  ));
 
   ipcMain.handle('shell:open-settings', () => openHarnessSettings());
 

@@ -168,6 +168,13 @@ export interface DshWindow {
    * time = kernel sequencing bug, thrown loud.
    */
   __DSH_MODULES__?: ClientModuleSystem
+  /**
+   * Resolves after every graph entry is ACTIVE (or boot failed loud).
+   * ConnectionController waits on this before `host.describe` / WebSocket
+   * upgrades so those requests cannot occupy the phone's HTTP/1.1 slots
+   * while plugin `<script>` tags are still loading.
+   */
+  __DSH_BOOT_GATE__?: Promise<void>
 }
 
 /** Per-module bookkeeping in {@link ClientModuleLoader.loadCache} (module-graph boundary, flat today). */

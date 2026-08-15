@@ -1,5 +1,7 @@
+const fs = require('fs');
 const http = require('http');
 const net = require('net');
+const path = require('path');
 const zlib = require('zlib');
 const { EventEmitter } = require('events');
 const {
@@ -16,6 +18,54 @@ const { createDevice, normalizeDevices, publicDevices } = require('../shared/rem
 const { RelayClient } = require('./relay-client');
 
 const DEFAULT_PORT = 3180;
+
+function defaultPhoneWebDir() {
+  const unpacked = path.join(__dirname, '..', '..', 'phone-web', 'dist');
+  if (fs.existsSync(unpacked)) {
+    return unpacked;
+  }
+  if (process.resourcesPath) {
+    const packed = path.join(process.resourcesPath, 'phone-web', 'dist');
+    if (fs.existsSync(packed)) {
+      return packed;
+    }
+  }
+  return unpacked;
+}
+
+function mimeType(file) {
+  if (file.endsWith('.html')) {
+    return 'text/html; charset=utf-8';
+  }
+  if (file.endsWith('.js')) {
+    return 'text/javascript; charset=utf-8';
+  }
+  if (file.endsWith('.css')) {
+    return 'text/css; charset=utf-8';
+  }
+  if (file.endsWith('.svg')) {
+    return 'image/svg+xml';
+  }
+  if (file.endsWith('.json') || file.endsWith('.map')) {
+    return 'application/json; charset=utf-8';
+  }
+  if (file.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (file.endsWith('.woff2')) {
+    return 'font/woff2';
+  }
+  return 'application/octet-stream';
+}
+
+function isApiPath(url) {
+  const pathname = String(url || '/').split('?')[0];
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+function isRemoteControlPath(url) {
+  return String(url || '/').split('?')[0].startsWith('/__remote__/');
+}
 const HOP_BY_HOP = new Set([
   'connection',
   'keep-alive',
@@ -71,7 +121,10 @@ function shouldGzipProxy(headers, contentType) {
   if (headers && headers['content-encoding']) {
     return false;
   }
-  return /javascript|json|text\/html|text\/css|image\/svg/i.test(String(contentType || ''));
+  // Script and document responses decompress in the browser HTTP stack.
+  // application/json is fetch() body on the phone; some WebViews leave gzip
+  // bytes in place and session.list then fails closed as an empty sidebar.
+  return /javascript|text\/html|text\/css|image\/svg/i.test(String(contentType || ''));
 }
 
 function headerLines(headers) {
@@ -178,6 +231,7 @@ class RemoteGateway extends EventEmitter {
     this.token = '';
     this.target = null;
     this.sockets = new Map();
+    this.phoneWebDir = options.phoneWebDir || defaultPhoneWebDir();
     this.relay = new RelayClient({
       getLocal: () => (this.port ? { port: this.port } : null),
     });
@@ -462,6 +516,60 @@ class RemoteGateway extends EventEmitter {
     res.end(body);
   }
 
+  resolvePhoneWebFile(url) {
+    const root = path.resolve(this.phoneWebDir);
+    if (!fs.existsSync(root)) {
+      return '';
+    }
+    let pathname = '/';
+    try {
+      pathname = decodeURIComponent(new URL(url, 'http://dsh.phone').pathname);
+    } catch {
+      return '';
+    }
+    const relative = pathname === '/' ? 'index.html' : pathname.replace(/^[/\\]+/, '');
+    const resolved = path.resolve(root, relative);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      return '';
+    }
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+      return resolved;
+    }
+    const index = path.join(root, 'index.html');
+    if (!path.extname(pathname) && fs.existsSync(index)) {
+      return index;
+    }
+    return '';
+  }
+
+  servePhoneWeb(req, res) {
+    const file = this.resolvePhoneWebFile(req.url || '/');
+    if (!file) {
+      this.send(res, 503, { 'content-type': 'text/plain; charset=utf-8' }, '手机页还没构建');
+      return;
+    }
+    const type = mimeType(file);
+    const body = fs.readFileSync(file);
+    const headers = {
+      'content-type': type,
+      'cache-control': type.includes('text/html') ? 'no-store' : 'public, max-age=3600',
+    };
+    if (shouldGzipProxy(req.headers, type)) {
+      headers['content-encoding'] = 'gzip';
+      zlib.gzip(body, (error, out) => {
+        if (error) {
+          this.send(res, 200, { 'content-type': type }, body);
+          return;
+        }
+        res.writeHead(200, headers);
+        res.end(out);
+      });
+      return;
+    }
+    res.writeHead(200, headers);
+    res.end(body);
+  }
+
   async handleHttp(req, res) {
     const url = req.url || '/';
     const target = this.target;
@@ -513,6 +621,15 @@ class RemoteGateway extends EventEmitter {
     }
 
     const presented = matchingToken(req.headers, url, this.authTokens());
+    if (presented && !this.deviceForToken(presented) && tokensEqual(presented, this.token) && this.prefersHtml(req)) {
+      const device = this.pairDevice({ headers: { ...req.headers, cookie: '' }, url: '/' });
+      this.send(res, 302, { location: url, 'set-cookie': cookieHeader(device.token) }, '');
+      return;
+    }
+    if (req.method === 'GET' && !isApiPath(url) && !isRemoteControlPath(url)) {
+      this.servePhoneWeb(req, res);
+      return;
+    }
     if (!presented) {
       if (this.wantsHtml(req)) {
         this.send(res, 401, { 'content-type': 'text/html; charset=utf-8' }, loginPage());
@@ -521,12 +638,7 @@ class RemoteGateway extends EventEmitter {
       this.send(res, 401, { 'content-type': 'text/plain; charset=utf-8' }, 'unauthorized');
       return;
     }
-    let device = this.deviceForToken(presented);
-    if (!device && tokensEqual(presented, this.token) && this.prefersHtml(req)) {
-      device = this.pairDevice({ headers: { ...req.headers, cookie: '' }, url: '/' });
-      this.send(res, 302, { location: url, 'set-cookie': cookieHeader(device.token) }, '');
-      return;
-    }
+    const device = this.deviceForToken(presented);
     if (device) {
       this.touchDevice(device.id);
     }

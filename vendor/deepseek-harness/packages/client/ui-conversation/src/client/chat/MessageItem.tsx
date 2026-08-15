@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import type {
   ModelRetryNode, TurnErrorNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { JsonBlock, MessageText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import { ImageGallery, type ImageLoader } from '@deepseek-ai/dsh-client-ui-attachment'
@@ -234,10 +235,46 @@ export function PendingSteeringBubble({ content, loadImage, t }: {
   )
 }
 
-/** User and admitted-steering keyed Chat renderer. */
+/** User and admitted-steering keyed Chat renderers. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
+  node, loadImage, renderSlot, t,
+}: ChatNodeViewProps<'user'> & PropsRenderSlots<'conversation.chat.user-actions'>) {
+  const data = node.data
+  // The action strip addresses the finalized user message: its durable seq
+  // and frozen content blocks. Plugins mount per-message actions here; the
+  // core itself ships no user action (no edit) — the seat is empty without a
+  // plugin.
+  const userActions = renderSlot('conversation.chat.user-actions', {
+    seq: data.seq,
+    content: data.content,
+  })
+  return (
+    <UserStyleBubble
+      content={data.content}
+      imageLoader={loadImage}
+      t={t}
+      actions={text => (
+        <MessageIconActions
+          text={text}
+          time={data.time}
+          clock="start"
+          className={css.actions}
+          extraActions={userActions}
+          t={t}
+        />
+      )}
+    />
+  )
+})
+
+/**
+ * Admitted-steering keyed Chat renderer: the same bubble chrome as the user
+ * row, deliberately without the user-actions seat — steering messages carry
+ * no per-message action strip.
+ */
+export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
   node, loadImage, t,
-}: ChatNodeViewProps<'user' | 'steering'>) {
+}: ChatNodeViewProps<'steering'>) {
   const data = node.data
   return (
     <UserStyleBubble

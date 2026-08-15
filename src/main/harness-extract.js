@@ -32,9 +32,18 @@ function packagedHarnessRoot() {
   return extracted;
 }
 
+function tarCommand(platform = process.platform) {
+  if (platform !== 'win32') {
+    return 'tar';
+  }
+  const windowsRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
+  const systemTar = path.join(windowsRoot, 'System32', 'tar.exe');
+  return fs.existsSync(systemTar) ? systemTar : 'tar';
+}
+
 function runTar(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn('tar', args, {
+    const child = spawn(tarCommand(), args, {
       windowsHide: true,
       stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -86,4 +95,5 @@ module.exports = {
   packagedHarnessRoot,
   ensurePackagedHarness,
   hasBuiltHarness,
+  tarCommand,
 };

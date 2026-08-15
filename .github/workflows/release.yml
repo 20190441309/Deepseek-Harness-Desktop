@@ -24,6 +24,9 @@ jobs:
       - name: Install app dependencies
         run: npm ci
 
+      - name: Test desktop shell
+        run: npm test
+
       # .npmrc 设置了 electron_skip_binary_download，CI 需显式拉取 Electron 二进制
       - name: Download Electron binary
         run: node node_modules/electron/install.js

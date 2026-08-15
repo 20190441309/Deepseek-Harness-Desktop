@@ -203,6 +203,23 @@ describe('connection lifecycle', () => {
     }
   })
 
+  it('does not call host.describe until the boot gate resolves', async () => {
+    const gate = deferred<void>()
+    ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = gate.promise
+    const api = new FakeApiClient()
+    const controller = new ConnectionController(api, {}, FAST)
+    controller.start()
+    try {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(api.callsOf('host.describe')).toHaveLength(0)
+      gate.resolve()
+      await vi.waitFor(() => { expect(api.callsOf('host.describe')).toHaveLength(1) })
+    } finally {
+      controller.stop()
+      delete (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
+    }
+  })
+
   it('does not open downlinks until onConnected settles', async () => {
     const api = new FakeApiClient()
     const hydrate = deferred<void>()

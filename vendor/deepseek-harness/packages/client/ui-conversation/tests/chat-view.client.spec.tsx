@@ -27,7 +27,7 @@ import { zh } from '../src/client/locales.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView, TurnErrorNodeView,
   TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { TurnTailNodeView } from '../src/client/chat/TurnTailNodeView.tsx'
@@ -176,6 +176,8 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   }> = []
   const renderCommandSlot = ((_key: string, _owner: object, opts?: { fallback?: React.ReactNode }) =>
     opts?.fallback ?? null) as unknown as React.ComponentProps<typeof CommandNodeView>['renderSlot']
+  const renderUserActions = (() => null) as unknown as
+    React.ComponentProps<typeof UserMessageNodeView>['renderSlot']
   const renderTurnTail = ((_key: string, _owner: object) => null) as unknown as
     React.ComponentProps<typeof TurnTailNodeView>['renderSlotChain']
   const renderTurnTailSlot = (() => null) as unknown as
@@ -198,8 +200,15 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     )
     switch (nodeOwner.node.kind) {
       case 'user':
+        return (
+          <UserMessageNodeView
+            {...nodeProps<'user'>()}
+            renderSlot={renderUserActions}
+            SessionProvider={props.SessionProvider}
+          />
+        )
       case 'steering':
-        return <UserMessageNodeView {...nodeProps<'user' | 'steering'>()} />
+        return <SteeringMessageNodeView {...nodeProps<'steering'>()} />
       case 'context':
         return <ContextMessageNodeView {...nodeProps<'context'>()} />
       case 'assistant-step':
