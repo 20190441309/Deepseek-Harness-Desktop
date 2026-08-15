@@ -66,14 +66,14 @@ One UI feature = one plugin package (`src/client/` browser half). A multi-domain
 
 ## Styling
 
-[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. Product copy is Chinese; code comments are English.
+[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. New dialogs and menus use `usePresence` plus a `motion.css` recipe; a trigger label that changes after a pick uses `FlipText`. Do not invent another duration or easing. Product copy is Chinese; code comments are English.
 
 ## Testing and coverage
 
 The GUI test structure (three tiers, lane map) is settled in the [GUI testing system note](../../.agents/notes/implemented/process/2026-07-20-gui-testing-system.md); repo-wide policy in [docs/testing.md](../../docs/testing.md).
 
 - Client source packages are inside the per-file 100% coverage gate (`pnpm run test:coverage`). Genuinely unreachable defensive arms take a `/* v8 ignore -- <reason> */` comment with a real reason, never a bare ignore.
-- Component specs render with realistic props or a driven fixture runtime and assert user-visible behavior, not class names, hook internals, or render counts.
+- Component specs render with realistic props or a driven fixture runtime and assert user-visible behavior, not class names, hook internals, or render counts. Presence-backed overlays stay mounted through exit: treat logical close as `aria-hidden` / `queryByRole`, not immediate unmount. FlipText and `motion.css` have dedicated suites; they are not browser-golden pixels.
 - The jsdom environment comes from a per-file `// @vitest-environment jsdom` pragma on the spec's first line; the shared config stays node-env.
 - Each tier asserts its own layer. Data-layer semantics belong to the runtime and host suites; component specs cover presentation behavior.
 
@@ -102,6 +102,6 @@ Bringing up a new `packages/client/<name>` plugin package (ui-workspace is a com
 1. Compose through register: add the slot to `SlotMap`, declare it in its parent entry's `children`, and register your component — see the [slot system standard](../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md). No other composition route exists.
 2. Type the props as the four shares (`PropsRuntime` & `PropsRenderSlots` & `PropsStore` & inject face) — derive, don't hand-write. Shared/surviving state goes in a `createXXXStore()` factory declared at register; component-private state stays local.
 3. Component tests feed props directly (`createXXXStore().create()` for the store data; plain stubs for framework hooks) and assert behavior without render machinery.
-4. Tokens only in CSS; Chinese product copy; English comments.
-5. `pnpm run test:gui` green; if the component changes visible assembled output, also run `DSH_SNAPSHOT=replay pnpm run test:web`.
+4. Tokens only in CSS; Chinese product copy; English comments. A new overlay uses `usePresence` and a recipe; a changing chip label uses `FlipText`.
+5. `pnpm run test:gui` green (includes Presence, FlipText, and motion-styles when those files change); if the component changes visible assembled output, also run `DSH_SNAPSHOT=replay pnpm run test:web`.
 6. Non-trivial change? It needs an Agent Note in the same PR (repo-wide rule) — the GUI notes above are the precedents to extend.

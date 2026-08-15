@@ -129,8 +129,22 @@
     return r.top <= 8 && r.height >= 24 && r.width >= 24;
   }
 
-  function reservedRight() {
+  function windowControlsRight() {
     return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
+  }
+
+  function trailingClusterWidth() {
+    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
+    if (trailing == null || typeof trailing.getBoundingClientRect !== 'function') {
+      return 0;
+    }
+    return Math.max(0, Math.round(trailing.getBoundingClientRect().width));
+  }
+
+  function reservedRight() {
+    const controls = windowControlsRight();
+    const width = trailingClusterWidth();
+    return width > 0 ? controls + width + CLUSTER : controls;
   }
 
   function ensureStyle() {
@@ -141,7 +155,7 @@
       document.documentElement.appendChild(style);
     }
     style.textContent = `
-      :root { --dsh-wco-pad: ${reservedRight()}px; }
+      :root { --dsh-wco-pad: ${reservedRight()}px; --dsh-wco-controls: ${windowControlsRight()}px; }
       #${CONTROLS_ID} {
         position: fixed;
         top: 12px;
@@ -312,6 +326,7 @@
     const logo = findLogoRow();
     const inset = placeControls(host, sessionLog);
     document.documentElement.style.setProperty('--dsh-wco-pad', `${inset}px`);
+    document.documentElement.style.setProperty('--dsh-wco-controls', `${windowControlsRight()}px`);
 
     let bg = opaqueBg(document.body);
     if (bar) {
@@ -329,6 +344,11 @@
     if (sessionLog) {
       sessionLog.style.marginRight = '';
       sessionLog.setAttribute(HIT, '');
+    }
+    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
+    if (trailing instanceof HTMLElement) {
+      trailing.setAttribute(HIT, '');
+      markInteractive(trailing);
     }
 
     const maximized = Boolean(window.__dshShellMaximized);

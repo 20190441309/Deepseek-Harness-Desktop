@@ -11,6 +11,8 @@ import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-run
 import {
   clampWidth, DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
+  SURFACES_DEFAULT, SURFACES_MAX, SURFACES_MIN,
+  TERMINAL_DRAWER_DEFAULT, TERMINAL_DRAWER_MIN,
 } from './columns.ts'
 
 /**
@@ -20,7 +22,14 @@ import {
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
  * sidebar over the squeezed center without rewriting the width preference.
  */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean }
+type LayoutState = {
+  sidebar: number
+  details: number
+  surfaces: number
+  terminalDrawer: number
+  narrow: boolean
+  narrowExpanded: boolean
+}
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
@@ -33,6 +42,12 @@ type LayoutActions = {
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
+  setSurfaces: (draft: LayoutState, px: number) => void
+  toggleSurfaces: (draft: LayoutState) => void
+  openSurfaces: (draft: LayoutState) => void
+  closeSurfaces: (draft: LayoutState) => void
+  toggleTerminalDrawer: (draft: LayoutState) => void
+  setTerminalDrawer: (draft: LayoutState, px: number) => void
 }
 
 /**
@@ -47,7 +62,9 @@ type LayoutActions = {
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false }),
+    init: (): LayoutState => ({
+      sidebar: SIDEBAR_DEFAULT, details: 0, surfaces: 0, terminalDrawer: 0, narrow: false, narrowExpanded: false,
+    }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
@@ -66,6 +83,13 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
+      setSurfaces: (d, px: number) => { d.surfaces = clampWidth(px, SURFACES_MIN, SURFACES_MAX) },
+      toggleSurfaces: (d) => { d.surfaces = d.surfaces === 0 ? SURFACES_DEFAULT : 0 },
+      openSurfaces: (d) => { if (d.surfaces === 0) d.surfaces = SURFACES_DEFAULT },
+      closeSurfaces: (d) => { d.surfaces = 0 },
+      toggleTerminalDrawer: (d) => { d.terminalDrawer = d.terminalDrawer === 0 ? TERMINAL_DRAWER_DEFAULT : 0 },
+      // Floor only: the drawer has no contract ceiling; 0 is reserved for close.
+      setTerminalDrawer: (d, px: number) => { d.terminalDrawer = Math.max(TERMINAL_DRAWER_MIN, Math.round(px)) },
     },
   })
   return handle

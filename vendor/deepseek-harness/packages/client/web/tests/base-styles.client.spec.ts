@@ -54,6 +54,13 @@ describe('web shell base.css', () => {
     }
   })
 
+  it('imports the motion sheet after the duration tokens it reads', () => {
+    const tokens = imports.indexOf(`${THEME_PACKAGE}/styles/base.css`)
+    const motion = imports.indexOf(`${THEME_PACKAGE}/styles/motion.css`)
+    expect(tokens).toBeGreaterThanOrEqual(0)
+    expect(motion).toBeGreaterThan(tokens)
+  })
+
   it('imports the scrollbar sheet after the token sheet it reads', () => {
     // Both sheets bind on `body`, so with scrollbar.css first the alias tokens
     // would still resolve; the order encodes the dependency direction so a

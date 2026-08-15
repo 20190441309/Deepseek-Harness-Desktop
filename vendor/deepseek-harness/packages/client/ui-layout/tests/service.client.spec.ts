@@ -16,6 +16,12 @@ function fakePanels(): PanelActions {
     setNarrow: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    setSurfaces: vi.fn(),
+    toggleSurfaces: vi.fn(),
+    openSurfaces: vi.fn(),
+    closeSurfaces: vi.fn(),
+    toggleTerminalDrawer: vi.fn(),
+    setTerminalDrawer: vi.fn(),
   }
 }
 
@@ -36,11 +42,32 @@ describe('LayoutController', () => {
     expect(panels.setDetails).not.toHaveBeenCalled()
   })
 
+  it('forwards surfaces and terminal-drawer actions to the attached set', () => {
+    const service = new LayoutController()
+    const panels = fakePanels()
+    service.attachPanels(panels)
+
+    service.toggleSurfaces()
+    service.openSurfaces()
+    service.closeSurfaces()
+    service.toggleTerminalDrawer()
+    service.setTerminalDrawer(240)
+
+    expect(panels.toggleSurfaces).toHaveBeenCalledTimes(1)
+    expect(panels.openSurfaces).toHaveBeenCalledTimes(1)
+    expect(panels.closeSurfaces).toHaveBeenCalledTimes(1)
+    expect(panels.toggleTerminalDrawer).toHaveBeenCalledTimes(1)
+    expect(panels.setTerminalDrawer).toHaveBeenCalledTimes(1)
+    expect(panels.setTerminalDrawer).toHaveBeenCalledWith(240)
+  })
+
   it('fails loud before the root entry wired its actions', () => {
     const service = new LayoutController()
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)
     expect(() => { service.openDetails() }).toThrow(/panel actions not wired/)
     expect(() => { service.closeDetails() }).toThrow(/panel actions not wired/)
+    expect(() => { service.toggleSurfaces() }).toThrow(/panel actions not wired/)
+    expect(() => { service.toggleTerminalDrawer() }).toThrow(/panel actions not wired/)
   })
 
   it('re-attach overwrites the stale action set (entry re-register)', () => {

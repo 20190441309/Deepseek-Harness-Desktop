@@ -414,9 +414,13 @@ function standardKit(
     }
     kit['t'] = localeSeat(face, entry.locale)
   }
-  const store = scope === 'session-maybe' && info?.sessionId === undefined
-    ? undefined
-    : host.storeOf(entry, info?.sessionId)
+  // session-maybe entries stay mounted across the no-session state, but a
+  // declared store still needs a scope key to resolve an instance. Fall back
+  // to the empty key while no session is current: the surfaces/terminal
+  // stores key their own buckets by `sessionId ?? ''`, so the empty instance
+  // is the correct one until a session resolves.
+  const scopeKey = info?.sessionId
+  const store = host.storeOf(entry, scope === 'session-maybe' && scopeKey === undefined ? '' : scopeKey)
   if (store !== undefined) {
     // The instance IS an observable snapshot source (contract getSnapshot/
     // subscribe); the useStore hook binds here, cached per instance.

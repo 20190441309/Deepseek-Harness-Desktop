@@ -1,0 +1,12 @@
+- button "Session log":
+  - text: Session log
+  - img
+- button "Commit" [disabled]:
+  - img
+  - text: Commit
+- button "Git actions":
+  - img
+- button "Toggle terminal drawer":
+  - img
+- button "Toggle right panel":
+  - img

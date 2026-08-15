@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarketplaceSettingsTab } from '../src/client/MarketplaceSettingsTab.tsx'
 import type { MarketplaceSettingsTabProps } from '../src/client/MarketplaceSettingsTab.tsx'
+import type { MarketplaceCatalog } from '../src/client/desktop-shell.ts'
 import { en, type PluginInventoryLocaleKey } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -203,9 +204,9 @@ describe('MarketplaceSettingsTab', () => {
   })
 
   it('shows a loading status until the catalog resolves', async () => {
-    let resolveCatalog!: (value: { items: typeof ITEM[]; categories: Array<{ id: string; label: string; count: number }> }) => void
+    let resolveCatalog!: (value: MarketplaceCatalog) => void
     renderTab({
-      listMarketplace: vi.fn(() => new Promise((resolve) => { resolveCatalog = resolve })),
+      listMarketplace: vi.fn(() => new Promise<MarketplaceCatalog>((resolve) => { resolveCatalog = resolve })),
     })
     expect(screen.getByText(en.marketLoading)).toBeTruthy()
     await act(async () => {

@@ -44,6 +44,38 @@ contextBridge.exposeInMainWorld('shell', {
   installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
   uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
   openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
+  gitStatus: (cwd) => ipcRenderer.invoke('shell:git-status', cwd),
+  gitDiff: (cwd) => ipcRenderer.invoke('shell:git-diff', cwd),
+  gitCommit: (cwd, message) => ipcRenderer.invoke('shell:git-commit', cwd, message),
+  gitPush: (cwd) => ipcRenderer.invoke('shell:git-push', cwd),
+  gitPull: (cwd) => ipcRenderer.invoke('shell:git-pull', cwd),
+  gitCreateChangeRequest: (cwd, input) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input),
+  listDir: (cwd, relativePath) => ipcRenderer.invoke('shell:list-dir', cwd, relativePath),
+  readFile: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file', cwd, relativePath),
+  ptyCreate: (input) => ipcRenderer.invoke('shell:pty-create', input),
+  ptyWrite: (id, data) => ipcRenderer.invoke('shell:pty-write', id, data),
+  ptyResize: (id, cols, rows) => ipcRenderer.invoke('shell:pty-resize', id, cols, rows),
+  ptyKill: (id) => ipcRenderer.invoke('shell:pty-kill', id),
+  onPtyData: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:pty-data', listener);
+    return () => ipcRenderer.removeListener('shell:pty-data', listener);
+  },
+  onPtyExit: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:pty-exit', listener);
+    return () => ipcRenderer.removeListener('shell:pty-exit', listener);
+  },
+  previewOpen: (input) => ipcRenderer.invoke('shell:preview-open', input),
+  previewNavigate: (id, url) => ipcRenderer.invoke('shell:preview-navigate', id, url),
+  previewResize: (id, bounds) => ipcRenderer.invoke('shell:preview-resize', id, bounds),
+  previewHide: (id) => ipcRenderer.invoke('shell:preview-hide', id),
+  previewShow: (id, bounds) => ipcRenderer.invoke('shell:preview-show', id, bounds),
+  previewClose: (id) => ipcRenderer.invoke('shell:preview-close', id),
+  getRemoteAccess: () => ipcRenderer.invoke('shell:remote-status'),
+  setRemoteEnabled: (enabled) => ipcRenderer.invoke('shell:remote-set-enabled', enabled),
+  refreshRemoteOffer: () => ipcRenderer.invoke('shell:remote-refresh-offer'),
+  revokeRemoteDevice: (deviceId) => ipcRenderer.invoke('shell:remote-revoke-device', deviceId),
   onPluginProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);

@@ -1,9 +1,11 @@
 /* Shell-owned global base: full-height mount plus the theme token sheets.
- * The six ui-theme sheets are the sole token source (--dsw-*); the shell
- * links them here so tokens exist before any plugin CSS lands. scrollbar.css
- * follows design-platform.css because it reads that sheet's tokens.
- * wallpaper.css follows the token sheet so chrome can mix those fills. */
+ * The seven ui-theme sheets are the sole token source (--dsw-*); the shell
+ * links them here so tokens exist before any plugin CSS lands. motion.css
+ * follows base.css because it reads that sheet's duration and easing tokens.
+ * scrollbar.css follows design-platform.css because it reads that sheet's
+ * tokens. wallpaper.css follows the token sheet so chrome can mix those fills. */
 @import '@deepseek-ai/dsh-client-ui-theme/styles/base.css';
+@import '@deepseek-ai/dsh-client-ui-theme/styles/motion.css';
 @import '@deepseek-ai/dsh-client-ui-theme/styles/design-platform.css';
 @import '@deepseek-ai/dsh-client-ui-theme/styles/wallpaper.css';
 @import '@deepseek-ai/dsh-client-ui-theme/styles/scrollbar.css';

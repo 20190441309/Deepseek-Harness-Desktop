@@ -15,8 +15,13 @@ const {
   showHarness,
   sendToBoot,
 } = require('./window');
+const { showClosingOverlay } = require('./closing-overlay');
+const { hideOnClose } = require('./close-behavior');
+const { createRemoteAccess } = require('./remote');
 
 const dsh = new DshManager();
+let remoteAccess = null;
+let desktopResources = null;
 let quitting = false;
 let starting = null;
 let stoppingForQuit = false;
@@ -75,6 +80,9 @@ async function startHarness() {
       if (loadConfig().openDevTools) {
         win.webContents.openDevTools({ mode: 'detach' });
       }
+      if (process.env.DSH_SMOKE === '1') {
+        void runSmoke(win);
+      }
       return url;
     } catch (error) {
       dsh.setState('error', { error: error.message });
@@ -88,8 +96,89 @@ async function startHarness() {
 }
 
 async function restartHarness() {
+  cleanupDesktopResources();
   await dsh.stop();
   return startHarness();
+}
+
+/** Tear down desktop-bound child processes and views (PTY, BrowserView). */
+function cleanupDesktopResources() {
+  if (!desktopResources) {
+    return;
+  }
+  try {
+    desktopResources.pty.killAll();
+  } catch (error) {
+    dsh.log(`PTY 清理失败：${error.message}`, 'app');
+  }
+  void Promise.resolve(desktopResources.preview.closeAll()).catch((error) => {
+    dsh.log(`预览清理失败：${error.message}`, 'app');
+  });
+}
+
+/** One-shot launch smoke: report the assembled chrome and exit with its status. */
+async function runSmoke(win) {
+  const pageErrors = [];
+  const onError = (_event, error) => { pageErrors.push(String(error).slice(0, 500)); };
+  win.webContents.on('render-process-gone', (_event, details) => {
+    pageErrors.push(`render-process-gone: ${details.reason}`);
+  });
+  win.webContents.on('console-message', (_event, _level, message) => {
+    if (String(message).includes('Uncaught')) pageErrors.push(String(message).slice(0, 500));
+  });
+  win.webContents.on('did-fail-load', onError);
+  try {
+    const result = await win.webContents.executeJavaScript(`(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      for (let i = 0; i < 60 && !document.querySelector('[class*="frame"]'); i += 1) await sleep(250);
+      await sleep(2500);
+      const frame = document.querySelector('[class*="frame"]');
+      const titlebar = document.querySelector('#dsh-shell-titlebar-trailing');
+      const buttons = titlebar ? Array.from(titlebar.querySelectorAll('button')).map(b => (b.getAttribute('aria-label') || b.textContent || '').trim()) : [];
+      return {
+        hasFrame: Boolean(frame),
+        gridColumns: frame ? getComputedStyle(frame).gridTemplateColumns : null,
+        hasTitlebar: Boolean(titlebar),
+        titlebarButtons: buttons,
+        hasSessionLog: buttons.some(t => t.includes('Session log')),
+      };
+    })()`);
+    console.log('[DSH_SMOKE]', JSON.stringify({ ...result, pageErrors }));
+    // Real PTY probe: node-pty is the one native dependency; prove it can
+    // spawn a shell inside Electron (or report the exact failure) so the
+    // smoke distinguishes "UI renders" from "terminal backend actually works".
+    let ptyStatus = 'skipped';
+    try {
+      const created = await Promise.race([
+        desktopResources.pty.create({ cwd: loadConfig().workspace, cols: 80, rows: 24 }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('pty-create timed out')), 15000)),
+      ]);
+      ptyStatus = `created:${created.id}`;
+      await Promise.race([
+        (async () => {
+          await desktopResources.pty.write(created.id, 'echo dsh-smoke-ok\r');
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          await desktopResources.pty.kill(created.id);
+        })(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('pty-roundtrip timed out')), 20000)),
+      ]);
+      ptyStatus = 'echoed:ok';
+    } catch (error) {
+      ptyStatus = `unavailable:${error.message}`;
+    }
+    console.log('[DSH_SMOKE_PTY]', ptyStatus);
+    const ok = result.hasFrame && result.hasTitlebar && result.hasSessionLog && pageErrors.length === 0;
+    try {
+      const fs = require('node:fs');
+      fs.writeFileSync(path.join(app.getPath('userData'), 'dsh-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));
+    } catch {
+      // Best-effort: the exit code still carries the verdict.
+    }
+    app.exit(ok ? 0 : 1);
+  } catch (error) {
+    console.log('[DSH_SMOKE] failed', String(error));
+    app.exit(1);
+  }
 }
 
 function reloadUi() {
@@ -97,6 +186,7 @@ function reloadUi() {
   if (!win) {
     return;
   }
+  cleanupDesktopResources();
   if (dsh.state === 'ready' && dsh.baseUrl) {
     win.loadURL(dsh.baseUrl);
     return;
@@ -126,7 +216,15 @@ if (!gotLock) {
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
 
-    registerIpc({ dsh, startHarness: restartHarness });
+    remoteAccess = createRemoteAccess({
+      userData: app.getPath('userData'),
+      loadConfig,
+      getBaseUrl: () => dsh.baseUrl,
+    });
+    desktopResources = registerIpc({ dsh, startHarness: restartHarness, remoteAccess });
+    if (loadConfig().remoteAccessEnabled) {
+      remoteAccess.start();
+    }
     buildMenu({
       onOpenWorkspace: () => pickWorkspace(),
       onRestart: () => restartHarness(),
@@ -139,10 +237,16 @@ if (!gotLock) {
 
     const win = createMainWindow();
     win.on('close', (event) => {
-      if (!quitting && loadConfig().closeToTray) {
+      if (quitting) {
+        return;
+      }
+      if (hideOnClose(loadConfig(), quitting)) {
         event.preventDefault();
         win.hide();
+        return;
       }
+      event.preventDefault();
+      quitApp();
     });
 
     session.defaultSession.on('will-download', (event, item) => {
@@ -179,11 +283,18 @@ if (!gotLock) {
     }
     event.preventDefault();
     stoppingForQuit = true;
-    dsh.stop().finally(() => app.quit());
+    cleanupDesktopResources();
+    if (remoteAccess) {
+      remoteAccess.stop();
+    }
+    showClosingOverlay(getMainWindow(), loadConfig().locale)
+      .catch(() => {})
+      .then(() => dsh.stop())
+      .finally(() => app.quit());
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin' && !loadConfig().closeToTray) {
+    if (process.platform !== 'darwin' && !hideOnClose(loadConfig())) {
       quitApp();
     }
   });
