@@ -76,7 +76,7 @@ async function pickWorkspace() {
     return null;
   }
   saveConfig({ workspace: result.filePaths[0] });
-  await harness.restart();
+  await restartWithCleanup();
   return result.filePaths[0];
 }
 
