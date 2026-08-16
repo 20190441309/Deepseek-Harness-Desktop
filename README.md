@@ -4,7 +4,7 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。第三方思考强度、识图模型兜底、主题和背景图这类地方补了一点。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题和标题栏 Git / 终端这类地方补了一点；手机远程将在下一版本发布。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
@@ -13,10 +13,14 @@
 1.支持第三方模型设置思考强度。
 2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
 3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
-4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选，一键安装 / 卸载到 web profile。
+4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选；安装会预填会话草稿由你发送，卸载仍是一键。
+
+自 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 起新增：
 5.设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
-6.设置 → 通用可开启远程访问：电脑出站连产品中继，手机 / 网页扫码后继续本机会话、发消息和审批工具。`dsh web` 仍只听 `127.0.0.1`。
-7.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、ANSI 终端（xterm）、Files / Diff / Browser / Agents 面板，所有文件与命令都限定在当前工作区内。
+6.手机远程办公（电脑出站连中继，手机扫码打开官方 Web 页继续本机会话）本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
+7.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm）、Files / Diff / Browser / Agents 面板，所有文件与命令都限定在当前工作区内。
+8.最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
+9.Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
 
 也欢迎有需求的朋友来提需求，或者提 PR。
 
@@ -36,9 +40,12 @@
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
 - **第三方思考强度**：自定义 / 第三方模型可勾 Low / Medium / High / Very High / Extreme，输入栏里就能切推理等级
 - **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
-- **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调
-- **插件市场**：在设置 → 插件 →「插件市场」里，和插件配置、插件列表并排。菜单 / 托盘 / 标题栏 / `Ctrl+Shift+M` 会打开这一页。目录只认 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按界面、工作流、工具、通知、开发、学习分类；安装走官方 `dsh plugin --profile web add github:owner/repo`，装完会重启 Harness。git 安装会在本机执行仓库的 prepare 脚本，只装你信任的插件。GitHub API 被限流时可把 Token 写进这一页。
-- **远程办公**：设置 → 通用 →「远程访问」。开启后桌面端出站连接中继，展示配对二维码。Android / Web 客户端在 `apps/mobile`。中继部署见 [`packages/relay/README.md`](packages/relay/README.md)。
+- **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调。对话框、菜单和模型名切换走同一套进出场动效，系统开了「减少动效」会自动关掉。
+- **插件市场**：在设置 → 插件 →「插件市场」里，和插件配置、插件列表并排。菜单 / 托盘 / 标题栏 / `Ctrl+Shift+M` 会打开这一页。目录只认 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按界面、工作流、工具、通知、开发、学习分类；点安装会关闭设置、打开空白会话并预填「帮我安装 …」，由你自己发送，Agent 通过 `install_dsh_plugin` 调用官方 `dsh plugin --profile web add github:owner/repo`，成功后重启 Harness。卸载仍是设置里一键。git 安装会在本机执行仓库的 prepare 脚本，只装你信任的插件。GitHub API 被限流时可把 Token 写进这一页。
+- **远程办公（下一版本）**：本版已隐藏远程入口（侧栏「远程」按钮），设置与配对能力保留，下一版本恢复发布。开启后桌面端出站连接中继，展示配对二维码。手机扫码打开官方 `dsh web`（竖屏覆盖层侧栏，横屏常驻工作区列表）。已绑定设备可单独解绑。说明见 [`mobile/README.md`](mobile/README.md)。
+- **编辑并重新发送**：最新一条用户消息旁有铅笔；点了会把那条气泡变成可编辑输入，确认后才在该消息之前分出子会话并发送修改后的文本，原会话和旧回答都保留。
+- **Harness 自动恢复**：主界面起来之后 `dsh` 意外退出，窗口立刻回到故障页，默认最多自动重启 3 次（间隔 1 / 2 / 4 秒），可取消或立刻重启。设置 → 通用可改策略。崩溃期间手机远程不再代理已经死掉的端口。
+- **工具结果配对恢复**：调度失败留下「有工具调用、没有结果」的残缺会话，下次发送会自动补齐，不再被提供商永久拒绝。
 - **标题栏 Git 操作**：有 Git 仓库的工作区里，标题栏出现 Commit / Commit & push / Push / 变更请求按钮与下拉菜单；无 Git 或非仓库时自动禁用。状态在窗口聚焦、操作完成后自动刷新。
 - **完整 VT 终端**：底栏终端抽屉与右栏 Terminal 共用同一批 PTY 会话（Windows ConPTY），基于 xterm 的完整 ANSI/VT 渲染，支持方向键、历史、Home/End、粘贴、Ctrl+C 与窗口缩放自适应。终端只在当前工作区内启动。
 - **纯右边栏**：标题栏开关打开右栏，空态五卡可开 Browser（本地 URL 预览）、Terminal、Files、Diff、Agents。文件浏览 / 读取、Git 状态与命令全部锁定在工作区根目录内，预览页仅允许本地回环地址且使用隔离会话，不会携带你的 API Key。
@@ -85,6 +92,24 @@
   <img src="assets/screenshot-theme-wallpaper-chat.png" alt="铺了背景图之后的对话界面" width="920" />
 </p>
 
+### 远程访问（下一版本）
+
+本版已隐藏远程入口，以下能力将在下一版本随入口一起恢复发布。
+
+设置 → 通用 →「远程访问」。开启后桌面端出站连接中继，弹出配对二维码。手机用系统相机扫码，配对成功后打开官方 Web 页：竖屏会话占满屏、工作区在左抽屉里；横屏左边工作区列表常驻。配对密钥只在 `#offer=` 里，页面不会要求手输令牌。已绑定设备可以单独解绑，不必轮换二维码。模型密钥、插件市场和远程配对仍在桌面端。`dsh web` 始终只听 `127.0.0.1`，远程也调不了设置、凭据这类特权接口。
+
+### 编辑并重新发送
+
+最新一条已发送的用户消息旁会出现铅笔。点击后那条气泡变成可编辑输入；取消恢复原文，发送则从该消息之前分出子会话并提交修改后的文本。原会话和旧回答都保留。正在生成、或消息里带图片时按钮不可用。
+
+### Harness 自动恢复
+
+主界面已经起来之后，如果 `dsh` 意外退出，窗口立刻回到故障页，显示退出原因和下次重试倒计时。默认最多自动重启 3 次（间隔 1 / 2 / 4 秒），可以取消本轮或立刻重启。冷启动配置错误不会循环重试。设置 → 通用 →「Harness 自动恢复」可开关、改次数和基础延迟。崩溃期间手机远程不再代理已经死掉的端口。
+
+### 标题栏 Git、终端与右边栏
+
+有 Git 仓库的工作区里，标题栏提供 Commit / Commit & push / Push / 变更请求。底栏终端抽屉和右栏 Terminal 共用同一批 PTY（Windows ConPTY），完整 ANSI/VT。标题栏开关打开右栏：Files、Diff、Browser、Agents。文件和命令锁在当前工作区里；预览只允许本机回环地址。
+
 ## 安装
 
 只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`），装完不需要本机 Node 环境。
@@ -128,6 +153,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 
 `vendor/deepseek-harness` 是 [git subtree](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge)：
 
+- **设计语言**：任何 UI / 布局 / 前端改动必须遵守官方 `dsh web` 的样式，见 [docs/design-language.md](docs/design-language.md)。不要给桌面壳另做一套皮肤。
 - **二次开发**：直接改 `vendor/deepseek-harness` 里的文件，和本仓库其他代码一起正常提交即可，不需要维护补丁文件。
 - **拉取官方更新**：`npm run sync:harness`（等价于 `git subtree pull --squash`）。git 会做三方合并——上游改动和本地定制自动融合，只有双方改了同一处才需要手动解决冲突，解决后 `git add` + `git commit` 完成合并。同步后跑 `npm run setup:harness` 重新构建。
 - **查看本地定制**：`git log --oneline -- vendor/deepseek-harness` 里非 `Sync/Squashed` 的提交就是二次开发历史；每次上游快照的提交信息里都带 `git-subtree-split`（上游 commit SHA），可用来对比。
