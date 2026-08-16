@@ -87,6 +87,19 @@ export function installAssembledBootEnv(): void {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
       setTimeout(() => { callback(0) }, 0) as unknown as number)
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { clearTimeout(id) })
+    // The layout frame reads the device orientation through matchMedia, which
+    // this jsdom version does not provide; a landscape-neutral stub keeps the
+    // boot graph from crashing the root slot before the first paint.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener(): void {},
+      removeEventListener(): void {},
+      addListener(): void {},
+      removeListener(): void {},
+      dispatchEvent: () => false,
+    }))
   })
 
   afterEach(() => {
