@@ -1,6 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import { cwdFromSessions } from './cwd.ts'
 import { NS } from './locales.ts'
 import type { TerminalShellInjected } from './shell.ts'
 import type { createTerminalSessionStore } from './stores.ts'
@@ -20,20 +19,6 @@ export type TerminalDrawerProps =
  * @returns the drawer chrome, or an empty unavailable state before a session exists.
  */
 export function TerminalDrawer(props: TerminalDrawerProps): ReactNode {
-  const cwd = props.useSessions(list => cwdFromSessions(props.sessionId, list))
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return
-      if (event.key !== '`') return
-      event.preventDefault()
-      if (!cwd) return
-      props.toggleTerminalDrawer()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('keydown', onKey) }
-  }, [cwd, props.toggleTerminalDrawer])
-
   return (
     <TerminalWorkspace
       mode="drawer"

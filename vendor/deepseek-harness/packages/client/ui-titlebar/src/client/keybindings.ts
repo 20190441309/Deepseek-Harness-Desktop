@@ -9,6 +9,18 @@
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.closest('.xterm') !== null) return true
+  return isTextEntryTarget(target)
+}
+
+/**
+ * True when a keydown target is a text entry field (not the terminal). The
+ * terminal-drawer toggle still applies while typing inside the terminal, so
+ * its shortcut checks this instead of {@link isEditableKeyboardTarget}.
+ * @param target - event target.
+ * @returns whether the target is a text input.
+ */
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
   const tag = target.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   const contentEditable = target.contentEditable

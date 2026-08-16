@@ -225,10 +225,10 @@ describe('TerminalDrawer', () => {
     expect(b.setTerminalDrawer).toHaveBeenCalledWith(maxDrawerHeight(window.innerHeight))
   })
 
-  it('Ctrl+` toggles the drawer when a cwd exists and no-ops without one', () => {
+  it('does not register its own Ctrl+` listener; the titlebar toggle owns the shortcut', () => {
     const withCwd = mount({ cwd: '/work' })
     fireEvent.keyDown(window, { key: '`', ctrlKey: true })
-    expect(withCwd.toggleTerminalDrawer).toHaveBeenCalledOnce()
+    expect(withCwd.toggleTerminalDrawer).not.toHaveBeenCalled()
     cleanup()
     const without = mount({ cwd: undefined, sessionId: undefined })
     fireEvent.keyDown(window, { key: '`', ctrlKey: true })

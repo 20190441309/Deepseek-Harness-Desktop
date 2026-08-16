@@ -5,7 +5,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { isEditableKeyboardTarget, isSurfacesShortcut, isTerminalShortcut } from './keybindings.ts'
+import { isEditableKeyboardTarget, isSurfacesShortcut, isTerminalShortcut, isTextEntryTarget } from './keybindings.ts'
 import { NS } from './locales.ts'
 import css from './PanelToggles.module.css'
 
@@ -39,13 +39,16 @@ export function PanelToggles({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isEditableKeyboardTarget(event.target)) return
       if (isSurfacesShortcut(event)) {
+        if (isEditableKeyboardTarget(event.target)) return
         event.preventDefault()
         toggleSurfaces()
         return
       }
       if (isTerminalShortcut(event)) {
+        // The drawer toggle still applies with focus inside the terminal, so
+        // only text entry fields are exempt for this shortcut.
+        if (isTextEntryTarget(event.target)) return
         if (!terminalAvailable) return
         event.preventDefault()
         toggleTerminalDrawer()
