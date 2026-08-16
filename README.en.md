@@ -13,7 +13,7 @@ No custom chat UI: Electron owns the window, tray, workspace, API key, and launc
 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) adds:
 
 1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
-2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (search panel, interaction ported from T3code), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. The value is these work loops, not five empty-state cards. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
+2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (searchable), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
 3. Edit-and-resend on the latest user message: the pencil edits that bubble; confirming sends from a child session, the parent stays put.
 4. If Harness exits after the UI is up, the window returns to a failure page and retries a limited number of times; Settings → General owns the policy. A transcript that recorded tool calls without results is completed on the next send.
 5. Settings → General → When closing the window: minimize to tray or quit. Quit stops the local Harness and shows a theme-following Closing overlay.
@@ -53,7 +53,7 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Tool-result pairing recovery**: a transcript that recorded tool calls without results is completed on the next send, so the provider no longer rejects the session forever.
 - **Title-bar Git**: in a Git workspace the title bar shows Commit / Commit & push / Push / pull-request actions; disabled when there is no repo. Status refreshes on focus and after an operation.
 - **Full VT terminal**: the bottom drawer and the Terminal surface each own a PTY table (Windows ConPTY), rendered with xterm. A selection can Copy, Add to chat (disabled without a session), or Open a URL / workspace path; ⌘/Ctrl-click does the same. Maximize restores the **drawer** height only; `surfaces.terminal` has no separate maximize. Shells start only inside the current workspace.
-- **Right-hand surfaces**: a title-bar toggle opens the column. The value is the T3 **work loops**, not the five empty-state cards: Files search and edit/save (dirty drafts survive reload; closing a dirty tab confirms); Browser back/forward/reload/DevTools/system browser/discovered ports, with the guest kept alive across tab switches; Diff Working tree vs Branch (no Stage on a branch); Agents lists child sessions and background jobs. File, Git, and command access stay inside the workspace root; preview is loopback-only in an isolated session and never carries your API key. Ghostty, worktree-bound branches, checkpoint turn-diff, review-comment pick, PiP/recording, and jump-to-line stay out. Contract: [T3 surfaces and terminal workflows](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.md).
+- **Right-hand surfaces**: a title-bar toggle opens the column. Files search and edit/save (dirty drafts survive reload; closing a dirty tab confirms); Browser back/forward/reload/DevTools/system browser/discovered ports, with the guest kept alive across tab switches; Diff Working tree vs Branch; Agents lists child sessions and background jobs. File, Git, and command access stay inside the workspace root; preview is loopback-only in an isolated session and never carries your API key.
 
 ### Third-party thinking intensity
 
@@ -113,7 +113,7 @@ If `dsh` exits after the main UI is up, the window returns to a failure page wit
 
 ### Title-bar Git, terminal, and surfaces
 
-A Git workspace gets Commit / Commit & push / Push / pull-request in the title bar. The bottom terminal drawer and the Terminal surface each own a PTY with full ANSI/VT; a selection can Add to chat (disabled without a session). Opening the right column gives Files search and save, Browser navigation that keeps the guest, Diff worktree vs branch, and Agents job status. Ghostty, worktree environments, turn-diff, review comments, PiP, and jump-to-line are not faked. Contract: [T3 surfaces and terminal workflows](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.md).
+A Git workspace gets Commit / Commit & push / Push / pull-request in the title bar. The bottom terminal drawer and the Terminal surface each own a PTY with full ANSI/VT; a selection can Add to chat (disabled without a session). Opening the right column gives Files search and save, Browser navigation that keeps the guest, Diff worktree vs branch, and Agents job status.
 
 ## Install
 

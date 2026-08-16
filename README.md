@@ -13,7 +13,7 @@
 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) 新增：
 
 1. 设置 → MCP、设置 → 技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。文件菜单也有入口。
-2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。价值是这些工作环，不是五张空态卡。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
+2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（可搜索）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
 3. 最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
 4. Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
 5. 设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
@@ -45,7 +45,7 @@
 - **工具结果配对恢复**：调度失败留下「有工具调用、没有结果」的残缺会话，下次发送会自动补齐，不再被提供商永久拒绝。
 - **标题栏 Git 操作**：有 Git 仓库的工作区里，标题栏出现 Commit / Commit & push / Push / 变更请求按钮与下拉菜单；无 Git 或非仓库时自动禁用。状态在窗口聚焦、操作完成后自动刷新。
 - **完整 VT 终端**：底栏终端抽屉与右栏 Terminal 各自拥有 PTY 会话表（Windows ConPTY），基于 xterm 的完整 ANSI/VT。选区可复制、加入对话（没有会话时禁用）、打开 URL 或工作区路径；⌘/Ctrl-点击同样生效。最大化只还原底栏抽屉高度，右栏 Terminal 没有单独最大化。
-- **纯右边栏**：标题栏开关打开右栏。移植的是 T3 工作环，不是五张空态卡：Files 可按名搜索、编辑保存（未保存草稿刷新后仍在，关 Tab 会确认）；Browser 可后退/前进/刷新/DevTools/系统浏览器/发现本机端口，切 Tab 不关访客页；Diff 分工作区与分支范围（分支上没有暂存）；Agents 列出子会话与后台任务。文件、Git、命令锁在工作区根；预览只允许本机回环且隔离会话，不带 API Key。不移植 Ghostty、worktree 绑分支、checkpoint turn-diff、批注拾取、PiP/录制、跳行。约定见 [右边栏与终端的 T3 工作流](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.zh.md)。
+- **纯右边栏**：标题栏开关打开右栏。Files 可按名搜索、编辑保存（未保存草稿刷新后仍在，关 Tab 会确认）；Browser 可后退/前进/刷新/DevTools/系统浏览器/发现本机端口，切 Tab 不关访客页；Diff 分工作区与分支范围；Agents 列出子会话与后台任务。文件、Git、命令锁在工作区根；预览只允许本机回环且隔离会话，不带 API Key。
 
 ### 第三方思考强度
 
@@ -105,7 +105,7 @@
 
 ### 标题栏 Git、终端与右边栏
 
-有 Git 仓库的工作区里，标题栏提供 Commit / Commit & push / Push / 变更请求。底栏终端抽屉和右栏 Terminal 各自拥有 PTY，完整 ANSI/VT；选区可加入对话（无会话时禁用）。标题栏开关打开右栏后，Files 可搜索并保存、Browser 可导航并保持访客页、Diff 可看工作区或分支、Agents 可读任务状态。不假装有 Ghostty、worktree 环境、turn-diff、批注、PiP 或跳行。约定：[右边栏与终端的 T3 工作流](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.zh.md)。
+有 Git 仓库的工作区里，标题栏提供 Commit / Commit & push / Push / 变更请求。底栏终端抽屉和右栏 Terminal 各自拥有 PTY，完整 ANSI/VT；选区可加入对话（无会话时禁用）。标题栏开关打开右栏后，Files 可搜索并保存、Browser 可导航并保持访客页、Diff 可看工作区或分支、Agents 可读任务状态。
 
 ## 安装
 
