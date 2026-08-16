@@ -4,13 +4,13 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Current release: [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0). Phone-remote access is built but its entry point is hidden in this release; it ships in the next one. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled from Releases after a launch failure; if you already installed it, uninstall and install 0.1.3. I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) adds:
+The next release (already in source; installer pending a fix) will add:
 
 1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
 2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (searchable), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
@@ -117,7 +117,7 @@ A Git workspace gets Commit / Commit & push / Push / pull-request in the title b
 
 ## Install
 
-Just want to use it? Grab the [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) NSIS installer (`Deepseek-Harness-Desktop-Setup-0.2.0.exe`) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
+Just want to use it? Grab the [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) NSIS installer (`Deepseek-Harness-Desktop-Setup-0.1.3.exe`) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
 
 Only Windows x64 packages are published for now; on macOS / Linux, run from source — official packaging is not provided yet.
 
