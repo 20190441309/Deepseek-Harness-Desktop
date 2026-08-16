@@ -50,30 +50,36 @@ function createWorkspaceAuthority({
   }
 
   /**
-   * Accept a renderer-supplied cwd only when it is an authorized root or one
-   * of that root's real subdirectories. Rejects nonexistent paths, files, and
-   * `..`/absolute escapes relative to every matching root.
+   * Accept a renderer-supplied cwd only when its real path is an authorized
+   * root or one of that root's real subdirectories. Rejects nonexistent
+   * paths, files, `..`/absolute escapes, and symlinks that resolve outside
+   * every root.
    * @param {unknown} candidate - the renderer-supplied cwd.
-   * @returns {string | null} the canonical authorized cwd, or null.
+   * @returns {string | null} the canonical real authorized cwd, or null.
    */
   function resolveAuthorizedCwd(candidate) {
     if (typeof candidate !== 'string' || candidate.trim() === '') {
       return null;
     }
     const resolved = path.resolve(candidate);
+    let real;
     try {
       if (!fs.statSync(resolved).isDirectory()) return null;
+      real = fs.realpathSync(resolved);
     } catch {
       return null;
     }
     for (const root of authorizedRoots()) {
-      if (containedIn(root, resolved)) return resolved;
+      if (containedIn(root, real)) return real;
     }
     return null;
   }
 
   /**
-   * Resolve a relative path inside an authorized cwd, refusing traversal.
+   * Resolve a relative path inside an authorized cwd, refusing traversal and
+   * symlink escapes: the deepest existing node on the target chain must stay
+   * inside the base after realpath normalization. Symlinks that stay inside
+   * the workspace (pnpm store links) keep working.
    * @param {unknown} cwd - the renderer-supplied cwd (authorized first).
    * @param {unknown} relativePath - path relative to the cwd.
    * @returns {string | null} the canonical target, or null.
@@ -85,7 +91,16 @@ function createWorkspaceAuthority({
     const target = path.resolve(base, rel);
     const fromBase = path.relative(base, target);
     if (fromBase.startsWith('..') || path.isAbsolute(fromBase)) return null;
-    return target;
+    let node = target;
+    while (true) {
+      const nodeReal = realPathOrNull(node);
+      if (nodeReal !== null) {
+        return containedIn(base, nodeReal) ? target : null;
+      }
+      const parent = path.dirname(node);
+      if (parent === node) return null;
+      node = parent;
+    }
   }
 
   return { authorizedRoot, authorizedRoots, resolveAuthorizedCwd, resolveInside };
@@ -121,6 +136,20 @@ function collectRoots(candidates) {
 
 function identityKey(resolved) {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * Canonical real path of a maybe-missing node, or null when it does not
+ * exist (ENOENT and friends).
+ * @param {string} target - the node to resolve.
+ * @returns {string | null} the realpath, or null.
+ */
+function realPathOrNull(target) {
+  try {
+    return fs.realpathSync(target);
+  } catch {
+    return null;
+  }
 }
 
 function containedIn(root, candidate) {

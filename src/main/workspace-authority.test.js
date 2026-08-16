@@ -59,6 +59,73 @@ test('resolveInside refuses traversal and absolute targets', () => {
   }
 });
 
+/** Best-effort directory link: junction on Windows (no privilege needed), dir symlink elsewhere. */
+function makeDirLink(target, link) {
+  const type = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(target, link, type);
+}
+
+test('resolveInside refuses a directory link that escapes the workspace', (t) => {
+  const root = makeRoot();
+  const outside = makeRoot();
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'classified\n');
+    try {
+      makeDirLink(outside, path.join(root, 'escape'));
+    } catch (error) {
+      t.skip(`directory links unavailable: ${error.code ?? error.message}`);
+      return;
+    }
+    const authority = createWorkspaceAuthority({ workspace: root });
+    assert.equal(authority.resolveInside(root, path.join('escape', 'secret.txt')), null);
+    assert.equal(authority.resolveInside(root, path.join('escape', 'missing.txt')), null);
+    assert.equal(authority.resolveAuthorizedCwd(path.join(root, 'escape')), null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('resolveInside refuses a file link that escapes the workspace', (t) => {
+  const root = makeRoot();
+  const outside = makeRoot();
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'classified\n');
+    try {
+      fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(root, 'steal.txt'));
+    } catch (error) {
+      t.skip(`file links unavailable: ${error.code ?? error.message}`);
+      return;
+    }
+    const authority = createWorkspaceAuthority({ workspace: root });
+    assert.equal(authority.resolveInside(root, 'steal.txt'), null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('resolveInside keeps directory links that stay inside the workspace', (t) => {
+  const root = makeRoot();
+  try {
+    fs.mkdirSync(path.join(root, 'real'));
+    fs.writeFileSync(path.join(root, 'real', 'a.ts'), 'x');
+    try {
+      makeDirLink(path.resolve(root, 'real'), path.join(root, 'link'));
+    } catch (error) {
+      t.skip(`directory links unavailable: ${error.code ?? error.message}`);
+      return;
+    }
+    const authority = createWorkspaceAuthority({ workspace: root });
+    assert.equal(
+      authority.resolveInside(root, path.join('link', 'a.ts')),
+      path.join(path.resolve(root), 'link', 'a.ts'),
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('empty workspace yields a null root that disables everything', () => {
   const authority = createWorkspaceAuthority({ workspace: '' });
   assert.equal(authority.authorizedRoot(), null);
