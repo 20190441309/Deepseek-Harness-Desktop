@@ -4,4 +4,4 @@
     - img
   - menuitemradio "Off"
   - menuitemradio "High"
-  - menuitemradio "Max"
+  - menuitemradio "Extreme"

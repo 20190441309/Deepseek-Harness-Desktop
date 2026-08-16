@@ -169,9 +169,9 @@ async function launchScrollWorld(options: ScrollWorldOptions): Promise<ScrollWor
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     // Session-list bootstrap can replace the controlled search state. Wait
     // for the seeded baseline before openSeed starts the lazy content query
-    // (the compact layout dropped group session counts; the Ungrouped bucket
+    // (the compact layout dropped group session counts; the Tasks section
     // row is the barrier).
-    await page.getByText('Ungrouped', { exact: true }).waitFor({ timeout: 30_000 })
+    await page.getByText('Tasks', { exact: true }).waitFor({ timeout: 30_000 })
     return {
       events,
       page,
@@ -659,8 +659,13 @@ describe('web e2e: long Chat scroll contract', () => {
       await world.page.setViewportSize({ width: 700, height: 900 })
       // The narrow breakpoint auto-collapses the sidebar. Re-open it because
       // this scenario switches sessions while pinning the narrow Chat scroll owner.
-      await world.page.getByRole('button', { name: 'Open sidebar', exact: true }).click()
+      // The phone drawer overlays the center column, so the Chat tab is
+      // reachable only after the drawer folds back; the search-based session
+      // switch below reopens it.
+      await world.page.getByRole('button', { name: 'Open sidebar', exact: true }).first().click()
+      await world.page.getByRole('button', { name: 'Close sidebar', exact: true }).click()
       await world.page.getByRole('tab', { name: 'Chat', exact: true }).click()
+      await world.page.getByRole('button', { name: 'Open sidebar', exact: true }).first().click()
       await nextPaint(world.page)
       await expectSameFlowTop(world.page, sessionAnchor)
 

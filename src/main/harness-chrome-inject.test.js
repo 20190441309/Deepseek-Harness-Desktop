@@ -25,6 +25,23 @@ test('injected chrome script is a re-runnable IIFE with no Node exports', () => 
   assert.doesNotMatch(injectSource, /^function /m);
 });
 
+test('injected window controls follow official label and hover tokens', () => {
+  assert.match(injectSource, /color:\s*var\(--dsw-alias-label-primary\)/);
+  assert.match(injectSource, /background:\s*var\(--dsw-alias-interactive-bg-hover\)/);
+  assert.doesNotMatch(injectSource, /--dsh-ctrl-fg/);
+  assert.doesNotMatch(injectSource, /--dsh-ctrl-hover/);
+});
+
+test('injected chrome script omits the marketplace window-control', () => {
+  assert.doesNotMatch(injectSource, /插件市场/);
+  assert.doesNotMatch(injectSource, /data-act="marketplace"/);
+});
+
+test('injected chrome script prefers the titlebar row over a draft drag strip', () => {
+  assert.match(injectSource, /\[data-titlebar-row\]/);
+  assert.match(injectSource, /findTitlebarRow/);
+});
+
 test('injected chrome script can be evaluated twice in one realm', () => {
   const context = vm.createContext(createInjectSandbox());
   assert.doesNotThrow(() => vm.runInContext(injectSource, context));

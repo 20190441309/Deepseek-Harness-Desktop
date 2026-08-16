@@ -3,9 +3,6 @@
     - 'button "Plan a small change: add" [disabled]'
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -17,6 +14,10 @@
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
+- button "Context injection skill-catalog":
+  - img
+  - img
+  - text: Context injection skill-catalog
 - 'button "Think The user wants me to plan a small change to add a `--greeting` flag to a CLI. They explicitly told me not to read or write any files, and to call exit_plan_mode with a short plan. Let me do that directly."':
   - img
   - img

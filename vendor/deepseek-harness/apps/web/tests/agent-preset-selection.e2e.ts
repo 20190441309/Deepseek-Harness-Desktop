@@ -272,8 +272,13 @@ describe('web e2e: agent-preset selection', () => {
   it('labels a resumed session with the preset it was created under', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-header'))
     // The seeded session's cwd is the scaffold root rather than the connected
-    // workspace, so it lists under Ungrouped; the group collapses by default.
-    await page.getByRole('treeitem', { name: /^Ungrouped/ }).click()
+    // workspace, so it lists under Tasks. Startup auto-selection opens the
+    // most recent session, pre-expanding the section; the header toggles on
+    // click, so expand only when it is collapsed.
+    const tasksHeader = page.getByRole('treeitem', { name: /^Tasks/ })
+    if (await tasksHeader.getAttribute('aria-expanded') !== 'true') {
+      await tasksHeader.click()
+    }
     await page.locator('[role="treeitem"]').last().click()
     await page.getByText('Seeded turn.').waitFor({ timeout: 15_000 })
 
@@ -283,7 +288,9 @@ describe('web e2e: agent-preset selection', () => {
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('button "1 subagent"')
     expect(snapshot.indexOf('Minimal mode')).toBeLessThan(snapshot.indexOf('button "1 subagent"'))
-    expect(snapshot.indexOf('button "1 subagent"')).toBeLessThan(snapshot.indexOf('button "Session log"'))
+    // The header's trailing utilities end with the subagent count; the Session
+    // log download moved to the titlebar capsule, so it no longer sits here.
+    expect(snapshot.indexOf('button "Session log"')).toBe(-1)
     // Static chrome, not a control: the header can only report a composition
     // the host would refuse to change.
     expect(snapshot).not.toContain('button "Minimal mode"')

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { gitCommit, gitDiff, gitStatus, parseUnifiedDiff, run, setWorkspaceAuthority } = require('./git.js');
+const { gitBranchList, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitInit, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, parsePorcelainZ, parseUnifiedDiff, run, setWorkspaceAuthority } = require('./git.js');
 
 function makeTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-'));
@@ -20,10 +20,28 @@ function git(cwd, args) {
   return result.stdout;
 }
 
-test('gitStatus returns null when the directory is not a git repository', async () => {
+test('gitStatus reports isRepo false when the directory is not a git repository', async () => {
   const cwd = makeTempDir();
   try {
-    assert.equal(await gitStatus(cwd), null);
+    const status = await gitStatus(cwd);
+    assert.equal(status.isRepo, false);
+    assert.equal(status.refName, null);
+    assert.equal(status.hasWorkingTreeChanges, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitInit creates a repository the titlebar can commit into', async () => {
+  const cwd = makeTempDir();
+  try {
+    const inited = await gitInit(cwd);
+    assert.equal(inited.ok, true);
+    const again = await gitInit(cwd);
+    assert.equal(again.ok, true);
+    const status = await gitStatus(cwd);
+    assert.equal(status.isRepo, true);
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -40,6 +58,7 @@ test('gitStatus reports hasWorkingTreeChanges after init and an uncommitted file
     fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
     const status = await gitStatus(cwd);
     assert.ok(status);
+    assert.equal(status.isRepo, true);
     assert.equal(status.hasWorkingTreeChanges, true);
     assert.equal(status.refName, 'main');
   } finally {
@@ -173,6 +192,128 @@ test('gitCommit records a message and clears working-tree changes', async () => 
     assert.ok(status);
     assert.equal(status.hasWorkingTreeChanges, false);
     assert.equal(status.refName, 'main');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('parsePorcelainZ skips rename origin fields', () => {
+  const entries = parsePorcelainZ('R  old.txt\0new.txt\0 M src/a.ts\0?? extra.md\0');
+  assert.deepEqual(entries, [
+    { path: 'new.txt', xy: 'R ' },
+    { path: 'src/a.ts', xy: ' M' },
+    { path: 'extra.md', xy: '??' },
+  ]);
+});
+
+test('gitStatus accepts a second authorized git root and ignores an outsider repo', async () => {
+  const boot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-boot-'));
+  const extra = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-extra-'));
+  const outsider = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-out-'));
+  setWorkspaceAuthority(createWorkspaceAuthority({
+    workspace: boot,
+    extraWorkspaces: [extra],
+  }));
+  try {
+    git(extra, ['init']);
+    git(extra, ['config', 'user.email', 'git-test@example.com']);
+    git(extra, ['config', 'user.name', 'Git Test']);
+    git(extra, ['checkout', '-b', 'main']);
+    git(outsider, ['init']);
+    const status = await gitStatus(extra);
+    assert.ok(status);
+    assert.equal(status.refName, 'main');
+    assert.equal(await gitStatus(outsider), null);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(extra, { recursive: true, force: true });
+    fs.rmSync(outsider, { recursive: true, force: true });
+  }
+});
+
+test('gitStage rejects a path outside the workspace', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init']);
+    const escaped = await gitStage(cwd, path.join('..', 'outside.txt'));
+    assert.equal(escaped.ok, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitStage, gitUnstage, and gitDiscard operate on a tracked file', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init']);
+    git(cwd, ['config', 'user.email', 'git-test@example.com']);
+    git(cwd, ['config', 'user.name', 'Git Test']);
+    git(cwd, ['checkout', '-b', 'main']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'Add readme']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    const staged = await gitStage(cwd, 'README.md');
+    assert.equal(staged.ok, true);
+    const entries = await gitStatusEntries(cwd);
+    assert.equal(entries.ok, true);
+    const row = entries.entries.find((item) => item.path === 'README.md');
+    assert.ok(row);
+    assert.equal(row.xy[0], 'M');
+    const unstaged = await gitUnstage(cwd, 'README.md');
+    assert.equal(unstaged.ok, true);
+    const discarded = await gitDiscard(cwd, 'README.md');
+    assert.equal(discarded.ok, true);
+    assert.equal(fs.readFileSync(path.join(cwd, 'README.md'), 'utf8').replace(/\r\n/g, '\n'), 'hello\n');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitBranchList marks the current branch and gitSwitchBranch/gitCreateBranch round-trip', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'x\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+
+    const listed = await gitBranchList(cwd);
+    assert.equal(listed.ok, true);
+    assert.equal(listed.branches.length, 1);
+    assert.equal(listed.branches[0].name, 'main');
+    assert.equal(listed.branches[0].isCurrent, true);
+    assert.equal(listed.branches[0].isRemote, false);
+
+    const created = await gitCreateBranch(cwd, 'feature/qa');
+    assert.equal(created.ok, true, created.message);
+    assert.equal(created.refName, 'feature/qa');
+
+    const back = await gitSwitchBranch(cwd, 'main');
+    assert.equal(back.ok, true, back.message);
+    assert.equal(back.refName, 'main');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    for (const bad of ['../evil', '-b', 'x..y', 'a/.lock', '']) {
+      const switched = await gitSwitchBranch(cwd, bad);
+      assert.equal(switched.ok, false, bad);
+      const created = await gitCreateBranch(cwd, bad);
+      assert.equal(created.ok, false, bad);
+    }
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });

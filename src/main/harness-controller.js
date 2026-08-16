@@ -31,6 +31,7 @@ class HarnessController extends EventEmitter {
     this.isBootLoaded = options.isBootLoaded || (() => false);
     this.resolveLaunchTarget = options.resolveLaunchTarget;
     this.stripDroppedPlugins = options.stripDroppedPlugins;
+    this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
     this.ensureWorkspace = options.ensureWorkspace;
     this.setTimer = options.setTimer || setTimeout;
     this.clearTimer = options.clearTimer || clearTimeout;
@@ -325,6 +326,11 @@ class HarnessController extends EventEmitter {
         this.stripDroppedPlugins();
       } catch (error) {
         this.dsh.log(`插件清理失败：${errorMessage(error)}`, 'app');
+      }
+      try {
+        this.ensureDesktopInstallPlugin();
+      } catch (error) {
+        this.dsh.log(`桌面安装插件写入失败：${errorMessage(error)}`, 'app');
       }
       const url = await this.dsh.start(target);
       this.assertOperationCurrent(generation);

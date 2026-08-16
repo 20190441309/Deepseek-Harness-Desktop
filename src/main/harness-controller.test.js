@@ -187,6 +187,17 @@ function fixture(overrides = {}) {
   };
 }
 
+test('writes the desktop install plugin before launching Harness', async () => {
+  const calls = [];
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => {
+      calls.push('ensure');
+    },
+  });
+  await f.controller.start();
+  assert.deepEqual(calls, ['ensure']);
+});
+
 test('runtime crash returns to boot, disconnects Remote, and schedules one restart', async () => {
   const f = fixture();
   await f.controller.start();

@@ -1,14 +1,13 @@
 - banner:
   - navigation "Session hierarchy":
     - button "CJK strong emphasis" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Render adjacent CJK strong emphasis. {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - heading "CJK strong emphasis" [level=2]
 - paragraph:

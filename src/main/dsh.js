@@ -7,6 +7,7 @@ const { loadConfig, configPath } = require('./config');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 const { prependPath } = require('../shared/env-path');
+const { desktopInstallEnv } = require('./desktop-install-control');
 
 const PORT_SCAN_RANGE = 50;
 
@@ -606,6 +607,7 @@ class DshManager extends EventEmitter {
       // app not ready
     }
     prependPath(env, extras);
+    Object.assign(env, desktopInstallEnv());
     return env;
   }
 

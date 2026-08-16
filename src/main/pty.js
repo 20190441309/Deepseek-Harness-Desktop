@@ -15,9 +15,13 @@ function asCwd(cwd) {
 
 function defaultShell() {
   if (process.platform === 'win32') {
-    return process.env.COMSPEC || 'powershell.exe';
+    return 'powershell.exe';
   }
   return process.env.SHELL || '/bin/bash';
+}
+
+function defaultShellArgs() {
+  return process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
 }
 
 function defaultSpawn() {
@@ -28,10 +32,12 @@ function defaultSpawn() {
     throw new Error('node-pty is not available');
   }
   return ({ cwd, cols, rows, onData, onExit }) => {
-    const term = pty.spawn(defaultShell(), [], {
+    const term = pty.spawn(defaultShell(), defaultShellArgs(), {
       cwd,
       cols: cols ?? 80,
       rows: rows ?? 24,
+      name: 'xterm-256color',
+      env: { ...process.env, TERM: 'xterm-256color' },
     });
     term.onData(onData);
     term.onExit(({ exitCode }) => {
@@ -90,7 +96,8 @@ function createPtyController(options = {}) {
       let backend;
       try {
         backend = resolveSpawn();
-      } catch {
+      } catch (error) {
+        console.error('[pty] backend unavailable:', error && error.message ? error.message : error);
         throw new Error(BACKEND_UNAVAILABLE);
       }
       const id = randomUUID();
@@ -108,7 +115,8 @@ function createPtyController(options = {}) {
             emit('shell:pty-exit', { id, code: Number(code) || 0 });
           },
         });
-      } catch {
+      } catch (error) {
+        console.error('[pty] spawn failed:', error && error.message ? error.message : error);
         throw new Error(BACKEND_UNAVAILABLE);
       }
       sessions.set(id, session);
@@ -177,4 +185,4 @@ function registerPtyIpc(ipcMain, controller) {
   return live;
 }
 
-module.exports = { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority };
+module.exports = { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority, defaultShell, defaultShellArgs };

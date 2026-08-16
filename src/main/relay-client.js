@@ -78,11 +78,10 @@ class RelayClient extends EventEmitter {
       await this.disconnect();
       return this.snapshot();
     }
-    this.shouldRun = true;
-    this.url = origin;
-    if (this.connected && this.url === origin) {
+    if (this.url === origin && this.shouldRun && this.socket && !this.socket.destroyed) {
       return this.snapshot();
     }
+    this.shouldRun = true;
     this.clearReconnect();
     this.teardown();
     await this.connect(origin);
@@ -121,7 +120,9 @@ class RelayClient extends EventEmitter {
       socket.once('error', fail);
       socket.once('close', () => {
         if (!settled) {
-          fail(new Error('relay handshake closed'));
+          fail(new Error(generation === this.generation
+            ? 'relay handshake closed'
+            : 'relay handshake aborted'));
         }
       });
       const onReady = () => {

@@ -13,7 +13,6 @@
   const ICON_MAX = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
   const ICON_RESTORE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="3.4" y="2.2" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/><rect x="2.2" y="3.6" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3L3 9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>';
-  const ICON_MARKET = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.2 3.2h7.6v6.4H2.2z" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M4 3.2V2.4a2 2 0 0 1 4 0v.8" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>';
 
   const INTERACTIVE = 'a, button, input, textarea, select, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [contenteditable]';
 
@@ -40,17 +39,6 @@
     }
     const hex = (value) => Math.max(0, Math.min(255, Math.round(Number(value)))).toString(16).padStart(2, '0');
     return `#${hex(match[1])}${hex(match[2])}${hex(match[3])}`;
-  }
-
-  function isLightHex(hex) {
-    const value = parseInt(String(hex || '#888888').replace('#', '').slice(0, 6), 16);
-    if (Number.isNaN(value)) {
-      return true;
-    }
-    const r = (value >> 16) & 255;
-    const g = (value >> 8) & 255;
-    const b = value & 255;
-    return (r * 299 + g * 587 + b * 114) / 1000 > 150;
   }
 
   function opaqueBg(el) {
@@ -117,6 +105,10 @@
     return document.querySelector('[class*="centerCol"]');
   }
 
+  function findTitlebarRow() {
+    return document.querySelector('[data-titlebar-row]');
+  }
+
   function isVisibleChrome(el) {
     if (!(el instanceof HTMLElement)) {
       return false;
@@ -130,7 +122,7 @@
   }
 
   function windowControlsRight() {
-    return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
+    return EDGE + CONTROL_SIZE * 3 + CONTROL_GAP * 2 + CLUSTER;
   }
 
   function trailingClusterWidth() {
@@ -181,7 +173,7 @@
         border: 0;
         border-radius: 8px;
         background: transparent;
-        color: var(--dsh-ctrl-fg, #3f3f46);
+        color: var(--dsw-alias-label-primary);
         cursor: pointer;
         -webkit-app-region: no-drag;
       }
@@ -191,7 +183,7 @@
         display: block;
       }
       #${CONTROLS_ID} button:hover {
-        background: var(--dsh-ctrl-hover, rgba(0, 0, 0, 0.08));
+        background: var(--dsw-alias-interactive-bg-hover);
       }
       #${CONTROLS_ID} button[data-act="close"]:hover {
         background: #e81123;
@@ -227,7 +219,6 @@
     host = document.createElement('div');
     host.id = CONTROLS_ID;
     host.innerHTML = [
-      `<button type="button" data-act="marketplace" aria-label="插件市场">${ICON_MARKET}</button>`,
       `<button type="button" data-act="minimize" aria-label="最小化">${ICON_MIN}</button>`,
       `<button type="button" data-act="maximize" aria-label="最大化">${ICON_MAX}</button>`,
       `<button type="button" data-act="close" aria-label="关闭">${ICON_CLOSE}</button>`,
@@ -235,12 +226,6 @@
     host.addEventListener('click', (event) => {
       const button = event.target.closest('[data-act]');
       if (!button || !window.shell) {
-        return;
-      }
-      if (button.dataset.act === 'marketplace') {
-        if (typeof window.shell.openMarketplace === 'function') {
-          window.shell.openMarketplace();
-        }
         return;
       }
       if (typeof window.shell.windowAction === 'function') {
@@ -304,10 +289,7 @@
     return reservedRight();
   }
 
-  function applyControlTheme(host, bg, maximized) {
-    const light = isLightHex(bg);
-    host.style.setProperty('--dsh-ctrl-fg', light ? '#3f3f46' : '#f4f4f5');
-    host.style.setProperty('--dsh-ctrl-hover', light ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)');
+  function applyControlTheme(host, maximized) {
     const maxBtn = host.querySelector('[data-act="maximize"]');
     if (maxBtn) {
       maxBtn.innerHTML = maximized ? ICON_RESTORE : ICON_MAX;
@@ -323,6 +305,7 @@
     const sessionLog = findSessionLog();
     const foundBar = findTopBar();
     const bar = isVisibleChrome(foundBar) ? foundBar : null;
+    const titlebarRow = findTitlebarRow();
     const logo = findLogoRow();
     const inset = placeControls(host, sessionLog);
     document.documentElement.style.setProperty('--dsh-wco-pad', `${inset}px`);
@@ -334,8 +317,14 @@
       bg = opaqueBg(bar);
       bar.setAttribute(MARK, 'main');
       markInteractive(bar);
+    } else if (titlebarRow instanceof HTMLElement) {
+      removeDragStrip();
+      bg = opaqueBg(titlebarRow);
     } else {
       placeDraftDragStrip();
+    }
+    if (titlebarRow instanceof HTMLElement) {
+      titlebarRow.setAttribute(MARK, '');
     }
     if (logo) {
       logo.setAttribute(MARK, '');
@@ -352,7 +341,7 @@
     }
 
     const maximized = Boolean(window.__dshShellMaximized);
-    applyControlTheme(host, bg, maximized);
+    applyControlTheme(host, maximized);
 
     const sample = { bg, height: CONTROL_SIZE, insetRight: inset };
     if (window.shell && typeof window.shell.reportChrome === 'function') {

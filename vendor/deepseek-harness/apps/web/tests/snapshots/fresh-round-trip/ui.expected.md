@@ -3,27 +3,29 @@
     - button "Use the bash tool to" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: "Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop. {{clock}}"
 - button "Copy":
   - img
+- button "Edit":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
+- button "Context injection skill-catalog":
+  - img
+  - img
+  - text: Context injection skill-catalog
 - button "Think The user wants me to run a simple bash command and reply with \"DONE\".":
   - img
   - img
   - text: Think The user wants me to run a simple bash command and reply with "DONE".
-- button "Bash Echo the test string":
+- 'button "Failed Bash Error: unknown tool \"bash\""':
   - img
-  - img
-  - text: Bash Echo the test string
+  - text: "Failed Bash Error: unknown tool \"bash\""
 - button "Think The command executed successfully and output \"WEB_E2E_OK\". I just need to reply with \"DONE\".":
   - img
   - img

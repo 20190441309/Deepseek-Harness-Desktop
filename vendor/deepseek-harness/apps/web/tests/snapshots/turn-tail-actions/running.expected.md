@@ -3,9 +3,6 @@
     - button "Begin your reply with the" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -13,19 +10,25 @@
 - button "Copy":
   - img
 - tooltip "Copy"
+- button "Edit" [disabled]:
+  - img
+- text: Wait for the current response to finish before editing
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
+- button "Context injection skill-catalog":
+  - img
+  - img
+  - text: Context injection skill-catalog
 - button "Think The user wants me to begin with \"Reading the workspace now.\" and call bash with \"echo alpha\" in the same message. Then after the tool result, reply with the single word DONE and stop.":
   - img
   - img
   - text: Think The user wants me to begin with "Reading the workspace now." and call bash with "echo alpha" in the same message. Then after the tool result, reply with the single word DONE and stop.
 - paragraph: Reading the workspace now.
-- button "Bash Print alpha to stdout":
+- 'button "Failed Bash Error: unknown tool \"bash\""':
   - img
-  - img
-  - text: Bash Print alpha to stdout
+  - text: "Failed Bash Error: unknown tool \"bash\""
 - paragraph: partial
 - status: Deep diving...
 - textbox "Message the agent"

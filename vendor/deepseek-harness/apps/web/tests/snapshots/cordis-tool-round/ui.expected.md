@@ -3,9 +3,6 @@
     - button "Use only Cordis tools. First" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -16,6 +13,10 @@
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
+- button "Context injection skill-catalog":
+  - img
+  - img
+  - text: Context injection skill-catalog
 - button "Think I will inspect the current Session's dynamic Cordis Plugins before defining the snapshot Package.":
   - img
   - img
@@ -81,6 +82,8 @@
   - img
 - text: {{clock}} Ran for {{duration}} Use only Cordis tools. Call cordis_stop with pluginId "snap-1". After it succeeds, reply exactly CORDIS_UI_DONE and stop. {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - status:
   - text: "This turn failedllm-replay: script exhausted — session requested model call #7 but its script has only 6; re-record the scenario"

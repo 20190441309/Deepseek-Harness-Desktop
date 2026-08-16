@@ -1,9 +1,6 @@
 - banner:
   - navigation "Session hierarchy":
-    - button "{{workspace}}" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
+    - button "dsh-web-e2e-ws-GOwaou" [disabled]
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -333,6 +330,8 @@
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m28 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - paragraph: r28
 - button "Copy":

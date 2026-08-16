@@ -161,7 +161,13 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-models-customized'))
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.getByRole('button', { name: '编辑 minimax-cn' }).click()
-    await dialog.getByText('自定义设置').click()
+    // The fold defaults open for the pi-ai layout and closed for the others,
+    // so the toggle is flipped only when the details is closed.
+    const fold = dialog.getByText('自定义设置').locator('xpath=..')
+    await fold.waitFor({ timeout: 10_000 })
+    if (await fold.getAttribute('open') === null) {
+      await dialog.getByText('自定义设置').click()
+    }
     const url = dialog.getByLabel('API 地址')
     await url.waitFor({ timeout: 10_000 })
     await url.fill('https://gateway.minimax.example/v1')
@@ -215,7 +221,13 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-models-declared-identity'))
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.getByRole('button', { name: '编辑 Acme Gateway (acme-gateway)' }).click()
-    await dialog.getByText('自定义设置').click()
+    // The fold may default open (pi-ai layout) or closed; flip it only when
+    // the details is closed.
+    const fold = dialog.getByText('自定义设置').locator('xpath=..')
+    await fold.waitFor({ timeout: 10_000 })
+    if (await fold.getAttribute('open') === null) {
+      await dialog.getByText('自定义设置').click()
+    }
     // The create card asked this route for a name and a protocol because
     // nothing can default them; the editor reaches the same two fields rather
     // than sending the user to settings.yaml for what only this route names.

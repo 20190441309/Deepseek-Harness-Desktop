@@ -1,16 +1,17 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace, openRemote, showMain, isHarnessLoaded, closeMarketplaceWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
-const { gitCommit, gitCreateChangeRequest, gitDiff, gitPull, gitPush, gitStatus } = require('./git');
-const { registerPtyIpc } = require('./pty');
+const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitInit, gitPull, gitPush, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage } = require('./git');
 const { registerPreviewIpc } = require('./preview');
-const { listDir, readFile } = require('./workspace-fs');
+const { registerPtyIpc } = require('./pty');
+const { listDir, readFile, readFileMedia } = require('./workspace-fs');
+const { isRemoteModeOnlyPatch } = require('./remote');
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -143,7 +144,23 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   ipcMain.handle('shell:open-marketplace', () => openMarketplace());
 
+  ipcMain.handle('shell:seed-install-draft', async (_event, item) => {
+    const repo = String(item?.repo || '').trim();
+    const installSpec = String(item?.installSpec || '').trim();
+    if (!repo || !installSpec) {
+      return { ok: false, error: 'missing-item' };
+    }
+    const win = showMain();
+    if (!win || !isHarnessLoaded(win)) {
+      return { ok: false, error: 'harness-not-ready' };
+    }
+    win.webContents.send('shell:seed-install-draft', { repo, installSpec });
+    closeMarketplaceWindow();
+    return { ok: true };
+  });
+
   ipcMain.handle('shell:git-status', (_event, cwd) => gitStatus(cwd));
+  ipcMain.handle('shell:git-init', (_event, cwd) => gitInit(cwd));
   ipcMain.handle('shell:git-diff', (_event, cwd) => gitDiff(cwd));
   ipcMain.handle('shell:git-commit', (_event, cwd, message) => gitCommit(cwd, message));
   ipcMain.handle('shell:git-push', (_event, cwd) => gitPush(cwd));
@@ -151,6 +168,14 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   ipcMain.handle('shell:git-create-change-request', (_event, cwd, input) => gitCreateChangeRequest(cwd, input));
   ipcMain.handle('shell:list-dir', (_event, cwd, relativePath) => listDir(cwd, relativePath));
   ipcMain.handle('shell:read-file', (_event, cwd, relativePath) => readFile(cwd, relativePath));
+  ipcMain.handle('shell:read-file-media', (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));
+  ipcMain.handle('shell:git-stage', (_event, cwd, relativePath) => gitStage(cwd, relativePath));
+  ipcMain.handle('shell:git-unstage', (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
+  ipcMain.handle('shell:git-discard', (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));
+  ipcMain.handle('shell:git-status-entries', (_event, cwd) => gitStatusEntries(cwd));
+  ipcMain.handle('shell:git-branch-list', (_event, cwd) => gitBranchList(cwd));
+  ipcMain.handle('shell:git-switch-branch', (_event, cwd, ref) => gitSwitchBranch(cwd, ref));
+  ipcMain.handle('shell:git-create-branch', (_event, cwd, name) => gitCreateBranch(cwd, name));
   const pty = registerPtyIpc(ipcMain);
   const preview = registerPreviewIpc(ipcMain);
 
@@ -160,6 +185,10 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   ipcMain.handle('shell:save-remote', async (_event, patch) => {
     saveConfig(patch || {});
+    if (remote && isRemoteModeOnlyPatch(patch)) {
+      // Mode only changes the pairing QR; LAN and relay stay as the enable flag left them.
+      return remote.snapshot();
+    }
     if (remote && typeof remote.sync === 'function') {
       return remote.sync();
     }

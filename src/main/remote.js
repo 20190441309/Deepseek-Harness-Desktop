@@ -1,7 +1,5 @@
-const fs = require('fs');
 const http = require('http');
 const net = require('net');
-const path = require('path');
 const zlib = require('zlib');
 const { EventEmitter } = require('events');
 const {
@@ -17,55 +15,17 @@ const { listLanAddresses, pairingUrl, publicUrl } = require('../shared/lan');
 const { createDevice, normalizeDevices, publicDevices } = require('../shared/remote-devices');
 const { RelayClient } = require('./relay-client');
 
+/** True when the write only switches LAN/relay QR mode and must not restart transports. */
+function isRemoteModeOnlyPatch(patch) {
+  if (!patch || typeof patch !== 'object') {
+    return false;
+  }
+  const keys = Object.keys(patch).filter((key) => patch[key] !== undefined);
+  return keys.length === 1 && (patch.remoteMode === 'lan' || patch.remoteMode === 'relay');
+}
+
 const DEFAULT_PORT = 3180;
 
-function defaultPhoneWebDir() {
-  const unpacked = path.join(__dirname, '..', '..', 'phone-web', 'dist');
-  if (fs.existsSync(unpacked)) {
-    return unpacked;
-  }
-  if (process.resourcesPath) {
-    const packed = path.join(process.resourcesPath, 'phone-web', 'dist');
-    if (fs.existsSync(packed)) {
-      return packed;
-    }
-  }
-  return unpacked;
-}
-
-function mimeType(file) {
-  if (file.endsWith('.html')) {
-    return 'text/html; charset=utf-8';
-  }
-  if (file.endsWith('.js')) {
-    return 'text/javascript; charset=utf-8';
-  }
-  if (file.endsWith('.css')) {
-    return 'text/css; charset=utf-8';
-  }
-  if (file.endsWith('.svg')) {
-    return 'image/svg+xml';
-  }
-  if (file.endsWith('.json') || file.endsWith('.map')) {
-    return 'application/json; charset=utf-8';
-  }
-  if (file.endsWith('.png')) {
-    return 'image/png';
-  }
-  if (file.endsWith('.woff2')) {
-    return 'font/woff2';
-  }
-  return 'application/octet-stream';
-}
-
-function isApiPath(url) {
-  const pathname = String(url || '/').split('?')[0];
-  return pathname === '/api' || pathname.startsWith('/api/');
-}
-
-function isRemoteControlPath(url) {
-  return String(url || '/').split('?')[0].startsWith('/__remote__/');
-}
 const HOP_BY_HOP = new Set([
   'connection',
   'keep-alive',
@@ -141,18 +101,29 @@ function loginPage() {
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0d12" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="rgb(21, 21, 23)" />
   <title>Deepseek Harness 远程</title>
   <style>
-    :root { color-scheme: dark; }
-    html, body { margin: 0; min-height: 100%; background: #0b0d12; color: #e8eef9; font: 16px/1.45 system-ui, sans-serif; }
-    main { max-width: 420px; margin: 0 auto; padding: 48px 20px; }
-    h1 { font-size: 22px; margin: 0 0 8px; }
-    p { color: #8b93a7; margin: 0 0 20px; }
-    input, button { width: 100%; box-sizing: border-box; font: inherit; border-radius: 10px; padding: 12px 14px; }
-    input { border: 1px solid rgba(232,238,249,.14); background: rgba(232,238,249,.06); color: inherit; margin-bottom: 12px; }
-    button { border: 0; background: #6ea8ff; color: #081018; font-weight: 650; }
+    :root {
+      color-scheme: dark;
+      --dsw-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      --dsw-alias-bg-base: rgb(21, 21, 23);
+      --dsw-alias-label-primary: rgb(249, 250, 251);
+      --dsw-alias-label-tertiary: rgb(173, 178, 184);
+      --dsw-alias-border-l2: rgba(255, 255, 255, 0.12);
+      --dsw-alias-bg-layer-1: rgb(35, 35, 36);
+      --dsw-alias-button-primary-fill: rgb(249, 250, 251);
+      --dsw-alias-label-primary-foreground: rgb(15, 17, 21);
+      --dsw-alias-button-primary-hover: rgb(235, 238, 242);
+    }
+    html, body { margin: 0; min-height: 100%; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: 16px/24px var(--dsw-font-family); }
+    main { max-width: 380px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0 0 8px; }
+    p { color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 22px; margin: 0 0 20px; }
+    input, button { width: 100%; box-sizing: border-box; font: inherit; }
+    input { height: 36px; padding: 0 14px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: inherit; margin-bottom: 12px; }
+    button { height: 36px; border: 0; border-radius: 18px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font-size: 14px; line-height: 22px; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -231,7 +202,7 @@ class RemoteGateway extends EventEmitter {
     this.token = '';
     this.target = null;
     this.sockets = new Map();
-    this.phoneWebDir = options.phoneWebDir || defaultPhoneWebDir();
+    this.relayOp = 0;
     this.relay = new RelayClient({
       getLocal: () => (this.port ? { port: this.port } : null),
     });
@@ -258,10 +229,12 @@ class RemoteGateway extends EventEmitter {
       mode,
       relayUrl,
       relayConnected: Boolean(relay.connected),
-      relayError: relay.error || '',
+      relayError: mode === 'relay' ? (relay.error || '') : '',
       error: relay.connected
         ? ''
-        : (this.error || relay.error || (relayDown ? '桌面还没连上中继' : '')),
+        : mode === 'relay'
+          ? (this.error || relay.error || (relayDown ? '桌面还没连上中继' : ''))
+          : (this.error || ''),
       target: this.target,
       devices: publicDevices(this.storedDevices(), this.onlineDeviceIds()),
       urls: addresses.map((address) => ({
@@ -402,7 +375,7 @@ class RemoteGateway extends EventEmitter {
   }
 
   async sync() {
-    const config = this.getConfig() || {};
+    const config = { ...(this.getConfig() || {}) };
     const target = this.getTarget();
     if (!config.remoteEnabled) {
       await this.stop();
@@ -436,16 +409,22 @@ class RemoteGateway extends EventEmitter {
     if (!this.relay) {
       return;
     }
-    if (config.remoteMode === 'relay' && config.remoteRelayUrl && this.server) {
+    const op = ++this.relayOp;
+    if (config.remoteEnabled && config.remoteRelayUrl && this.server) {
       try {
         await this.relay.sync(config.remoteRelayUrl);
-        this.error = this.relay.connected ? '' : (this.relay.error || this.error);
-      } catch (error) {
-        this.error = error.message || String(error);
+      } catch {
+        // Relay errors stay on the client; LAN snapshots must not show them.
       }
       return;
     }
     await this.relay.disconnect();
+    if (op !== this.relayOp) {
+      return;
+    }
+    if (/^relay /i.test(this.error)) {
+      this.error = '';
+    }
   }
 
   async start({ port, token, target }) {
@@ -516,60 +495,6 @@ class RemoteGateway extends EventEmitter {
     res.end(body);
   }
 
-  resolvePhoneWebFile(url) {
-    const root = path.resolve(this.phoneWebDir);
-    if (!fs.existsSync(root)) {
-      return '';
-    }
-    let pathname = '/';
-    try {
-      pathname = decodeURIComponent(new URL(url, 'http://dsh.phone').pathname);
-    } catch {
-      return '';
-    }
-    const relative = pathname === '/' ? 'index.html' : pathname.replace(/^[/\\]+/, '');
-    const resolved = path.resolve(root, relative);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-      return '';
-    }
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-      return resolved;
-    }
-    const index = path.join(root, 'index.html');
-    if (!path.extname(pathname) && fs.existsSync(index)) {
-      return index;
-    }
-    return '';
-  }
-
-  servePhoneWeb(req, res) {
-    const file = this.resolvePhoneWebFile(req.url || '/');
-    if (!file) {
-      this.send(res, 503, { 'content-type': 'text/plain; charset=utf-8' }, '手机页还没构建');
-      return;
-    }
-    const type = mimeType(file);
-    const body = fs.readFileSync(file);
-    const headers = {
-      'content-type': type,
-      'cache-control': type.includes('text/html') ? 'no-store' : 'public, max-age=3600',
-    };
-    if (shouldGzipProxy(req.headers, type)) {
-      headers['content-encoding'] = 'gzip';
-      zlib.gzip(body, (error, out) => {
-        if (error) {
-          this.send(res, 200, { 'content-type': type }, body);
-          return;
-        }
-        res.writeHead(200, headers);
-        res.end(out);
-      });
-      return;
-    }
-    res.writeHead(200, headers);
-    res.end(body);
-  }
-
   async handleHttp(req, res) {
     const url = req.url || '/';
     const target = this.target;
@@ -624,10 +549,6 @@ class RemoteGateway extends EventEmitter {
     if (presented && !this.deviceForToken(presented) && tokensEqual(presented, this.token) && this.prefersHtml(req)) {
       const device = this.pairDevice({ headers: { ...req.headers, cookie: '' }, url: '/' });
       this.send(res, 302, { location: url, 'set-cookie': cookieHeader(device.token) }, '');
-      return;
-    }
-    if (req.method === 'GET' && !isApiPath(url) && !isRemoteControlPath(url)) {
-      this.servePhoneWeb(req, res);
       return;
     }
     if (!presented) {
@@ -720,5 +641,6 @@ module.exports = {
   RemoteGateway,
   rewriteProxyHeaders,
   shouldGzipProxy,
+  isRemoteModeOnlyPatch,
   DEFAULT_PORT,
 };

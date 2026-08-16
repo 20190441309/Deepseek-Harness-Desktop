@@ -11,7 +11,8 @@ function setWorkspaceAuthority(authority) {
 }
 
 /**
- * Authorize a renderer-supplied cwd against the configured workspace root.
+ * Authorize a renderer-supplied cwd against the boot workspace and every
+ * harness-registered workspace root.
  * @param {unknown} cwd
  * @returns {string | null}
  */
@@ -44,6 +45,9 @@ function run(command, args, cwd, limits = {}) {
       cwd,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: command === 'git'
+        ? { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(cwd) }
+        : process.env,
     });
     let stdout = '';
     let stderr = '';
@@ -200,11 +204,28 @@ async function readPullRequest(cwd) {
   }
 }
 
+function notARepoStatus() {
+  return {
+    isRepo: false,
+    refName: null,
+    hasWorkingTreeChanges: false,
+    hasUpstream: false,
+    aheadCount: 0,
+    behindCount: 0,
+    aheadOfDefaultCount: 0,
+    pr: null,
+    isDefaultRef: false,
+    hasPrimaryRemote: false,
+  };
+}
+
 async function gitStatus(cwd) {
   const root = asCwd(cwd);
   if (!root) return null;
   const inside = await runGit(root, ['rev-parse', '--is-inside-work-tree']);
-  if (inside.missing || inside.code !== 0 || inside.stdout.trim() !== 'true') return null;
+  if (inside.missing || inside.code !== 0 || inside.stdout.trim() !== 'true') {
+    return notARepoStatus();
+  }
 
   const short = await runGit(root, ['status', '-sb']);
   if (short.code !== 0) return null;
@@ -231,7 +252,25 @@ async function gitStatus(cwd) {
     ...(sourceControlProvider ? { sourceControlProvider } : {}),
     isDefaultRef: header.refName !== null && header.refName === defaultRef,
     hasPrimaryRemote,
+    isRepo: true,
   };
+}
+
+/**
+ * Initialize a git work tree at an authorized cwd that is not already one.
+ * @param {unknown} cwd
+ * @returns {Promise<{ ok: boolean, message?: string }>}
+ */
+async function gitInit(cwd) {
+  const root = asCwd(cwd);
+  if (!root) return fail('Git status is unavailable.');
+  const inside = await runGit(root, ['rev-parse', '--is-inside-work-tree']);
+  if (inside.code === 0 && inside.stdout.trim() === 'true') return ok();
+  const inited = await runGit(root, ['init', '-b', 'main']);
+  if (inited.missing) return fail('Git is unavailable.');
+  if (inited.timedOut) return fail('Git command timed out.');
+  if (inited.code !== 0) return fail(inited.stderr.trim() || 'git init failed.');
+  return ok();
 }
 
 async function gitCommit(cwd, message) {
@@ -457,13 +496,160 @@ async function gitCreateChangeRequest(cwd, input) {
   return ok(url ? { url } : {});
 }
 
+/**
+ * Parse `git status --porcelain=v1 -z`. Rename/copy origin fields are skipped.
+ * @param {string} stdout
+ * @returns {{ path: string, xy: string }[]}
+ */
+function parsePorcelainZ(stdout) {
+  const entries = [];
+  const parts = String(stdout || '').split('\0');
+  let i = 0;
+  while (i < parts.length) {
+    const rec = parts[i];
+    i += 1;
+    if (!rec || rec.length < 3) continue;
+    const xy = rec.slice(0, 2);
+    let filePath = rec.slice(3);
+    if (xy.includes('R') || xy.includes('C')) {
+      const dest = parts[i] || filePath;
+      i += 1;
+      filePath = dest;
+    }
+    entries.push({ path: filePath, xy });
+  }
+  return entries;
+}
+
+function resolveGitPath(cwd, relativePath) {
+  const root = asCwd(cwd);
+  if (!root) return { root: null, rel: null };
+  if (workspaceAuthority === null) workspaceAuthority = loadWorkspaceAuthority();
+  const target = workspaceAuthority.resolveInside(cwd, relativePath);
+  if (!target) return { root, rel: null };
+  const rel = path.relative(root, target).replaceAll('\\', '/');
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { root, rel: null };
+  return { root, rel };
+}
+
+async function gitPathOp(cwd, relativePath, args, failVerb) {
+  const { root, rel } = resolveGitPath(cwd, relativePath);
+  if (!root) return fail('Git status is unavailable.');
+  if (!rel) return fail('Path is outside the workspace.');
+  const result = await runGit(root, [...args, '--', rel]);
+  if (result.missing) return fail('Git is unavailable.');
+  if (result.timedOut) return fail('Git command timed out.');
+  if (result.code !== 0) return fail(result.stderr.trim() || result.stdout.trim() || failVerb);
+  return ok();
+}
+
+async function gitStage(cwd, relativePath) {
+  return gitPathOp(cwd, relativePath, ['add'], 'git add failed.');
+}
+
+async function gitUnstage(cwd, relativePath) {
+  return gitPathOp(cwd, relativePath, ['reset', '-q'], 'git reset failed.');
+}
+
+async function gitDiscard(cwd, relativePath) {
+  return gitPathOp(cwd, relativePath, ['checkout'], 'git checkout failed.');
+}
+
+async function gitStatusEntries(cwd) {
+  const root = asCwd(cwd);
+  if (!root) return fail('Git status is unavailable.');
+  const listed = await runGit(root, ['status', '--porcelain=v1', '-z']);
+  if (listed.missing) return fail('Git is unavailable.');
+  if (listed.timedOut) return fail('Git command timed out.');
+  if (listed.code !== 0) return fail(listed.stderr.trim() || 'git status failed.');
+  return ok({ entries: parsePorcelainZ(listed.stdout) });
+}
+
+/** Ref names git accepts on the command line; blocks option-like and traversal-ish values. */
+const REF_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function safeRefName(ref) {
+  const name = String(ref || '').trim();
+  if (!name || !REF_NAME_PATTERN.test(name)) return null;
+  if (name.includes('..') || name.endsWith('.lock') || name.endsWith('/')) return null;
+  return name;
+}
+
+async function gitBranchList(cwd) {
+  const root = asCwd(cwd);
+  if (!root) return fail('Git status is unavailable.');
+  const listed = await runGit(root, [
+    'for-each-ref',
+    '--format=%(refname:short)%09%(HEAD)%09%(refname)',
+    'refs/heads',
+    'refs/remotes',
+  ]);
+  if (listed.missing) return fail('Git is unavailable.');
+  if (listed.timedOut) return fail('Git command timed out.');
+  if (listed.code !== 0) return fail(listed.stderr.trim() || 'git branch list failed.');
+  const branches = [];
+  for (const line of listed.stdout.split('\n')) {
+    const [short, headMark, full] = line.split('\t');
+    if (!short || !full) continue;
+    const isRemote = full.startsWith('refs/remotes/');
+    if (isRemote && full.endsWith('/HEAD')) continue;
+    branches.push({
+      name: short,
+      isRemote,
+      isCurrent: headMark === '*',
+      remoteName: isRemote ? short.split('/')[0] : undefined,
+    });
+  }
+  const sym = await runGit(root, ['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD']);
+  const defaultRef = sym.code === 0 ? sym.stdout.trim() : null;
+  if (defaultRef) {
+    const target = branches.find(item => item.name === defaultRef);
+    if (target) target.isDefault = true;
+  }
+  return ok({ branches, defaultRef });
+}
+
+async function gitSwitchBranch(cwd, ref) {
+  const root = asCwd(cwd);
+  const name = safeRefName(ref);
+  if (!root) return fail('Git status is unavailable.');
+  if (!name) return fail('Invalid branch name.');
+  const result = await runGit(root, ['checkout', name]);
+  if (result.missing) return fail('Git is unavailable.');
+  if (result.timedOut) return fail('Git command timed out.');
+  if (result.code !== 0) return fail(result.stderr.trim() || result.stdout.trim() || 'git checkout failed.');
+  const head = await runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  return ok({ refName: head.code === 0 ? head.stdout.trim() : name });
+}
+
+async function gitCreateBranch(cwd, name) {
+  const root = asCwd(cwd);
+  const branch = safeRefName(name);
+  if (!root) return fail('Git status is unavailable.');
+  if (!branch) return fail('Invalid branch name.');
+  const result = await runGit(root, ['checkout', '-b', branch]);
+  if (result.missing) return fail('Git is unavailable.');
+  if (result.timedOut) return fail('Git command timed out.');
+  if (result.code !== 0) return fail(result.stderr.trim() || result.stdout.trim() || 'git checkout -b failed.');
+  return ok({ refName: branch });
+}
+
 module.exports = {
   gitStatus,
+  gitInit,
   gitDiff,
   gitCommit,
   gitPush,
   gitPull,
   gitCreateChangeRequest,
+  gitStage,
+  gitUnstage,
+  gitDiscard,
+  gitStatusEntries,
+  gitBranchList,
+  gitSwitchBranch,
+  gitCreateBranch,
+  parsePorcelainZ,
   parseUnifiedDiff,
   run,
   setWorkspaceAuthority,

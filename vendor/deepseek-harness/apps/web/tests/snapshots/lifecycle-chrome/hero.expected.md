@@ -4,7 +4,7 @@
 - button "New session":
   - img
   - text: New Session
-- text: Workspaces
+- text: Projects
 - button "Search sessions":
   - img
 - textbox "Search sessions..."
@@ -63,7 +63,7 @@
 - button "Files Browse and read workspace files.":
   - img
   - text: Files Browse and read workspace files.
-- button "Diff Review git changes." [disabled]:
+- button "Diff Review git changes.":
   - img
   - text: Diff Review git changes.
 - button "Agents Inspect running agents.":

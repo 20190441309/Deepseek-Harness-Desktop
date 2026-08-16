@@ -109,7 +109,11 @@ describe('web e2e: CJK-adjacent Markdown strong emphasis', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-markdown-cjk-strong'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
-    await groupRow.click()
+    // Startup auto-selection opens the most recent session, pre-expanding its
+    // group; the header toggles on click, so expand only when it is collapsed.
+    if (await groupRow.getAttribute('aria-expanded') !== 'true') {
+      await groupRow.click()
+    }
     const sessionRow = page.locator('[role="treeitem"]').nth(1)
     await sessionRow.waitFor({ timeout: 10_000 })
     await sessionRow.click()

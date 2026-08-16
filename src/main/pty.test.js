@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority } = require('./pty.js');
+const { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority, defaultShell, defaultShellArgs } = require('./pty.js');
 
 // One shared workspace root for the whole suite; cwd checks resolve inside it.
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pty-ws-'));
@@ -48,10 +48,35 @@ test('ptyCreate write echoes through onPtyData then ptyKill emits exit', async (
   );
 });
 
+test('ptyCreate accepts a second authorized root and rejects an outsider', async () => {
+  const extra = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pty-extra-'));
+  const outsider = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pty-out-'));
+  setWorkspaceAuthority(createWorkspaceAuthority({
+    workspace: ws,
+    extraWorkspaces: [extra],
+  }));
+  try {
+    const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
+    const created = await pty.create({ cwd: extra });
+    assert.equal(typeof created.id, 'string');
+    await assert.rejects(() => pty.create({ cwd: outsider }), /cwd/);
+  } finally {
+    setWorkspaceAuthority(createWorkspaceAuthority({ workspace: ws }));
+    fs.rmSync(extra, { recursive: true, force: true });
+    fs.rmSync(outsider, { recursive: true, force: true });
+  }
+});
+
 test('ptyCreate rejects a missing project cwd', async () => {
   const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
   await assert.rejects(() => pty.create({ cwd: '' }), /cwd/);
   await assert.rejects(() => pty.create({}), /cwd/);
+});
+
+test('Windows PTY spawn uses PowerShell without the login banner', () => {
+  if (process.platform !== 'win32') return;
+  assert.equal(defaultShell(), 'powershell.exe');
+  assert.deepEqual(defaultShellArgs(), ['-NoLogo', '-NoProfile']);
 });
 
 test('createPtyController does not load node-pty until create', () => {

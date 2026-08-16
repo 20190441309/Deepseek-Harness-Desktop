@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createWorkspaceAuthority } = require('./workspace-authority');
+const {
+  createWorkspaceAuthority,
+  readHarnessRegisteredWorkspacePaths,
+} = require('./workspace-authority');
 
 function makeRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-auth-'));
@@ -61,4 +64,103 @@ test('empty workspace yields a null root that disables everything', () => {
   assert.equal(authority.authorizedRoot(), null);
   assert.equal(authority.resolveAuthorizedCwd(os.tmpdir()), null);
   assert.equal(authority.resolveInside(os.tmpdir(), 'x'), null);
+});
+
+test('resolveAuthorizedCwd accepts a second authorized root and rejects an outsider', () => {
+  const boot = makeRoot();
+  const extra = makeRoot();
+  const outsider = makeRoot();
+  try {
+    fs.mkdirSync(path.join(extra, 'src'));
+    const authority = createWorkspaceAuthority({
+      workspace: boot,
+      extraWorkspaces: [extra],
+    });
+    assert.equal(authority.resolveAuthorizedCwd(boot), path.resolve(boot));
+    assert.equal(authority.resolveAuthorizedCwd(extra), path.resolve(extra));
+    assert.equal(
+      authority.resolveAuthorizedCwd(path.join(extra, 'src')),
+      path.join(path.resolve(extra), 'src'),
+    );
+    assert.equal(authority.resolveAuthorizedCwd(outsider), null);
+    assert.equal(authority.resolveInside(extra, 'src'), path.join(path.resolve(extra), 'src'));
+    assert.equal(authority.resolveInside(extra, '..'), null);
+    assert.equal(authority.resolveInside(outsider, 'src'), null);
+    assert.deepEqual(authority.authorizedRoots(), [path.resolve(boot), path.resolve(extra)]);
+  } finally {
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(extra, { recursive: true, force: true });
+    fs.rmSync(outsider, { recursive: true, force: true });
+  }
+});
+
+test('listRegisteredWorkspaces is consulted on every resolve', () => {
+  const boot = makeRoot();
+  const extra = makeRoot();
+  try {
+    const listed = [];
+    const authority = createWorkspaceAuthority({
+      workspace: boot,
+      listRegisteredWorkspaces: () => listed,
+    });
+    assert.equal(authority.resolveAuthorizedCwd(extra), null);
+    listed.push(extra);
+    assert.equal(authority.resolveAuthorizedCwd(extra), path.resolve(extra));
+  } finally {
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(extra, { recursive: true, force: true });
+  }
+});
+
+test('resolveAuthorizedCwd accepts trailing separators and Windows drive-letter case', () => {
+  const root = makeRoot();
+  try {
+    const authority = createWorkspaceAuthority({ workspace: root });
+    const withSep = `${root}${path.sep}`;
+    assert.equal(authority.resolveAuthorizedCwd(withSep), path.resolve(withSep));
+    if (process.platform === 'win32' && /^[A-Za-z]:/.test(root)) {
+      const flipped = root[0] === root[0].toUpperCase()
+        ? root[0].toLowerCase() + root.slice(1)
+        : root[0].toUpperCase() + root.slice(1);
+      assert.notEqual(authority.resolveAuthorizedCwd(flipped), null);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('readHarnessRegisteredWorkspacePaths reads workspace.json and ignores junk', () => {
+  const home = makeRoot();
+  const boot = makeRoot();
+  const registered = makeRoot();
+  const outsider = makeRoot();
+  try {
+    assert.deepEqual(readHarnessRegisteredWorkspacePaths(home), []);
+    fs.mkdirSync(path.join(home, 'storages'));
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), '{not json', 'utf8');
+    assert.deepEqual(readHarnessRegisteredWorkspacePaths(home), []);
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      global: { initialized: true, workspaceIds: ['ws-1'] },
+      tables: {
+        workspaces: {
+          'ws-1': { path: registered, title: '测试' },
+          'ws-2': { title: 'missing-path' },
+          'ws-3': null,
+        },
+      },
+    }, null, 2)}\n`, 'utf8');
+    assert.deepEqual(readHarnessRegisteredWorkspacePaths(home), [registered]);
+    const authority = createWorkspaceAuthority({
+      workspace: boot,
+      listRegisteredWorkspaces: () => readHarnessRegisteredWorkspacePaths(home),
+    });
+    assert.equal(authority.resolveAuthorizedCwd(registered), path.resolve(registered));
+    assert.equal(authority.resolveAuthorizedCwd(outsider), null);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(registered, { recursive: true, force: true });
+    fs.rmSync(outsider, { recursive: true, force: true });
+  }
 });

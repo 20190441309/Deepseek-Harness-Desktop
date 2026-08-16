@@ -4,6 +4,9 @@
     - button "通用设置":
       - img
       - text: 通用设置
+    - button "外观":
+      - img
+      - text: 外观
     - button "模型":
       - img
       - text: 模型
@@ -13,6 +16,9 @@
     - button "Agent 预设":
       - img
       - text: Agent 预设
+    - button "关于":
+      - img
+      - text: 关于
   - button "打开配置文件"
   - button "关闭":
     - img
@@ -20,6 +26,11 @@
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
   - status: 已保存 minimax-cn。
+  - text: 识图模型
+  - combobox "识图模型":
+    - option "不启用" [selected]
+    - option "DeepSeek / DeepSeek-V4-Flash"
+  - paragraph: 主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。
   - list:
     - listitem:
       - text: minimax-cn

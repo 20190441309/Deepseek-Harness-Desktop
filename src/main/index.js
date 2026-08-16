@@ -4,12 +4,18 @@ const fs = require('fs');
 const { loadConfig, saveConfig } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
-const { stripDroppedPlugins } = require('./plugins');
+const { stripDroppedPlugins, ensureDesktopInstallPlugin } = require('./plugins');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, showMain } = require('./tray');
+const {
+  startDesktopInstallControl,
+  stopDesktopInstallControl,
+  desktopInstallReady,
+} = require('./desktop-install-control');
+const { installPlugin } = require('./marketplace-install');
 const {
   createMainWindow,
   getMainWindow,
@@ -55,6 +61,7 @@ const harness = new HarnessController({
   isBootLoaded,
   resolveLaunchTarget,
   stripDroppedPlugins,
+  ensureDesktopInstallPlugin,
   ensureWorkspace,
 });
 
@@ -191,6 +198,20 @@ if (!gotLock) {
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
 
+    startDesktopInstallControl({
+      installPlugin: (spec, options) => installPlugin(spec, {
+        ...options,
+        token: loadConfig().githubToken,
+      }),
+      startHarness: restartWithCleanup,
+    });
+    try {
+      await desktopInstallReady();
+    } catch (error) {
+      stopDesktopInstallControl();
+      dsh.log(`桌面安装控制通道启动失败：${error.message || String(error)}`, 'error');
+    }
+
     desktopResources = registerIpc({ dsh, harness, startHarness: restartWithCleanup, remote });
     buildMenu({
       onOpenWorkspace: () => ignoreFailure(pickWorkspace()),
@@ -253,6 +274,7 @@ if (!gotLock) {
     }
     event.preventDefault();
     stoppingForQuit = true;
+    stopDesktopInstallControl();
     cleanupDesktopResources();
     showClosingOverlay(getMainWindow(), loadConfig().locale)
       .catch(() => {})

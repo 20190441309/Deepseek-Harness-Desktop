@@ -1,6 +1,21 @@
 - dialog "Select Workspace Directory":
   - heading "Select Workspace Directory" [level=2]
+  - button "Go to Home": Home
   - navigation:
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
+    - button "{{ancestry}}"
+    - img
     - button "Home"
     - img
     - button "browse-golden"

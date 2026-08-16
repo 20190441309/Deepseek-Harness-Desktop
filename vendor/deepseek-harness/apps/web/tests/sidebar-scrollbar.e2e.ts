@@ -349,20 +349,20 @@ async function pointAt(page: Page, where: 'list' | 'away'): Promise<void> {
 
 /**
  * Reveal the seeded rows: every seeded session is unattached, so they all sit
- * in the collapsed Ungrouped bucket. Open the bucket, then use its transient
+ * in the collapsed Tasks section. Open the section, then use its transient
  * Show-more control because an open group intentionally renders only five
  * rows by default. Hand-rolled polling because
  * `expect.poll` is test-scoped and this runs in `beforeAll`.
  * @param page - the page under test.
  */
 async function expandSeededSessions(page: Page): Promise<void> {
-  const bucket = page.getByText('Ungrouped', { exact: true }).locator('..').locator('..')
+  const bucket = page.getByText('Tasks', { exact: true }).locator('..').locator('..')
   await bucket.waitFor({ timeout: 15_000 })
   const rows = page.locator('[role="tree"][aria-label="Sessions"] [role="treeitem"]')
   const deadline = Date.now() + 30_000
   for (;;) {
     if (await bucket.getAttribute('aria-expanded') !== 'true') {
-      await page.getByText('Ungrouped', { exact: true }).click()
+      await page.getByText('Tasks', { exact: true }).click()
     }
     const showMore = page.getByRole('button', { name: /Show \d+ more sessions/ })
     if (await bucket.getAttribute('aria-expanded') === 'true'
@@ -372,7 +372,7 @@ async function expandSeededSessions(page: Page): Promise<void> {
     }
     if (await bucket.getAttribute('aria-expanded') === 'true' && await rows.count() > SEED_COUNT / 2) return
     if (Date.now() > deadline) {
-      throw new Error(`Ungrouped bucket never revealed more than ${SEED_COUNT / 2} rows`)
+      throw new Error(`Tasks section never revealed more than ${SEED_COUNT / 2} rows`)
     }
     await page.waitForTimeout(200)
   }
@@ -473,7 +473,7 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
   it('keeps the row background inset when overflow disappears', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-scrollbar-stable-inset'))
     expect(await measureRowInset(page)).toEqual({ overflows: true, rowEdgeInset: 12 })
-    const bucket = page.getByText('Ungrouped', { exact: true }).locator('..').locator('..')
+    const bucket = page.getByText('Tasks', { exact: true }).locator('..').locator('..')
     await bucket.click()
     try {
       await expect.poll(async () => (await measureRowInset(page)).overflows, { timeout: 10_000 }).toBe(false)

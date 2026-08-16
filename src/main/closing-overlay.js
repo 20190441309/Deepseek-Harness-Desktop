@@ -13,7 +13,7 @@ function overlayCss(theme) {
   background: ${theme.bg};
   color: ${theme.fg};
   color-scheme: ${theme.scheme || 'dark'};
-  font: 15px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font: 14px/22px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-app-region: no-drag;
   pointer-events: all;
   user-select: none;
@@ -22,12 +22,13 @@ function overlayCss(theme) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 240px;
-  padding: 28px 36px;
+  padding: 24px 24px 24px;
   border: 1px solid ${theme.line};
-  border-radius: 16px;
+  border-radius: 24px;
   background: ${theme.field};
+  box-shadow: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 }
 #${OVERLAY_ID} .dsh-shell-closing-spinner {
   width: 36px;
@@ -40,13 +41,13 @@ function overlayCss(theme) {
 #${OVERLAY_ID} .dsh-shell-closing-title {
   margin: 8px 0 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 24px;
 }
 #${OVERLAY_ID} .dsh-shell-closing-detail {
   margin: 0;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   color: ${theme.muted};
 }
 @keyframes dsh-shell-closing-spin {
@@ -102,11 +103,11 @@ function overlayScript(copy) {
       root.append(card);
       (document.body || document.documentElement).append(root);
     }
-    const bg = pick('--dsw-alias-bg-canvas', '--dsw-alias-bg', '--bg');
+    const bg = pick('--dsw-alias-bg-base', '--bg');
     const fg = pick('--dsw-alias-label-primary', '--fg');
     const muted = pick('--dsw-alias-label-tertiary', '--muted');
-    const accent = pick('--dsw-alias-accent', '--dsw-alias-label-accent', '--accent');
-    const field = pick('--dsw-alias-bg-module-platform', '--dsw-alias-bg-l2', '--field');
+    const accent = pick('--dsw-alias-state-business-primary', '--dsw-alias-button-info-fill', '--accent');
+    const field = pick('--dsw-alias-bg-layer-2', '--dsw-alias-bg-module-platform', '--field');
     const line = pick('--dsw-alias-border-l2', '--line');
     if (bg) root.style.background = bg;
     if (fg) root.style.color = fg;

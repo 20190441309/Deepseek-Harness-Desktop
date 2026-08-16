@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const PROFILE = 'web';
 const DROPPED = [
@@ -9,6 +10,12 @@ const DROPPED = [
 ];
 const PATCH_BEGIN = '# --- dsh-gui-plugin-toggles ---';
 const PATCH_END = '# --- end dsh-gui-plugin-toggles ---';
+const DESKTOP_INSTALL_BEGIN = '# --- dsh-gui-desktop-install ---';
+const DESKTOP_INSTALL_END = '# --- end dsh-gui-desktop-install ---';
+const DESKTOP_INSTALL_FILES = [
+  'install-dsh-plugin.mjs',
+  'install-dsh-plugin-client.js',
+];
 
 function dshHome() {
   const fromEnv = process.env.DSH_HOME;
@@ -37,6 +44,30 @@ function writeAtomic(file, contents) {
   fs.renameSync(tmp, file);
 }
 
+function replaceManagedBlock(text, begin, end, block) {
+  const start = text.indexOf(begin);
+  const stop = text.indexOf(end);
+  if (start !== -1 && stop !== -1 && stop > start) {
+    return `${text.slice(0, start)}${block}${text.slice(stop + end.length).replace(/^\r?\n/, '')}`;
+  }
+  // The shipped profile template is comments plus a lone `[]`. Appending a
+  // second document after that array is invalid YAML and loadProfile fails.
+  const withoutEmpty = text.replace(/(^|\r?\n)\[\s*\][ \t]*(\r?\n)*$/, '$1');
+  const prefix = withoutEmpty.trimEnd();
+  return prefix ? `${prefix}\n\n${block}` : block;
+}
+
+function upsertManagedBlock(file, begin, end, body) {
+  const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  const block = `${begin}\n${body.trimEnd()}\n${end}\n`;
+  const next = replaceManagedBlock(existing, begin, end, block);
+  if (next === existing) {
+    return false;
+  }
+  writeAtomic(file, next);
+  return true;
+}
+
 function stripManagedPatch() {
   const file = patchPath();
   if (!fs.existsSync(file)) {
@@ -54,6 +85,43 @@ function stripManagedPatch() {
   }
   writeAtomic(file, next);
   return true;
+}
+
+function hostPluginDir() {
+  return path.join(__dirname, '..', 'host');
+}
+
+/**
+ * Copy the desktop-only install_dsh_plugin Host plugin into the web profile
+ * and keep a managed cordis.patch.yml insert pointing at the copy.
+ * @param options - optional sourceDir / profileDir overrides for tests.
+ */
+function ensureDesktopInstallPlugin(options = {}) {
+  const sourceDir = options.sourceDir || hostPluginDir();
+  const profileDir = options.profileDir || webProfileDir();
+  const destDir = path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin');
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const name of DESKTOP_INSTALL_FILES) {
+    const src = path.join(sourceDir, name);
+    if (!fs.existsSync(src)) {
+      return { ok: false, reason: `missing-source:${name}` };
+    }
+    fs.copyFileSync(src, path.join(destDir, name));
+  }
+  const entry = path.join(destDir, 'install-dsh-plugin.mjs');
+  const href = pathToFileURL(entry).href;
+  const body = [
+    '- insert:',
+    '    - id: dsh-desktop-plugin-install',
+    `      name: ${JSON.stringify(href)}`,
+  ].join('\n');
+  const patchChanged = upsertManagedBlock(
+    path.join(profileDir, 'cordis.patch.yml'),
+    DESKTOP_INSTALL_BEGIN,
+    DESKTOP_INSTALL_END,
+    body,
+  );
+  return { ok: true, destDir, href, patchChanged };
 }
 
 /** Drop retired community plugins from the live web profile so they cannot boot. */
@@ -127,4 +195,7 @@ module.exports = {
   webProfileDir,
   stripDroppedPlugins,
   listInstalledPlugins,
+  ensureDesktopInstallPlugin,
+  DESKTOP_INSTALL_BEGIN,
+  DESKTOP_INSTALL_END,
 };

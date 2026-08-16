@@ -179,6 +179,12 @@ function openMarketplaceWindow() {
   return marketplaceWindow;
 }
 
+function closeMarketplaceWindow() {
+  if (marketplaceWindow && !marketplaceWindow.isDestroyed()) {
+    marketplaceWindow.close();
+  }
+}
+
 function openRemote() {
   return showMain();
 }
@@ -245,4 +251,5 @@ module.exports = {
   isBootLoaded,
   isHarnessLoaded,
   iconImage,
+  closeMarketplaceWindow,
 };

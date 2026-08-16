@@ -44,8 +44,10 @@ contextBridge.exposeInMainWorld('shell', {
   listInstalledPlugins: () => ipcRenderer.invoke('shell:list-installed-plugins'),
   installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
   uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
+  seedInstallDraft: (item) => ipcRenderer.invoke('shell:seed-install-draft', item),
   openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
   gitStatus: (cwd) => ipcRenderer.invoke('shell:git-status', cwd),
+  gitInit: (cwd) => ipcRenderer.invoke('shell:git-init', cwd),
   gitDiff: (cwd) => ipcRenderer.invoke('shell:git-diff', cwd),
   gitCommit: (cwd, message) => ipcRenderer.invoke('shell:git-commit', cwd, message),
   gitPush: (cwd) => ipcRenderer.invoke('shell:git-push', cwd),
@@ -53,6 +55,14 @@ contextBridge.exposeInMainWorld('shell', {
   gitCreateChangeRequest: (cwd, input) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input),
   listDir: (cwd, relativePath) => ipcRenderer.invoke('shell:list-dir', cwd, relativePath),
   readFile: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file', cwd, relativePath),
+  readFileMedia: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file-media', cwd, relativePath),
+  gitStage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-stage', cwd, relativePath),
+  gitUnstage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-unstage', cwd, relativePath),
+  gitDiscard: (cwd, relativePath) => ipcRenderer.invoke('shell:git-discard', cwd, relativePath),
+  gitStatusEntries: (cwd) => ipcRenderer.invoke('shell:git-status-entries', cwd),
+  gitBranchList: (cwd) => ipcRenderer.invoke('shell:git-branch-list', cwd),
+  gitSwitchBranch: (cwd, ref) => ipcRenderer.invoke('shell:git-switch-branch', cwd, ref),
+  gitCreateBranch: (cwd, name) => ipcRenderer.invoke('shell:git-create-branch', cwd, name),
   ptyCreate: (input) => ipcRenderer.invoke('shell:pty-create', input),
   ptyWrite: (id, data) => ipcRenderer.invoke('shell:pty-write', id, data),
   ptyResize: (id, cols, rows) => ipcRenderer.invoke('shell:pty-resize', id, cols, rows),
@@ -81,5 +91,10 @@ contextBridge.exposeInMainWorld('shell', {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);
     return () => ipcRenderer.removeListener('shell:plugin-progress', listener);
+  },
+  onSeedInstallDraft: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:seed-install-draft', listener);
+    return () => ipcRenderer.removeListener('shell:seed-install-draft', listener);
   },
 });

@@ -4,7 +4,7 @@ const EDGE = 8;
 const CLUSTER = 8;
 
 function dshWindowControlsRight() {
-  return EDGE + CONTROL_SIZE * 4 + CONTROL_GAP * 3 + CLUSTER;
+  return EDGE + CONTROL_SIZE * 3 + CONTROL_GAP * 2 + CLUSTER;
 }
 
 function dshReservedRight(trailingWidth) {

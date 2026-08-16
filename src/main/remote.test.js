@@ -1,13 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
+const net = require('net');
 const { generateToken } = require('../shared/remote-auth');
 const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
-const path = require('path');
-const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
-
-const PHONE_WEB_FIXTURE = path.join(__dirname, 'phone-web-fixture');
+const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy, isRemoteModeOnlyPatch } = require('./remote');
 const { RelayClient } = require('./relay-client');
 const { RelayServer } = require('../relay/server');
 
@@ -34,6 +32,14 @@ test('shouldGzipProxy gzips script and html when the client asks for gzip', () =
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'application/json'), false);
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'text/plain'), false);
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip', 'content-encoding': 'br' }, 'text/javascript'), false);
+});
+
+test('isRemoteModeOnlyPatch is true only for a lone lan/relay mode write', () => {
+  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'lan' }), true);
+  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'relay' }), true);
+  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'lan', remoteEnabled: true }), false);
+  assert.equal(isRemoteModeOnlyPatch({ remoteEnabled: true }), false);
+  assert.equal(isRemoteModeOnlyPatch(null), false);
 });
 
 test('rewriteProxyHeaders forces loopback Host and Origin', () => {
@@ -222,6 +228,95 @@ test('relay without a desktop host tells the phone to wait', async () => {
   await relay.close();
 });
 
+test('switching from relay to lan keeps an in-flight handshake', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const blackhole = net.createServer();
+  const relayPort = await listen(blackhole);
+  const stored = {
+    remoteEnabled: true,
+    remoteToken: token,
+    remoteMode: 'relay',
+    remoteRelayUrl: `http://127.0.0.1:${relayPort}`,
+  };
+  const gateway = new RemoteGateway({
+    getTarget: () => ({ port: upstreamPort }),
+    getConfig: () => ({ ...stored }),
+    saveConfig: (patch) => {
+      Object.assign(stored, patch);
+      return stored;
+    },
+  });
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  stored.remotePort = gateway.port;
+  const connecting = gateway.sync();
+  await waitFor(() => Boolean(gateway.relay && gateway.relay.socket));
+  const socket = gateway.relay.socket;
+  stored.remoteMode = 'lan';
+  await gateway.sync();
+  assert.equal(gateway.snapshot().mode, 'lan');
+  assert.equal(gateway.snapshot().error, '');
+  assert.equal(gateway.snapshot().relayError, '');
+  assert.equal(gateway.relay.socket, socket);
+  await gateway.stop();
+  await connecting.catch(() => {});
+  await close(blackhole);
+  await close(upstream);
+});
+
+test('enabled remote keeps the relay up in lan mode and drops it when turned off', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const relay = new RelayServer();
+  const relayPort = await relay.listen(0, '127.0.0.1');
+  const stored = {
+    remoteEnabled: true,
+    remoteToken: token,
+    remoteMode: 'lan',
+    remoteRelayUrl: `http://127.0.0.1:${relayPort}`,
+  };
+  const gateway = new RemoteGateway({
+    getTarget: () => ({ port: upstreamPort }),
+    getConfig: () => ({ ...stored }),
+    saveConfig: (patch) => {
+      Object.assign(stored, patch);
+      return stored;
+    },
+  });
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  stored.remotePort = gateway.port;
+  await gateway.sync();
+  assert.equal(gateway.relay.connected, true);
+  assert.equal(gateway.snapshot().listening, true);
+  stored.remoteMode = 'relay';
+  await gateway.sync();
+  assert.equal(gateway.relay.connected, true);
+  assert.equal(gateway.snapshot().listening, true);
+  stored.remoteEnabled = false;
+  await gateway.sync();
+  assert.equal(gateway.relay.connected, false);
+  assert.equal(gateway.snapshot().listening, false);
+  await gateway.stop();
+  await relay.close();
+  await close(upstream);
+});
+
+test('relay client sync keeps an in-flight socket to the same origin', async () => {
+  const blackhole = net.createServer();
+  const relayPort = await listen(blackhole);
+  const client = new RelayClient({ handshakeTimeoutMs: 5000 });
+  const connecting = client.sync(`http://127.0.0.1:${relayPort}`);
+  await waitFor(() => Boolean(client.socket));
+  const socket = client.socket;
+  await client.sync(`http://127.0.0.1:${relayPort}`);
+  assert.equal(client.socket, socket);
+  await client.disconnect();
+  await connecting.catch(() => {});
+  await close(blackhole);
+});
+
 test('relay client reconnects after the host socket drops', async () => {
   const upstream = http.createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain' });
@@ -370,27 +465,35 @@ test('an HTML visit with the pairing cookie upgrades into a bound device', async
   await close(upstream);
 });
 
-test('HTML and static files come from phone-web, not the official UI', async () => {
-  const upstream = http.createServer((_req, res) => {
+test('paired HTML and assets come from the official UI, not a second phone client', async () => {
+  const upstream = http.createServer((req, res) => {
+    if (req.url === '/assets/app.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript' });
+      res.end('official-asset');
+      return;
+    }
+    if (req.url === '/plugins/ui-layout/client.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript' });
+      res.end('official-plugin');
+      return;
+    }
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end('<html>Into the Unknown</html>');
   });
   const upstreamPort = await listen(upstream);
   const token = generateToken();
   const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
-  const gateway = new RemoteGateway({ ...config, phoneWebDir: PHONE_WEB_FIXTURE });
+  const gateway = new RemoteGateway(config);
   await gateway.start({ port: 0, token, target: { port: upstreamPort } });
   const port = gateway.port || gateway.server.address().port;
 
   const page = await request(port, '/', { headers: { accept: 'text/html' } });
-  assert.equal(page.status, 200);
-  assert.match(page.body, /data-phone-web/);
+  assert.equal(page.status, 401);
   assert.match(page.body, /#offer=/);
   assert.doesNotMatch(page.body, /Into the Unknown/);
 
-  const asset = await request(port, '/assets/app.js');
-  assert.equal(asset.status, 200);
-  assert.match(asset.body, /__PHONE_WEB__/);
+  const assetDenied = await request(port, '/assets/app.js');
+  assert.equal(assetDenied.status, 401);
 
   const login = await request(port, '/__remote__/login', {
     method: 'POST',
@@ -403,8 +506,19 @@ test('HTML and static files come from phone-web, not the official UI', async () 
     headers: { accept: 'text/html', cookie: `dsh_remote=${deviceToken}` },
   });
   assert.equal(authed.status, 200);
-  assert.match(authed.body, /data-phone-web/);
-  assert.doesNotMatch(authed.body, /Into the Unknown/);
+  assert.match(authed.body, /Into the Unknown/);
+
+  const asset = await request(port, '/assets/app.js', {
+    headers: { cookie: `dsh_remote=${deviceToken}` },
+  });
+  assert.equal(asset.status, 200);
+  assert.equal(asset.body, 'official-asset');
+
+  const plugin = await request(port, '/plugins/ui-layout/client.js', {
+    headers: { cookie: `dsh_remote=${deviceToken}` },
+  });
+  assert.equal(plugin.status, 200);
+  assert.equal(plugin.body, 'official-plugin');
 
   const api = await request(port, '/api/session.list', {
     method: 'POST',
