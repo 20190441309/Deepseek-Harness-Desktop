@@ -147,7 +147,8 @@ servers:
   it('defaultMounter reports fiber phase from the child plugin', () => {
     const dispose = (): void => {}
     const ctx = {
-      plugin: () => ({ dispose, state: 2 }),
+      plugin: () => ({ dispose, state: 2, await: () => Promise.resolve() }),
+      logger: { error() {} },
     }
     const handle = defaultMounter(ctx as never, {
       transport: 'stdio',
@@ -160,6 +161,33 @@ servers:
       failOnStartupError: false,
     })
     expect(handle.phase()).toBe('active')
+    void handle.dispose()
+  })
+
+  it('defaultMounter logs a child await rejection instead of throwing', async () => {
+    const errors: unknown[] = []
+    const ctx = {
+      plugin: () => ({
+        dispose: () => {},
+        state: 3,
+        await: () => Promise.reject(new Error('mcp apply failed')),
+      }),
+      logger: { error(error: unknown) { errors.push(error) } },
+    }
+    const handle = defaultMounter(ctx as never, {
+      transport: 'stdio',
+      serverName: 'x',
+      command: 'npx',
+      args: [],
+      env: {},
+      cwd: '',
+      toolCallTimeoutMs: 1,
+      failOnStartupError: false,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(errors).toHaveLength(1)
+    expect(String(errors[0])).toContain('mcp apply failed')
     void handle.dispose()
   })
 })
