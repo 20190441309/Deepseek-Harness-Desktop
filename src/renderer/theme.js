@@ -3,6 +3,10 @@ function applyDarkAttribute(dark) {
   document.body?.toggleAttribute('data-ds-dark-theme', dark);
 }
 
+function isBootTheme() {
+  return document.documentElement.hasAttribute('data-boot-theme');
+}
+
 function applyTheme(theme) {
   if (!theme) {
     return;
@@ -11,6 +15,10 @@ function applyTheme(theme) {
   applyDarkAttribute(dark);
   const root = document.documentElement;
   root.style.colorScheme = theme.scheme || 'dark';
+  if (isBootTheme()) {
+    document.body?.style.removeProperty('background');
+    return;
+  }
   if (theme.bg) {
     root.style.setProperty('--dsw-alias-bg-base', theme.bg);
   }

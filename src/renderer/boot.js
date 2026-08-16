@@ -6,13 +6,15 @@ const actionsEl = document.getElementById('actions');
 const logEl = document.getElementById('log');
 const retryEl = document.getElementById('retry');
 const cancelRestartEl = document.getElementById('cancel-restart');
+const stampEl = document.getElementById('stamp');
+const stampCodeEl = document.getElementById('stamp-code');
 
 const HINTS = {
   idle: '等待启动。',
-  starting: '正在启动本机 dsh web；关闭应用时会一并退出服务。',
+  starting: '本机 dsh web 启动中。关闭应用时服务一并退出。',
   ready: '正在打开 Web UI。',
   stopping: '正在停止运行时。',
-  error: '可以立即重启 Harness，或检查最近日志后调整配置。',
+  error: '可立即重启，或根据日志调整配置。',
 };
 
 const LABELS = {
@@ -23,8 +25,17 @@ const LABELS = {
   error: '启动失败',
 };
 
+const STAMPS = {
+  idle: { stamp: '待机', code: 'IDLE' },
+  starting: { stamp: '启动中', code: 'BOOT' },
+  ready: { stamp: '就绪', code: 'READY' },
+  stopping: { stamp: '停止中', code: 'HALT' },
+  error: { stamp: '异常', code: 'ERROR' },
+};
+
 let latestSnapshot = null;
 let countdownTimer = null;
+let pluginBoot = null;
 
 function invoke(method, ...args) {
   try {
@@ -98,6 +109,39 @@ function manageCountdown(snapshot) {
   }
 }
 
+function renderStamp(state) {
+  const face = STAMPS[state] || STAMPS.starting;
+  stampEl.textContent = face.stamp;
+  stampCodeEl.textContent = face.code;
+}
+
+function applyPluginBootCopy(payload) {
+  if (payload.failed) {
+    statusEl.textContent = '插件加载失败';
+    statusEl.className = 'status error';
+    hintEl.textContent = payload.error || '运行时已就绪，但客户端插件未能完成装载。';
+    document.body.dataset.state = 'error';
+    renderStamp('error');
+    return;
+  }
+  statusEl.textContent = payload.total > 0
+    ? `正在加载插件 ${payload.ready}/${payload.total}`
+    : '正在加载插件';
+  statusEl.className = 'status ready';
+  hintEl.textContent = '运行时已就绪，正在装载客户端插件。';
+}
+
+function renderPluginBoot(payload) {
+  pluginBoot = payload;
+  if (!payload || payload.settled) {
+    return;
+  }
+  if (latestSnapshot?.state === 'error') {
+    return;
+  }
+  applyPluginBootCopy(payload);
+}
+
 function renderState(snapshot) {
   latestSnapshot = snapshot;
   const state = snapshot?.state || 'starting';
@@ -107,6 +151,7 @@ function renderState(snapshot) {
   const recoveryBusy = recovery?.status === 'restarting';
   const recoveryScheduled = recovery?.status === 'scheduled';
   document.body.dataset.state = state;
+  renderStamp(state);
 
   statusEl.textContent = state === 'error'
     ? (runtimeFailure ? 'Harness 意外退出' : 'Harness 启动失败')
@@ -131,6 +176,10 @@ function renderState(snapshot) {
   if (Array.isArray(snapshot?.logs)) {
     logEl.replaceChildren();
     snapshot.logs.slice(-8).forEach(appendLog);
+  }
+
+  if (state === 'ready' && pluginBoot && !pluginBoot.settled && !pluginBoot.failed) {
+    applyPluginBootCopy(pluginBoot);
   }
 }
 
@@ -191,6 +240,7 @@ invoke('getState')
 
 listen('onState', renderState);
 listen('onLog', appendLog);
+listen('onPluginBoot', renderPluginBoot);
 if (typeof window.watchShellTheme === 'function') {
   window.watchShellTheme();
 }

@@ -256,6 +256,82 @@ Types: [Agent](core.md)
 
 Source: [`packages/extensions/cordis-host-runner/src/index.ts:124`](../../packages/extensions/cordis-host-runner/src/index.ts)
 
+<a id="ctxmcpserversfile--mcpserversfile"></a>
+
+### `ctx.mcpServersFile` — `McpServersFile`
+
+Owns `$DSH_HOME/mcp-servers.yaml` and the live mcp-client children it describes.
+
+```ts cordis-catalog
+/**
+ * Replace the child mounter. Tests call this before {@link start}.
+ * @param mounter - child factory.
+ */
+useMounter(mounter: McpClientMounter): void
+
+/**
+ * Load the document, mount enabled servers, and optionally watch.
+ * @returns disposer that closes the watcher and child fibers.
+ */
+start(): () => void
+
+/**
+ * Current managed records with secrets masked.
+ * @returns the managed records, secret fields masked.
+ */
+listManaged(): readonly McpServerRecord[]
+
+/**
+ * Current managed records including secret values. Host mutation uses this.
+ * @returns the managed records with secret values intact.
+ */
+listManagedRaw(): readonly McpServerRecord[]
+
+/**
+ * Live child fiber phase for one managed id, or `null` when unmounted.
+ * @param id - managed record id.
+ * @returns the child's current fiber phase, or `null` when unmounted.
+ */
+childPhase(id: string): ChildFiberPhase
+
+/**
+ * Live connection health for one managed id's mounted child, when the child
+ * reports through the mcp-client status registry.
+ * @param id - managed record id.
+ * @returns the child's connection status, or `undefined` for an unknown record.
+ */
+childHealth(id: string): McpClientStatus | undefined
+
+/**
+ * Live connection health for any mcp-client server mounted in this runtime —
+ * managed or hand-composed — keyed by `serverName`.
+ * @param serverName - the configured server identity.
+ * @returns the server's connection status, or `undefined` when it is not mounted.
+ */
+connectionStatus(serverName: string): McpClientStatus | undefined
+
+/**
+ * Insert or replace one managed record and remount.
+ * @param upsert - complete record.
+ */
+upsert(upsert: McpServerUpsert): Promise<void>
+
+/**
+ * Delete one managed record and unmount its child.
+ * @param id - record id.
+ */
+remove(id: string): Promise<void>
+
+/**
+ * Enable or disable one managed record.
+ * @param id - record id.
+ * @param enabled - next enablement.
+ */
+setEnabled(id: string, enabled: boolean): Promise<void>
+```
+
+Source: [`packages/mcp/mcp-servers-file/src/service.ts:102`](../../packages/mcp/mcp-servers-file/src/service.ts)
+
 <a id="cordis-events"></a>
 
 ### `cordis/*` events

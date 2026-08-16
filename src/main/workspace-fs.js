@@ -3,6 +3,7 @@ const path = require('node:path');
 const { loadWorkspaceAuthority } = require('./workspace-authority');
 
 const MAX_READ_BYTES = 512 * 1024;
+const MAX_WRITE_BYTES = 512 * 1024;
 
 const IMAGE_MIME = {
   png: 'image/png',
@@ -142,10 +143,37 @@ async function readFileMedia(cwd, relativePath) {
   return { ok: true, mime, base64: buf.toString('base64'), truncated };
 }
 
+async function writeFile(cwd, relativePath, text) {
+  if (typeof relativePath !== 'string' || relativePath.trim() === '') {
+    return fail('File path is required.');
+  }
+  if (typeof text !== 'string') return fail('File text is required.');
+  if (Buffer.byteLength(text, 'utf8') > MAX_WRITE_BYTES) {
+    return fail('File is too large to save from this panel.');
+  }
+  const target = resolveInside(cwd, relativePath);
+  if (!target) return fail('Path is outside the workspace.');
+  let stat;
+  try {
+    stat = await fs.promises.stat(target);
+  } catch (error) {
+    return fail(error.message || 'Could not write file.');
+  }
+  if (!stat.isFile()) return fail('Not a file.');
+  try {
+    await fs.promises.writeFile(target, text, 'utf8');
+  } catch (error) {
+    return fail(error.message || 'Could not write file.');
+  }
+  return { ok: true };
+}
+
 module.exports = {
   listDir,
   readFile,
   readFileMedia,
+  writeFile,
   setWorkspaceAuthority,
+  MAX_WRITE_BYTES,
 };
 

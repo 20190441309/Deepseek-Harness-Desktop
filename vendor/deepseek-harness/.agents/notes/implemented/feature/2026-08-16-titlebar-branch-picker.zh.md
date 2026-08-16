@@ -10,9 +10,9 @@ Status: implemented
 
 ## 决策
 
-分三层移植。纯逻辑直接取自 T3code（MIT，© T3 Tools Inc.）：`deriveLocalBranchNameFromRemoteRef`、`dedupeRemoteBranchesWithLocalMatches`、`shouldIncludeBranchPickerItem` 落在 `ui-git/src/client/branches.ts`，Effect/t3 导入改写为普通 TypeScript，行为保持不变。交互照 T3code：触发器显示当前引用，面板随输入搜索，未知查询给出「新建分支『…』」，已有本地分支的 `origin/*` 行隐藏，当前行禁用，操作失败时面板保持打开并显示错误行而不是无声关闭。外观归本系统：`Button`/`Input` 原子、`--dsw-alias-*` token，以及抬升滚动面板的共享滚动条重绑。
+分三层移植。纯逻辑直接取自 T3code（MIT，© T3 Tools Inc.）：`deriveLocalBranchNameFromRemoteRef`、`dedupeRemoteBranchesWithLocalMatches`、`shouldIncludeBranchPickerItem` 落在 `ui-git/src/client/branches.ts`，Effect/t3 导入改写为普通 TypeScript，行为保持不变。触发器显示当前引用，点开与提交/推送箭头同一套 `Menu` 原子（portal、固定 218px 卡片、14/22 行，不用 `compact`）。Menu 过滤框钉在卡片顶部，随输入过滤，不自动聚焦。已有本地分支的 `origin/*` 行隐藏；当前行选中且禁用。新建是页脚行，用已输入的查询；查询为空时点击它会聚焦过滤框。切换或新建失败时，走 Git 进度 toast（`Failed to switch ref.` / `Failed to create and switch ref.`），与 T3code 分支选择器的错误 toast 一致。
 
-后端新增三条桌面 IPC——`shell:git-branch-list`（`for-each-ref` + `symbolic-ref` 取 origin/HEAD 默认分支）、`shell:git-switch-branch`（`git checkout`）、`shell:git-create-branch`（`git checkout -b`）——与其余 git 操作一样全部经 `workspace-authority` 根授权。引用名先过 `^[A-Za-z0-9][A-Za-z0-9._/-]*$` 校验并拒绝 `..`、`.lock`、尾斜杠，才进 argv，模型传入的引用无法夹带选项或路径穿越。
+后端新增三条桌面 IPC——`shell:git-branch-list`（`for-each-ref` + `symbolic-ref` 取 origin/HEAD 默认分支）、`shell:git-switch-branch`（`git checkout --ignore-other-worktrees`，另一工作树已占用该分支时仍切换本目录）、`shell:git-create-branch`（`git checkout -b`）——与其余 git 操作一样全部经 `workspace-authority` 根授权。引用名先过 `^[A-Za-z0-9][A-Za-z0-9._/-]*$` 校验并拒绝 `..`、`.lock`、尾斜杠，才进 argv，模型传入的引用无法夹带选项或路径穿越。
 
 T3code 的 worktree 多环境与线程↔分支绑定**有意不移植**：它们焊死在 T3code 的服务端线程元数据（按线程的 `worktreePath`、env mode、切换时停会话）。本 harness 没有这样的会话元数据；只搬选择器一半而不搬生命周期等于撒谎。它们留作后续 harness 原生设计的候选。
 
@@ -26,7 +26,7 @@ T3code 的 worktree 多环境与线程↔分支绑定**有意不移植**：它�
 
 ## 后果
 
-标题栏 Git 簇现在是完整的引用闭环：切换、新建、提交、推送、变更请求。`git.test.js` 钉住 list/switch/create 往返与不安全引用拒绝；`branch-menu.client.spec.tsx` 钉住移植的纯函数与面板交互（搜索、新建行、切换回调、失败保持面板打开）。选择器只在会话 cwd 是仓库时渲染；非 git 目录保持隐藏，初始化 Git 流程不受影响。
+标题栏 Git 簇现在是完整的引用闭环：切换、新建、提交、推送、变更请求。提交对话框会核对当前引用、带 numstat `+/-` 的变更文件，并提供 Commit 或 Commit on new refName（`feature/update`）。`git.test.js` 钉住 list/switch/create 往返与不安全引用拒绝；`branch-menu.client.spec.tsx` 钉住移植的纯函数以及 Menu 过滤 / 新建页脚 / toast 错误交互。选择器只在会话 cwd 是仓库时渲染；非 git 目录保持隐藏，初始化 Git 流程不受影响。
 
 ## 相关
 

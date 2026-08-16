@@ -29,6 +29,7 @@ class HarnessController extends EventEmitter {
     this.showHarness = options.showHarness;
     this.sendToBoot = options.sendToBoot;
     this.isBootLoaded = options.isBootLoaded || (() => false);
+    this.getHarnessWebContents = options.getHarnessWebContents || (() => null);
     this.resolveLaunchTarget = options.resolveLaunchTarget;
     this.stripDroppedPlugins = options.stripDroppedPlugins;
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
@@ -122,10 +123,7 @@ class HarnessController extends EventEmitter {
   }
 
   async ensureBootVisible() {
-    const win = this.getMainWindow();
-    if (!win || !this.isBootLoaded(win)) {
-      await this.showBoot();
-    }
+    await this.showBoot();
   }
 
   async beginRuntimeRecovery() {
@@ -268,6 +266,7 @@ class HarnessController extends EventEmitter {
     const previousOperation = this.operation;
     this.operationGeneration += 1;
     await this.dsh.stop();
+    await this.ensureBootVisible().catch(() => {});
     await previousOperation?.catch(() => {});
     if (this.shuttingDown) {
       throw operationCancelled();
@@ -370,7 +369,8 @@ class HarnessController extends EventEmitter {
         this.dsh.log(`手机 Remote 同步失败：${errorMessage(error)}`, 'app');
       }
       if (this.loadConfig().openDevTools) {
-        win.webContents.openDevTools({ mode: 'detach' });
+        const harnessWc = this.getHarnessWebContents(win);
+        (harnessWc || win.webContents).openDevTools({ mode: 'detach' });
       }
       return url;
     } catch (error) {
@@ -389,7 +389,7 @@ class HarnessController extends EventEmitter {
       return Promise.resolve(null);
     }
     if (this.dsh.state === 'ready' && this.dsh.baseUrl) {
-      return win.loadURL(this.dsh.baseUrl);
+      return this.showHarness(this.dsh.baseUrl);
     }
     return this.start();
   }

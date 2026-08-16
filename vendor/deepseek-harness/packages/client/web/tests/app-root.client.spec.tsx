@@ -48,6 +48,22 @@ describe('AppRoot', () => {
     expect(getByText('正在加载插件 1/2')).toBeTruthy()
   })
 
+  it('exposes boot progress and failure as data attributes for the desktop probe', () => {
+    const { status, error, container } = mount()
+    act(() => {
+      status.set('a', 'active')
+      status.set('b', 'loading')
+    })
+    const boot = container.querySelector('[data-dsh-boot-status="loading"]')
+    expect(boot).toBeTruthy()
+    expect(boot?.getAttribute('data-dsh-boot-ready')).toBe('1')
+    expect(boot?.getAttribute('data-dsh-boot-total')).toBe('2')
+    expect(boot?.getAttribute('data-dsh-boot-error')).toBe('')
+    act(() => { error.set('boom') })
+    const failedRoot = container.querySelector('[data-dsh-boot-status="failed"]')
+    expect(failedRoot?.getAttribute('data-dsh-boot-error')).toBe('boom')
+  })
+
   it('all-active status alone does not open the gate (settled signal is the only key)', () => {
     const { status, queryByTestId } = mount()
     act(() => {

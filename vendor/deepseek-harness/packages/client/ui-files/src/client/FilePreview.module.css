@@ -6,25 +6,17 @@
   background: var(--dsw-alias-bg-base);
 }
 
-.header {
+.toolbar {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 40px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-}
-
-.title {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 0;
 }
 
 .path {
-  margin: 2px 0 0;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
@@ -47,12 +39,30 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.code {
+.saveError {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.code,
+.editor {
   margin: 0;
+  width: 100%;
+  min-height: 240px;
+  padding: 0;
+  border: none;
+  background: transparent;
   font: var(--dsw-font-markdown-code-block);
   color: var(--dsw-alias-label-primary);
   white-space: pre;
   overflow: auto;
+  resize: none;
+}
+
+.editor:focus {
+  outline: none;
 }
 
 .image {

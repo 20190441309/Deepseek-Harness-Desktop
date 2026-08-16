@@ -12,8 +12,8 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
+  background: var(--boot-bg);
+  color: var(--boot-ink);
   font-family: var(--dsw-font-family);
   font-size: 14px;
   line-height: 22px;
@@ -29,21 +29,137 @@ body {
   -webkit-app-region: drag;
 }
 
+.scan {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    var(--boot-scan) 2px,
+    var(--boot-scan) 3px
+  );
+}
+
 .stage {
   position: relative;
+  z-index: 0;
   min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: calc(48px + var(--caption-h)) 32px 112px;
+  background-image:
+    linear-gradient(var(--boot-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--boot-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.rail {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+
+.rail-tl {
+  top: calc(var(--caption-h) + 12px);
+  left: 16px;
+  border-top: 2px solid var(--boot-accent);
+  border-left: 2px solid var(--boot-accent);
+}
+
+.rail-tr {
+  top: calc(var(--caption-h) + 12px);
+  right: 16px;
+  border-top: 2px solid var(--boot-accent);
+  border-right: 2px solid var(--boot-accent);
+}
+
+.rail-bl {
+  bottom: 16px;
+  left: 16px;
+  border-bottom: 2px solid var(--boot-accent);
+  border-left: 2px solid var(--boot-accent);
+}
+
+.rail-br {
+  bottom: 16px;
+  right: 16px;
+  border-bottom: 2px solid var(--boot-accent);
+  border-right: 2px solid var(--boot-accent);
+}
+
+.meta {
+  position: absolute;
+  top: calc(var(--caption-h) + 20px);
+  left: 48px;
+  right: 48px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.code,
+.stamp-code {
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--boot-muted);
+}
+
+.stamp-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7.5rem;
+  padding: 4px 12px;
+  border: 2px solid var(--boot-accent);
+  color: var(--boot-accent);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+}
+
+body[data-state="idle"] .stamp,
+body[data-state="starting"] .stamp,
+body[data-state="stopping"] .stamp {
+  animation: pulse 1.2s var(--ds-ease-in-out) infinite;
+}
+
+body[data-state="error"] .stamp,
+body[data-state="error"] .stamp-code {
+  color: var(--boot-alert);
+  border-color: var(--boot-alert);
+}
+
+.core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .mark {
   position: relative;
   width: 64px;
   height: 64px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--boot-ink);
   animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) both;
 }
 
@@ -53,24 +169,25 @@ body {
   display: block;
 }
 
-.ring {
+.reticle {
   position: absolute;
-  inset: -12px;
+  inset: -14px;
   border: 1.5px solid transparent;
-  border-top-color: var(--dsw-alias-state-business-primary);
-  border-radius: 50%;
+  border-top-color: var(--boot-accent);
+  border-right-color: var(--boot-accent);
   opacity: 0;
 }
 
-body[data-state="idle"] .ring,
-body[data-state="starting"] .ring,
-body[data-state="stopping"] .ring {
-  opacity: 0.65;
+body[data-state="idle"] .reticle,
+body[data-state="starting"] .reticle,
+body[data-state="stopping"] .reticle {
+  opacity: 0.85;
   animation: spin 1.05s linear infinite;
 }
 
-body[data-state="error"] .mark {
-  color: var(--dsw-alias-state-error-primary);
+body[data-state="error"] .mark,
+body[data-state="error"] .status {
+  color: var(--boot-alert);
 }
 
 .brand {
@@ -78,32 +195,31 @@ body[data-state="error"] .mark {
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
+  letter-spacing: 0.04em;
   animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 80ms both;
 }
 
 .status {
   margin: 8px 0 0;
   max-width: 36rem;
-  text-align: center;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--boot-muted);
   animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 120ms both;
 }
 
 .status.ready {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--boot-accent);
 }
 
 .status.error {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--boot-alert);
 }
 
 .hint {
   margin: 8px 0 0;
   max-width: 36rem;
-  text-align: center;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--boot-muted);
   font-size: 12px;
   line-height: 18px;
   animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 160ms both;
@@ -113,17 +229,16 @@ body[data-state="error"] .mark {
 .recovery {
   margin: 8px 0 0;
   max-width: 42rem;
-  text-align: center;
   font-size: 12px;
   line-height: 18px;
 }
 
 .failure {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--boot-alert);
 }
 
 .recovery {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--boot-accent);
 }
 
 .failure[hidden],
@@ -149,33 +264,30 @@ body[data-state="error"] .mark {
   justify-content: center;
   height: 36px;
   padding: 0 14px;
-  border: none;
-  border-radius: 18px;
+  border: 1px solid var(--boot-accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--boot-accent);
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
+  letter-spacing: 0.08em;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
 .actions .primary {
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--boot-accent);
+  color: var(--boot-bg);
 }
 
 .actions .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
-}
-
-.actions .ghost {
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  border: 1px solid var(--dsw-alias-border-l2);
+  background: color-mix(in srgb, var(--boot-accent) 88%, var(--boot-ink));
 }
 
 .actions .ghost:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: color-mix(in srgb, var(--boot-accent) 12%, transparent);
 }
 
 .actions button:disabled {
@@ -184,33 +296,43 @@ body[data-state="error"] .mark {
 }
 
 .actions button:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--boot-accent);
   outline-offset: 2px;
 }
 
 .log {
   position: absolute;
-  left: 32px;
-  right: 32px;
-  bottom: 28px;
+  left: 48px;
+  right: 48px;
+  bottom: 52px;
   margin: 0;
-  padding: 12px 0 0;
+  padding: 0 0 4px;
   list-style: none;
-  max-height: 7.5rem;
-  overflow: hidden;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  max-height: 12rem;
+  overflow: auto;
+  text-align: left;
   font-family: var(--ds-font-family-code);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--boot-muted);
 }
 
 .log li {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   opacity: 0;
   animation: fade var(--ds-transition-duration) var(--ds-ease-in-out) forwards;
+}
+
+body[data-state="error"] .stage {
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 18px,
+      color-mix(in srgb, var(--boot-alert) 10%, transparent) 18px 20px
+    ),
+    linear-gradient(var(--boot-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--boot-grid) 1px, transparent 1px);
 }
 
 @keyframes rise {
@@ -236,20 +358,28 @@ body[data-state="error"] .mark {
   }
 }
 
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mark,
   .brand,
   .status,
   .hint,
-  .ring,
+  .stamp,
+  .reticle,
   .log li {
     animation: none;
     opacity: 1;
+    transform: none;
   }
 
-  body[data-state="idle"] .ring,
-  body[data-state="starting"] .ring,
-  body[data-state="stopping"] .ring {
+  body[data-state="idle"] .reticle,
+  body[data-state="starting"] .reticle,
+  body[data-state="stopping"] .reticle {
     opacity: 0.35;
   }
 }

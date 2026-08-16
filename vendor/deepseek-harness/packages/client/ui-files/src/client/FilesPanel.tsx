@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { IconRefreshOutline16, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { IconRefreshOutline16, Input, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { filterEntries, mayListSearchDir, MAX_SEARCH_DIRS } from './filter.ts'
 import { FileTree, joinRel, type TreeEntry } from './FileTree.tsx'
 import { NS } from './locales.ts'
 import type { FilesShellInjected } from './shell.ts'
@@ -32,7 +33,11 @@ function absoluteOf(cwd: string, relativePath: string): string {
 
 /**
  * Workspace file tree occupant of `surfaces.files`. Clicking a file opens a
- * `file:` surface through the owner `openFile` callback.
+ * `file:` surface through the owner `openFile` callback. Refresh reloads the
+ * root listing; while a search query is active it re-walks that search instead
+ * of dropping nested matches. Mention is omitted without a session id. A nested
+ * `listDir` failure keeps the tree and shows a banner; only the workspace-root
+ * listing replaces the tree.
  * @param props - session-maybe seats, listing IPC, locale, and openFile.
  * @returns the files panel.
  */
@@ -51,12 +56,15 @@ export function FilesPanel({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [generation, setGeneration] = useState(0)
+  const [query, setQuery] = useState('')
+  const [searchTruncated, setSearchTruncated] = useState(false)
 
   useEffect(() => {
     if (cwd === undefined) {
       setRoot([])
       setChildrenByPath({})
       setError(null)
+      setSearchTruncated(false)
       return
     }
     let cancelled = false
@@ -70,10 +78,52 @@ export function FilesPanel({
       setError(null)
       setRoot(toTree('', result.entries ?? []))
     }).catch(() => {
-      if (!cancelled) setError(t('error.list'))
+      if (!cancelled) {
+        setError(t('error.list'))
+      }
     })
     return () => { cancelled = true }
   }, [cwd, listDir, t, generation])
+
+  useEffect(() => {
+    if (cwd === undefined || query.trim() === '') {
+      setSearchTruncated(false)
+      return
+    }
+    let cancelled = false
+    const budget = { dirsRemaining: MAX_SEARCH_DIRS }
+    const walk = async (
+      parent: string,
+      depth: number,
+      acc: Record<string, TreeEntry[]>,
+    ): Promise<boolean> => {
+      if (!mayListSearchDir(budget, depth)) return true
+      const result = await listDir(cwd, parent)
+      if (cancelled) return false
+      if (!result.ok) {
+        if (parent === '') setError(result.message ?? t('error.list'))
+        return false
+      }
+      const entries = toTree(parent, result.entries ?? [])
+      acc[parent] = entries
+      let truncated = false
+      for (const entry of entries) {
+        if (entry.kind === 'directory') {
+          if (await walk(entry.path, depth + 1, acc)) truncated = true
+        }
+      }
+      return truncated
+    }
+    const acc: Record<string, TreeEntry[]> = {}
+    void walk('', 0, acc).then((truncated) => {
+      if (cancelled) return
+      setRoot(acc[''] ?? [])
+      setChildrenByPath(acc)
+      setExpanded(new Set(Object.keys(acc).filter(path => path !== '')))
+      setSearchTruncated(truncated)
+    })
+    return () => { cancelled = true }
+  }, [cwd, listDir, query, generation])
 
   const onToggle = (path: string): void => {
     if (expanded.has(path)) {
@@ -103,18 +153,35 @@ export function FilesPanel({
     })
   }
 
+  const onSearchKey = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    setQuery('')
+  }
+
+  const visibleRoot = filterEntries(root, query, childrenByPath)
+
   return (
     <div className={css.root} data-files-panel>
-      <div className={css.header} data-surface-subheader>
-        <h3 className={css.title}>{t('title')}</h3>
+      <div className={css.toolbar}>
+        <Input
+          className={css.search}
+          value={query}
+          placeholder={t('search')}
+          aria-label={t('search')}
+          onChange={event => { setQuery(event.target.value) }}
+          onKeyDown={onSearchKey}
+        />
         <Tooltip label={copied ? t('copied') : t('refresh')} side="bottom">
           <button
             type="button"
             className={css.refresh}
             aria-label={t('refresh')}
             onClick={() => {
-              setChildrenByPath({})
-              setExpanded(new Set())
+              if (query.trim() === '') {
+                setChildrenByPath({})
+                setExpanded(new Set())
+              }
               setGeneration(n => n + 1)
             }}
           >
@@ -130,22 +197,25 @@ export function FilesPanel({
         ) : root.length === 0 ? (
           <p className={css.message}>{t('empty.dir')}</p>
         ) : (
-          <FileTree
-            entries={root}
-            childrenByPath={childrenByPath}
-            expanded={expanded}
-            onToggle={onToggle}
-            onOpenFile={openFile}
-            onMention={(path) => {
-              if (sessionId === undefined) return
-              mentionFile(sessionId, path)
-            }}
-            onCopyRelative={(path) => { copyPath(path) }}
-            onCopyAbsolute={(path) => { copyPath(absoluteOf(cwd, path)) }}
-            mentionLabel={t('mention')}
-            copyRelativeLabel={t('copy.relative')}
-            copyAbsoluteLabel={t('copy.absolute')}
-          />
+          <>
+            {searchTruncated ? <p className={css.message} role="status">{t('search.truncated')}</p> : null}
+            <FileTree
+              entries={visibleRoot}
+              childrenByPath={childrenByPath}
+              expanded={expanded}
+              query={query}
+              onToggle={onToggle}
+              onOpenFile={openFile}
+              onMention={sessionId === undefined ? undefined : (path) => {
+                mentionFile(sessionId, path)
+              }}
+              onCopyRelative={(path) => { copyPath(path) }}
+              onCopyAbsolute={(path) => { copyPath(absoluteOf(cwd, path)) }}
+              mentionLabel={sessionId === undefined ? undefined : t('mention')}
+              copyRelativeLabel={t('copy.relative')}
+              copyAbsoluteLabel={t('copy.absolute')}
+            />
+          </>
         )}
       </div>
     </div>

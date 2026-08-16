@@ -3,15 +3,15 @@
  * @module @deepseek-ai/dsh-host-skill-inventory
  */
 
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { isSkillName, type SkillDefinition, type SkillSummary } from '@deepseek-ai/dsh-skill'
+import { isSkillName, type SkillDefinition, type SkillRegistry, type SkillSummary, type SkillViewOptions } from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-skill'
-import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
+import { TypertLookupFailure, TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
-import { parseSkillMarkdown, renderSkillMarkdown } from './frontmatter.ts'
+import { parseSkillMarkdown, renderSkillInvocationMarkdown, renderSkillMarkdown } from './frontmatter.ts'
 import type {
   SkillInventoryCreateRequest,
   SkillInventoryDetail,
@@ -30,9 +30,14 @@ export { parseSkillMarkdown, renderSkillMarkdown } from './frontmatter.ts'
 const WRITABLE_ALWAYS = new Set(['user-dsh', 'user-agents'])
 const WRITABLE_WITH_CWD = new Set(['project-dsh', 'project-agents'])
 
+interface ResolvedSkillView {
+  readonly registry: SkillRegistry
+  readonly options: SkillViewOptions
+}
+
 /** Remote-only skill catalog and file mutations for Settings. */
 export class SkillInventoryGateway extends TypertRemoteService {
-  static inject = ['skills']
+  static inject = ['agents', 'skills']
 
   /**
    * @param ctx - host context carrying the skill registry.
@@ -47,14 +52,14 @@ export class SkillInventoryGateway extends TypertRemoteService {
    */
   @Remote('list')
   async list(request: SkillInventoryScope): Promise<SkillInventorySnapshot> {
-    const cwd = emptyToUndefined(request.cwd)
-    const skills = await this.ctx.skills.list({ cwd })
+    const view = this.resolveView(request)
+    const skills = await view.registry.list(view.options)
     const entries: SkillInventoryEntry[] = []
     for (const summary of skills) {
-      const detail = await this.ctx.skills.get(summary.name, { cwd })
-      entries.push(toEntry(summary, detail, cwd))
+      const detail = await view.registry.get(summary.name, view.options)
+      entries.push(toEntry(summary, detail, view.options.cwd))
     }
-    return { skills: entries, ...cwd === undefined ? {} : { cwd } }
+    return { skills: entries, ...view.options.cwd === undefined ? {} : { cwd: view.options.cwd } }
   }
 
   /**
@@ -63,15 +68,15 @@ export class SkillInventoryGateway extends TypertRemoteService {
    */
   @Remote('get')
   async get(request: SkillInventoryGetRequest): Promise<SkillInventoryDetail> {
-    const cwd = emptyToUndefined(request.cwd)
-    const definition = await this.requireSkill(request.name, cwd)
+    const view = this.resolveView(request)
+    const definition = await this.requireSkill(request.name, view)
     return {
       name: definition.name,
       description: definition.description,
       ...definition.whenToUse === undefined ? {} : { whenToUse: definition.whenToUse },
       source: definition.source,
       ...definition.path === undefined ? {} : { path: definition.path },
-      writable: isWritable(definition.source, cwd, definition.path),
+      writable: isWritable(definition.source, view.options.cwd, definition.path),
       modelInvocable: definition.invocation.modelInvocable,
       userInvocable: definition.invocation.userInvocable,
       content: definition.content,
@@ -87,21 +92,22 @@ export class SkillInventoryGateway extends TypertRemoteService {
     if (!isSkillName(request.name)) {
       throw new Error(`skillInventory: name "${request.name}" is not kebab-case`)
     }
-    const cwd = emptyToUndefined(request.cwd)
-    const existing = await this.ctx.skills.get(request.name, { cwd })
+    const view = this.resolveView(request)
+    const existing = await view.registry.get(request.name, view.options)
     if (existing !== undefined) {
       throw new Error(`skillInventory: skill "${request.name}" already exists`)
     }
-    const path = createPath(request.root, request.name, cwd)
+    const path = await createPath(request.root, request.name, view.options.cwd)
     await mkdir(dirname(path), { recursive: true, mode: 0o700 })
     await writeFile(path, renderSkillMarkdown({
       name: request.name,
       description: request.description,
       ...optionalWhenToUse(request.whenToUse),
-      modelInvocable: true,
-      userInvocable: true,
+      modelInvocable: request.modelInvocable,
+      userInvocable: request.userInvocable,
       content: request.content,
     }), { encoding: 'utf8', mode: 0o600 })
+    view.registry.invalidate()
   }
 
   /**
@@ -110,8 +116,9 @@ export class SkillInventoryGateway extends TypertRemoteService {
    */
   @Remote('update')
   async update(request: SkillInventoryUpdateRequest): Promise<void> {
-    const cwd = emptyToUndefined(request.cwd)
-    const definition = await this.requireWritable(request.name, cwd)
+    const view = this.resolveView(request)
+    const definition = await this.requireWritable(request.name, view)
+    const current = parseSkillMarkdown(await readFile(definition.path, 'utf8'))
     await writeFile(definition.path, renderSkillMarkdown({
       name: definition.name,
       description: request.description,
@@ -119,7 +126,9 @@ export class SkillInventoryGateway extends TypertRemoteService {
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
       content: request.content,
+      existingData: current.data,
     }), 'utf8')
+    view.registry.invalidate()
   }
 
   /**
@@ -128,9 +137,10 @@ export class SkillInventoryGateway extends TypertRemoteService {
    */
   @Remote('delete')
   async delete(request: SkillInventoryRemoveRequest): Promise<void> {
-    const cwd = emptyToUndefined(request.cwd)
-    const definition = await this.requireWritable(request.name, cwd)
+    const view = this.resolveView(request)
+    const definition = await this.requireWritable(request.name, view)
     await rm(bundleRoot(definition.path), { recursive: true, force: true })
+    view.registry.invalidate()
   }
 
   /**
@@ -139,30 +149,57 @@ export class SkillInventoryGateway extends TypertRemoteService {
    */
   @Remote('setInvocation')
   async setInvocation(request: SkillInventoryInvocationRequest): Promise<void> {
-    const cwd = emptyToUndefined(request.cwd)
-    const definition = await this.requireWritable(request.name, cwd)
+    const view = this.resolveView(request)
+    const definition = await this.requireWritable(request.name, view)
     const current = await readFile(definition.path, 'utf8')
     const parsed = parseSkillMarkdown(current)
-    await writeFile(definition.path, renderSkillMarkdown({
-      name: definition.name,
-      description: definition.description,
-      ...optionalWhenToUse(definition.whenToUse),
+    await writeFile(definition.path, renderSkillInvocationMarkdown({
+      existingData: parsed.data,
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
       content: parsed.body,
     }), 'utf8')
+    view.registry.invalidate()
   }
 
-  private async requireSkill(name: string, cwd: string | undefined): Promise<SkillDefinition> {
+  private resolveView(request: SkillInventoryScope): ResolvedSkillView {
+    const cwd = emptyToUndefined(request.cwd)
+    const agent = this.sessionAgent(request.sessionId)
+    const presets = this.ctx.get('agentPresets') as {
+      serviceFor(agent: object, name: 'skills'): SkillRegistry | undefined
+    } | undefined
+    const registry = agent === undefined ? this.ctx.skills : presets?.serviceFor(agent, 'skills') ?? this.ctx.skills
+    const options: SkillViewOptions = {
+      ...cwd === undefined ? {} : { cwd },
+      ...agent === undefined ? {} : { scope: agent },
+    }
+    return { registry, options }
+  }
+
+  private sessionAgent(sessionId: string | undefined): object | undefined {
+    if (sessionId === undefined) return undefined
+    const agents = this.ctx.get('agents') as { get(id: string): object | undefined } | undefined
+    const agent = agents?.get(sessionId)
+    if (agent === undefined) {
+      throw new TypertLookupFailure({
+        code: 'session-not-found',
+        message: `session "${sessionId}" not found (not attached)`,
+        details: { sessionId },
+      })
+    }
+    return agent
+  }
+
+  private async requireSkill(name: string, view: ResolvedSkillView): Promise<SkillDefinition> {
     if (!isSkillName(name)) throw new Error(`skillInventory: name "${name}" is not kebab-case`)
-    const definition = await this.ctx.skills.get(name, { cwd })
+    const definition = await view.registry.get(name, view.options)
     if (definition === undefined) throw new Error(`skillInventory: skill "${name}" was not found`)
     return definition
   }
 
-  private async requireWritable(name: string, cwd: string | undefined): Promise<SkillDefinition & { path: string }> {
-    const definition = await this.requireSkill(name, cwd)
-    if (definition.path === undefined || !isWritable(definition.source, cwd, definition.path)) {
+  private async requireWritable(name: string, view: ResolvedSkillView): Promise<SkillDefinition & { path: string }> {
+    const definition = await this.requireSkill(name, view)
+    if (definition.path === undefined || !isWritable(definition.source, view.options.cwd, definition.path)) {
       throw new Error(`skillInventory: skill "${name}" is read-only`)
     }
     return definition as SkillDefinition & { path: string }
@@ -192,12 +229,32 @@ function isWritable(source: string, cwd: string | undefined, path: string | unde
   return cwd !== undefined && WRITABLE_WITH_CWD.has(source)
 }
 
-function createPath(root: SkillInventoryCreateRequest['root'], name: string, cwd: string | undefined): string {
+async function createPath(
+  root: SkillInventoryCreateRequest['root'],
+  name: string,
+  cwd: string | undefined,
+): Promise<string> {
   if (root === 'user-dsh') return join(resolveDshHome(), 'skills', name, 'SKILL.md')
   if (cwd === undefined || cwd.trim().length === 0) {
     throw new Error('skillInventory: creating a project skill requires cwd')
   }
-  return join(cwd, '.dsh', 'skills', name, 'SKILL.md')
+  const projectRoot = await findProjectRoot(cwd)
+  return join(projectRoot, '.dsh', 'skills', name, 'SKILL.md')
+}
+
+async function findProjectRoot(cwd: string): Promise<string> {
+  const fallback = resolve(cwd)
+  let current = fallback
+  while (true) {
+    try {
+      await access(join(current, '.git'))
+      return current
+    } catch {
+      const parent = dirname(current)
+      if (parent === current) return fallback
+      current = parent
+    }
+  }
 }
 
 function bundleRoot(path: string): string {

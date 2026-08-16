@@ -25,9 +25,10 @@ export interface SkillInventorySnapshot {
   readonly cwd?: string
 }
 
-/** Optional workspace selector. */
+/** Optional workspace and live-session selector. */
 export interface SkillInventoryScope {
   readonly cwd?: string
+  readonly sessionId?: string
 }
 
 /** Load one skill body. */
@@ -49,13 +50,14 @@ export interface SkillInventoryDetail {
 }
 
 /** Create a user or project skill bundle. */
-export interface SkillInventoryCreateRequest {
+export interface SkillInventoryCreateRequest extends SkillInventoryScope {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
   readonly content: string
   readonly root: SkillCreateRoot
-  readonly cwd?: string
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
 }
 
 /** Replace frontmatter and body of a writable skill. */

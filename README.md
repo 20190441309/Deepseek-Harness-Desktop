@@ -19,7 +19,7 @@
 自 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 起新增：
 6.设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
 7.手机远程办公（电脑出站连中继，手机扫码打开官方 Web 页继续本机会话）本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
-8.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm）、Files / Diff / Browser / Agents 面板，所有文件与命令都限定在当前工作区内。
+8.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。价值是这些工作环，不是五张卡都在。所有文件与命令都限定在当前工作区内。
 9.最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
 10.Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
 
@@ -48,8 +48,8 @@
 - **Harness 自动恢复**：主界面起来之后 `dsh` 意外退出，窗口立刻回到故障页，默认最多自动重启 3 次（间隔 1 / 2 / 4 秒），可取消或立刻重启。设置 → 通用可改策略。崩溃期间手机远程不再代理已经死掉的端口。
 - **工具结果配对恢复**：调度失败留下「有工具调用、没有结果」的残缺会话，下次发送会自动补齐，不再被提供商永久拒绝。
 - **标题栏 Git 操作**：有 Git 仓库的工作区里，标题栏出现 Commit / Commit & push / Push / 变更请求按钮与下拉菜单；无 Git 或非仓库时自动禁用。状态在窗口聚焦、操作完成后自动刷新。
-- **完整 VT 终端**：底栏终端抽屉与右栏 Terminal 共用同一批 PTY 会话（Windows ConPTY），基于 xterm 的完整 ANSI/VT 渲染，支持方向键、历史、Home/End、粘贴、Ctrl+C 与窗口缩放自适应。终端只在当前工作区内启动。
-- **纯右边栏**：标题栏开关打开右栏，空态五卡可开 Browser（本地 URL 预览）、Terminal、Files、Diff、Agents。文件浏览 / 读取、Git 状态与命令全部锁定在工作区根目录内，预览页仅允许本地回环地址且使用隔离会话，不会携带你的 API Key。
+- **完整 VT 终端**：底栏终端抽屉与右栏 Terminal 各自拥有 PTY 会话表（Windows ConPTY），基于 xterm 的完整 ANSI/VT。选区可复制、加入对话（没有会话时禁用）、打开 URL 或工作区路径；⌘/Ctrl-点击同样生效。最大化只还原底栏抽屉高度，右栏 Terminal 没有单独最大化。
+- **纯右边栏**：标题栏开关打开右栏。移植的是 T3 工作环，不是五张空态卡：Files 可按名搜索、编辑保存（未保存草稿刷新后仍在，关 Tab 会确认）；Browser 可后退/前进/刷新/DevTools/系统浏览器/发现本机端口，切 Tab 不关访客页；Diff 分工作区与分支范围（分支上没有暂存）；Agents 列出子会话与后台任务。文件、Git、命令锁在工作区根；预览只允许本机回环且隔离会话，不带 API Key。不移植 Ghostty、worktree 绑分支、checkpoint turn-diff、批注拾取、PiP/录制、跳行。约定见 [右边栏与终端的 T3 工作流](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.zh.md)。
 
 ### 第三方思考强度
 
@@ -109,7 +109,7 @@
 
 ### 标题栏 Git、终端与右边栏
 
-有 Git 仓库的工作区里，标题栏提供 Commit / Commit & push / Push / 变更请求。底栏终端抽屉和右栏 Terminal 共用同一批 PTY（Windows ConPTY），完整 ANSI/VT。标题栏开关打开右栏：Files、Diff、Browser、Agents。文件和命令锁在当前工作区里；预览只允许本机回环地址。
+有 Git 仓库的工作区里，标题栏提供 Commit / Commit & push / Push / 变更请求。底栏终端抽屉和右栏 Terminal 各自拥有 PTY，完整 ANSI/VT；选区可加入对话（无会话时禁用）。标题栏开关打开右栏后，Files 可搜索并保存、Browser 可导航并保持访客页、Diff 可看工作区或分支、Agents 可读任务状态。不假装有 Ghostty、worktree 环境、turn-diff、批注、PiP 或跳行。约定：[右边栏与终端的 T3 工作流](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.zh.md)。
 
 ## 安装
 
@@ -154,7 +154,7 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 
 `vendor/deepseek-harness` 是 [git subtree](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge)：
 
-- **设计语言**：任何 UI / 布局 / 前端改动必须遵守官方 `dsh web` 的样式，见 [docs/design-language.md](docs/design-language.md)。不要给桌面壳另做一套皮肤。
+- **设计语言**：任何 UI / 布局 / 前端改动必须遵守官方 `dsh web` 的样式，见 [docs/design-language.md](docs/design-language.md)。不要给桌面壳另做一套皮肤。启动页仪器风见 [桌面启动页](docs/design-language.md#桌面启动页)，不得扩散。按键、弹窗、菜单的动效规范与使用对照见 [docs/motion.md](docs/motion.md)。
 - **二次开发**：直接改 `vendor/deepseek-harness` 里的文件，和本仓库其他代码一起正常提交即可，不需要维护补丁文件。
 - **拉取官方更新**：`npm run sync:harness`（等价于 `git subtree pull --squash`）。git 会做三方合并——上游改动和本地定制自动融合，只有双方改了同一处才需要手动解决冲突，解决后 `git add` + `git commit` 完成合并。同步后跑 `npm run setup:harness` 重新构建。
 - **查看本地定制**：`git log --oneline -- vendor/deepseek-harness` 里非 `Sync/Squashed` 的提交就是二次开发历史；每次上游快照的提交信息里都带 `git-subtree-split`（上游 commit SHA），可用来对比。

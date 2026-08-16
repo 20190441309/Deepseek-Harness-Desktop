@@ -1,19 +1,33 @@
 .bar {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 4px;
   min-width: 0;
-  padding: 12px 12px 0;
+  height: 48px;
+  padding: 0 8px;
+  padding-right: var(--dsh-wco-controls, 8px);
+  box-sizing: border-box;
   overflow-x: auto;
+  -webkit-app-region: drag;
+}
+
+.interactive,
+.tab,
+.add,
+.close,
+.label {
+  -webkit-app-region: no-drag;
 }
 
 .tab {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   max-width: 144px;
   height: 24px;
-  padding: 0 8px 0 6px;
+  padding: 0 6px 0 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -21,7 +35,8 @@
   cursor: pointer;
 }
 
-.tab:hover {
+.tab:hover:not(.active),
+.tab[data-hover]:not(.active) {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
@@ -57,10 +72,35 @@
   height: 16px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+.kindIcon,
+.closeGlyph {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+}
+
+.closeGlyph {
+  display: none;
+}
+
+.tab:hover .kindIcon,
+.tab[data-hover] .kindIcon,
+.close:focus-visible .kindIcon {
+  display: none;
+}
+
+.tab:hover .closeGlyph,
+.tab[data-hover] .closeGlyph,
+.close:focus-visible .closeGlyph {
+  display: grid;
 }
 
 .add {

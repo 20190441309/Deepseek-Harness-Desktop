@@ -89,6 +89,40 @@ servers:
     expect(kept.servers[0]?.transport === 'stdio' && kept.servers[0].env?.GITHUB_TOKEN).toBe('secret-token')
   })
 
+  it('clears the stored map when the upsert omits env or headers', () => {
+    const document = parseDocument(stdio)
+    const cleared = upsertRecord(document, {
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    })
+    const record = cleared.servers[0]
+    expect(record?.transport === 'stdio' && record.env).toBeUndefined()
+    expect(serializeDocument(cleared)).not.toContain('secret-token')
+
+    const httpDocument = parseDocument(`
+servers:
+  - id: remote
+    transport: streamable-http
+    serverName: remote
+    url: http://127.0.0.1:9/mcp
+    headers:
+      Authorization: 'secret-token'
+`)
+    const clearedHttp = upsertRecord(httpDocument, {
+      id: 'remote',
+      enabled: true,
+      transport: 'streamable-http',
+      serverName: 'remote',
+      url: 'http://127.0.0.1:9/mcp',
+    })
+    const httpRecord = clearedHttp.servers[0]
+    expect(httpRecord?.transport === 'streamable-http' && httpRecord.headers).toBeUndefined()
+    expect(serializeDocument(clearedHttp)).not.toContain('secret-token')
+  })
+
   it('rejects invalid records, transports, and duplicate serverName', () => {
     expect(() => parseDocument('servers:\n  - just-a-string\n')).toThrow(/must be an object/)
     expect(() => parseDocument(`

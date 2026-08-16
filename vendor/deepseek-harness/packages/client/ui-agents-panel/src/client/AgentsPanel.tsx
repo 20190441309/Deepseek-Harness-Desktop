@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { IconAgentPresetOutline16, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { JobView, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { listSessionAgents } from './agents.ts'
-import { NS } from './locales.ts'
+import { NS, type AgentsKey } from './locales.ts'
 import css from './AgentsPanel.module.css'
 
 /** Injected navigation into a child session. */
@@ -15,6 +15,14 @@ export type AgentsPanelProps =
   & PropsRuntime<'surfaces.agents'>
   & PropsLocale<typeof NS>
   & InjectFace<AgentsPanelInjected>
+
+const JOB_STATUS_KEY = {
+  running: 'jobs.status.running',
+  stopping: 'jobs.status.stopping',
+  completed: 'jobs.status.completed',
+  killed: 'jobs.status.killed',
+  failed: 'jobs.status.failed',
+} as const satisfies Record<JobView['status'], AgentsKey>
 
 /**
  * Current-session subagent occupant of `surfaces.agents`. Reads the existing
@@ -32,9 +40,6 @@ export function AgentsPanel({ sessionId, useSessions, openAgent, t }: AgentsPane
 
   return (
     <div className={css.root} data-agents-panel>
-      <div className={css.header} data-surface-subheader>
-        <h3 className={css.title}>{t('title')}</h3>
-      </div>
       <div className={css.body}>
         {agents.length === 0 ? (
           <div className={css.empty} data-agents-empty>
@@ -71,7 +76,7 @@ export function AgentsPanel({ sessionId, useSessions, openAgent, t }: AgentsPane
                 <li key={job.id} className={css.row} data-job-id={job.id}>
                   <span className={css.label}>{job.label}</span>
                   <span className={css.meta}>
-                    {job.status}
+                    {t(JOB_STATUS_KEY[job.status])}
                     {job.detail !== undefined ? ` · ${job.detail}` : null}
                   </span>
                 </li>

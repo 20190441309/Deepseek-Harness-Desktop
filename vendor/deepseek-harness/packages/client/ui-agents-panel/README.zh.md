@@ -4,7 +4,7 @@
 
 右边栏 Agents occupant，挂在 `surfaces.agents`（`single`，`session-maybe`，由 ui-surfaces 声明）。从现有会话快照列出当前会话的子代理（先 `subagentsByParent`，再 `byId` 子行）。不生成、不派遣，也不新造内核。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
-目录和谱系都为空时显示空态。点击行打开子会话。`jobsBySession` 的后台任务列在名册下方。
+目录和谱系都为空时显示空态。点击行打开子会话。`jobsBySession` 的后台任务列在名册下方；生命周期状态走文案表，`label` 与 `detail` 仍是生产者字符串。
 
 `/client` 导出表层只包含插件主体（`apply`／`inject`）及约定类型；AgentsPanel 仍由 slot 注册封装在包内。
 

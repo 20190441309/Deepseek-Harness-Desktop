@@ -68,6 +68,7 @@ describe('AgentsPanel', () => {
     mount(sessionList({}))
     expect(screen.getByText('No agents yet')).toBeTruthy()
     expect(screen.getByText('When this session spawns subagents, they show up here.')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Agents' })).toBeNull()
     expect(screen.queryByText('writer')).toBeNull()
   })
 
@@ -167,6 +168,35 @@ describe('AgentsPanel', () => {
     expect(screen.getByText(/not running/)).toBeTruthy()
     expect(screen.getByText(/one-shot/)).toBeTruthy()
     expect(screen.getByText(/exit 0/)).toBeTruthy()
+  })
+
+  it('renders job status through the locale table, not the raw enum', () => {
+    const state = sessionList({})
+    state.jobsBySession = {
+      [PARENT]: [{
+        id: 'bash-3' as never,
+        kind: 'bash',
+        label: 'pnpm test',
+        status: 'failed',
+        startedAt: 1,
+      }],
+    }
+    const localized: AgentsPanelProps['t'] = (key) => (
+      key === 'jobs.status.failed' ? '失败' : ((en as Record<string, string>)[key] ?? key)
+    )
+    render(
+      <AgentsPanel {...({
+        sessionId: PARENT,
+        useSession: neverHook,
+        useSessions: (sel: (s: SessionListState) => unknown) => sel(state),
+        useWorkspaces: neverHook,
+        useProjection: neverHook,
+        openAgent: () => {},
+        t: localized,
+      } as unknown as AgentsPanelProps)} />,
+    )
+    expect(screen.getByText('失败')).toBeTruthy()
+    expect(screen.queryByText('failed')).toBeNull()
   })
 
   it('lists no jobs when the session id cannot be resolved', () => {

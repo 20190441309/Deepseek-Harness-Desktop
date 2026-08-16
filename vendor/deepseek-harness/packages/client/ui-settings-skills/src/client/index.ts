@@ -35,37 +35,28 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS) as SkillsSectionInjected['t']
   const injected = (): SkillsSectionInjected => ({
     t,
-    getCwd: () => {
-      const list = ctx.sessions.list.getSnapshot()
-      const current = list.current
-      return current === undefined ? undefined : list.byId[current]?.cwd
+    list: async scope => unwrap(await ctx.remote.skillInventory.list(scope), 'skillInventory.list'),
+    get: async (name, scope) => unwrap(await ctx.remote.skillInventory.get({ name, ...scope }), 'skillInventory.get'),
+    create: async (input) => {
+      unwrap(await ctx.remote.skillInventory.create(input), 'skillInventory.create')
     },
-    list: async cwd => unwrap(await ctx.remote.skillInventory.list(scope(cwd)), 'skillInventory.list'),
-    get: async (name, cwd) => unwrap(await ctx.remote.skillInventory.get({ name, ...scope(cwd) }), 'skillInventory.get'),
-    create: async input => {
-      unwrap(await ctx.remote.skillInventory.create({ ...input, root: 'user-dsh' }), 'skillInventory.create')
-    },
-    update: async input => { unwrap(await ctx.remote.skillInventory.update({ ...input, ...scope(input.cwd) }), 'skillInventory.update') },
-    remove: async (name, cwd) => { unwrap(await ctx.remote.skillInventory.delete({ name, ...scope(cwd) }), 'skillInventory.delete') },
-    setInvocation: async (name, modelInvocable, userInvocable, cwd) => {
-      unwrap(await ctx.remote.skillInventory.setInvocation({ name, modelInvocable, userInvocable, ...scope(cwd) }), 'skillInventory.setInvocation')
+    update: async (input) => { unwrap(await ctx.remote.skillInventory.update(input), 'skillInventory.update') },
+    remove: async (name, scope) => { unwrap(await ctx.remote.skillInventory.delete({ name, ...scope }), 'skillInventory.delete') },
+    setInvocation: async (name, modelInvocable, userInvocable, scope) => {
+      unwrap(await ctx.remote.skillInventory.setInvocation({ name, modelInvocable, userInvocable, ...scope }), 'skillInventory.setInvocation')
     },
   })
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'skills',
-    order: 20,
+    order: 16,
     label: () => t('nav'),
     locale: NS,
     inject: injected,
   }, SkillsSection))
 }
 
-function unwrap<T>(result: { ok: true, value: T } | { ok: false, error: { code: string, message: string } }, label: string): T {
+function unwrap<T>(result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }, label: string): T {
   if (!result.ok) throw new Error(`${label} failed: ${result.error.code}: ${result.error.message}`)
   return result.value
-}
-
-function scope(cwd: string | undefined): { cwd: string } | object {
-  return cwd === undefined || cwd.trim().length === 0 ? {} : { cwd }
 }

@@ -1,4 +1,4 @@
-"""Write a 256x256 PNG app icon without third-party deps."""
+"""Legacy plus-mark PNG. The checked-in whale icon is rendered by scripts/render-icon.js."""
 from __future__ import annotations
 
 import struct

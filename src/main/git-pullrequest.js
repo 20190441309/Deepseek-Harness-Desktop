@@ -1,0 +1,277 @@
+const { run, runGit, asCwd, parseStatusHeader, GH_TIMEOUT_MS } = require('./git-exec');
+const {
+  normalizeGitRemoteUrl,
+  selectProviderContext,
+  parseGitHubRepositoryNameWithOwner,
+  resolveCurrentUpstream,
+} = require('./git-remotes');
+
+const PR_LOOKUP_CACHE_CAPACITY = 32;
+/** @type {Map<string, { pr: object | null, headBranch: string, upstreamRef: string | null, remoteName: string | null, headRemoteUrlKey: string | null }>} */
+const lastKnownPrByBranchKey = new Map();
+
+function rememberLastKnownPr(branchKey, entry) {
+  if (!lastKnownPrByBranchKey.has(branchKey) && lastKnownPrByBranchKey.size >= PR_LOOKUP_CACHE_CAPACITY) {
+    const oldest = lastKnownPrByBranchKey.keys().next().value;
+    if (oldest !== undefined) lastKnownPrByBranchKey.delete(oldest);
+  }
+  lastKnownPrByBranchKey.set(branchKey, entry);
+}
+
+function resolveLastKnownPr(branchKey, current) {
+  const lastKnown = lastKnownPrByBranchKey.get(branchKey);
+  if (!lastKnown) return null;
+  if (lastKnown.headBranch !== current.headBranch) return null;
+  if (lastKnown.headRemoteUrlKey !== null && current.headRemoteUrlKey !== null) {
+    return lastKnown.headRemoteUrlKey === current.headRemoteUrlKey ? lastKnown.pr : null;
+  }
+  if (
+    lastKnown.upstreamRef !== null
+    && current.upstreamRef !== null
+    && lastKnown.remoteName !== null
+    && current.remoteName !== null
+  ) {
+    return lastKnown.remoteName === current.remoteName ? lastKnown.pr : null;
+  }
+  return lastKnown.pr;
+}
+
+function resetLastKnownPrCache() {
+  lastKnownPrByBranchKey.clear();
+}
+
+function appendUnique(values, next) {
+  const trimmed = String(next || '').trim();
+  if (!trimmed || values.includes(trimmed)) return;
+  values.push(trimmed);
+}
+
+/**
+ * T3code BranchHeadContext selectors for `gh pr list --head` probing.
+ * @param {string} cwd
+ * @param {string} refName
+ * @returns {Promise<object>}
+ */
+async function resolveBranchHeadContext(cwd, refName) {
+  const configuredRemote = await runGit(cwd, ['config', '--get', `branch.${refName}.remote`]);
+  const remoteName = configuredRemote.code === 0 && configuredRemote.stdout.trim()
+    ? configuredRemote.stdout.trim()
+    : null;
+  const upstream = await resolveCurrentUpstream(cwd);
+  const upstreamRef = upstream?.upstreamRef || null;
+  const headBranchFromUpstream = upstream?.branchName || '';
+  const headBranch = headBranchFromUpstream || refName;
+  const shouldProbeLocalBranchSelector = !headBranchFromUpstream || headBranch === refName;
+  const effectiveRemote = remoteName || upstream?.remoteName || null;
+
+  const headRemote = effectiveRemote
+    ? await runGit(cwd, ['remote', 'get-url', effectiveRemote])
+    : { code: 1, stdout: '' };
+  const originRemote = await runGit(cwd, ['remote', 'get-url', 'origin']);
+  const headRemoteUrl = headRemote.code === 0 ? headRemote.stdout.trim() : '';
+  const originRemoteUrl = originRemote.code === 0 ? originRemote.stdout.trim() : '';
+  const headRepo = parseGitHubRepositoryNameWithOwner(headRemoteUrl)
+    || parseRepositoryNameWithOwnerFromNormalized(headRemoteUrl);
+  const originRepo = parseGitHubRepositoryNameWithOwner(originRemoteUrl)
+    || parseRepositoryNameWithOwnerFromNormalized(originRemoteUrl);
+  const ownerLogin = headRepo ? headRepo.split('/')[0] : null;
+  const isCrossRepository = headRepo && originRepo
+    ? headRepo.toLowerCase() !== originRepo.toLowerCase()
+    : Boolean(effectiveRemote && effectiveRemote !== 'origin' && headRepo);
+  const ownerHeadSelector = ownerLogin && headBranch ? `${ownerLogin}:${headBranch}` : null;
+  const remoteAliasHeadSelector = effectiveRemote && headBranch ? `${effectiveRemote}:${headBranch}` : null;
+  const shouldProbeRemoteOwnedSelectors = isCrossRepository
+    || (effectiveRemote !== null && effectiveRemote !== 'origin');
+  const headSelectors = [];
+  if (isCrossRepository && shouldProbeRemoteOwnedSelectors) {
+    appendUnique(headSelectors, ownerHeadSelector);
+    appendUnique(headSelectors, remoteAliasHeadSelector !== ownerHeadSelector ? remoteAliasHeadSelector : null);
+  }
+  if (shouldProbeLocalBranchSelector) appendUnique(headSelectors, refName);
+  if (headBranch !== refName) appendUnique(headSelectors, headBranch);
+  if (!isCrossRepository && shouldProbeRemoteOwnedSelectors) {
+    appendUnique(headSelectors, ownerHeadSelector);
+    appendUnique(headSelectors, remoteAliasHeadSelector !== ownerHeadSelector ? remoteAliasHeadSelector : null);
+  }
+  if (headSelectors.length === 0) appendUnique(headSelectors, headBranch);
+  return {
+    localBranch: refName,
+    headBranch,
+    preferredHeadSelector: ownerHeadSelector && isCrossRepository ? ownerHeadSelector : headBranch,
+    headSelectors,
+    remoteName: effectiveRemote,
+    upstreamRef,
+    headRemoteUrlKey: headRemoteUrl
+      ? normalizeGitRemoteUrl(headRemoteUrl)
+      : (effectiveRemote === null && originRemoteUrl ? normalizeGitRemoteUrl(originRemoteUrl) : null),
+    headRepositoryNameWithOwner: headRepo,
+    headRepositoryOwnerLogin: ownerLogin,
+    isCrossRepository,
+  };
+}
+
+function parseRepositoryNameWithOwnerFromNormalized(url) {
+  const key = normalizeGitRemoteUrl(url);
+  const parts = key.split('/').filter(Boolean);
+  if (parts.length < 3) return null;
+  return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+}
+
+/**
+ * T3code `matchesBranchHeadContext`: reject PR rows that share a branch name but not the head repo.
+ * @param {object} pr
+ * @param {object} headContext
+ * @returns {boolean}
+ */
+function matchesBranchHeadContext(pr, headContext) {
+  if (!pr || pr.headRef !== headContext.headBranch) return false;
+  const expectedRepo = (headContext.headRepositoryNameWithOwner || '').toLowerCase() || null;
+  const expectedOwner = (headContext.headRepositoryOwnerLogin || '').toLowerCase() || null;
+  const prRepo = (pr.headRepositoryNameWithOwner || '').toLowerCase() || null;
+  const prOwner = (pr.headRepositoryOwnerLogin || '').toLowerCase() || null;
+
+  if (expectedRepo) {
+    if (prRepo && expectedRepo !== prRepo) return false;
+    if (expectedOwner && prOwner && expectedOwner !== prOwner) return false;
+  }
+  if (expectedOwner && prOwner && expectedOwner !== prOwner) return false;
+
+  if (headContext.isCrossRepository) {
+    if (pr.isCrossRepository === false) return false;
+    if ((expectedRepo || expectedOwner) && !prRepo && !prOwner) return false;
+    return true;
+  }
+  if (pr.isCrossRepository === true) {
+    if ((!expectedRepo && !expectedOwner) || (!prRepo && !prOwner)) return false;
+  }
+  return true;
+}
+
+/**
+ * T3code parseRepositoryNameFromPullRequestUrl — repo leaf from a PR HTML URL.
+ * @param {string} url
+ * @returns {string | null}
+ */
+function parseRepositoryNameFromPullRequestUrl(url) {
+  const trimmed = String(url || '').trim();
+  const match = /^https:\/\/[^/?#]+\/[^/]+\/([^/]+)\/pull\/\d+(?:\/.*)?$/i.exec(trimmed);
+  const repositoryName = match?.[1]?.trim() ?? '';
+  return repositoryName || null;
+}
+
+function parseGhPullRequestRow(parsed) {
+  if (!parsed || typeof parsed.number !== 'number') return null;
+  const state = String(parsed.state || '').toLowerCase();
+  const ownerLogin = typeof parsed.headRepositoryOwner?.login === 'string'
+    ? parsed.headRepositoryOwner.login.trim()
+    : '';
+  let repoNameWithOwner = typeof parsed.headRepository?.nameWithOwner === 'string'
+    ? parsed.headRepository.nameWithOwner.trim()
+    : (ownerLogin && parsed.headRepository?.name
+      ? `${ownerLogin}/${String(parsed.headRepository.name).trim()}`
+      : '');
+  // T3code resolvePullRequestHeadRepositoryNameWithOwner: synthesize from URL when
+  // cross-repo JSON omits headRepository but includes owner login.
+  if (!repoNameWithOwner && parsed.isCrossRepository && ownerLogin) {
+    const leaf = parseRepositoryNameFromPullRequestUrl(parsed.url);
+    if (leaf) repoNameWithOwner = `${ownerLogin}/${leaf}`;
+  }
+  return {
+    number: parsed.number,
+    title: parsed.title || '',
+    url: parsed.url || '',
+    baseRef: parsed.baseRefName || '',
+    headRef: parsed.headRefName || '',
+    state: state === 'merged' || state === 'closed' ? state : 'open',
+    ...(typeof parsed.isCrossRepository === 'boolean' ? { isCrossRepository: parsed.isCrossRepository } : {}),
+    ...(repoNameWithOwner ? { headRepositoryNameWithOwner: repoNameWithOwner } : {}),
+    ...(ownerLogin ? { headRepositoryOwnerLogin: ownerLogin } : {}),
+  };
+}
+
+/**
+ * Probe open PRs across T3code headSelectors. Distinguishes lookup failure from empty.
+ * @param {string} cwd
+ * @returns {Promise<{ pr: object | null, failed: boolean, headContext?: object }>}
+ */
+async function lookupOpenPullRequest(cwd) {
+  if (lookupOpenPullRequestOverride) return lookupOpenPullRequestOverride(cwd);
+  const root = asCwd(cwd);
+  if (!root) return { pr: null, failed: true };
+  const selected = await selectProviderContext(root);
+  // Only GitHub (including self-hosted) uses `gh`.
+  if (selected?.provider?.kind !== 'github') {
+    return { pr: null, failed: false };
+  }
+  const header = await runGit(root, ['status', '-sb']);
+  const parsedHeader = parseStatusHeader((header.stdout || '').split(/\r?\n/)[0] || '## HEAD (no branch)');
+  if (!parsedHeader.refName) return { pr: null, failed: false };
+  const headContext = await resolveBranchHeadContext(root, parsedHeader.refName);
+  const jsonFields = 'number,title,url,baseRefName,headRefName,state,isCrossRepository,headRepository,headRepositoryOwner';
+  let sawFailure = false;
+  for (const headSelector of headContext.headSelectors) {
+    const listed = await run('gh', [
+      'pr',
+      'list',
+      '--head',
+      headSelector,
+      '--state',
+      'open',
+      '--limit',
+      '20',
+      '--json',
+      jsonFields,
+    ], root, { timeoutMs: GH_TIMEOUT_MS });
+    if (listed.missing || listed.code !== 0) {
+      // T3code fail-closes on any listChangeRequests error (do not treat as empty).
+      sawFailure = true;
+      continue;
+    }
+    try {
+      const rows = JSON.parse(listed.stdout);
+      if (!Array.isArray(rows)) {
+        sawFailure = true;
+        continue;
+      }
+      for (const row of rows) {
+        const pr = parseGhPullRequestRow(row);
+        if (pr && matchesBranchHeadContext(pr, headContext)) {
+          return { pr, failed: false, headContext };
+        }
+      }
+    } catch {
+      sawFailure = true;
+    }
+  }
+  if (sawFailure) {
+    return { pr: null, failed: true, headContext };
+  }
+  return { pr: null, failed: false, headContext };
+}
+
+/** @type {null | ((cwd: string) => Promise<{ pr: object | null, failed: boolean, headContext?: object }>)} */
+let lookupOpenPullRequestOverride = null;
+
+/** Test seam: replace open-PR lookup (avoids live `gh` in unit tests). */
+function setLookupOpenPullRequest(resolver) {
+  lookupOpenPullRequestOverride = typeof resolver === 'function' ? resolver : null;
+}
+
+async function readPullRequest(cwd) {
+  const looked = await lookupOpenPullRequest(cwd);
+  if (looked.failed) return null;
+  return looked.pr;
+}
+
+module.exports = {
+  rememberLastKnownPr,
+  resolveLastKnownPr,
+  resetLastKnownPrCache,
+  resolveBranchHeadContext,
+  parseRepositoryNameWithOwnerFromNormalized,
+  matchesBranchHeadContext,
+  parseGhPullRequestRow,
+  lookupOpenPullRequest,
+  setLookupOpenPullRequest,
+  readPullRequest,
+};

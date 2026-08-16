@@ -26,14 +26,17 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Primary card is 218 wide in the design across both hosts. */
+/* Primary card is 218 wide in the design across both hosts. Long labels
+ * ellipsis inside the row; do not let one menu grow while its neighbor stays
+ * at the design width. */
 .list {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 100;
+  width: 218px;
   min-width: 218px;
-  max-width: 360px;
+  max-width: 218px;
 }
 
 /* Portal mode: fixed in the viewport, coordinates supplied inline from the
@@ -77,19 +80,63 @@
   overflow-y: auto;
 }
 
-/* Pinned rows below the scroll region; l2 hairline (l1 is near-invisible on
- * the menu surface) mirrors the .separator spacing. */
+/* Pinned filter above the scroll region. */
+.header {
+  flex: none;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border-radius: 10px;
+}
+
+.filterInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.filterInput::placeholder {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.compactList .filter {
+  min-height: 26px;
+  gap: 6px;
+  padding: 3px 7px;
+}
+
+.compactList .filterInput {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Pinned rows below the scroll region. */
 .footer {
   flex: none;
   display: flex;
   flex-direction: column;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
 }
 
 .itemWrap {
   position: relative;
+}
+
+.hintWrap {
+  display: flex;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Menu cell (figma .Menu_cell): min-h 40, r10, pad 10/8, 14/22 primary,
@@ -126,7 +173,9 @@
 
 .list.compactList,
 .submenu.compactList {
+  width: 164px;
   min-width: 164px;
+  max-width: 164px;
   padding: 2px;
   border-radius: 7px;
 }

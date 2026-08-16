@@ -1,4 +1,4 @@
-/** Browser plugin owning the shared user-terminal drawer and surface. */
+/** Browser plugin owning the bottom-drawer and right-panel Terminal shells. */
 
 export { apply, inject } from './apply.ts'
 export type {

@@ -196,6 +196,9 @@ describe('connection node half', () => {
       'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
       'credentials.describe', 'credentials.set', 'credentials.unset',
       'llm.discoverModels',
+      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+      'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
+      'skillInventory/delete', 'skillInventory/setInvocation',
       // A composition names the plugins a session runs: reading one is
       // reconnaissance, and copy/remove/openDocument manage the roster and
       // drive the host desktop.
@@ -212,6 +215,18 @@ describe('connection node half', () => {
     const read = fakeResponse()
     await routes[0]!.handler(fakeRequest({ host: 'harness.example' }), read.response)
     expect(read.state.status).not.toBe(403)
+    for (const method of [
+      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+      'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
+      'skillInventory/delete', 'skillInventory/setInvocation',
+    ]) {
+      const allowed = fakeResponse()
+      await routes[0]!.handler(
+        fakeRequest({ host: '127.0.0.1:3080' }, `${API_PATH}/${method}`),
+        allowed.response,
+      )
+      expect(allowed.state.status).not.toBe(403)
+    }
     await dispose()
   })
 
@@ -360,6 +375,51 @@ describe('connection node half', () => {
     await fiber.dispose()
   })
 
+  it('pins privileged shared-interceptor claims to loopback before dispatch', async () => {
+    const ctx = new Context()
+    const routes: WebRoute[] = []
+    ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'] })
+    await fiber.await()
+    const calls: string[] = []
+    const remove = (ctx.get('connection') as HostConnectionHandle).rpc.intercept(
+      '/api',
+      endpoint => endpoint === 'mcpServers/list',
+      async (endpoint) => {
+        calls.push(endpoint)
+        return { ok: true, value: { servers: [] } }
+      },
+      { authority: 'trusted-host' },
+    )
+    const route = routes.find(candidate => candidate.path === API_PATH)!
+    const request: ClientRequest = {
+      type: 'client-request',
+      rpcId: RpcId('rpc-privileged'),
+      method: 'mcpServers/list',
+      payload: { args: {} },
+    }
+
+    const denied = fakeResponse()
+    await route.handler(
+      fakePost({ host: 'harness.example' }, '/api/mcpServers/list', request),
+      denied.response,
+    )
+    expect(denied.state).toMatchObject({ status: 403, body: 'forbidden' })
+    expect(calls).toEqual([])
+
+    const allowed = fakeResponse()
+    await route.handler(
+      fakePost({ host: '127.0.0.1:3080' }, '/api/mcpServers/list', request),
+      allowed.response,
+    )
+    expect(allowed.state.status).toBe(200)
+    expect(calls).toEqual(['mcpServers/list'])
+
+    await remove()
+    await fiber.dispose()
+  })
+
   it('applies the configured trust fence and JSON envelope checks to generic channels', async () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
@@ -493,6 +553,9 @@ describe('connection node half over a real HTTP server', () => {
         // Carries a draft credential and turns the host into a fetcher for a
         // URL the caller picked: an anonymous LAN caller must not reach it.
         'llm.discoverModels',
+        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+        'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
+        'skillInventory/delete', 'skillInventory/setInvocation',
         'agentPreset.read', 'agentPreset.copy', 'agentPreset.openDocument', 'agentPreset.remove',
       ]) {
         expect([method, await call(port, method, 'harness.example')]).toEqual([method, 403])
@@ -509,7 +572,14 @@ describe('connection node half over a real HTTP server', () => {
         expect([method, await call(port, method, 'harness.example')]).toEqual([method, 404])
       }
       // Loopback reaches everything, configuration included.
-      expect(await call(port, 'settings.describe', `127.0.0.1:${String(port)}`)).toBe(404)
+      for (const method of [
+        'settings.describe',
+        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+        'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
+        'skillInventory/delete', 'skillInventory/setInvocation',
+      ]) {
+        expect([method, await call(port, method, `127.0.0.1:${String(port)}`)]).toEqual([method, 404])
+      }
     } finally {
       await close()
       await dispose()

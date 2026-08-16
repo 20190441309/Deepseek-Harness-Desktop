@@ -240,6 +240,27 @@ describe('Tooltip', () => {
     }
   })
 
+  it('supports left placement without a vertical flip', () => {
+    const spy = placed(100, 120, 20)
+    try {
+      render(
+        <Tooltip label="Left" side="left">
+          <button type="button">anchor</button>
+        </Tooltip>,
+      )
+      fireEvent.mouseEnter(screen.getByText('anchor'))
+      const bubble = screen.getByRole('tooltip')
+      expect(bubble.getAttribute('data-side')).toBe('left')
+      // Vertically centered against the anchor: 100 + (120 - 100) / 2.
+      expect(bubble.style.top).toBe('110px')
+      // pos.x = anchor left (100); the 100px-wide bubble plus the 10px gutter
+      // would land at -10, so the clamp pins it to the 12px edge margin.
+      expect(bubble.style.left).toBe('12px')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the requested side when neither side fits', () => {
     // A bubble taller than the viewport has no home; oscillating between the
     // two would be worse than honouring the request.

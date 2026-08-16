@@ -47,15 +47,26 @@ contextBridge.exposeInMainWorld('shell', {
   seedInstallDraft: (item) => ipcRenderer.invoke('shell:seed-install-draft', item),
   openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
   gitStatus: (cwd) => ipcRenderer.invoke('shell:git-status', cwd),
+  gitFetchForStatus: (cwd) => ipcRenderer.invoke('shell:git-fetch-status', cwd),
+  gitReadPullRequest: (cwd) => ipcRenderer.invoke('shell:git-pull-request', cwd),
   gitInit: (cwd) => ipcRenderer.invoke('shell:git-init', cwd),
-  gitDiff: (cwd) => ipcRenderer.invoke('shell:git-diff', cwd),
-  gitCommit: (cwd, message) => ipcRenderer.invoke('shell:git-commit', cwd, message),
-  gitPush: (cwd) => ipcRenderer.invoke('shell:git-push', cwd),
-  gitPull: (cwd) => ipcRenderer.invoke('shell:git-pull', cwd),
-  gitCreateChangeRequest: (cwd, input) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input),
+  gitDiff: (cwd, options) => ipcRenderer.invoke('shell:git-diff', cwd, options),
+  gitCommit: (cwd, message, filePaths, actionId, options) => ipcRenderer.invoke('shell:git-commit', cwd, message, filePaths, actionId, options),
+  gitChangedFiles: (cwd) => ipcRenderer.invoke('shell:git-changed-files', cwd),
+  gitPush: (cwd, actionId) => ipcRenderer.invoke('shell:git-push', cwd, actionId),
+  gitPull: (cwd, actionId) => ipcRenderer.invoke('shell:git-pull', cwd, actionId),
+  onGitProgress: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:git-progress', listener);
+    return () => ipcRenderer.removeListener('shell:git-progress', listener);
+  },
+  gitCreateChangeRequest: (cwd, input, actionId) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input, actionId),
+  gitPublishRepository: (cwd, input, actionId) => ipcRenderer.invoke('shell:git-publish', cwd, input, actionId),
+  openWorkspacePath: (cwd, relativePath) => ipcRenderer.invoke('shell:open-workspace-path', cwd, relativePath),
   listDir: (cwd, relativePath) => ipcRenderer.invoke('shell:list-dir', cwd, relativePath),
   readFile: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file', cwd, relativePath),
   readFileMedia: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file-media', cwd, relativePath),
+  writeFile: (cwd, relativePath, text) => ipcRenderer.invoke('shell:write-file', cwd, relativePath, text),
   gitStage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-stage', cwd, relativePath),
   gitUnstage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-unstage', cwd, relativePath),
   gitDiscard: (cwd, relativePath) => ipcRenderer.invoke('shell:git-discard', cwd, relativePath),
@@ -79,10 +90,21 @@ contextBridge.exposeInMainWorld('shell', {
   },
   previewOpen: (input) => ipcRenderer.invoke('shell:preview-open', input),
   previewNavigate: (id, url) => ipcRenderer.invoke('shell:preview-navigate', id, url),
+  previewBack: (id) => ipcRenderer.invoke('shell:preview-back', id),
+  previewForward: (id) => ipcRenderer.invoke('shell:preview-forward', id),
+  previewReload: (id) => ipcRenderer.invoke('shell:preview-reload', id),
+  previewState: (id) => ipcRenderer.invoke('shell:preview-state', id),
+  previewOpenDevTools: (id) => ipcRenderer.invoke('shell:preview-devtools', id),
+  previewDiscover: () => ipcRenderer.invoke('shell:preview-discover'),
   previewResize: (id, bounds) => ipcRenderer.invoke('shell:preview-resize', id, bounds),
   previewHide: (id) => ipcRenderer.invoke('shell:preview-hide', id),
   previewShow: (id, bounds) => ipcRenderer.invoke('shell:preview-show', id, bounds),
   previewClose: (id) => ipcRenderer.invoke('shell:preview-close', id),
+  onPreviewStateChange: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:preview-state-change', listener);
+    return () => ipcRenderer.removeListener('shell:preview-state-change', listener);
+  },
   getRemote: () => ipcRenderer.invoke('shell:get-remote'),
   saveRemote: (patch) => ipcRenderer.invoke('shell:save-remote', patch),
   rotateRemoteToken: () => ipcRenderer.invoke('shell:rotate-remote-token'),
@@ -91,6 +113,11 @@ contextBridge.exposeInMainWorld('shell', {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('shell:plugin-progress', listener);
     return () => ipcRenderer.removeListener('shell:plugin-progress', listener);
+  },
+  onPluginBoot: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('shell:plugin-boot', listener);
+    return () => ipcRenderer.removeListener('shell:plugin-boot', listener);
   },
   onSeedInstallDraft: (handler) => {
     const listener = (_event, payload) => handler(payload);

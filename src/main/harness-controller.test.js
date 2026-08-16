@@ -378,6 +378,16 @@ test('concurrent manual restarts share one operation', async () => {
   assert.equal(f.dsh.stopCalls, 1);
 });
 
+test('reload reopens the ready Web UI through showHarness', async () => {
+  const f = fixture();
+  await f.controller.start();
+  f.events.length = 0;
+  await f.controller.reload();
+  assert.deepEqual(f.events.filter((event) => event.startsWith('harness:') || event.startsWith('reload:')), [
+    'harness:http://127.0.0.1:3080',
+  ]);
+});
+
 test('shutdown cancels recovery and does not navigate or restart afterward', async () => {
   const f = fixture();
   await f.controller.start();

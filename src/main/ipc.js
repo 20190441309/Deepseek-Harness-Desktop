@@ -1,16 +1,16 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
 const { loadConfig, saveConfig, publicConfig } = require('./config');
-const { getMainWindow, openHarnessSettings, openMarketplace, openRemote, showMain, isHarnessLoaded, closeMarketplaceWindow } = require('./window');
+const { getMainWindow, getHarnessWebContents, openHarnessSettings, openMarketplace, openRemote, showMain, isHarnessLoaded, closeMarketplaceWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
-const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitInit, gitPull, gitPush, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage } = require('./git');
+const { gitBranchList, gitChangedFiles, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
-const { listDir, readFile, readFileMedia } = require('./workspace-fs');
+const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
 const { isRemoteModeOnlyPatch } = require('./remote');
 
 function configLocale(config = loadConfig()) {
@@ -154,21 +154,38 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     if (!win || !isHarnessLoaded(win)) {
       return { ok: false, error: 'harness-not-ready' };
     }
-    win.webContents.send('shell:seed-install-draft', { repo, installSpec });
+    const wc = getHarnessWebContents(win) || win.webContents;
+    wc.send('shell:seed-install-draft', { repo, installSpec });
     closeMarketplaceWindow();
     return { ok: true };
   });
 
   ipcMain.handle('shell:git-status', (_event, cwd) => gitStatus(cwd));
+  ipcMain.handle('shell:git-fetch-status', (_event, cwd) => gitFetchForStatus(cwd));
+  ipcMain.handle('shell:git-pull-request', (_event, cwd) => gitReadPullRequest(cwd));
   ipcMain.handle('shell:git-init', (_event, cwd) => gitInit(cwd));
-  ipcMain.handle('shell:git-diff', (_event, cwd) => gitDiff(cwd));
-  ipcMain.handle('shell:git-commit', (_event, cwd, message) => gitCommit(cwd, message));
-  ipcMain.handle('shell:git-push', (_event, cwd) => gitPush(cwd));
-  ipcMain.handle('shell:git-pull', (_event, cwd) => gitPull(cwd));
-  ipcMain.handle('shell:git-create-change-request', (_event, cwd, input) => gitCreateChangeRequest(cwd, input));
+  ipcMain.handle('shell:git-diff', (_event, cwd, options) => gitDiff(cwd, options));
+  const sendGitProgress = (event, actionId) => (progress) => {
+    if (actionId == null || event.sender.isDestroyed()) return;
+    event.sender.send('shell:git-progress', { actionId, ...progress });
+  };
+  ipcMain.handle('shell:git-commit', (event, cwd, message, filePaths, actionId, options) => (
+    gitCommit(cwd, message, filePaths, sendGitProgress(event, actionId), options)
+  ));
+  ipcMain.handle('shell:git-changed-files', (_event, cwd) => gitChangedFiles(cwd));
+  ipcMain.handle('shell:git-push', (event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId)));
+  ipcMain.handle('shell:git-pull', (event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId)));
+  ipcMain.handle('shell:git-create-change-request', (event, cwd, input, actionId) => (
+    gitCreateChangeRequest(cwd, input, sendGitProgress(event, actionId))
+  ));
+  ipcMain.handle('shell:git-publish', (event, cwd, input, actionId) => (
+    gitPublishRepository(cwd, input, sendGitProgress(event, actionId))
+  ));
+  ipcMain.handle('shell:open-workspace-path', (_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath));
   ipcMain.handle('shell:list-dir', (_event, cwd, relativePath) => listDir(cwd, relativePath));
   ipcMain.handle('shell:read-file', (_event, cwd, relativePath) => readFile(cwd, relativePath));
   ipcMain.handle('shell:read-file-media', (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));
+  ipcMain.handle('shell:write-file', (_event, cwd, relativePath, text) => writeFile(cwd, relativePath, text));
   ipcMain.handle('shell:git-stage', (_event, cwd, relativePath) => gitStage(cwd, relativePath));
   ipcMain.handle('shell:git-unstage', (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
   ipcMain.handle('shell:git-discard', (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));

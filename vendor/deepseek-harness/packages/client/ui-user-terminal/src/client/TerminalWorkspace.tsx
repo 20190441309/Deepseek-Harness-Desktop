@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
+  IconCloseOutline16,
   IconFullscreenOutline16,
+  IconPanelBottomOutline16,
   IconPlusOutline16,
   IconSplitOutline16,
   IconTrashOutline16,
@@ -13,7 +15,14 @@ import { cwdFromSessions } from './cwd.ts'
 import { clampDrawerHeight, maxDrawerHeight, TERMINAL_DRAWER_DEFAULT } from './height.ts'
 import { NS } from './locales.ts'
 import type { TerminalShellInjected } from './shell.ts'
-import { acquireCreate, MAX_TERMINALS_PER_GROUP, releaseCreate, snapshotOf, type createTerminalSessionStore } from './stores.ts'
+import {
+  acquireCreate,
+  MAX_TERMINALS_PER_GROUP,
+  releaseCreate,
+  snapshotOf,
+  type TerminalSplitDirection,
+  type createTerminalSessionStore,
+} from './stores.ts'
 import { TerminalPane } from './TerminalPane.tsx'
 import css from './TerminalWorkspace.module.css'
 
@@ -24,9 +33,111 @@ export type TerminalWorkspaceProps =
   & Omit<TerminalShellInjected, 'onPtyData' | 'onPtyExit'>
   & { mode: 'drawer' | 'surface'; sessionId: SessionId | undefined }
 
+type ActionBarProps = {
+  compact: boolean
+  mode: 'drawer' | 'surface'
+  available: boolean
+  hasSessions: boolean
+  atLimit: boolean
+  activeId: string
+  t: TerminalWorkspaceProps['t']
+  onSplit: (direction: TerminalSplitDirection) => void
+  onMaximize: () => void
+  maximizeLabel: string
+  onNew: () => void
+  onClose: () => void
+}
+
+function ActionBar({
+  compact,
+  mode,
+  available,
+  hasSessions,
+  atLimit,
+  activeId,
+  t,
+  onSplit,
+  onMaximize,
+  maximizeLabel,
+  onNew,
+  onClose,
+}: ActionBarProps): ReactNode {
+  const splitH = atLimit ? t('action.splitHorizontal.limit') : t('action.splitHorizontal')
+  const splitV = atLimit ? t('action.splitVertical.limit') : t('action.splitVertical')
+  const splitDisabled = !available || !hasSessions || atLimit
+  const divider = (): ReactNode => compact ? null : <div className={css.rule} />
+  return (
+    <div className={compact ? css.sidebarActions : css.toolbar}>
+      <Tooltip label={splitH} side="bottom">
+        <button
+          type="button"
+          className={css.action}
+          aria-label={splitH}
+          disabled={splitDisabled}
+          onClick={() => { onSplit('horizontal') }}
+        >
+          <IconSplitOutline16 size={compact ? 12 : 14} />
+        </button>
+      </Tooltip>
+      {divider()}
+      <Tooltip label={splitV} side="bottom">
+        <button
+          type="button"
+          className={css.action}
+          aria-label={splitV}
+          disabled={splitDisabled}
+          onClick={() => { onSplit('vertical') }}
+        >
+          <IconSplitOutline16 size={compact ? 12 : 14} className={css.splitVertical} />
+        </button>
+      </Tooltip>
+      {divider()}
+      {mode === 'drawer' ? (
+        <>
+          <Tooltip label={maximizeLabel} side="bottom">
+            <button
+              type="button"
+              className={css.action}
+              aria-label={maximizeLabel}
+              onClick={onMaximize}
+            >
+              <IconFullscreenOutline16 size={compact ? 12 : 14} />
+            </button>
+          </Tooltip>
+          {divider()}
+        </>
+      ) : null}
+      <Tooltip label={t('action.new')} side="bottom">
+        <button
+          type="button"
+          className={css.action}
+          aria-label={t('action.new')}
+          disabled={!available}
+          onClick={onNew}
+        >
+          <IconPlusOutline16 size={compact ? 12 : 14} />
+        </button>
+      </Tooltip>
+      {divider()}
+      <Tooltip label={t('action.close')} side="bottom">
+        <button
+          type="button"
+          className={css.action}
+          aria-label={t('action.close')}
+          disabled={!activeId}
+          onClick={onClose}
+        >
+          <IconTrashOutline16 size={compact ? 12 : 14} />
+        </button>
+      </Tooltip>
+    </div>
+  )
+}
+
 /**
- * Shared terminal chrome: toolbar, empty state, and tiled PTY panes.
- * @param props - session seats, shared store, PTY IPC, layout writes, and copy.
+ * Terminal chrome for one shell: toolbar, empty state, tiled PTY panes, and
+ * the session list shown once more than one PTY exists on that shell.
+ * @param props - session seats, this shell's store, PTY IPC, layout writes, and copy.
  * @returns the drawer or surface body.
  */
 export function TerminalWorkspace({
@@ -40,6 +151,11 @@ export function TerminalWorkspace({
   ptyResize,
   ptyKill,
   setTerminalDrawer,
+  mentionTerminal,
+  writeClipboard,
+  openWorkspacePath,
+  openLocalUrl,
+  openExternal,
   t,
 }: TerminalWorkspaceProps): ReactNode {
   const cwd = useSessions(list => cwdFromSessions(sessionId, list))
@@ -49,22 +165,26 @@ export function TerminalWorkspace({
   const createFailed = useStore(s => s.createFailed)
   const rootRef = useRef<HTMLElement | null>(null)
   const drag = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null)
+  const lastHeight = useRef(TERMINAL_DRAWER_DEFAULT)
+  const [maximized, setMaximized] = useState(false)
 
   const activeGroup = groups.find(group => group.terminalIds.includes(activeId)) ?? groups[0]
   const visibleIds = activeGroup?.terminalIds ?? (activeId ? [activeId] : [])
+  const splitDirection: TerminalSplitDirection = activeGroup?.splitDirection ?? 'horizontal'
   const atLimit = visibleIds.length >= MAX_TERMINALS_PER_GROUP
   const available = Boolean(cwd)
+  const hasTerminalSidebar = sessions.length > 1
 
-  const create = useCallback(async (kind: 'new' | 'split') => {
+  const create = useCallback(async (kind: 'new' | TerminalSplitDirection) => {
     if (!cwd || !acquireCreate(actions)) return
-    if (kind === 'split' && atLimit) {
+    if (kind !== 'new' && atLimit) {
       releaseCreate(actions)
       return
     }
     try {
       const created = await ptyCreate({ cwd })
-      if (kind === 'split') actions.split(created.id, cwd)
-      else actions.newTerminal(created.id, cwd)
+      if (kind === 'new') actions.newTerminal(created.id, cwd)
+      else actions.split(created.id, cwd, kind)
     } catch {
       actions.failCreate()
     } finally {
@@ -72,12 +192,15 @@ export function TerminalWorkspace({
     }
   }, [actions, atLimit, cwd, ptyCreate])
 
-  const closeActive = useCallback(() => {
-    if (!activeId) return
-    const id = activeId
+  const closeSession = useCallback((id: string) => {
     actions.close(id)
     void ptyKill(id)
-  }, [actions, activeId, ptyKill])
+  }, [actions, ptyKill])
+
+  const closeActive = useCallback(() => {
+    if (!activeId) return
+    closeSession(activeId)
+  }, [activeId, closeSession])
 
   const wasOpen = useRef(false)
   useEffect(() => {
@@ -96,22 +219,6 @@ export function TerminalWorkspace({
     return () => { observer.disconnect() }
   }, [actions, create, createFailed, cwd])
 
-  useEffect(() => {
-    const el = rootRef.current
-    if (el === null || !activeId || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      const width = el.clientWidth
-      const height = el.clientHeight
-      if (width <= 0 || height <= 0) return
-      const cols = Math.max(20, Math.floor(width / 8))
-      const rows = Math.max(8, Math.floor(height / 16))
-      actions.setSize(activeId, cols, rows)
-      void ptyResize(activeId, cols, rows)
-    })
-    observer.observe(el)
-    return () => { observer.disconnect() }
-  }, [actions, activeId, ptyResize])
-
   const onResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -128,10 +235,13 @@ export function TerminalWorkspace({
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
     event.preventDefault()
-    setTerminalDrawer(clampDrawerHeight(
+    const next = clampDrawerHeight(
       state.startHeight + (state.startY - event.clientY),
       window.innerHeight,
-    ))
+    )
+    lastHeight.current = next
+    setMaximized(false)
+    setTerminalDrawer(next)
   }, [setTerminalDrawer])
 
   const onResizePointerEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -142,7 +252,42 @@ export function TerminalWorkspace({
     }
   }, [])
 
-  const splitLabel = atLimit ? t('action.split.limit') : t('action.split')
+  const actionBar = (compact: boolean): ReactNode => (
+    <ActionBar
+      compact={compact}
+      mode={mode}
+      available={available}
+      hasSessions={sessions.length > 0}
+      atLimit={atLimit}
+      activeId={activeId}
+      t={t}
+      onSplit={direction => { void create(direction) }}
+      maximizeLabel={maximized ? t('action.restore') : t('action.maximize')}
+      onMaximize={() => {
+        const max = maxDrawerHeight(window.innerHeight)
+        const current = rootRef.current?.clientHeight ?? 0
+        if (maximized) {
+          setTerminalDrawer(lastHeight.current)
+          setMaximized(false)
+          return
+        }
+        if (current > 0 && current < max) lastHeight.current = current
+        setTerminalDrawer(max)
+        setMaximized(true)
+      }}
+      onNew={() => { void create('new') }}
+      onClose={closeActive}
+    />
+  )
+
+  const paneGridStyle = splitDirection === 'vertical'
+    ? {
+        gridTemplateRows: `repeat(${visibleIds.length}, minmax(0, 1fr))`,
+        gridTemplateColumns: 'minmax(0, 1fr)',
+      }
+    : {
+        gridTemplateColumns: `repeat(${visibleIds.length}, minmax(0, 1fr))`,
+      }
 
   return (
     <aside ref={rootRef} className={css.root} data-terminal-owner={mode}>
@@ -159,58 +304,7 @@ export function TerminalWorkspace({
         />
       ) : null}
 
-      <div className={css.toolbar}>
-        <Tooltip label={splitLabel} side="bottom">
-          <button
-            type="button"
-            className={css.action}
-            aria-label={splitLabel}
-            disabled={!available || sessions.length === 0 || atLimit}
-            onClick={() => { void create('split') }}
-          >
-            <IconSplitOutline16 size={14} />
-          </button>
-        </Tooltip>
-        <div className={css.rule} />
-        {mode === 'drawer' ? (
-          <>
-            <Tooltip label={t('action.maximize')} side="bottom">
-              <button
-                type="button"
-                className={css.action}
-                aria-label={t('action.maximize')}
-                onClick={() => { setTerminalDrawer(maxDrawerHeight(window.innerHeight)) }}
-              >
-                <IconFullscreenOutline16 size={14} />
-              </button>
-            </Tooltip>
-            <div className={css.rule} />
-          </>
-        ) : null}
-        <Tooltip label={t('action.new')} side="bottom">
-          <button
-            type="button"
-            className={css.action}
-            aria-label={t('action.new')}
-            disabled={!available}
-            onClick={() => { void create('new') }}
-          >
-            <IconPlusOutline16 size={14} />
-          </button>
-        </Tooltip>
-        <div className={css.rule} />
-        <Tooltip label={t('action.close')} side="bottom">
-          <button
-            type="button"
-            className={css.action}
-            aria-label={t('action.close')}
-            disabled={!activeId}
-            onClick={closeActive}
-          >
-            <IconTrashOutline16 size={14} />
-          </button>
-        </Tooltip>
-      </div>
+      {!hasTerminalSidebar ? actionBar(false) : null}
 
       <div className={css.body}>
         {sessions.length === 0 ? (
@@ -218,7 +312,11 @@ export function TerminalWorkspace({
             <p>{!available ? t('empty.unavailable') : createFailed ? t('error.create') : t('empty.title')}</p>
           </div>
         ) : (
-          <div className={css.panes}>
+          <div
+            className={css.panes}
+            data-split-direction={splitDirection}
+            style={paneGridStyle}
+          >
             {visibleIds.map(id => {
               const session = sessions.find(item => item.id === id)
               return (
@@ -234,6 +332,14 @@ export function TerminalWorkspace({
                   <TerminalPane
                     id={id}
                     session={session}
+                    sessionId={sessionId}
+                    cwd={cwd}
+                    mentionTerminal={mentionTerminal}
+                    writeClipboard={writeClipboard}
+                    openWorkspacePath={openWorkspacePath}
+                    openLocalUrl={openLocalUrl}
+                    openExternal={openExternal}
+                    t={t}
                     onData={bytes => { void ptyWrite(id, bytes) }}
                     onResize={(cols, rows) => {
                       actions.setSize(id, cols, rows)
@@ -245,6 +351,66 @@ export function TerminalWorkspace({
             })}
           </div>
         )}
+
+        {hasTerminalSidebar ? (
+          <aside className={css.sidebar}>
+            <div className={css.sidebarHeader}>
+              {actionBar(true)}
+            </div>
+            <div className={css.sidebarList} role="list" aria-label={t('sessions.list')}>
+              {groups.map((group, groupIndex) => (
+                <div key={group.id} className={css.groupBlock}>
+                  <button
+                    type="button"
+                    className={clsx(
+                      css.groupHeader,
+                      group.terminalIds.includes(activeId) && css.groupHeaderActive,
+                    )}
+                    onClick={() => {
+                      actions.activate(
+                        group.terminalIds.includes(activeId)
+                          ? activeId
+                          : group.terminalIds[0]!,
+                      )
+                    }}
+                  >
+                    {`${t('group.label')} ${groupIndex + 1}`}
+                  </button>
+                  <div className={css.groupItems}>
+                    {group.terminalIds.map(id => {
+                      const sessionIndex = sessions.findIndex(item => item.id === id)
+                      const label = `${t('session.label')} ${sessionIndex + 1}`
+                      return (
+                        <div
+                          key={id}
+                          role="listitem"
+                          className={clsx(css.sessionRow, id === activeId && css.sessionRowActive)}
+                        >
+                          <button
+                            type="button"
+                            className={css.sessionActivate}
+                            onClick={() => { actions.activate(id) }}
+                          >
+                            <IconPanelBottomOutline16 size={12} />
+                            <span className={css.sessionLabel}>{label}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={css.sessionClose}
+                            aria-label={`${t('action.close')} ${label}`}
+                            onClick={() => { closeSession(id) }}
+                          >
+                            <IconCloseOutline16 size={10} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        ) : null}
       </div>
     </aside>
   )

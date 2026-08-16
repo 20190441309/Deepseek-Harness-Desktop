@@ -11,4 +11,16 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  position: relative;
+}
+
+.occupant {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.occupant[hidden] {
+  display: none;
 }

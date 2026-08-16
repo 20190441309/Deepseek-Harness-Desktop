@@ -18,6 +18,11 @@ export interface TerminalShellInjected {
   onPtyExit: (handler: (payload: { id: string; code: number }) => void) => () => void
   toggleTerminalDrawer: () => void
   setTerminalDrawer: (px: number) => void
+  mentionTerminal: (sessionId: string, text: string) => void
+  writeClipboard: (text: string) => Promise<void>
+  openWorkspacePath: (absolutePath: string) => void
+  openLocalUrl: (url: string) => void
+  openExternal: (url: string) => void
 }
 
 function unavailable(): Promise<{ id: string }> {

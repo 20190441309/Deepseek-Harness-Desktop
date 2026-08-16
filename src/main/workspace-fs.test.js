@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { listDir, readFile, readFileMedia, setWorkspaceAuthority } = require('./workspace-fs.js');
+const { listDir, readFile, readFileMedia, writeFile, setWorkspaceAuthority } = require('./workspace-fs.js');
 
 function makeTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-fs-'));
@@ -86,6 +86,30 @@ test('readFileMedia returns png bytes and rejects non-images and traversal', asy
     assert.equal(ts.ok, false);
     const escaped = await readFileMedia(cwd, path.join('..', 'icon.png'));
     assert.equal(escaped.ok, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('writeFile replaces utf8 text and rejects traversal, directories, and oversized payloads', async () => {
+  const cwd = makeTempDir();
+  try {
+    fs.writeFileSync(path.join(cwd, 'note.txt'), 'alpha\n');
+    fs.mkdirSync(path.join(cwd, 'src'));
+    const written = await writeFile(cwd, 'note.txt', 'beta\n');
+    assert.equal(written.ok, true);
+    assert.equal(fs.readFileSync(path.join(cwd, 'note.txt'), 'utf8'), 'beta\n');
+    const escaped = await writeFile(cwd, path.join('..', 'note.txt'), 'nope\n');
+    assert.equal(escaped.ok, false);
+    const dir = await writeFile(cwd, 'src', 'nope\n');
+    assert.equal(dir.ok, false);
+    const huge = await writeFile(cwd, 'note.txt', 'x'.repeat(512 * 1024 + 1));
+    assert.equal(huge.ok, false);
+    const missing = await writeFile(cwd, '', 'x');
+    assert.equal(missing.ok, false);
+    const notText = await writeFile(cwd, 'note.txt', 1);
+    assert.equal(notText.ok, false);
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });

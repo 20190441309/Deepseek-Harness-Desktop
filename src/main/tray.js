@@ -14,7 +14,7 @@ function createTray({ onRestart, onQuit }) {
     image = nativeImage.createFromPath(assetFile('icon.svg'));
   }
   if (process.platform === 'win32' && image && !image.isEmpty()) {
-    image = image.resize({ width: 16, height: 16 });
+    image = image.resize({ width: 24, height: 24 });
   }
 
   tray = new Tray(image && !image.isEmpty() ? image : nativeImage.createEmpty());

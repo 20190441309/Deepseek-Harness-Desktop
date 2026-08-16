@@ -71,10 +71,14 @@ export class HostConnectionService extends Service implements HostConnectionHand
   createSharedFetchHandler(
     channel: '/api',
     fallback: FetchHandler,
+    loopbackOnly: ConnectionRpcEndpointMatcher,
   ): FetchHandler {
     return {
       fetch: (request) => {
         const endpoint = endpointFromPath(channel, new URL(request.url).pathname)
+        if (endpoint !== undefined && loopbackOnly(endpoint) && !isTrustedApiRequest(request, [])) {
+          return Promise.resolve(new Response('forbidden', { status: 403 }))
+        }
         const interceptor = this.interceptors.get(channel)
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
           return fallback.fetch(request)

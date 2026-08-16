@@ -73,10 +73,12 @@ export const Config: z<ConnectionConfig> = z.object({
  * privileged — `settings.describe` returns every exposed namespace's
  * configuration and `credentials.describe` reports whether an arbitrary
  * environment-variable name is configured and where from, which is
- * reconnaissance no anonymous caller should have. `trustedHosts` is a
- * DNS-rebinding fence, explicitly not authentication, so the whole
- * configuration plane stays loopback-same-origin until a real authentication
- * layer exists. `llm.discoverModels` belongs to that plane on both counts: it
+ * reconnaissance no anonymous caller should have. The MCP server and skill
+ * inventories expose host configuration or filesystem metadata and mutate
+ * those stores, so their reads and writes belong to the same plane.
+ * `trustedHosts` is a DNS-rebinding fence, explicitly not authentication, so
+ * the whole configuration plane stays loopback-same-origin until a real
+ * authentication layer exists. `llm.discoverModels` belongs to that plane on both counts: it
  * carries a draft credential, and it makes the HOST issue a GET to a URL the
  * caller chose and reports back the status or the parsed body — an anonymous
  * LAN caller would have a probe for whatever the host can reach and the
@@ -116,6 +118,16 @@ const PRIVILEGED_METHODS = new Set([
   'credentials.set',
   'credentials.unset',
   'llm.discoverModels',
+  'mcpServers/list',
+  'mcpServers/upsert',
+  'mcpServers/delete',
+  'mcpServers/setEnabled',
+  'skillInventory/list',
+  'skillInventory/get',
+  'skillInventory/create',
+  'skillInventory/update',
+  'skillInventory/delete',
+  'skillInventory/setInvocation',
 ])
 
 /**
@@ -139,14 +151,6 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
     async fetch(request) {
       const pathname = new URL(request.url).pathname
-      const method = pathname.startsWith(`${API_PATH}/`)
-        ? pathname.slice(API_PATH.length + 1)
-        : undefined
-      if (method !== undefined
-        && PRIVILEGED_METHODS.has(method)
-        && !isTrustedApiRequest(request, [])) {
-        return new Response('forbidden', { status: 403 })
-      }
       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {
         const accept = request.headers.get('accept') ?? ''
         if (!accept.includes('text/event-stream')) {
@@ -160,7 +164,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       if (apiProxy === undefined) return new Response('not found', { status: 404 })
       return toFetchHandler(apiProxy).fetch(request)
     },
-  })
+  }, endpoint => PRIVILEGED_METHODS.has(endpoint))
   const route: WebRoute = {
     kind: 'prefix',
     path: API_PATH,

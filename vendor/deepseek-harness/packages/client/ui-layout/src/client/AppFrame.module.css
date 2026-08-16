@@ -66,7 +66,7 @@
 
 .surfacesCol {
   grid-column: 4;
-  grid-row: 2 / -1;
+  grid-row: 1 / -1;
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--dsw-alias-border-l2);
@@ -164,8 +164,8 @@
 
 /* Shared titlebar band over the details column only. Height comes from the
    conversation header via centerCol subgrid (row 1 = auto). Hairline matches
-   conversation header::after (1px up from the row bottom). The surfaces
-   column keeps a clean top edge — no hairline under the titlebar. */
+   conversation header::after (1px up from the row bottom). Surfaces spans
+   row 1 itself; its tab bar is the right-column top edge. */
 .titlebarBand {
   grid-column: 3 / 4;
   grid-row: 1;
@@ -198,6 +198,13 @@
   margin-top: 12px;
   margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad, 8px));
   -webkit-app-region: no-drag;
+}
+
+/* Open surfaces occupies the titlebar row in column 4; keep Session log / Git /
+   panel toggles in columns 2–3. Window controls sit on the surfaces tab bar. */
+.frame:not([data-surfaces-collapsed]) .titlebarTrailing {
+  grid-column: 2 / 4;
+  margin-right: 8px;
 }
 
 /* Phone overlay and portrait-narrow frames: Session log / Git / panel toggles

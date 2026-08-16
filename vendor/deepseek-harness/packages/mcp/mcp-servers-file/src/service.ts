@@ -10,6 +10,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { canonicalizeWatchPath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client'
+import { mcpClientStatus, type McpClientStatus } from '@deepseek-ai/dsh-mcp-client'
 import type { Config as McpClientConfig } from '@deepseek-ai/dsh-mcp-client'
 import {
   EMPTY_DOCUMENT,
@@ -91,7 +92,7 @@ export function defaultMounter(ctx: Context, config: McpClientConfig): ChildHand
   return {
     dispose: () => fork.dispose(),
     phase: () => {
-      const state = fork.state as number
+      const state = fork.state
       return state in FIBER_PHASE ? FIBER_PHASE[state as keyof typeof FIBER_PHASE] : null
     },
   }
@@ -100,7 +101,7 @@ export function defaultMounter(ctx: Context, config: McpClientConfig): ChildHand
 /** Owns `$DSH_HOME/mcp-servers.yaml` and the live mcp-client children it describes. */
 export class McpServersFile extends Service {
   private document: McpServersDocument = EMPTY_DOCUMENT
-  private readonly children = new Map<string, { fingerprint: string, handle: ChildHandle }>()
+  private readonly children = new Map<string, { fingerprint: string; handle: ChildHandle }>()
   private operations: Promise<void> = Promise.resolve()
   private mounter: McpClientMounter = defaultMounter
   private watcher: FSWatcher | undefined
@@ -141,6 +142,7 @@ export class McpServersFile extends Service {
 
   /**
    * Current managed records with secrets masked.
+   * @returns the managed records, secret fields masked.
    */
   listManaged(): readonly McpServerRecord[] {
     return this.document.servers.map(maskRecordSecrets)
@@ -148,6 +150,7 @@ export class McpServersFile extends Service {
 
   /**
    * Current managed records including secret values. Host mutation uses this.
+   * @returns the managed records with secret values intact.
    */
   listManagedRaw(): readonly McpServerRecord[] {
     return this.document.servers
@@ -156,9 +159,31 @@ export class McpServersFile extends Service {
   /**
    * Live child fiber phase for one managed id, or `null` when unmounted.
    * @param id - managed record id.
+   * @returns the child's current fiber phase, or `null` when unmounted.
    */
   childPhase(id: string): ChildFiberPhase {
     return this.children.get(id)?.handle.phase() ?? null
+  }
+
+  /**
+   * Live connection health for one managed id's mounted child, when the child
+   * reports through the mcp-client status registry.
+   * @param id - managed record id.
+   * @returns the child's connection status, or `undefined` for an unknown record.
+   */
+  childHealth(id: string): McpClientStatus | undefined {
+    const record = this.document.servers.find(server => server.id === id)
+    return record === undefined ? undefined : this.connectionStatus(record.serverName)
+  }
+
+  /**
+   * Live connection health for any mcp-client server mounted in this runtime —
+   * managed or hand-composed — keyed by `serverName`.
+   * @param serverName - the configured server identity.
+   * @returns the server's connection status, or `undefined` when it is not mounted.
+   */
+  connectionStatus(serverName: string): McpClientStatus | undefined {
+    return mcpClientStatus(this.ctx, serverName)
   }
 
   /**

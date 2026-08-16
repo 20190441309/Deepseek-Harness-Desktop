@@ -1268,4 +1268,21 @@ describe('SkillRegistry scoped layers', () => {
     expect(await ctx.skills.list({ scope })).toEqual([])
     await preset.dispose()
   })
+  it('invalidate() drops cached observations so host writes are visible immediately', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const provider = new MemoryProvider([memorySkill('cached', 'Cached', 100)])
+    registerProvider(ctx, provider)
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['cached'])
+    expect(provider.listCalls).toBe(1)
+
+    // A host write changed the backing data without a provider observer: the
+    // cached observation still answers, then invalidate() forces rediscovery.
+    provider.replace([memorySkill('written', 'Written', 100)])
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['cached'])
+    expect(provider.listCalls).toBe(1)
+    ctx.skills.invalidate()
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['written'])
+    expect(provider.listCalls).toBe(2)
+  })
 })

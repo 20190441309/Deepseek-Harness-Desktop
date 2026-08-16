@@ -42,8 +42,8 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Harness auto-recovery**: if `dsh` dies after the UI is up, the window returns to a failure page and retries up to 3 times (1 / 2 / 4 s). Cancel or restart immediately; Settings → General owns the policy. Remote access stops proxying a dead port.
 - **Tool-result pairing recovery**: a transcript that recorded tool calls without results is completed on the next send, so the provider no longer rejects the session forever.
 - **Title-bar Git**: in a Git workspace the title bar shows Commit / Commit & push / Push / pull-request actions; disabled when there is no repo. Status refreshes on focus and after an operation.
-- **Full VT terminal**: the bottom drawer and the Terminal surface share the same PTY sessions (Windows ConPTY), rendered with xterm. Arrows, history, Home/End, paste, Ctrl+C, and resize all work. Shells start only inside the current workspace.
-- **Right-hand surfaces**: a title-bar toggle opens the column; the empty-state cards launch Browser (local URL preview), Terminal, Files, Diff, and Agents. File reads, Git, and commands stay inside the workspace root; preview pages are loopback-only in an isolated session and never carry your API key.
+- **Full VT terminal**: the bottom drawer and the Terminal surface each own a PTY table (Windows ConPTY), rendered with xterm. A selection can Copy, Add to chat (disabled without a session), or Open a URL / workspace path; ⌘/Ctrl-click does the same. Maximize restores the **drawer** height only; `surfaces.terminal` has no separate maximize. Shells start only inside the current workspace.
+- **Right-hand surfaces**: a title-bar toggle opens the column. The value is the T3 **work loops**, not the five empty-state cards: Files search and edit/save (dirty drafts survive reload; closing a dirty tab confirms); Browser back/forward/reload/DevTools/system browser/discovered ports, with the guest kept alive across tab switches; Diff Working tree vs Branch (no Stage on a branch); Agents lists child sessions and background jobs. File, Git, and command access stay inside the workspace root; preview is loopback-only in an isolated session and never carries your API key. Ghostty, worktree-bound branches, checkpoint turn-diff, review-comment pick, PiP/recording, and jump-to-line stay out. Contract: [T3 surfaces and terminal workflows](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.md).
 
 ### Third-party thinking intensity
 
@@ -101,7 +101,7 @@ If `dsh` exits after the main UI is up, the window returns to a failure page wit
 
 ### Title-bar Git, terminal, and surfaces
 
-A Git workspace gets Commit / Commit & push / Push / pull-request in the title bar. The bottom terminal drawer and the Terminal surface share the same PTY (Windows ConPTY) with full ANSI/VT. A title-bar toggle opens the right column: Files, Diff, Browser, Agents. Files and commands stay inside the workspace; preview is loopback-only.
+A Git workspace gets Commit / Commit & push / Push / pull-request in the title bar. The bottom terminal drawer and the Terminal surface each own a PTY with full ANSI/VT; a selection can Add to chat (disabled without a session). Opening the right column gives Files search and save, Browser navigation that keeps the guest, Diff worktree vs branch, and Agents job status. Ghostty, worktree environments, turn-diff, review comments, PiP, and jump-to-line are not faked. Contract: [T3 surfaces and terminal workflows](vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-t3-workflows.md).
 
 ## Install
 
@@ -146,7 +146,7 @@ To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, th
 
 `vendor/deepseek-harness` is a [git subtree](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge):
 
-- **Design language**: every UI / layout / frontend change must follow official `dsh web`. Spec: [docs/design-language.en.md](docs/design-language.en.md). Do not ship a second skin for the desktop chrome.
+- **Design language**: every UI / layout / frontend change must follow official `dsh web`. Spec: [docs/design-language.en.md](docs/design-language.en.md). Do not ship a second skin for the desktop chrome. The boot-page instrument look is documented under [Desktop boot page](docs/design-language.en.md#desktop-boot-page); do not spread it. Button, dialog, and menu motion: [docs/motion.en.md](docs/motion.en.md).
 - **Local changes**: edit files under `vendor/deepseek-harness` and commit them like any other code in this repo — no patch files to maintain.
 - **Pulling upstream updates**: `npm run sync:harness` (a `git subtree pull --squash` under the hood). Git performs a three-way merge, so upstream changes and local customizations combine automatically; you only resolve conflicts where both sides touched the same lines, then `git add` + `git commit`. Rebuild with `npm run setup:harness` afterwards.
 - **Inspecting local customizations**: commits in `git log --oneline -- vendor/deepseek-harness` other than `Sync/Squashed` ones are the local development history; every upstream snapshot commit carries a `git-subtree-split` footer with the upstream commit SHA for comparison.

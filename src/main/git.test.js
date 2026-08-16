@@ -5,7 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { gitBranchList, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitInit, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, parsePorcelainZ, parseUnifiedDiff, run, setWorkspaceAuthority } = require('./git.js');
+const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranchList, gitChangedFiles, gitChildEnv, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFailureMessage, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, inferHookName, isGitAdviceLine, matchesBranchHeadContext, normalizeGitRemoteUrl, parseCustomCommitMessage, parseGhPullRequestRow, parseGitHubRepositoryNameWithOwner, parsePorcelainZ, parseStatusHeader, parseUnifiedDiff, providerFromRemoteUrl, readPrTemplate, readRangeContext, rememberLastKnownPr, resetFetchCooldowns, resetLastKnownPrCache, resolveBaseBranchForNoUpstream, resolveBranchHeadContext, resolveLastKnownPr, resolvePrBaseBranch, resolvePreferredHeadSelector, run, sanitizeProgressText, setGhDefaultBranchResolver, setLookupOpenPullRequest, setWorkspaceAuthority, summarizeCommitMessage } = require('./git.js');
+const { setTextGenerator } = require('./git-generate.js');
 
 function makeTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-'));
@@ -18,6 +19,22 @@ function git(cwd, args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;
+}
+
+/** A heads ref whose commit object is corrupt, so `rev-list <ref>..HEAD` fails. */
+function writeUnreadableMergeBase(cwd, refName) {
+  const orig = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+  git(cwd, ['checkout', '--orphan', refName]);
+  const marker = path.join(cwd, `unreadable-${refName}.txt`);
+  fs.writeFileSync(marker, 'x\n');
+  git(cwd, ['add', `unreadable-${refName}.txt`]);
+  git(cwd, ['commit', '-m', 'unreadable-base']);
+  const sha = git(cwd, ['rev-parse', 'HEAD']).trim();
+  git(cwd, ['checkout', '--force', orig]);
+  fs.rmSync(marker, { force: true });
+  const objectPath = path.join(cwd, '.git', 'objects', sha.slice(0, 2), sha.slice(2));
+  fs.chmodSync(objectPath, 0o666);
+  fs.writeFileSync(objectPath, 'not-a-git-object\n');
 }
 
 test('gitStatus reports isRepo false when the directory is not a git repository', async () => {
@@ -94,6 +111,32 @@ test('gitDiff lists a working-tree hunk after a committed file is edited', async
     assert.ok(file);
     assert.equal(file.status, 'modified');
     assert.ok(file.hunks.some((hunk) => hunk.lines.some((line) => line.kind === 'add' && line.text === 'world')));
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitDiff with baseRef returns the three-dot branch range and rejects an unsafe ref', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init']);
+    git(cwd, ['config', 'user.email', 'git-test@example.com']);
+    git(cwd, ['config', 'user.name', 'Git Test']);
+    git(cwd, ['checkout', '-b', 'main']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'Add readme']);
+    git(cwd, ['checkout', '-b', 'feature']);
+    fs.writeFileSync(path.join(cwd, 'extra.txt'), 'branch\n');
+    git(cwd, ['add', 'extra.txt']);
+    git(cwd, ['commit', '-m', 'Add extra']);
+    const diff = await gitDiff(cwd, { baseRef: 'main' });
+    assert.ok(diff);
+    assert.equal(diff.baseRef, 'main');
+    assert.ok(diff.files.some((entry) => entry.path === 'extra.txt'));
+    assert.equal(await gitDiff(cwd, { baseRef: '-evil' }), null);
+    assert.equal(await gitDiff(cwd, { baseRef: 'missing-branch' }), null);
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -178,6 +221,17 @@ test('run caps stdout and sets truncated', async () => {
   assert.ok(result.stdout.length <= 8);
 });
 
+test('run caps stderr and sets truncated', async () => {
+  const result = await run(
+    process.execPath,
+    ['-e', "process.stderr.write('y'.repeat(64))"],
+    os.tmpdir(),
+    { maxBytes: 8 },
+  );
+  assert.equal(result.truncated, true);
+  assert.ok(result.stderr.length <= 8);
+});
+
 test('run joins stdout chunks split mid-multibyte without replacement characters', async () => {
   const result = await run(
     process.execPath,
@@ -199,10 +253,103 @@ test('gitCommit records a message and clears working-tree changes', async () => 
     fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
     const result = await gitCommit(cwd, 'Add readme');
     assert.equal(result.ok, true);
+    assert.equal(result.subject, 'Add readme');
+    assert.match(result.commitSha || '', /^[0-9a-f]{40}$/);
     const status = await gitStatus(cwd);
     assert.ok(status);
     assert.equal(status.hasWorkingTreeChanges, false);
     assert.equal(status.refName, 'main');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitChangedFiles reports numstat for a modified file and an untracked file', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    fs.writeFileSync(path.join(cwd, 'extra.txt'), 'a\nb\n');
+    const listed = await gitChangedFiles(cwd);
+    assert.equal(listed.ok, true, listed.message);
+    const byPath = Object.fromEntries(listed.files.map(file => [file.path, file]));
+    assert.equal(byPath['README.md'].insertions, 1);
+    assert.equal(byPath['extra.txt'].insertions, 2);
+    assert.equal(byPath['extra.txt'].deletions, 0);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('summarizeCommitMessage names the first path and a remainder count', () => {
+  assert.equal(summarizeCommitMessage([]), 'Update project files');
+  assert.equal(summarizeCommitMessage([{ path: 'README.md' }]), 'Update README.md');
+  assert.equal(summarizeCommitMessage([{ path: 'a.ts' }, { path: 'b.ts' }]), 'Update a.ts and 1 other files');
+});
+
+test('gitCommit with an empty message uses the staged name-status heuristic', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    const result = await gitCommit(cwd, '');
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.subject, 'Add README.md');
+    assert.match(result.commitSha || '', /^[0-9a-f]{40}$/);
+    const log = git(cwd, ['log', '-1', '--pretty=%s']);
+    assert.equal(log.trim(), 'Add README.md');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit with filePaths stages only those paths', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'keep.md'), 'keep\n');
+    fs.writeFileSync(path.join(cwd, 'skip.md'), 'skip\n');
+    git(cwd, ['add', 'keep.md', 'skip.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'keep.md'), 'keep\nchanged\n');
+    fs.writeFileSync(path.join(cwd, 'skip.md'), 'skip\nchanged\n');
+    const result = await gitCommit(cwd, 'only keep', ['keep.md']);
+    assert.equal(result.ok, true, result.message);
+    const leftover = await gitChangedFiles(cwd);
+    assert.equal(leftover.ok, true);
+    assert.deepEqual(leftover.files.map(file => file.path), ['skip.md']);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit featureBranch creates a ref from the commit subject', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    const result = await gitCommit(cwd, 'Add world line', undefined, undefined, { featureBranch: true });
+    assert.equal(result.ok, true, result.message);
+    const status = await gitStatus(cwd);
+    assert.equal(status.refName, 'feature/add-world-line');
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -279,6 +426,15 @@ test('gitStage, gitUnstage, and gitDiscard operate on a tracked file', async () 
     const discarded = await gitDiscard(cwd, 'README.md');
     assert.equal(discarded.ok, true);
     assert.equal(fs.readFileSync(path.join(cwd, 'README.md'), 'utf8').replace(/\r\n/g, '\n'), 'hello\n');
+    fs.writeFileSync(path.join(cwd, 'scratch.txt'), 'tmp\n');
+    fs.mkdirSync(path.join(cwd, 'scratch-dir'));
+    fs.writeFileSync(path.join(cwd, 'scratch-dir', 'a.txt'), 'a\n');
+    const discardedFile = await gitDiscard(cwd, 'scratch.txt');
+    assert.equal(discardedFile.ok, true);
+    assert.equal(fs.existsSync(path.join(cwd, 'scratch.txt')), false);
+    const discardedDir = await gitDiscard(cwd, 'scratch-dir');
+    assert.equal(discardedDir.ok, true);
+    assert.equal(fs.existsSync(path.join(cwd, 'scratch-dir')), false);
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -315,6 +471,34 @@ test('gitBranchList marks the current branch and gitSwitchBranch/gitCreateBranch
   }
 });
 
+test('gitSwitchBranch checks out a branch already used by another worktree', async () => {
+  const cwd = makeTempDir();
+  const linked = path.join(cwd, 'linked');
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'x\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'large-bird']);
+    git(cwd, ['checkout', 'main']);
+    git(cwd, ['worktree', 'add', linked, 'large-bird']);
+
+    const blocked = spawnSync('git', ['checkout', 'large-bird'], { cwd, encoding: 'utf8', windowsHide: true });
+    assert.notEqual(blocked.status, 0);
+    assert.match(`${blocked.stderr}\n${blocked.stdout}`, /already used by worktree/i);
+
+    const switched = await gitSwitchBranch(cwd, 'large-bird');
+    assert.equal(switched.ok, true, switched.message);
+    assert.equal(switched.refName, 'large-bird');
+  } finally {
+    spawnSync('git', ['worktree', 'remove', '--force', linked], { cwd, windowsHide: true });
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => {
   const cwd = makeTempDir();
   try {
@@ -328,5 +512,1057 @@ test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => 
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('sanitizeProgressText strips ANSI and inferHookName maps hook lines', () => {
+  assert.equal(sanitizeProgressText('\u001B[1mpre-commit\u001B[m'), 'pre-commit');
+  assert.equal(inferHookName('lefthook v2.1.10'), 'pre-commit');
+  assert.equal(inferHookName('pre-push (skip)'), 'pre-push');
+  assert.equal(inferHookName('oxfmt --check'), null);
+});
+
+test('commitArgs splits subject and body the way T3code does', () => {
+  assert.deepEqual(commitArgs('Fix toast'), ['commit', '-m', 'Fix toast']);
+  assert.deepEqual(commitArgs('Fix toast\nMore detail'), ['commit', '-m', 'Fix toast', '-m', 'More detail']);
+  assert.deepEqual(commitArgs('Fix toast\n\nMore detail'), ['commit', '-m', 'Fix toast', '-m', 'More detail']);
+});
+
+test('parseCustomCommitMessage keeps a single-newline body', () => {
+  assert.deepEqual(parseCustomCommitMessage('Fix toast\nMore detail'), {
+    subject: 'Fix toast',
+    body: 'More detail',
+  });
+  assert.equal(parseCustomCommitMessage(''), null);
+});
+
+test('gitCommit keeps a custom subject verbatim (no sanitize)', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    const long = `Fix ${'x'.repeat(80)}.`;
+    const result = await gitCommit(cwd, long);
+    assert.equal(result.ok, true);
+    assert.equal(result.subject, long.trim());
+    const subject = git(cwd, ['log', '-1', '--pretty=%s']).trim();
+    assert.equal(subject, long.trim());
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit featureBranch fails closed when there is nothing to commit', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    const result = await gitCommit(cwd, 'unused', undefined, undefined, { featureBranch: true });
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'Cannot create a feature branch because there are no changes to commit.');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('commit timeout and git child env match T3code', () => {
+  assert.equal(COMMIT_TIMEOUT_MS, 10 * 60_000);
+  assert.equal(GH_TIMEOUT_MS, 30_000);
+  const previousNpm = process.env.npm_config_electron_skip_binary_download;
+  const previousCeiling = process.env.GIT_CEILING_DIRECTORIES;
+  process.env.npm_config_electron_skip_binary_download = 'true';
+  process.env.GIT_CEILING_DIRECTORIES = '/tmp/ceiling';
+  try {
+    const env = gitChildEnv();
+    assert.equal(env.npm_config_electron_skip_binary_download, undefined);
+    assert.equal(env.GIT_CEILING_DIRECTORIES, undefined);
+    assert.equal(env.GIT_TERMINAL_PROMPT, '0');
+    assert.equal(env.LC_ALL, 'C');
+  } finally {
+    if (previousNpm === undefined) delete process.env.npm_config_electron_skip_binary_download;
+    else process.env.npm_config_electron_skip_binary_download = previousNpm;
+    if (previousCeiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES;
+    else process.env.GIT_CEILING_DIRECTORIES = previousCeiling;
+  }
+});
+
+test('CRLF autocrlf warnings are not treated as the git failure', () => {
+  const warning = "warning: in the working copy of 'src/a.ts' LF will be replaced by CRLF the next time Git touches it";
+  assert.equal(isGitAdviceLine(warning), true);
+  assert.equal(sanitizeProgressText(warning), '');
+  assert.equal(gitFailureMessage({
+    stderr: `${warning}\nhusky - pre-commit script failed (code 1)`,
+    stdout: '',
+  }, 'git commit failed.'), 'husky - pre-commit script failed (code 1)');
+});
+
+test('readPrTemplate prefers .github/PULL_REQUEST_TEMPLATE.md from the committed tree', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.mkdirSync(path.join(cwd, '.github'));
+    fs.writeFileSync(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE.md'), '## Why\n');
+    git(cwd, ['add', '.github/PULL_REQUEST_TEMPLATE.md']);
+    git(cwd, ['commit', '-m', 'template']);
+    fs.writeFileSync(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE.md'), '## Dirty\n');
+    assert.equal(await readPrTemplate(cwd, 'HEAD'), '## Why');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('readPrTemplate skips an ambiguous template directory', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.mkdirSync(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE', 'a.md'), 'A\n');
+    fs.writeFileSync(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE', 'b.md'), 'B\n');
+    git(cwd, ['add', '.github']);
+    git(cwd, ['commit', '-m', 'templates']);
+    assert.equal(await readPrTemplate(cwd, 'HEAD'), '');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitStatus leaves pr null so the titlebar can load the change request separately', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    const status = await gitStatus(cwd);
+    assert.equal(status.pr, null);
+    const pr = await gitReadPullRequest(cwd);
+    assert.equal(pr.ok, true);
+    assert.equal(pr.pr, null);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit fail-closes when commit message generation returns an error', async () => {
+  const cwd = makeTempDir();
+  setTextGenerator(async () => ({ error: 'Commit message generation failed.' }));
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    const result = await gitCommit(cwd, '');
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'Commit message generation failed.');
+  } finally {
+    setTextGenerator(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit featureBranch generates under Preparing and uses the model branch', async () => {
+  const cwd = makeTempDir();
+  const phases = [];
+  setTextGenerator(async (input) => {
+    assert.equal(input.includeBranch, true);
+    return { subject: 'Add stacked actions', body: '', branch: 'feature/implement-stacked-git-actions' };
+  });
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    const result = await gitCommit(cwd, '', undefined, (event) => {
+      if (event.kind === 'phase') phases.push(event.title);
+    }, { featureBranch: true });
+    assert.equal(result.ok, true, result.message);
+    assert.equal(phases[0], 'Preparing feature ref...');
+    assert.equal(phases.includes('Generating commit message...'), false);
+    const status = await gitStatus(cwd);
+    assert.equal(status.refName, 'feature/implement-stacked-git-actions');
+  } finally {
+    setTextGenerator(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('readRangeContext falls back to the local default when origin/HEAD is missing', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/demo']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'Add world']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    const range = await readRangeContext(cwd);
+    assert.match(range.commitSummary, /Add world/);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitCreateChangeRequest generates PR copy and ignores a client-supplied commit subject', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  let seen = null;
+  setTextGenerator(async (input) => {
+    seen = input;
+    return { title: 'Generated from range', body: 'range body' };
+  });
+  setGhDefaultBranchResolver(async () => 'main');
+  setLookupOpenPullRequest(async () => ({ pr: null, failed: false }));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/demo']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'Add files']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    // Provider gate requires a GitHub-shaped URL; keep tracking from the bare push.
+    git(cwd, ['remote', 'set-url', 'origin', 'https://github.com/acme/demo.git']);
+    const result = await gitCreateChangeRequest(cwd, { title: 'Add files', body: '' });
+    assert.equal(seen.kind, 'pr');
+    assert.notEqual(seen.fallbackTitle, 'Add files');
+    assert.equal(seen.fallbackTitle, 'feature/demo');
+    assert.equal(result.ok, false);
+  } finally {
+    setTextGenerator(null);
+    setGhDefaultBranchResolver(null);
+    setLookupOpenPullRequest(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitCreateChangeRequest refuses a dirty work tree', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/demo']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['remote', 'set-url', 'origin', 'https://github.com/acme/demo.git']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\ndirty\n');
+    const result = await gitCreateChangeRequest(cwd, {});
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'Commit local changes before creating a PR.');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitStatus counts no-upstream ahead against the default ref', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feature/ahead']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nnext\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'next']);
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasUpstream, false);
+    assert.equal(status.aheadCount, 1);
+    assert.equal(status.aheadOfDefaultCount, 1);
+    assert.equal(status.isDefaultRef, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitStatus zeros aheadOfDefaultCount on the default ref', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nnext\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'next']);
+    const status = await gitStatus(cwd);
+    assert.equal(status.refName, 'main');
+    assert.equal(status.isDefaultRef, true);
+    assert.equal(status.hasUpstream, true);
+    assert.equal(status.aheadCount, 1);
+    assert.equal(status.aheadOfDefaultCount, 0);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('aheadCount without upstream uses branch.<name>.gh-merge-base', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'develop']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\ndevelop\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'develop']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\ndevelop\ntopic\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'topic']);
+    git(cwd, ['config', 'branch.feature/topic.gh-merge-base', 'develop']);
+    assert.equal(await resolveBaseBranchForNoUpstream(cwd, 'feature/topic'), 'develop');
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasUpstream, false);
+    assert.equal(status.aheadCount, 1);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitStatus marks aheadUnreliable when rev-list against the merge-base fails', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    writeUnreadableMergeBase(cwd, 'broken');
+    git(cwd, ['config', 'branch.feature/topic.gh-merge-base', 'broken']);
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasUpstream, false);
+    assert.equal(status.aheadCount, 0);
+    assert.equal(status.aheadUnreliable, true);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch prefers branch.<name>.gh-merge-base', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'develop']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    git(cwd, ['config', 'branch.feature/topic.gh-merge-base', 'develop']);
+    assert.equal(await resolvePrBaseBranch(cwd, 'feature/topic', false), 'develop');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch uses upstream branch when it differs from the local ref', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feat-a']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\na\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'a']);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feat-b']);
+    git(cwd, ['branch', '--set-upstream-to=origin/feat-a']);
+    assert.equal(await resolvePrBaseBranch(cwd, 'feat-b', true), 'feat-a');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch uses an unparseable non-origin upstream name as --base', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', 'https://github.com/org/app.git']);
+    git(cwd, ['remote', 'add', 'fork', bare]);
+    git(cwd, ['push', '-u', 'fork', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feat-a']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\na\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'a']);
+    git(cwd, ['push', '-u', 'fork', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feat-b']);
+    git(cwd, ['branch', '--set-upstream-to=fork/feat-a']);
+    setGhDefaultBranchResolver(async () => 'develop');
+    assert.equal(await resolvePrBaseBranch(cwd, 'feat-b', true), 'feat-a');
+  } finally {
+    setGhDefaultBranchResolver(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch prefers gh defaultBranchRef over local main', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    setGhDefaultBranchResolver(async () => 'develop');
+    assert.equal(await resolvePrBaseBranch(cwd, 'feature/topic', false), 'develop');
+  } finally {
+    setGhDefaultBranchResolver(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch falls back to git default when gh is unavailable', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    setGhDefaultBranchResolver(async () => null);
+    assert.equal(await resolvePrBaseBranch(cwd, 'feature/topic', false), 'main');
+  } finally {
+    setGhDefaultBranchResolver(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('parseGitHubRepositoryNameWithOwner and preferred head for forks', () => {
+  assert.equal(
+    parseGitHubRepositoryNameWithOwner('git@github.com:T3Tools/T3Code.git'),
+    'T3Tools/T3Code',
+  );
+  assert.equal(
+    parseGitHubRepositoryNameWithOwner('https://github.com/T3Tools/T3Code.git'),
+    'T3Tools/T3Code',
+  );
+});
+
+test('resolveLastKnownPr keeps the badge when head identity still matches', () => {
+  resetLastKnownPrCache();
+  const key = 'C:\\repo\u0000feature';
+  const pr = { number: 7, title: 'Fix', url: 'https://example/pr/7', state: 'open' };
+  rememberLastKnownPr(key, {
+    pr,
+    headBranch: 'feature',
+    upstreamRef: 'origin/feature',
+    remoteName: 'origin',
+    headRemoteUrlKey: 'owner/repo',
+  });
+  assert.deepEqual(
+    resolveLastKnownPr(key, {
+      headBranch: 'feature',
+      upstreamRef: 'origin/feature',
+      remoteName: 'origin',
+      headRemoteUrlKey: 'owner/repo',
+    }),
+    pr,
+  );
+  assert.equal(
+    resolveLastKnownPr(key, {
+      headBranch: 'other',
+      upstreamRef: 'origin/feature',
+      remoteName: 'origin',
+      headRemoteUrlKey: 'owner/repo',
+    }),
+    null,
+  );
+  resetLastKnownPrCache();
+});
+
+test('resolveBranchHeadContext lists owner:branch for cross-repo upstreams', async () => {
+  const cwd = makeTempDir();
+  const bareOrigin = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-o-'));
+  const bareFork = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-f-'));
+  try {
+    git(bareOrigin, ['init', '--bare']);
+    git(bareFork, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bareOrigin]);
+    git(cwd, ['remote', 'add', 'fork', bareFork]);
+    git(cwd, ['push', '-u', 'fork', 'HEAD']);
+    // Simulate GitHub URL shapes so owner:branch selectors appear.
+    git(cwd, ['remote', 'set-url', 'origin', 'https://github.com/upstream/app.git']);
+    git(cwd, ['remote', 'set-url', 'fork', 'https://github.com/me/app.git']);
+    const ctx = await resolveBranchHeadContext(cwd, 'main');
+    assert.equal(ctx.isCrossRepository, true);
+    assert.equal(ctx.preferredHeadSelector, 'me:main');
+    assert.ok(ctx.headSelectors.includes('me:main'));
+    assert.ok(ctx.headSelectors.includes('main'));
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bareOrigin, { recursive: true, force: true });
+    fs.rmSync(bareFork, { recursive: true, force: true });
+  }
+});
+
+test('resolveBranchHeadContext keeps branch.*.remote after upstream is unset', async () => {
+  const cwd = makeTempDir();
+  const bareFork = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-f2-'));
+  try {
+    git(bareFork, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'feature']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', 'https://github.com/upstream/app.git']);
+    git(cwd, ['remote', 'add', 'fork', bareFork]);
+    git(cwd, ['push', '-u', 'fork', 'HEAD']);
+    git(cwd, ['remote', 'set-url', 'fork', 'https://github.com/me/app.git']);
+    git(cwd, ['branch', '--unset-upstream']);
+    // Remote can remain configured before the next `push -u` (T3code reads branch.*.remote).
+    git(cwd, ['config', 'branch.feature.remote', 'fork']);
+    const ctx = await resolveBranchHeadContext(cwd, 'feature');
+    assert.equal(ctx.remoteName, 'fork');
+    assert.equal(ctx.isCrossRepository, true);
+    assert.ok(ctx.headSelectors.includes('me:feature'));
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bareFork, { recursive: true, force: true });
+  }
+});
+
+test('matchesBranchHeadContext rejects a same-branch PR from the wrong repo', () => {
+  const headContext = {
+    headBranch: 'feature',
+    headRepositoryNameWithOwner: 'me/app',
+    headRepositoryOwnerLogin: 'me',
+    isCrossRepository: true,
+  };
+  assert.equal(
+    matchesBranchHeadContext({
+      headRef: 'feature',
+      isCrossRepository: true,
+      headRepositoryNameWithOwner: 'me/app',
+      headRepositoryOwnerLogin: 'me',
+    }, headContext),
+    true,
+  );
+  assert.equal(
+    matchesBranchHeadContext({
+      headRef: 'feature',
+      isCrossRepository: false,
+      headRepositoryNameWithOwner: 'upstream/app',
+      headRepositoryOwnerLogin: 'upstream',
+    }, headContext),
+    false,
+  );
+});
+
+test('parseGhPullRequestRow synthesizes cross-repo head identity from the PR URL', () => {
+  const row = parseGhPullRequestRow({
+    number: 12,
+    title: 'Fork PR',
+    url: 'https://github.com/upstream/app/pull/12',
+    baseRefName: 'main',
+    headRefName: 'feature',
+    state: 'OPEN',
+    isCrossRepository: true,
+    headRepositoryOwner: { login: 'me' },
+  });
+  assert.equal(row.headRepositoryNameWithOwner, 'me/app');
+  assert.equal(row.headRepositoryOwnerLogin, 'me');
+  assert.equal(
+    matchesBranchHeadContext(row, {
+      headBranch: 'feature',
+      isCrossRepository: true,
+      headRepositoryNameWithOwner: 'me/app',
+      headRepositoryOwnerLogin: 'me',
+    }),
+    true,
+  );
+});
+
+test('providerFromRemoteUrl recognizes GitHub self-hosted hosts', () => {
+  assert.equal(providerFromRemoteUrl('https://github.mycompany.com/org/repo.git')?.kind, 'github');
+  assert.equal(providerFromRemoteUrl('git@github-work:org/repo.git')?.kind, 'github');
+  assert.equal(providerFromRemoteUrl('https://bitbucket.company.com/scm/proj/repo.git')?.kind, 'bitbucket');
+});
+
+test('normalizeGitRemoteUrl matches scp and https forms', () => {
+  assert.equal(
+    normalizeGitRemoteUrl('git@github.com:T3Tools/T3Code.git'),
+    normalizeGitRemoteUrl('https://github.com/T3Tools/T3Code.git'),
+  );
+});
+
+test('gitPush skips when there is no local delta and the remote branch already exists', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feature/same']);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['branch', '--unset-upstream']);
+    const pushed = await gitPush(cwd);
+    assert.equal(pushed.ok, true);
+    assert.equal(pushed.status, 'skipped');
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitPush no-upstream skip uses gh-merge-base when defaultRefName is missing', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'develop']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['branch', '--unset-upstream']);
+    git(cwd, ['config', 'branch.feature/topic.gh-merge-base', 'develop']);
+    assert.equal(await resolveBaseBranchForNoUpstream(cwd, 'feature/topic'), 'origin/develop');
+    const pushed = await gitPush(cwd);
+    assert.equal(pushed.ok, true);
+    assert.equal(pushed.status, 'skipped');
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitPush does not skip when no-upstream aheadCount is unreliable', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feature/unreliable']);
+    writeUnreadableMergeBase(cwd, 'broken');
+    git(cwd, ['config', 'branch.feature/unreliable.gh-merge-base', 'broken']);
+    const status = await gitStatus(cwd);
+    assert.equal(status.aheadUnreliable, true);
+    const pushed = await gitPush(cwd);
+    assert.equal(pushed.ok, true);
+    assert.notEqual(pushed.status, 'skipped');
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('FETCH_TIMEOUT_MS matches T3code status-fetch timeout', () => {
+  assert.equal(FETCH_TIMEOUT_MS, 5_000);
+});
+
+test('gitCommit marks a truncated staged patch for the generator', async () => {
+  const cwd = makeTempDir();
+  let seen = null;
+  setTextGenerator(async (input) => {
+    seen = input;
+    return { subject: 'Add blob', body: '' };
+  });
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'big.txt'), `${'x'.repeat(80_000)}\n`);
+    const result = await gitCommit(cwd, '');
+    assert.equal(result.ok, true, result.message);
+    assert.equal(seen.kind, 'commit');
+    assert.match(seen.stagedPatch, /\[truncated\]/);
+  } finally {
+    setTextGenerator(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('resolvePrBaseBranch uses primary-remote HEAD when origin is absent', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'develop']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'upstream', bare]);
+    git(cwd, ['push', '-u', 'upstream', 'HEAD']);
+    git(cwd, ['symbolic-ref', 'refs/remotes/upstream/HEAD', 'refs/remotes/upstream/develop']);
+    git(cwd, ['checkout', '-b', 'feature/topic']);
+    setGhDefaultBranchResolver(async () => null);
+    assert.equal(await resolvePrBaseBranch(cwd, 'feature/topic', true), 'develop');
+  } finally {
+    setGhDefaultBranchResolver(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitPull fast-forwards then reports up_to_date', async () => {
+  const originCwd = makeTempDir();
+  const cloneCwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(originCwd, ['init', '-b', 'main']);
+    git(originCwd, ['config', 'user.email', 't@local']);
+    git(originCwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(originCwd, 'README.md'), 'hello\n');
+    git(originCwd, ['add', 'README.md']);
+    git(originCwd, ['commit', '-m', 'base']);
+    git(originCwd, ['remote', 'add', 'origin', bare]);
+    git(originCwd, ['push', '-u', 'origin', 'HEAD']);
+    git(bare, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
+    git(cloneCwd, ['clone', '--branch', 'main', bare, '.']);
+    git(cloneCwd, ['config', 'user.email', 't@local']);
+    git(cloneCwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(originCwd, 'README.md'), 'hello\nworld\n');
+    git(originCwd, ['add', 'README.md']);
+    git(originCwd, ['commit', '-m', 'ahead']);
+    git(originCwd, ['push']);
+    setWorkspaceAuthority(createWorkspaceAuthority({ workspace: cloneCwd }));
+    const pulled = await gitPull(cloneCwd);
+    assert.equal(pulled.ok, true, pulled.message);
+    assert.equal(pulled.status, 'pulled');
+    const again = await gitPull(cloneCwd);
+    assert.equal(again.ok, true, again.message);
+    assert.equal(again.status, 'up_to_date');
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(originCwd, { recursive: true, force: true });
+    fs.rmSync(cloneCwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitPull refuses detached HEAD and a branch with no upstream', async () => {
+  const cwd = makeTempDir();
+  try {
+    resetFetchCooldowns();
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    const noUpstream = await gitPull(cwd);
+    assert.equal(noUpstream.ok, false);
+    assert.match(noUpstream.message, /no upstream/);
+    git(cwd, ['checkout', '--detach']);
+    const detached = await gitPull(cwd);
+    assert.equal(detached.ok, false);
+    assert.match(detached.message, /detached HEAD/);
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitPublishRepository adds a pasted origin without pushing an empty repo', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    const published = await gitPublishRepository(cwd, {
+      remoteUrl: 'https://github.com/acme/empty.git',
+      visibility: 'public',
+    });
+    assert.equal(published.ok, true, published.message);
+    assert.equal(published.status, 'remote_added');
+    assert.equal(published.url, 'https://github.com/acme/empty.git');
+    const remotes = git(cwd, ['remote', '-v']);
+    assert.match(remotes, /origin\s+https:\/\/github.com\/acme\/empty.git/);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitPublishRepository pushes an existing history to a pasted origin', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    const published = await gitPublishRepository(cwd, { remoteUrl: bare });
+    assert.equal(published.ok, true, published.message);
+    assert.notEqual(published.status, 'remote_added');
+    assert.equal(published.url, bare);
+    git(bare, ['rev-parse', '--verify', 'refs/heads/main']);
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitPublishRepository refuses a second origin', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['remote', 'add', 'origin', 'https://github.com/acme/already.git']);
+    const published = await gitPublishRepository(cwd, {
+      remoteUrl: 'https://github.com/acme/other.git',
+    });
+    assert.equal(published.ok, false);
+    assert.match(published.message, /already has an origin/);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCreateChangeRequest returns opened_existing for an open PR', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  setLookupOpenPullRequest(async () => ({
+    pr: {
+      number: 7,
+      title: 'Existing',
+      url: 'https://github.com/acme/demo/pull/7',
+      state: 'open',
+    },
+    failed: false,
+  }));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '-b', 'feature/demo']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['remote', 'set-url', 'origin', 'https://github.com/acme/demo.git']);
+    const result = await gitCreateChangeRequest(cwd, {});
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.status, 'opened_existing');
+    assert.equal(result.url, 'https://github.com/acme/demo/pull/7');
+    assert.equal(result.number, 7);
+    assert.equal(result.skipped, true);
+  } finally {
+    setLookupOpenPullRequest(null);
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('parseStatusHeader treats a gone upstream as no usable tracking ref', () => {
+  const gone = parseStatusHeader('## feature/demo...origin/feature/demo [gone]');
+  assert.equal(gone.refName, 'feature/demo');
+  assert.equal(gone.hasUpstream, false);
+  assert.equal(gone.aheadCount, 0);
+  assert.equal(gone.behindCount, 0);
+  const healthy = parseStatusHeader('## feature/demo...origin/feature/demo [ahead 2]');
+  assert.equal(healthy.hasUpstream, true);
+  assert.equal(healthy.aheadCount, 2);
+});
+
+test('gitStatus and gitPush treat a deleted upstream as unpublished', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    resetFetchCooldowns();
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['checkout', '-b', 'feature/gone']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nfeature\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'feature']);
+    git(cwd, ['push', '-u', 'origin', 'HEAD']);
+    git(cwd, ['push', 'origin', '--delete', 'feature/gone']);
+    git(cwd, ['fetch', '--prune', 'origin']);
+    const header = git(cwd, ['status', '-sb']).split(/\r?\n/)[0];
+    assert.match(header, /\[gone\]/);
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasUpstream, false);
+    assert.ok(status.aheadCount > 0);
+    const pushed = await gitPush(cwd);
+    assert.equal(pushed.ok, true, pushed.message);
+    assert.notEqual(pushed.status, 'skipped');
+    git(bare, ['rev-parse', '--verify', 'refs/heads/feature/gone']);
+  } finally {
+    resetFetchCooldowns();
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('resolveBranchHeadContext does not treat an unparseable non-origin remote as a fork', async () => {
+  const cwd = makeTempDir();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-bare-'));
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', 'https://github.com/upstream/app.git']);
+    git(cwd, ['remote', 'add', 'fork', bare]);
+    git(cwd, ['push', '-u', 'fork', 'HEAD']);
+    const ctx = await resolveBranchHeadContext(cwd, 'main');
+    assert.equal(ctx.remoteName, 'fork');
+    assert.equal(ctx.isCrossRepository, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
   }
 });

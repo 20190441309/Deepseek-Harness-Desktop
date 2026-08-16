@@ -2,13 +2,14 @@
 
 中文 · [English](design-language.en.md)
 
-本产品的视觉语言就是官方 `dsh web`。桌面壳、启动页、关闭遮罩、标题栏注入、右边栏、手机远程打开的官方页、以及任何新增前端，都必须看起来像同一套界面，不得另起一套皮肤。
+本产品的视觉语言就是官方 `dsh web`。桌面壳、关闭遮罩、标题栏注入、右边栏、手机远程打开的官方页、以及任何新增前端，都必须看起来像同一套界面，不得另起一套皮肤。启动页的仪器风只活在 [`src/renderer/boot.html`](../src/renderer/boot.html)，见 [桌面启动页](#桌面启动页)，不得扩散。
 
 改 UI / 布局 / 前端之前先读本文。工程落地细则（CSS Modules、token 分层、动效 recipe）以官方文档为准，本文不重复那份清单：
 
 - Token 源码：[design-platform.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/design-platform.css)、[base.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/base.css)、[gradient-shadow-text.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/gradient-shadow-text.css)、[motion.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/motion.css)
 - 控件原语：`vendor/deepseek-harness/packages/client/ui-primitives/`（`Button` / `Input` / `Menu` / `Modal` / `Tooltip` / 图标）
 - 工程规则：[web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
+- 动效规范与使用对照：[motion.md](motion.md)
 
 ## 适用范围
 
@@ -31,7 +32,7 @@
 8. **字号必须配行高。** 标题 16/24，正文 14/22，紧凑 12/18，Tooltip 13/20。字重 400 / 500 / 600 / 700；Figma 510 渲染为 500。禁止 `font-weight: 650`。
 9. **间距是 4 的倍数。** 控件内边距、gap、栏间距用 4 / 8 / 12 / 14 / 16 / 20 / 24。
 10. **图标 16px、`currentColor`。** 用 `ui-primitives` 的 `ic_ds_*`。密集标题栏可用 14px。不要引入另一套图标库或彩色填充图标。
-11. **动效只动 opacity 和 transform。** 时长走 `--ds-transition-duration*`（100–200ms，flip 400ms）。新对话框 / 菜单用 `usePresence` + `motion.css` recipe。禁止动画 `backdrop-filter` 和大面板宽高，禁止引入动画库。
+11. **动效只动 opacity 和 transform。** 时长走 `--ds-transition-duration*`（100–200ms，flip 400ms）。新对话框 / 菜单用 `usePresence` + `motion.css` recipe。禁止动画 `backdrop-filter` 和大面板宽高，禁止引入动画库。对照与例外见 [动效规范](motion.md)。
 12. **阴影只用 lv1 / lv2 / lv3。** 菜单和对话框用 `lv3`；输入条、悬浮卡片用 `lv2`。禁止 `0 18px 40px` 这类重阴影。
 13. **毛玻璃止于官方配方。** 遮罩 `blur(2px)` + `--dsw-alias-bg-mask-*`；抬起面用 `color-mix(..., var(--dsw-alias-glass-opacity), transparent)`。不要加更重的 blur，也不要每层都铺投影。
 14. **滚动条用共享样式。** 禁止组件内 `::-webkit-scrollbar`。
@@ -57,11 +58,22 @@
 
 - **xterm / diff / 代码**：等宽、ANSI、字符网格，不套胶囊按钮。
 - **原生窗口控件**：最小化 / 最大化 / 关闭保持系统命中区；颜色仍跟随当前主题 token。
-- **无法 import 主题包的壳层**（boot 页、远程配对页）：必须复用同一套语义色和几何，或直接引用 `ui-theme` 样式表。禁止再开 `--bg` / `--accent` 平行色板。
+- **无法 import 主题包的壳层**（远程配对页）：必须复用同一套语义色和几何，或直接引用 `ui-theme` 样式表。禁止再开 `--bg` / `--accent` 平行色板。
+- **桌面启动页**：整页仪器画布与独立 `--boot-*` 表，详见 [桌面启动页](#桌面启动页)。
+
+## 桌面启动页
+
+启动页是整窗一张仪器画布，不是中间再套卡片，也不是把日志关进带边框的盒子。源文件是 [`boot.html`](../src/renderer/boot.html)、[`boot.css`](../src/renderer/boot.css)、[`boot-tokens.css`](../src/renderer/boot-tokens.css)、[`boot.js`](../src/renderer/boot.js)。
+
+构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22，距底边 52px，避免被角轨裁切。运行时就绪后，官方客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到官方那张「正在加载插件」页。
+
+色与主题：[`boot-tokens.css`](../src/renderer/boot-tokens.css) 是唯一色表。浅色是纸面近黑，深色是 CRT 近白；`--boot-accent` 与正文同色，失败用 `--boot-alert`。`html[data-boot-theme]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把用户主题的 `bg` / `accent` 写进启动页。[`boot.css`](../src/renderer/boot.css) 只引用 `--boot-*` 与官方字体、动效 token，不写 `[data-ds-dark-theme]` 分支，也不写颜色字面量。
+
+窗口控件仍走 [`window-controls.css`](../src/renderer/window-controls.css)。禁止 NERV / MAGI / SEELE / EVA 商标或官方标志。禁止把 `--boot-*` 用到设置页、关闭遮罩、标题栏或官方 Web UI。
 
 ## 现有偏差（不要再扩散）
 
-启动页和远程登录页已收敛到官方 token。插件市场页 `src/renderer/marketplace/marketplace.css` 仍使用平行色板，**新代码不得抄它的 hex**；改到它时同样往官方 token 收。
+远程登录页已收敛到官方 token。插件市场页 `src/renderer/marketplace/marketplace.css` 仍使用平行色板，**新代码不得抄它的 hex**；改到它时同样往官方 token 收。
 
 ## 自检
 

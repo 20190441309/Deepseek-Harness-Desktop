@@ -37,4 +37,31 @@ describe('skill inventory frontmatter', () => {
     expect(text).not.toContain('disable-model-invocation')
     expect(text).not.toContain('user-invocable')
   })
+
+  it('preserves unknown frontmatter while replacing Settings-owned fields', () => {
+    const text = renderSkillMarkdown({
+      name: 'updated-skill',
+      description: 'Updated',
+      modelInvocable: true,
+      userInvocable: false,
+      content: 'Updated body',
+      existingData: {
+        name: 'old-skill',
+        description: 'Old',
+        whenToUse: 'Old hint',
+        'disable-model-invocation': true,
+        'user-invocable': true,
+        metadata: { owner: 'custom-provider' },
+        customFlag: 'retained',
+      },
+    })
+    const parsed = parseSkillMarkdown(text)
+    expect(parsed.data).toEqual({
+      name: 'updated-skill',
+      description: 'Updated',
+      'user-invocable': false,
+      metadata: { owner: 'custom-provider' },
+      customFlag: 'retained',
+    })
+  })
 })

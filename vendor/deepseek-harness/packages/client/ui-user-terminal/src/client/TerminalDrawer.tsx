@@ -15,7 +15,7 @@ export type TerminalDrawerProps =
 
 /**
  * Bottom-drawer occupant of `shell.terminalDrawer`.
- * @param props - session-maybe seats, shared store, PTY IPC, and layout writes.
+ * @param props - session-maybe seats, this shell's store, PTY IPC, and layout writes.
  * @returns the drawer chrome, or an empty unavailable state before a session exists.
  */
 export function TerminalDrawer(props: TerminalDrawerProps): ReactNode {
@@ -32,6 +32,11 @@ export function TerminalDrawer(props: TerminalDrawerProps): ReactNode {
       ptyKill={props.ptyKill}
       toggleTerminalDrawer={props.toggleTerminalDrawer}
       setTerminalDrawer={props.setTerminalDrawer}
+      mentionTerminal={props.mentionTerminal}
+      writeClipboard={props.writeClipboard}
+      openWorkspacePath={props.openWorkspacePath}
+      openLocalUrl={props.openLocalUrl}
+      openExternal={props.openExternal}
       t={props.t}
     />
   )

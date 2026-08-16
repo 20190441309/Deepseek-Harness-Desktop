@@ -223,9 +223,9 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByText('alpha-s'))
     expect(open).toHaveBeenCalledWith(sid('alpha-s'))
-    // Collapse hides the row again.
+    // Collapse keeps the row mounted through the fade exit (`aria-hidden`).
     fireEvent.click(screen.getByText('alpha'))
-    expect(screen.queryByText('alpha-s')).toBeNull()
+    expect(screen.getByText('alpha-s').closest('[data-dsh-motion]')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('shows five sessions by default and clears transient show-all when the Workspace collapses', () => {
@@ -428,7 +428,7 @@ describe('WorkspaceBrowser', () => {
     rerender(b, { useSessions: hook({ ...first, current: sid('b') }) })
     expect(screen.getByText('b')).toBeTruthy()
     fireEvent.click(screen.getByText('alpha'))
-    expect(screen.queryByText('b')).toBeNull()
+    expect(screen.getByText('b').closest('[data-dsh-motion]')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('shows only the current blank session as the localized New Session, excluded from search', () => {

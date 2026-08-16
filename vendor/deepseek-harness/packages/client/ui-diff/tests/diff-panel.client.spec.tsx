@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { DiffPanelProps } from '../src/client/DiffPanel.tsx'
-import { DiffPanel } from '../src/client/DiffPanel.tsx'
+import { DiffPanel, pickBranchBase } from '../src/client/DiffPanel.tsx'
 import { en } from '../src/client/locales.ts'
-import { isStaged, isUnstaged, type GitDiffResult } from '../src/client/shell.ts'
+import { isStaged, isUnstaged, type GitBranchListResult, type GitDiffOptions, type GitDiffResult } from '../src/client/shell.ts'
 
 const t: DiffPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('diff must not read this hook') }) as never
@@ -58,11 +58,16 @@ function mount(opts: {
   entries?: { ok: boolean; entries?: { path: string; xy: string }[] } | null
 }) {
   const gitStatus = vi.fn(async () => opts.status ?? null)
-  const gitDiff = vi.fn(async () => opts.diff ?? null)
+  const gitDiff = vi.fn(async (_cwd: string, _options?: GitDiffOptions): Promise<GitDiffResult | null> => opts.diff ?? null)
   const gitStatusEntries = vi.fn(async () => opts.entries ?? null)
   const gitStage = vi.fn(async (): Promise<{ ok: boolean; message?: string }> => ({ ok: true }))
   const gitUnstage = vi.fn(async (): Promise<{ ok: boolean; message?: string }> => ({ ok: true }))
   const gitDiscard = vi.fn(async (): Promise<{ ok: boolean; message?: string }> => ({ ok: true }))
+  const gitBranchList = vi.fn(async (): Promise<GitBranchListResult | null> => ({
+    ok: true,
+    defaultRef: 'origin/main',
+    branches: [{ name: 'main', isCurrent: true }, { name: 'origin/main', isRemote: true, isDefault: true }],
+  }))
   const openFile = vi.fn()
   render(
     <DiffPanel {...({
@@ -78,10 +83,11 @@ function mount(opts: {
       gitStage,
       gitUnstage,
       gitDiscard,
+      gitBranchList,
       t,
     } as unknown as DiffPanelProps)} />,
   )
-  return { gitStatus, gitDiff, gitStage, gitUnstage, gitDiscard, openFile }
+  return { gitStatus, gitDiff, gitStage, gitUnstage, gitDiscard, gitBranchList, openFile }
 }
 
 afterEach(cleanup)
@@ -99,7 +105,7 @@ describe('DiffPanel', () => {
   it('shows the T3code reason when the workspace is not a git repository', async () => {
     mount({ cwd: '/tmp/plain', status: null, diff: null })
     await waitFor(() => {
-      expect(screen.getByText('Diff is only available for server threads in Git repositories.')).toBeTruthy()
+      expect(screen.getByText('Diff is only available in Git repositories.')).toBeTruthy()
     })
     expect(screen.queryByText('README.md')).toBeNull()
   })
@@ -215,6 +221,7 @@ describe('DiffPanel', () => {
         gitStage,
         gitUnstage,
         gitDiscard,
+        gitBranchList: async () => null,
         t,
       } as unknown as DiffPanelProps)} />,
     )
@@ -233,6 +240,7 @@ describe('DiffPanel', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Stage' }))
     expect(await screen.findByText('index locked')).toBeTruthy()
+    expect(screen.getByText('README.md')).toBeTruthy()
   })
 
   it('shows the load error when gitStatus rejects', async () => {
@@ -250,6 +258,7 @@ describe('DiffPanel', () => {
         gitStage: async () => ({ ok: true }),
         gitUnstage: async () => ({ ok: true }),
         gitDiscard: async () => ({ ok: true }),
+        gitBranchList: async () => null,
         t,
       } as unknown as DiffPanelProps)} />,
     )
@@ -261,6 +270,7 @@ describe('DiffPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('README.md')).toBeTruthy()
     })
+    expect(screen.getByRole('button', { name: 'Working tree' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => {
       expect(b.gitDiff.mock.calls.length).toBeGreaterThan(1)
@@ -302,6 +312,7 @@ describe('DiffPanel', () => {
         gitStage: async () => ({ ok: false }),
         gitUnstage: async () => ({ ok: true }),
         gitDiscard: async () => ({ ok: true }),
+        gitBranchList: async () => null,
         t,
       } as unknown as DiffPanelProps)} />,
     )
@@ -320,6 +331,7 @@ describe('DiffPanel', () => {
     b.gitStage.mockResolvedValueOnce({ ok: false })
     fireEvent.click(screen.getByRole('button', { name: 'Stage' }))
     expect(await screen.findByText('Could not load the diff.')).toBeTruthy()
+    expect(screen.getByText('README.md')).toBeTruthy()
   })
 
   it('treats ok porcelain without entries as empty and ignores a late reject', async () => {
@@ -339,6 +351,7 @@ describe('DiffPanel', () => {
         gitStage: async () => ({ ok: true }),
         gitUnstage: async () => ({ ok: true }),
         gitDiscard: async () => ({ ok: true }),
+        gitBranchList: async () => null,
         t,
       } as unknown as DiffPanelProps)} />,
     )
@@ -363,5 +376,89 @@ describe('DiffPanel', () => {
     })
     expect(await screen.findByText('ghost.ts')).toBeTruthy()
     expect(screen.queryByText('@@ -1,1 +1,2 @@')).toBeNull()
+  })
+
+  it('loads a three-dot branch range and hides stage actions', async () => {
+    const b = mount({ cwd: '/tmp/repo', status: { refName: 'main' }, diff: SAMPLE })
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Working tree' }))
+    await waitFor(() => {
+      expect(b.gitBranchList).toHaveBeenCalledWith('/tmp/repo')
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'origin/main' }))
+    await waitFor(() => {
+      expect(b.gitDiff).toHaveBeenCalledWith('/tmp/repo', { baseRef: 'origin/main' })
+    })
+    expect(screen.getByRole('button', { name: /Branch/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Stage' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    fireEvent.click(screen.getByRole('button', { name: /Branch/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Working tree' }))
+    await waitFor(() => {
+      expect(b.gitDiff.mock.calls.some(call => call[1] === undefined)).toBe(true)
+    })
+  })
+
+  it('shows a load error when the repo is valid but gitDiff returns null', async () => {
+    mount({
+      cwd: '/tmp/repo',
+      status: { refName: 'main' },
+      diff: null,
+    })
+    expect(await screen.findByText('Could not load the diff.')).toBeTruthy()
+    expect(screen.queryByText('Diff is only available in Git repositories.')).toBeNull()
+  })
+
+  it('clears the branch list when gitBranchList is not ok', async () => {
+    const b = mount({ cwd: '/tmp/repo', status: { refName: 'main' }, diff: SAMPLE })
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    b.gitBranchList.mockResolvedValueOnce({ ok: false, message: 'no git' })
+    fireEvent.click(screen.getByRole('button', { name: 'Working tree' }))
+    await waitFor(() => {
+      expect(b.gitBranchList).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('menuitem', { name: 'origin/main' })).toBeNull()
+  })
+
+  it('filters branch refs and lists beyond fifty names', async () => {
+    const extra = Array.from({ length: 51 }, (_, index) => ({
+      name: `topic-${String(index + 1).padStart(2, '0')}`,
+    }))
+    const b = mount({ cwd: '/tmp/repo', status: { refName: 'main' }, diff: SAMPLE })
+    b.gitBranchList.mockResolvedValueOnce({
+      ok: true,
+      defaultRef: 'origin/main',
+      branches: [
+        { name: 'main', isCurrent: true },
+        { name: 'origin/main', isRemote: true, isDefault: true },
+        ...extra,
+      ],
+    })
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Working tree' }))
+    expect(await screen.findByRole('menuitem', { name: 'topic-51' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Search branches…'), { target: { value: 'topic-51' } })
+    expect(screen.getByRole('menuitem', { name: 'topic-51' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'origin/main' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: 'Working tree' })).toBeTruthy()
+  })
+})
+
+describe('pickBranchBase', () => {
+  it('prefers defaultRef, then isDefault, then main, then the first local branch', () => {
+    expect(pickBranchBase([], 'origin/main')).toBe('origin/main')
+    expect(pickBranchBase([{ name: 'topic', isDefault: true }], null)).toBe('topic')
+    expect(pickBranchBase([{ name: 'main' }], undefined)).toBe('main')
+    expect(pickBranchBase([{ name: 'topic', isRemote: true }, { name: 'feat' }], null)).toBe('feat')
+    expect(pickBranchBase([{ name: 'origin/main' }], null)).toBe('origin/main')
+    expect(pickBranchBase([], null)).toBe('main')
+    expect(pickBranchBase([], '')).toBe('main')
   })
 })

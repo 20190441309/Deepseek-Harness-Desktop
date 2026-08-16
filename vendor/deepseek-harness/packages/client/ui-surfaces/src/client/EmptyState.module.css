@@ -9,7 +9,7 @@
 
 .inner {
   width: 100%;
-  max-width: 360px;
+  max-width: 480px;
 }
 
 .heading {
@@ -20,7 +20,7 @@
 .title {
   margin: 0;
   font-size: 14px;
-  line-height: 20px;
+  line-height: 22px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
@@ -83,7 +83,7 @@
 
 .cardTitle {
   font-size: 14px;
-  line-height: 20px;
+  line-height: 22px;
   font-weight: 500;
 }
 

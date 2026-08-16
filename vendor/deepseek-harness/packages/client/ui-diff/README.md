@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Right-panel Diff occupant of `surfaces.diff` (`single`, `session-maybe`, declared by ui-surfaces). Shows the workspace change list and unified hunks from desktop `window.shell.gitDiff(cwd)`. When porcelain `gitStatusEntries` is present, staged and unstaged groups get Stage / Unstage / Discard. Filename clicks call owner `openFile`. When `gitStatus(cwd)` is null the panel shows the T3code reason `Diff is only available for server threads in Git repositories.` Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
+Right-panel Diff occupant of `surfaces.diff` (`single`, `session-maybe`, declared by ui-surfaces). Shows the workspace change list and unified hunks from desktop `window.shell.gitDiff(cwd)`. Working-tree hunks are `git diff HEAD` (staged and unstaged on the same file). A scope menu switches Working tree (porcelain Stage / Unstage / Discard; untracked discard is `git clean -f`, directories `-fd`) and Branch (`gitDiff(cwd, { baseRef })` three-dot range; no index mutations). Stage / Unstage / Discard failures keep the file list and show an `opError` banner. The branch Menu searches every listed ref. Collapse all / Expand all toggle hunks. Filename clicks call owner `openFile`. When `gitStatus(cwd)` is null the panel shows `Diff is only available in Git repositories.` Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
 
 Workspace root is the current session `cwd` from one `useSessions` read. The renderer never loads Node.
 
@@ -18,5 +18,5 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **Working-tree only** — there is no turn-diff, branch-base picker, or split view.
+- **No turn-diff, split view, ignore-whitespace, or word-wrap** — branch scope is `baseRef...HEAD` only; there is no checkpoint turn range. T3's split / wrap / ignore-whitespace toggles are not ported.
 - **Titlebar Commit is unchanged** — Diff stage/unstage/discard does not replace `git add -A`.

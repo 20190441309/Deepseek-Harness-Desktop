@@ -5,7 +5,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { GitActionsInjected } from './GitActionsControl.tsx'
 import { GitActionsControl } from './GitActionsControl.tsx'
 import type { BranchRef } from './branches.ts'
-import type { GitResult, VcsStatus } from './git-logic.ts'
+import type { CommitFileRow } from './CommitDialog.tsx'
+import type { GitProgressEvent, GitResult, VcsStatus } from './git-logic.ts'
 import { en, NS, zh, type GitKey } from './locales.ts'
 
 export type { GitActionsInjected, GitActionsProps } from './GitActionsControl.tsx'
@@ -22,15 +23,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Desktop git methods the Electron preload exposes on `window.shell`. */
 interface GitShell {
   gitStatus?: (cwd: string) => Promise<VcsStatus | null>
+  gitFetchForStatus?: (cwd: string) => Promise<VcsStatus | null>
+  gitReadPullRequest?: (cwd: string) => Promise<GitResult & { pr?: VcsStatus['pr'] }>
   gitInit?: (cwd: string) => Promise<GitResult>
-  gitCommit?: (cwd: string, message: string) => Promise<GitResult>
-  gitPush?: (cwd: string) => Promise<GitResult>
-  gitPull?: (cwd: string) => Promise<GitResult>
-  gitCreateChangeRequest?: (cwd: string, input: { title: string; body: string }) => Promise<GitResult>
+  gitCommit?: (cwd: string, message: string, filePaths?: readonly string[], actionId?: number, options?: { featureBranch?: boolean }) => Promise<GitResult>
+  gitChangedFiles?: (cwd: string) => Promise<GitResult & { files?: CommitFileRow[] }>
+  gitPush?: (cwd: string, actionId?: number) => Promise<GitResult>
+  gitPull?: (cwd: string, actionId?: number) => Promise<GitResult>
+  onGitProgress?: (handler: (event: GitProgressEvent) => void) => () => void
+  gitCreateChangeRequest?: (cwd: string, input?: { title?: string; body?: string }, actionId?: number) => Promise<GitResult>
+  gitPublishRepository?: (cwd: string, input: { name: string; visibility: 'public' | 'private'; remoteUrl?: string }, actionId?: number) => Promise<GitResult>
   gitBranchList?: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: import('./branches.ts').BranchRef[] }>
   gitSwitchBranch?: (cwd: string, ref: string) => Promise<GitResult & { refName?: string }>
   gitCreateBranch?: (cwd: string, name: string) => Promise<GitResult & { refName?: string }>
   openExternal?: (url: string) => Promise<boolean>
+  openWorkspacePath?: (cwd: string, relativePath: string) => Promise<GitResult>
 }
 
 function noBranchList(): Promise<{ ok: boolean; message: string; branches: BranchRef[] }> {
@@ -52,16 +59,23 @@ function readGitShell(): GitActionsInjected {
     : (window as Window & { shell?: GitShell }).shell
   return {
     gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
+    gitFetchForStatus: cwd => shell?.gitFetchForStatus?.(cwd) ?? Promise.resolve(null),
+    gitReadPullRequest: cwd => shell?.gitReadPullRequest?.(cwd) ?? Promise.resolve({ ...unavailable(), pr: null }),
     gitInit: cwd => shell?.gitInit?.(cwd) ?? Promise.resolve(unavailable()),
-    gitCommit: (cwd, message) => shell?.gitCommit?.(cwd, message) ?? Promise.resolve(unavailable()),
-    gitPush: cwd => shell?.gitPush?.(cwd) ?? Promise.resolve(unavailable()),
-    gitPull: cwd => shell?.gitPull?.(cwd) ?? Promise.resolve(unavailable()),
-    gitCreateChangeRequest: (cwd, input) =>
-      shell?.gitCreateChangeRequest?.(cwd, input) ?? Promise.resolve(unavailable()),
+    gitCommit: (cwd, message, filePaths, actionId, options) => shell?.gitCommit?.(cwd, message, filePaths, actionId, options) ?? Promise.resolve(unavailable()),
+    gitChangedFiles: cwd => shell?.gitChangedFiles?.(cwd) ?? Promise.resolve({ ...unavailable(), files: [] }),
+    gitPush: (cwd, actionId) => shell?.gitPush?.(cwd, actionId) ?? Promise.resolve(unavailable()),
+    gitPull: (cwd, actionId) => shell?.gitPull?.(cwd, actionId) ?? Promise.resolve(unavailable()),
+    onGitProgress: handler => shell?.onGitProgress?.(handler) ?? (() => {}),
+    gitCreateChangeRequest: (cwd, input, actionId) =>
+      shell?.gitCreateChangeRequest?.(cwd, input, actionId) ?? Promise.resolve(unavailable()),
+    gitPublishRepository: (cwd, input, actionId) =>
+      shell?.gitPublishRepository?.(cwd, input, actionId) ?? Promise.resolve(unavailable()),
     gitBranchList: cwd => shell?.gitBranchList?.(cwd) ?? noBranchList(),
     gitSwitchBranch: (cwd, ref) => shell?.gitSwitchBranch?.(cwd, ref) ?? Promise.resolve(unavailable()),
     gitCreateBranch: (cwd, name) => shell?.gitCreateBranch?.(cwd, name) ?? Promise.resolve(unavailable()),
     openExternal: url => shell?.openExternal?.(url) ?? Promise.resolve(false),
+    openWorkspacePath: (cwd, relativePath) => shell?.openWorkspacePath?.(cwd, relativePath) ?? Promise.resolve(unavailable()),
   }
 }
 

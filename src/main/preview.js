@@ -1,25 +1,23 @@
 const { randomUUID } = require('node:crypto');
+const net = require('node:net');
+const { isLoopbackHttpUrl, rewriteLoopbackLoadUrl } = require('./local-url');
 
 const PREVIEW_PARTITION = 'dsh-preview';
-const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const DISCOVER_PORTS = [3000, 5173, 4173, 8080, 4321, 8000, 5000];
+const DISCOVER_TIMEOUT_MS = 200;
+/** Document navigations that must stay on loopback. */
+const FRAME_RESOURCE_TYPES = new Set(['mainFrame', 'subFrame']);
 
 /**
- * Local preview URLs only: http(s) to loopback. Arbitrary hosts, file:, and
- * script URLs are rejected so the view never follows a credentialed hop.
+ * Local preview document URLs only: http(s) to loopback. Arbitrary hosts,
+ * file:, and script URLs are rejected so the view never follows a
+ * credentialed hop. Subresource loads (fonts, CDN scripts) are filtered
+ * separately by {@link previewRequestFilter}.
  * @param {unknown} raw
  * @returns {boolean}
  */
 function isAllowedPreviewUrl(raw) {
-  if (typeof raw !== 'string' || raw.trim() === '') return false;
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    // Invalid URL text cannot be a local preview target.
-    return false;
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-  return LOCAL_HOSTS.has(parsed.hostname.toLowerCase());
+  return isLoopbackHttpUrl(raw);
 }
 
 function rejectRemote() {
@@ -45,7 +43,8 @@ function defaultAttach({ bounds, partition }) {
   win.addBrowserView(view);
   if (bounds) view.setBounds(bounds);
   view.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedPreviewUrl(url)) view.webContents.loadURL(url);
+    const next = rewriteLoopbackLoadUrl(url);
+    if (next) view.webContents.loadURL(next);
     return { action: 'deny' };
   });
   let visible = true;
@@ -71,12 +70,71 @@ function defaultAttach({ bounds, partition }) {
 }
 
 /**
- * Cancel any non-loopback request, including iframe and subresource loads.
- * @param {{ url?: string }} details
+ * Cancel non-loopback document navigations (mainFrame / subFrame). Allow
+ * other resource types so local Vite/Next apps can load CDN fonts and scripts
+ * while top-level navigation stays on loopback via will-navigate / will-redirect.
+ * @param {{ url?: string, resourceType?: string }} details
  * @returns {{ cancel: boolean }}
  */
 function previewRequestFilter(details) {
+  const type = details && details.resourceType;
+  if (typeof type === 'string' && !FRAME_RESOURCE_TYPES.has(type)) {
+    return { cancel: false };
+  }
   return { cancel: !isAllowedPreviewUrl(details && details.url) };
+}
+
+/**
+ * Probe one loopback TCP port. Resolves true only when the handshake connects.
+ * @param {number} port
+ * @returns {Promise<boolean>}
+ */
+function probeLocalPort(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    const finish = (ok) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => { finish(false); }, DISCOVER_TIMEOUT_MS);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      finish(true);
+    });
+    socket.once('error', () => {
+      clearTimeout(timer);
+      finish(false);
+    });
+  });
+}
+
+/**
+ * List common local-dev URLs that currently accept a TCP connection.
+ * @param {(port: number) => Promise<boolean>} [probe]
+ * @returns {Promise<{ url: string, port: number }[]>}
+ */
+async function discoverLocalServers(probe = probeLocalPort) {
+  const found = [];
+  await Promise.all(DISCOVER_PORTS.map(async (port) => {
+    if (await probe(port)) found.push({ url: `http://127.0.0.1:${port}`, port });
+  }));
+  found.sort((left, right) => left.port - right.port);
+  return found;
+}
+
+function sessionState(session) {
+  const contents = session.view.webContents;
+  const url = typeof contents.getURL === 'function' && contents.getURL()
+    ? contents.getURL()
+    : session.url;
+  return {
+    ok: true,
+    id: session.id,
+    url,
+    canGoBack: typeof contents.canGoBack === 'function' ? contents.canGoBack() : false,
+    canGoForward: typeof contents.canGoForward === 'function' ? contents.canGoForward() : false,
+  };
 }
 
 function guardView(view) {
@@ -96,10 +154,11 @@ function guardView(view) {
 /**
  * In-process preview table. Tests inject `attach`; production uses BrowserView
  * on an isolated partition so the user API key never rides the guest session.
- * @param {{ attach?: Function }} [options]
+ * @param {{ attach?: Function, onState?: (state: object) => void }} [options]
  */
 function createPreviewController(options = {}) {
   const attach = options.attach ?? defaultAttach;
+  const onState = typeof options.onState === 'function' ? options.onState : null;
   const sessions = new Map();
 
   function requireSession(id) {
@@ -110,30 +169,43 @@ function createPreviewController(options = {}) {
     return session;
   }
 
+  function bindNavigation(session) {
+    const emit = () => {
+      const state = sessionState(session);
+      session.url = state.url;
+      if (onState) onState(state);
+    };
+    session.view.webContents.on('did-navigate', emit);
+    session.view.webContents.on('did-navigate-in-page', emit);
+  }
+
   return {
     async open(input = {}) {
-      const url = input.url;
-      if (!isAllowedPreviewUrl(url)) return rejectRemote();
+      const loadUrl = rewriteLoopbackLoadUrl(input.url);
+      if (!loadUrl) return rejectRemote();
       const id = randomUUID();
       const view = attach({
         id,
-        url,
+        url: loadUrl,
         bounds: input.bounds,
         partition: PREVIEW_PARTITION,
         extraHeaders: null,
       });
       guardView(view);
-      view.webContents.loadURL(url);
-      sessions.set(id, { id, url, view });
-      return { ok: true, id, url };
+      const session = { id, url: loadUrl, view };
+      sessions.set(id, session);
+      bindNavigation(session);
+      view.webContents.loadURL(loadUrl);
+      return { ok: true, id, url: loadUrl };
     },
 
     async navigate(id, url) {
-      if (!isAllowedPreviewUrl(url)) return rejectRemote();
+      const loadUrl = rewriteLoopbackLoadUrl(url);
+      if (!loadUrl) return rejectRemote();
       const session = requireSession(id);
-      session.view.webContents.loadURL(url);
-      session.url = url;
-      return { ok: true, id, url };
+      session.view.webContents.loadURL(loadUrl);
+      session.url = loadUrl;
+      return { ok: true, id, url: loadUrl };
     },
 
     async resize(id, bounds) {
@@ -152,6 +224,42 @@ function createPreviewController(options = {}) {
       const session = requireSession(id);
       session.view.setVisible(true);
       if (bounds) session.view.setBounds(bounds);
+    },
+
+    async back(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.canGoBack === 'function' && contents.canGoBack() && typeof contents.goBack === 'function') {
+        contents.goBack();
+      }
+      return sessionState(session);
+    },
+
+    async forward(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.canGoForward === 'function' && contents.canGoForward() && typeof contents.goForward === 'function') {
+        contents.goForward();
+      }
+      return sessionState(session);
+    },
+
+    async reload(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.reload === 'function') contents.reload();
+      return sessionState(session);
+    },
+
+    async state(id) {
+      return sessionState(requireSession(id));
+    },
+
+    async openDevTools(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.openDevTools === 'function') contents.openDevTools({ mode: 'detach' });
+      return { ok: true, id };
     },
 
     async close(id) {
@@ -181,9 +289,39 @@ function createPreviewController(options = {}) {
  * @param {ReturnType<typeof createPreviewController>} [controller]
  */
 function registerPreviewIpc(ipcMain, controller) {
-  const live = controller ?? createPreviewController();
-  ipcMain.handle('shell:preview-open', (_event, input) => live.open(input));
-  ipcMain.handle('shell:preview-navigate', (_event, id, url) => live.navigate(id, url));
+  let host = null;
+  const remember = (event) => {
+    host = event && event.sender ? event.sender : host;
+  };
+  const live = controller ?? createPreviewController({
+    onState(state) {
+      if (host && typeof host.isDestroyed === 'function' && host.isDestroyed()) return;
+      if (host && typeof host.send === 'function') host.send('shell:preview-state-change', state);
+    },
+  });
+  ipcMain.handle('shell:preview-open', (event, input) => {
+    remember(event);
+    return live.open(input);
+  });
+  ipcMain.handle('shell:preview-navigate', (event, id, url) => {
+    remember(event);
+    return live.navigate(id, url);
+  });
+  ipcMain.handle('shell:preview-back', (event, id) => {
+    remember(event);
+    return live.back(id);
+  });
+  ipcMain.handle('shell:preview-forward', (event, id) => {
+    remember(event);
+    return live.forward(id);
+  });
+  ipcMain.handle('shell:preview-reload', (event, id) => {
+    remember(event);
+    return live.reload(id);
+  });
+  ipcMain.handle('shell:preview-state', (_event, id) => live.state(id));
+  ipcMain.handle('shell:preview-devtools', (_event, id) => live.openDevTools(id));
+  ipcMain.handle('shell:preview-discover', () => discoverLocalServers());
   ipcMain.handle('shell:preview-resize', (_event, id, bounds) => live.resize(id, bounds));
   ipcMain.handle('shell:preview-hide', (_event, id) => live.hide(id));
   ipcMain.handle('shell:preview-show', (_event, id, bounds) => live.show(id, bounds));
@@ -193,8 +331,10 @@ function registerPreviewIpc(ipcMain, controller) {
 
 module.exports = {
   PREVIEW_PARTITION,
+  DISCOVER_PORTS,
   isAllowedPreviewUrl,
   previewRequestFilter,
+  discoverLocalServers,
   createPreviewController,
   registerPreviewIpc,
 };

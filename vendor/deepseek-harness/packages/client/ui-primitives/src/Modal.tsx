@@ -38,7 +38,7 @@ export function Modal({
   description?: string
   children?: ReactNode
   footer?: ReactNode
-  className?: string
+  className?: string | undefined
   contentClassName?: string
   headless?: boolean
 }) {

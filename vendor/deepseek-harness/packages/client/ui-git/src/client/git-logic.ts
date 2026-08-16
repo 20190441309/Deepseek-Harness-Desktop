@@ -25,6 +25,8 @@ export interface VcsStatus {
   aheadCount: number
   behindCount: number
   aheadOfDefaultCount?: number
+  /** True when no-upstream ahead vs the default/base ref could not be counted. */
+  aheadUnreliable?: boolean
   pr: VcsPr | null
   sourceControlProvider?: SourceControlProvider
   isDefaultRef?: boolean
@@ -38,6 +40,18 @@ export interface GitResult {
   ok: boolean
   message?: string
   url?: string
+  skipped?: boolean
+  commitSha?: string
+  subject?: string
+  body?: string
+  refName?: string
+  branch?: string
+  upstreamRef?: string
+  upstreamBranch?: string
+  status?: string
+  number?: number
+  title?: string
+  pr?: VcsPr | null
 }
 
 /** Stacked git action the main button or a confirm dialog may run. */
@@ -91,6 +105,19 @@ export const DEFAULT_CHANGE_REQUEST_TERMINOLOGY: ChangeRequestTerminology = {
 }
 
 /**
+ * Desktop change requests go through `gh` on GitHub remotes only.
+ * @param provider - discovered provider from status.
+ * @returns true when Create PR / commit_push_pr is offered.
+ */
+export function supportsGitHubChangeRequests(
+  provider: SourceControlProvider | null | undefined,
+): boolean {
+  // Absent, null, and non-GitHub kinds stay fail-closed. gitStatus omits the
+  // field when get-url fails or the remote is not GitHub.
+  return provider?.kind === 'github'
+}
+
+/**
  * Resolve change-request wording for a provider.
  * @param provider - discovered provider, or absent for the GitHub default.
  * @returns short and singular labels.
@@ -141,7 +168,7 @@ export function buildMenuItems(
     !isBusy
     && hasBranch
     && !isBehind
-    && gitStatus.aheadCount > 0
+    && (gitStatus.aheadCount > 0 || Boolean(gitStatus.aheadUnreliable))
     && (gitStatus.hasUpstream || canPushWithoutUpstream)
   const canCreatePr =
     !isBusy
@@ -151,6 +178,7 @@ export function buildMenuItems(
     && hasDefaultBranchDelta
     && !isBehind
     && (gitStatus.hasUpstream || canPushWithoutUpstream)
+    && supportsGitHubChangeRequests(gitStatus.sourceControlProvider)
   const canOpenPr = !isBusy && hasOpenPr
 
   const commitItem: GitActionMenuItem = {
@@ -166,7 +194,7 @@ export function buildMenuItems(
     return [commitItem]
   }
 
-  return [
+  const items: GitActionMenuItem[] = [
     commitItem,
     {
       id: 'push',
@@ -176,23 +204,77 @@ export function buildMenuItems(
       kind: 'open_dialog',
       dialogAction: 'push',
     },
-    hasOpenPr
-      ? {
-        id: 'pr',
-        label: `View ${terminology.shortLabel}`,
-        disabled: !canOpenPr,
-        icon: 'pr',
-        kind: 'open_pr',
-      }
-      : {
-        id: 'pr',
-        label: `Create ${terminology.shortLabel}`,
-        disabled: !canCreatePr,
-        icon: 'pr',
-        kind: 'open_dialog',
-        dialogAction: 'create_pr',
-      },
   ]
+  if (hasOpenPr) {
+    items.push({
+      id: 'pr',
+      label: `View ${terminology.shortLabel}`,
+      disabled: !canOpenPr,
+      icon: 'pr',
+      kind: 'open_pr',
+    })
+  } else if (supportsGitHubChangeRequests(gitStatus.sourceControlProvider)) {
+    // Omit Create entirely for non-GitHub remotes (desktop is github/`gh`-only).
+    items.push({
+      id: 'pr',
+      label: `Create ${terminology.shortLabel}`,
+      disabled: !canCreatePr,
+      icon: 'pr',
+      kind: 'open_dialog',
+      dialogAction: 'create_pr',
+    })
+  }
+  return items
+}
+
+/**
+ * Hover copy for a disabled Git menu row. Ported from T3code `getMenuActionDisabledReason`.
+ * @param input - the row, live status, busy flag, and whether origin exists.
+ * @returns the reason, or null when the row is enabled.
+ */
+export function getMenuActionDisabledReason(input: {
+  item: GitActionMenuItem
+  gitStatus: VcsStatus | null
+  isBusy: boolean
+  hasPrimaryRemote: boolean
+}): string | null {
+  const { item, gitStatus, isBusy, hasPrimaryRemote } = input
+  if (!item.disabled) return null
+  if (isBusy) return 'Git action in progress.'
+  if (!gitStatus) return 'Git status is unavailable.'
+
+  const hasBranch = gitStatus.refName !== null
+  const hasChanges = gitStatus.hasWorkingTreeChanges
+  const hasOpenPr = gitStatus.pr?.state === 'open'
+  const isAhead = gitStatus.aheadCount > 0 || Boolean(gitStatus.aheadUnreliable)
+  const isBehind = gitStatus.behindCount > 0
+  const terminology = resolveChangeRequestTerminology(gitStatus)
+
+  if (item.id === 'commit') {
+    if (!hasChanges) return 'Worktree is clean. Make changes before committing.'
+    return 'Commit is currently unavailable.'
+  }
+
+  if (item.id === 'push') {
+    if (!hasBranch) return 'Detached HEAD: checkout a branch before pushing.'
+    if (hasChanges) return 'Commit or stash local changes before pushing.'
+    if (isBehind) return 'Branch is behind upstream. Pull/rebase before pushing.'
+    if (!gitStatus.hasUpstream && !hasPrimaryRemote) return 'Add an "origin" remote before pushing.'
+    if (!isAhead) return 'No local commits to push.'
+    return 'Push is currently unavailable.'
+  }
+
+  if (hasOpenPr) return `View ${terminology.singular} is currently unavailable.`
+  if (!hasBranch) return `Detached HEAD: checkout a branch before creating a ${terminology.singular}.`
+  if (hasChanges) return `Commit local changes before creating a ${terminology.singular}.`
+  if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
+    return `Add an "origin" remote before creating a ${terminology.singular}.`
+  }
+  if (!isAhead && (gitStatus.aheadOfDefaultCount ?? 0) === 0) {
+    return `No local commits to include in a ${terminology.singular}.`
+  }
+  if (isBehind) return `Branch is behind upstream. Pull/rebase before creating a ${terminology.singular}.`
+  return `Create ${terminology.singular} is currently unavailable.`
 }
 
 /**
@@ -225,7 +307,9 @@ export function resolveQuickAction(
   const hasBranch = gitStatus.refName !== null
   const hasChanges = gitStatus.hasWorkingTreeChanges
   const hasOpenPr = gitStatus.pr?.state === 'open'
+  const canCreateCr = supportsGitHubChangeRequests(gitStatus.sourceControlProvider)
   const isAhead = gitStatus.aheadCount > 0
+  const aheadUnreliable = Boolean(gitStatus.aheadUnreliable)
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0
   const isBehind = gitStatus.behindCount > 0
   const isDiverged = isAhead && isBehind
@@ -247,7 +331,7 @@ export function resolveQuickAction(
     if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
       return { label: 'Commit', disabled: false, kind: 'run_action', action: 'commit' }
     }
-    if (hasOpenPr || isDefaultRef) {
+    if (hasOpenPr || isDefaultRef || !canCreateCr) {
       return { label: 'Commit & push', disabled: false, kind: 'run_action', action: 'commit_push' }
     }
     return {
@@ -269,7 +353,7 @@ export function resolveQuickAction(
         kind: 'open_publish',
       }
     }
-    if (!isAhead) {
+    if (!isAhead && !aheadUnreliable) {
       if (hasOpenPr) {
         return { label: `View ${terminology.shortLabel}`, disabled: false, kind: 'open_pr' }
       }
@@ -280,7 +364,7 @@ export function resolveQuickAction(
         hint: 'No local commits to push.',
       }
     }
-    if (hasOpenPr || isDefaultRef) {
+    if (hasOpenPr || isDefaultRef || !canCreateCr || (aheadUnreliable && !isAhead)) {
       return {
         label: 'Push',
         disabled: false,
@@ -313,8 +397,17 @@ export function resolveQuickAction(
     }
   }
 
+  if (!isAhead && aheadUnreliable) {
+    return {
+      label: 'Push',
+      disabled: false,
+      kind: 'run_action',
+      action: isDefaultRef ? 'commit_push' : 'push',
+    }
+  }
+
   if (isAhead) {
-    if (hasOpenPr || isDefaultRef) {
+    if (hasOpenPr || isDefaultRef || !canCreateCr) {
       return {
         label: 'Push',
         disabled: false,
@@ -334,7 +427,7 @@ export function resolveQuickAction(
     return { label: `View ${terminology.shortLabel}`, disabled: false, kind: 'open_pr' }
   }
 
-  if (hasDefaultBranchDelta && !isDefaultRef) {
+  if (hasDefaultBranchDelta && !isDefaultRef && canCreateCr) {
     return {
       label: `Create ${terminology.shortLabel}`,
       disabled: false,
@@ -349,6 +442,109 @@ export function resolveQuickAction(
     kind: 'show_hint',
     hint: 'Branch is up to date. No action needed.',
   }
+}
+
+/**
+ * Format the T3code progress subtitle from a start timestamp.
+ * @param startedAtMs - epoch ms when the current phase or hook began.
+ * @param nowMs - clock sample; tests pass an explicit value.
+ * @returns `Running for Ns` / `Running for Nm Ns`, or undefined before start.
+ */
+export function formatElapsedDescription(startedAtMs: number | null, nowMs = Date.now()): string | undefined {
+  if (startedAtMs === null) return undefined
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
+  if (elapsedSeconds < 60) return `Running for ${elapsedSeconds}s`
+  const minutes = Math.floor(elapsedSeconds / 60)
+  const seconds = elapsedSeconds % 60
+  return `Running for ${minutes}m ${seconds}s`
+}
+
+/**
+ * Predict the first toast titles for a stacked action before server events arrive.
+ * Ported from T3code `buildGitActionProgressStages` (MIT).
+ * @param input - action, whether a custom message exists, and whether a feature ref is created first.
+ * @returns ordered phase titles.
+ */
+export function buildGitActionProgressStages(input: {
+  action: GitStackedAction
+  hasCustomCommitMessage: boolean
+  hasWorkingTreeChanges: boolean
+  featureBranch?: boolean
+  shouldPushBeforePr?: boolean
+  pushTarget?: string
+  terminology?: ChangeRequestTerminology
+}): string[] {
+  const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY
+  const branchStages = input.featureBranch ? ['Preparing feature ref...'] : []
+  const pushStage = input.pushTarget ? `Pushing to ${input.pushTarget}...` : 'Pushing...'
+  const prStages = [
+    `Preparing ${terminology.shortLabel}...`,
+    `Generating ${terminology.shortLabel} content...`,
+    `Creating ${terminology.singular}...`,
+  ]
+  if (input.action === 'push') return [pushStage]
+  if (input.action === 'create_pr') {
+    return input.shouldPushBeforePr ? [pushStage, ...prStages] : prStages
+  }
+  const shouldIncludeCommitStages = input.action === 'commit' || input.hasWorkingTreeChanges
+  const commitStages = !shouldIncludeCommitStages
+    ? []
+    : input.hasCustomCommitMessage || input.featureBranch
+      ? ['Committing...']
+      : ['Generating commit message...', 'Committing...']
+  if (input.action === 'commit') return [...branchStages, ...commitStages]
+  if (input.action === 'commit_push') return [...branchStages, ...commitStages, pushStage]
+  return [...branchStages, ...commitStages, pushStage, ...prStages]
+}
+
+/**
+ * Pick a hook name from a git/lefthook/husky line.
+ * @param line - one sanitized output line.
+ * @returns hook name, or null when the line is ordinary output.
+ */
+export function inferHookName(line: string): string | null {
+  if (/pre-push/i.test(line)) return 'pre-push'
+  if (/pre-commit|lefthook|husky/i.test(line)) return 'pre-commit'
+  return null
+}
+
+/**
+ * Whether a git line is autocrlf / hint noise, not a failure.
+ * @param line - one sanitized output line.
+ * @returns true when the line must not become the toast error.
+ */
+export function isGitAdviceLine(line: string): boolean {
+  return /LF will be replaced by CRLF|CRLF will be replaced by LF|warning: in the working copy of |^hint:/i.test(line)
+}
+
+/** One live line from desktop `shell:git-progress`. */
+export interface GitProgressEvent {
+  actionId: number
+  kind: string
+  title?: string
+  text?: string
+  hookName?: string
+}
+
+/**
+ * Pick the toast error subtitle: last hook line, else the first short dump line.
+ * @param message - full git/hook dump.
+ * @param lastLine - latest progress line, if any.
+ * @param fallback - generic copy when both are empty or too long.
+ * @returns a single-line subtitle.
+ */
+export function toastFailureDescription(
+  message: string,
+  lastLine: string | null,
+  fallback: string,
+): string {
+  const candidates = [lastLine, ...message.split(/\r?\n/)]
+    .map(item => item?.trim() ?? '')
+    .filter(item => item !== '' && !isGitAdviceLine(item))
+  const marked = candidates.find(item => /fatal:|error:|hook|failed|Format issues/i.test(item))
+  const picked = marked ?? candidates[0]
+  if (picked !== undefined && picked.length <= 180) return picked
+  return fallback
 }
 
 /**
@@ -370,6 +566,138 @@ export function requiresDefaultBranchConfirmation(
   )
 }
 
+const TOAST_DESCRIPTION_MAX = 72
+const SHORT_SHA_LENGTH = 7
+
+/** Folded result of one stacked titlebar git action. */
+export interface StackedActionResult {
+  action: GitStackedAction
+  commit?: { status: 'created' | 'skipped'; commitSha?: string; subject?: string }
+  push?: { status: 'pushed' | 'skipped'; branch?: string; upstreamBranch?: string }
+  pr?: { status: 'created' | 'opened_existing' | 'none'; url?: string; number?: number; title?: string }
+}
+
+/** T3code window-focus VCS refresh debounce. */
+export const GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS = 250
+
+/**
+ * Attach an already-open PR for CTA only. Success titles stay on the action that ran.
+ * @param result - folded stacked outcome.
+ * @param status - status after the action, including a background PR lookup.
+ * @returns a copy with `pr` filled when HEAD already has an open change request.
+ */
+export function attachOpenPrForCta(result: StackedActionResult, status: VcsStatus | null): StackedActionResult {
+  if (result.pr?.url) return result
+  const pr = status?.pr
+  if (!pr || pr.state !== 'open' || !pr.url) return result
+  return {
+    ...result,
+    pr: {
+      status: 'opened_existing',
+      url: pr.url,
+      ...(pr.number ? { number: pr.number } : {}),
+      ...(pr.title ? { title: pr.title } : {}),
+    },
+  }
+}
+
+/** Success-toast CTA after a stacked action. */
+export type GitCompletionCta =
+  | { kind: 'none' }
+  | { kind: 'open_pr'; label: string; url: string }
+  | { kind: 'run_action'; label: string; action: GitStackedAction }
+
+/**
+ * Shorten a commit SHA the way T3code titles do.
+ * @param sha - full or abbreviated SHA.
+ * @returns the first 7 characters, or null when absent.
+ */
+export function shortenSha(sha?: string): string | null {
+  if (!sha) return null
+  return sha.slice(0, SHORT_SHA_LENGTH)
+}
+
+/**
+ * Truncate a toast description.
+ * @param value - subject or PR title.
+ * @param maxLength - character cap.
+ * @returns the clipped text, or undefined when empty.
+ */
+export function truncateText(value: string | undefined, maxLength = TOAST_DESCRIPTION_MAX): string | undefined {
+  if (!value) return undefined
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+}
+
+/**
+ * Build the T3code success title/description from a stacked result.
+ * @param result - commit/push/PR outcomes.
+ * @param terms - provider wording.
+ * @returns toast title and optional description.
+ */
+export function summarizeGitActionResult(
+  result: StackedActionResult,
+  terms: ChangeRequestTerminology,
+): { title: string; description?: string } {
+  if (result.pr?.status === 'created' || result.pr?.status === 'opened_existing') {
+    const prNumber = result.pr.number ? ` #${result.pr.number}` : ''
+    const title = `${result.pr.status === 'created' ? 'Created' : 'Opened'} ${terms.shortLabel}${prNumber}`
+    const description = truncateText(result.pr.title)
+    return description ? { title, description } : { title }
+  }
+  if (result.push?.status === 'pushed') {
+    const shortSha = shortenSha(result.commit?.commitSha)
+    const branch = result.push.upstreamBranch ?? result.push.branch
+    const title = `Pushed${shortSha ? ` ${shortSha}` : ''}${branch ? ` to ${branch}` : ''}`
+    const description = truncateText(result.commit?.subject)
+    return description ? { title, description } : { title }
+  }
+  if (result.commit?.status === 'created') {
+    const shortSha = shortenSha(result.commit.commitSha)
+    const title = shortSha ? `Committed ${shortSha}` : 'Committed changes'
+    const description = truncateText(result.commit.subject)
+    return description ? { title, description } : { title }
+  }
+  return { title: 'Done' }
+}
+
+/**
+ * Pick the T3code completion CTA for a stacked result.
+ * @param result - commit/push/PR outcomes.
+ * @param terms - provider wording.
+ * @param isDefaultRef - whether the current ref is the default branch.
+ * @returns the toast action, or none.
+ */
+export function resolveCompletionCta(
+  result: StackedActionResult,
+  terms: ChangeRequestTerminology,
+  isDefaultRef: boolean,
+  canCreateChangeRequest = true,
+): GitCompletionCta {
+  if (result.action === 'commit' && result.commit?.status === 'created') {
+    return { kind: 'run_action', label: 'Push', action: 'push' }
+  }
+  const openPr = (result.pr?.status === 'created' || result.pr?.status === 'opened_existing')
+    ? result.pr
+    : null
+  if (
+    (result.action === 'push' || result.action === 'create_pr' || result.action === 'commit_push' || result.action === 'commit_push_pr')
+    && openPr?.url
+    && (!isDefaultRef || result.pr?.status === 'created' || result.pr?.status === 'opened_existing')
+  ) {
+    return { kind: 'open_pr', label: `View ${terms.shortLabel}`, url: openPr.url }
+  }
+  if (
+    (result.action === 'push' || result.action === 'commit_push')
+    && result.push?.status === 'pushed'
+    && !isDefaultRef
+    && canCreateChangeRequest
+  ) {
+    return { kind: 'run_action', label: `Create ${terms.shortLabel}`, action: 'create_pr' }
+  }
+  return { kind: 'none' }
+}
+
 /**
  * Build the default-ref confirmation title, body, and continue label.
  * @param input.action - confirmable stacked action.
@@ -385,20 +713,21 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   terminology?: ChangeRequestTerminology
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName
-  const suffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`
+  const continueSuffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`
+  const pushOnlySuffix = ` on "${branchLabel}".`
   const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY
 
   if (input.action === 'push' || input.action === 'commit_push') {
     if (input.includesCommit) {
       return {
         title: 'Commit & push to default ref?',
-        description: `This action will commit and push changes${suffix}`,
+        description: `This action will commit and push changes${continueSuffix}`,
         continueLabel: `Commit & push to ${branchLabel}`,
       }
     }
     return {
       title: 'Push to default ref?',
-      description: `This action will push local commits${suffix}`,
+      description: `This action will push local commits${pushOnlySuffix}`,
       continueLabel: `Push to ${branchLabel}`,
     }
   }
@@ -406,13 +735,13 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   if (input.includesCommit) {
     return {
       title: `Commit, push & create ${terminology.shortLabel} from default ref?`,
-      description: `This action will commit, push, and create a ${terminology.singular}${suffix}`,
+      description: `This action will commit, push, and create a ${terminology.singular}${continueSuffix}`,
       continueLabel: `Commit, push & create ${terminology.shortLabel}`,
     }
   }
   return {
     title: `Push & create ${terminology.shortLabel} from default ref?`,
-    description: `This action will push local commits and create a ${terminology.singular}${suffix}`,
+    description: `This action will push local commits and create a ${terminology.singular}${pushOnlySuffix}`,
     continueLabel: `Push & create ${terminology.shortLabel}`,
   }
 }

@@ -1,20 +1,19 @@
 // @vitest-environment jsdom
 /**
  * createLayoutStore unit account: init shape, the action write set (clamp
- * inside actions), and the absence of browser persistence. Uses the
+ * inside actions), and surfaces/drawer persistence. Uses the
  * test-sanctioned path: factory self-call + .create() gives the
  * real engine instance (same create path as production).
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { LAYOUT_PERSIST_KEY } from '@deepseek-ai/dsh-client-ui-layout/src/client/persist.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import {
   DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
   SURFACES_DEFAULT, SURFACES_MAX, SURFACES_MIN,
-  TERMINAL_DRAWER_DEFAULT, TERMINAL_DRAWER_MIN,
+  TERMINAL_DRAWER_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
-
-const PERSIST_KEY = 'dsh.layout.panels'
 
 beforeEach(() => { localStorage.clear() })
 
@@ -101,30 +100,33 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().details).toBe(0)
   })
 
-  it('does not persist panel geometry', () => {
+  it('persists surfaces and drawer sizes and hydrates them on the next create', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)
     first.actions.openDetails()
     first.actions.setDetails(500)
-    expect(localStorage.getItem(PERSIST_KEY)).toBeNull()
+    first.actions.setSurfaces(500)
+    first.actions.setTerminalDrawer(320)
+    expect(localStorage.getItem(LAYOUT_PERSIST_KEY)).not.toBeNull()
 
     const second = createLayoutStore().create()
     expect(second.store.getSnapshot()).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       details: 0,
-      surfaces: 0,
-      terminalDrawer: 0,
+      surfaces: 500,
+      terminalDrawer: 320,
       narrow: false,
       narrowExpanded: false,
     })
   })
 
-  it('toggleSurfaces flips closed <-> contract default (drag width forgotten)', () => {
+  it('toggleSurfaces restores the last drag width instead of the contract default', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.toggleSurfaces()
-    expect(store.getSnapshot().surfaces).toBe(SURFACES_DEFAULT)
+    actions.setSurfaces(500)
     actions.toggleSurfaces()
     expect(store.getSnapshot().surfaces).toBe(0)
+    actions.toggleSurfaces()
+    expect(store.getSnapshot().surfaces).toBe(500)
   })
 
   it('openSurfaces uses the contract default, preserves an open width, and closeSurfaces zeroes', () => {
@@ -146,12 +148,13 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().surfaces).toBe(SURFACES_MAX)
   })
 
-  it('toggleTerminalDrawer flips closed <-> contract default', () => {
+  it('toggleTerminalDrawer restores the last drag height', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.toggleTerminalDrawer()
-    expect(store.getSnapshot().terminalDrawer).toBe(TERMINAL_DRAWER_DEFAULT)
+    actions.setTerminalDrawer(360)
     actions.toggleTerminalDrawer()
     expect(store.getSnapshot().terminalDrawer).toBe(0)
+    actions.toggleTerminalDrawer()
+    expect(store.getSnapshot().terminalDrawer).toBe(360)
   })
 
   it('setTerminalDrawer clamps to the floor and never writes closed', () => {

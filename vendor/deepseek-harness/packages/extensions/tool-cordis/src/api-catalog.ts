@@ -882,6 +882,69 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'mcpServersFile',
+    summary: 'Owns `$DSH_HOME/mcp-servers.yaml` and the live mcp-client children it describes.',
+    description: 'Owns `$DSH_HOME/mcp-servers.yaml` and the live mcp-client children it describes.',
+    methods: [
+      {
+        signature: 'useMounter(mounter: McpClientMounter): void',
+        description: 'Replace the child mounter. Tests call this before start.',
+        parameters: [{ name: 'mounter', description: 'child factory.' }],
+      },
+      {
+        signature: 'start(): () => void',
+        description: 'Load the document, mount enabled servers, and optionally watch.',
+        parameters: [],
+        returns: 'disposer that closes the watcher and child fibers.',
+      },
+      {
+        signature: 'listManaged(): readonly McpServerRecord[]',
+        description: 'Current managed records with secrets masked.',
+        parameters: [],
+        returns: 'the managed records, secret fields masked.',
+      },
+      {
+        signature: 'listManagedRaw(): readonly McpServerRecord[]',
+        description: 'Current managed records including secret values. Host mutation uses this.',
+        parameters: [],
+        returns: 'the managed records with secret values intact.',
+      },
+      {
+        signature: 'childPhase(id: string): ChildFiberPhase',
+        description: 'Live child fiber phase for one managed id, or `null` when unmounted.',
+        parameters: [{ name: 'id', description: 'managed record id.' }],
+        returns: 'the child\'s current fiber phase, or `null` when unmounted.',
+      },
+      {
+        signature: 'childHealth(id: string): McpClientStatus | undefined',
+        description: 'Live connection health for one managed id\'s mounted child, when the child reports through the mcp-client status registry.',
+        parameters: [{ name: 'id', description: 'managed record id.' }],
+        returns: 'the child\'s connection status, or `undefined` for an unknown record.',
+      },
+      {
+        signature: 'connectionStatus(serverName: string): McpClientStatus | undefined',
+        description: 'Live connection health for any mcp-client server mounted in this runtime — managed or hand-composed — keyed by `serverName`.',
+        parameters: [{ name: 'serverName', description: 'the configured server identity.' }],
+        returns: 'the server\'s connection status, or `undefined` when it is not mounted.',
+      },
+      {
+        signature: 'upsert(upsert: McpServerUpsert): Promise<void>',
+        description: 'Insert or replace one managed record and remount.',
+        parameters: [{ name: 'upsert', description: 'complete record.' }],
+      },
+      {
+        signature: 'remove(id: string): Promise<void>',
+        description: 'Delete one managed record and unmount its child.',
+        parameters: [{ name: 'id', description: 'record id.' }],
+      },
+      {
+        signature: 'setEnabled(id: string, enabled: boolean): Promise<void>',
+        description: 'Enable or disable one managed record.',
+        parameters: [{ name: 'id', description: 'record id.' }, { name: 'enabled', description: 'next enablement.' }],
+      },
+    ],
+  },
+  {
     key: 'messageFeedback',
     summary: 'Storage-domain sidecar service.',
     description: 'Storage-domain sidecar service. It inspects persisted Session history and never creates or resumes an Agent or Session.',
@@ -1514,6 +1577,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'sorted summaries plus discovery-completeness state.',
       },
       {
+        signature: 'invalidate(): void',
+        description: 'Drop every cached catalog observation so the next `list`/`snapshot`/`get` rediscovers from providers. Host mutations that write skill files without going through a provider call this after a successful write instead of waiting for filesystem watcher events.',
+        parameters: [],
+      },
+      {
         signature: 'async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>',
         description: 'Load and validate the winning candidate, passing its opaque discovery locator back to the provider. Cancellation is rechecked after selection, including cache hits, and raced against loading so an uncooperative provider cannot hang the caller.',
         parameters: [{ name: 'name', description: 'kebab-case skill name.' }, { name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers, `cwd` selects workspace-sensitive skills, and `signal` cancels work.' }],
@@ -2020,6 +2088,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'Questions, owner agent, and abort signal.' }],
         returns: 'The answer chosen or typed by the human.',
         throws: ['{UserQuestionError} code `CALLER_NOT_LIVE` when a supplied agent is not the registry\'s exact live instance, or `DELEGATED_CALLER` when that live agent is owned by another agent.'],
+      },
+    ],
+  },
+  {
+    key: 'visionFallback',
+    summary: 'Owns the designated vision-model route and the image-to-text request rewrite.',
+    description: 'Owns the designated vision-model route and the image-to-text request rewrite. Mounted dormant: with no stored route the service reports itself unconfigured and rewriting passes messages through untouched.',
+    methods: [
+      {
+        signature: 'selection(): { provider: string; model: string } | undefined',
+        description: 'The stored vision-model route.',
+        parameters: [],
+        returns: 'the designated route, or undefined while unset (disabled).',
+      },
+      {
+        signature: 'configured(): boolean',
+        description: 'Whether a vision-model route is currently designated. Admission gates consult this to admit image prompts for text-only main models.',
+        parameters: [],
+        returns: 'whether rewriting can substitute image blocks.',
+      },
+      {
+        signature: 'async rewriteMessages( session: Session, route: { provider: string; model: string }, messages: Message[], signal: AbortSignal, ): Promise<Message[]>',
+        description: 'Rewrite one request\'s messages for a target model: when the target declares it does not accept images and a vision route is designated, every image block is replaced by its logged (or newly generated and logged) description text. Any other case returns the input untouched.',
+        parameters: [{ name: 'session', description: 'owning session; descriptions are read from and appended to its log.' }, { name: 'route', description: 'exact main-request route about to be dispatched.' }, { name: 'messages', description: 'derived request messages (never mutated).' }, { name: 'signal', description: 'main-request cancellation.' }],
+        returns: 'the original array, or a new array with image blocks substituted.',
       },
     ],
   },
@@ -2738,6 +2831,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CancelOptions {\n    keepInbox?: boolean | undefined;\n}',
   },
   {
+    name: 'ChildFiberPhase',
+    declaration: 'export type ChildFiberPhase = \'pending\' | \'loading\' | \'active\' | \'failed\' | \'unloading\' | null;',
+  },
+  {
     name: 'ClientResponse',
     declaration: 'export interface ClientResponse {\n    type: \'client-response\';\n    rpcId: RpcId;\n    result: RpcResult<unknown>;\n}',
   },
@@ -3091,7 +3188,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\' | \'vision-describe\';\n}',
   },
   {
     name: 'GenericCallView',
@@ -3360,6 +3457,42 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ManualCompactAgentContext',
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
+  },
+  {
+    name: 'McpClientMounter',
+    declaration: 'export type McpClientMounter = (ctx: Context, config: McpClientConfig) => ChildHandle;',
+  },
+  {
+    name: 'McpClientStatus',
+    declaration: 'export interface McpClientStatus {\n    readonly health: McpConnectionHealth;\n    readonly lastError?: string;\n}',
+  },
+  {
+    name: 'McpConnectionHealth',
+    declaration: 'export type McpConnectionHealth = \'connecting\' | \'connected\' | \'reconnecting\' | \'failed\';',
+  },
+  {
+    name: 'McpHttpServerRecord',
+    declaration: 'export interface McpHttpServerRecord extends McpServerRecordBase {\n    readonly transport: \'streamable-http\';\n    readonly url: string;\n    readonly headers?: Readonly<Record<string, string>>;\n}',
+  },
+  {
+    name: 'McpReconnectRecord',
+    declaration: 'export interface McpReconnectRecord {\n    readonly enabled?: boolean;\n    readonly initialDelayMs?: number;\n    readonly maxDelayMs?: number;\n    readonly maxAttempts?: number;\n}',
+  },
+  {
+    name: 'McpServerRecord',
+    declaration: 'export type McpServerRecord = McpStdioServerRecord | McpHttpServerRecord;',
+  },
+  {
+    name: 'McpServerRecordBase',
+    declaration: 'export interface McpServerRecordBase {\n    readonly id: string;\n    readonly enabled: boolean;\n    readonly serverName: string;\n    readonly toolCallTimeoutMs?: number;\n    readonly failOnStartupError?: boolean;\n    readonly reconnect?: McpReconnectRecord;\n}',
+  },
+  {
+    name: 'McpServerUpsert',
+    declaration: 'export type McpServerUpsert = McpServerRecord;',
+  },
+  {
+    name: 'McpStdioServerRecord',
+    declaration: 'export interface McpStdioServerRecord extends McpServerRecordBase {\n    readonly transport: \'stdio\';\n    readonly command: string;\n    readonly args?: readonly string[];\n    readonly env?: Readonly<Record<string, string>>;\n    readonly cwd?: string;\n}',
   },
   {
     name: 'Message',
@@ -3635,7 +3768,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RpcErrorDetailsMap',
-    declaration: 'export interface RpcErrorDetailsMap {\n    \'bad-request\': {\n        issues: ZodIssue[];\n    };\n    \'cancelled\': {};\n    \'session-not-found\': {\n        sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        provider: string;\n        model: string;\n    };\n    \'session-conflict\': {\n        sessionId: SessionId;\n        requestedCwd: string;\n        existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        value: string;\n    };\n    \'workspace-attach-failed\': {\n        sessionId: SessionId;\n        workspaceId: string;\n    };\n    \'workspace-not-found\': {\n        workspaceId: string;\n    };\n    \'workspace-invalid-path\': {\n        path: string;\n    };\n    \'workspace-name-conflict\': {\n        name: string;\n    };\n    \'workspace-move-invalid\': {\n        workspaceId: string;\n        sessionId: SessionId;\n        beforeSessionId?: SessionId;\n    };\n    \'directory-unreadable\': {\n        path: string;\n    };\n    \'directory-exists\': {\n        path: string;\n    };\n    \'directory-create-failed\': {\n        path: string;\n    };\n    \'directory-picker-unavailable\': {\n        capability: string;\n    };\n    \'agent-preset-read-only\': {\n        agentPreset: string;\n        reason: string;\n    };\n    \'agent-preset-locked\': {\n        sessionId: SessionId;\n        agentPreset: string;\n    };\n    \'agent-preset-conflict\': {\n        sessionId: SessionId;\n        requestedPreset: string;\n        existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        agentPreset: string;\n      /* …truncated — full shape in source */',
+    declaration: 'export interface RpcErrorDetailsMap {\n    \'bad-request\': {\n        issues: ZodIssue[];\n    };\n    \'cancelled\': {};\n    \'session-not-found\': {\n        sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        provider: string;\n        model: string;\n    };\n    \'session-conflict\': {\n        sessionId: SessionId;\n        requestedCwd: string;\n        existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        value: string;\n    };\n    \'workspace-attach-failed\': {\n        sessionId: SessionId;\n        workspaceId: string;\n        blank?: boolean;\n    };\n    \'workspace-not-found\': {\n        workspaceId: string;\n    };\n    \'workspace-invalid-path\': {\n        path: string;\n    };\n    \'workspace-name-conflict\': {\n        name: string;\n    };\n    \'workspace-move-invalid\': {\n        workspaceId: string;\n        sessionId: SessionId;\n        beforeSessionId?: SessionId;\n    };\n    \'directory-unreadable\': {\n        path: string;\n    };\n    \'directory-exists\': {\n        path: string;\n    };\n    \'directory-create-failed\': {\n        path: string;\n    };\n    \'directory-picker-unavailable\': {\n        capability: string;\n    };\n    \'agent-preset-read-only\': {\n        agentPreset: string;\n        reason: string;\n    };\n    \'agent-preset-locked\': {\n        sessionId: SessionId;\n        agentPreset: string;\n    };\n    \'agent-preset-conflict\': {\n        sessionId: SessionId;\n        requestedPreset: string;\n        existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        a /* …truncated — full shape in source */',
   },
   {
     name: 'RpcId',

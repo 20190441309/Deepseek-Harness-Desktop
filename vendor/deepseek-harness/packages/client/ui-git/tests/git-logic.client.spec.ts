@@ -2,22 +2,43 @@
 import { describe, expect, it } from 'vitest'
 import type { VcsStatus } from '../src/client/git-logic.ts'
 import {
+  buildGitActionProgressStages,
   buildMenuItems,
+  formatElapsedDescription,
+  inferHookName,
+  isGitAdviceLine,
   requiresDefaultBranchConfirmation,
   resolveDefaultBranchActionDialogCopy,
+  attachOpenPrForCta,
+  resolveCompletionCta,
   resolveQuickAction,
+  summarizeGitActionResult,
+  supportsGitHubChangeRequests,
+  getMenuActionDisabledReason,
+  toastFailureDescription,
 } from '../src/client/git-logic.ts'
 
-function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
-  return {
+const GITHUB: NonNullable<VcsStatus['sourceControlProvider']> = {
+  kind: 'github',
+  name: 'GitHub',
+  baseUrl: 'https://github.com',
+}
+
+function status(overrides: Omit<Partial<VcsStatus>, 'sourceControlProvider'> & { sourceControlProvider?: VcsStatus['sourceControlProvider'] | undefined } = {}): VcsStatus {
+  const base: VcsStatus = {
     refName: 'feature/test',
     hasWorkingTreeChanges: false,
     hasUpstream: true,
     aheadCount: 0,
     behindCount: 0,
     pr: null,
-    ...overrides,
+    sourceControlProvider: GITHUB,
   }
+  // Spread-equivalent merge that keeps exactOptionalPropertyTypes quiet: an
+  // explicit `sourceControlProvider: undefined` override must win over GITHUB,
+  // which a fresh literal spread cannot express.
+  Object.assign(base, overrides)
+  return base
 }
 
 describe('when: working tree has local changes on the default ref', () => {
@@ -109,7 +130,7 @@ describe('when: ref is clean, ahead, and has no open PR', () => {
 })
 
 describe('when: source control provider uses merge requests', () => {
-  it('uses GitLab MR terminology in quick actions and menu items', () => {
+  it('omits Create MR when GitLab remotes cannot use gh', () => {
     const gitlabStatus = status({
       aheadCount: 2,
       sourceControlProvider: {
@@ -120,13 +141,10 @@ describe('when: source control provider uses merge requests', () => {
     })
     expect(resolveQuickAction(gitlabStatus, false)).toMatchObject({
       kind: 'run_action',
-      action: 'create_pr',
-      label: 'Push & create MR',
+      action: 'push',
+      label: 'Push',
     })
-    expect(buildMenuItems(gitlabStatus, false)[2]).toMatchObject({
-      id: 'pr',
-      label: 'Create MR',
-    })
+    expect(buildMenuItems(gitlabStatus, false).map(item => item.id)).toEqual(['commit', 'push'])
   })
 })
 
@@ -179,7 +197,7 @@ describe('resolveDefaultBranchActionDialogCopy', () => {
     })).toEqual({
       title: 'Push to default ref?',
       description:
-        'This action will push local commits on "main". You can continue on this ref or create a feature ref and run the same action there.',
+        'This action will push local commits on "main".',
       continueLabel: 'Push to main',
     })
   })
@@ -195,5 +213,258 @@ describe('resolveDefaultBranchActionDialogCopy', () => {
         'This action will commit and push changes on "main". You can continue on this ref or create a feature ref and run the same action there.',
       continueLabel: 'Commit & push to main',
     })
+  })
+})
+
+describe('git progress helpers', () => {
+  it('formatElapsedDescription uses seconds then minutes', () => {
+    expect(formatElapsedDescription(null, 10_000)).toBeUndefined()
+    expect(formatElapsedDescription(1000, 1000)).toBe('Running for 0s')
+    expect(formatElapsedDescription(1000, 4000)).toBe('Running for 3s')
+    expect(formatElapsedDescription(1000, 64_000)).toBe('Running for 1m 3s')
+  })
+
+  it('buildGitActionProgressStages starts with Generating commit message when the message is empty', () => {
+    expect(buildGitActionProgressStages({
+      action: 'commit_push_pr',
+      hasCustomCommitMessage: false,
+      hasWorkingTreeChanges: true,
+    })[0]).toBe('Generating commit message...')
+    expect(buildGitActionProgressStages({
+      action: 'commit',
+      hasCustomCommitMessage: true,
+      hasWorkingTreeChanges: true,
+    })).toEqual(['Committing...'])
+    expect(buildGitActionProgressStages({
+      action: 'push',
+      hasCustomCommitMessage: false,
+      hasWorkingTreeChanges: false,
+    })).toEqual(['Pushing...'])
+    expect(buildGitActionProgressStages({
+      action: 'commit',
+      hasCustomCommitMessage: false,
+      hasWorkingTreeChanges: true,
+      featureBranch: true,
+    })).toEqual(['Preparing feature ref...', 'Committing...'])
+  })
+
+  it('inferHookName maps lefthook and pre-push lines', () => {
+    expect(inferHookName('lefthook v2.1.10')).toBe('pre-commit')
+    expect(inferHookName('Running pre-push hook')).toBe('pre-push')
+    expect(inferHookName('oxfmt --check')).toBeNull()
+  })
+
+  it('toastFailureDescription prefers the last hook line', () => {
+    expect(toastFailureDescription('a\nb', 'lefthook failed', 'fallback')).toBe('lefthook failed')
+    expect(toastFailureDescription('origin rejected the push.', null, 'fallback')).toBe(
+      'origin rejected the push.',
+    )
+    expect(toastFailureDescription('x'.repeat(200), null, 'fallback')).toBe('fallback')
+  })
+
+  it('toastFailureDescription skips CRLF warnings', () => {
+    const warning = "warning: in the working copy of 'src/a.ts' LF will be replaced by CRLF the next time Git touches it"
+    expect(isGitAdviceLine(warning)).toBe(true)
+    expect(toastFailureDescription(
+      `${warning}\nhusky - pre-commit script failed (code 1)`,
+      warning,
+      'fallback',
+    )).toBe('husky - pre-commit script failed (code 1)')
+  })
+
+  it('summarizeGitActionResult matches T3code titles', () => {
+    expect(summarizeGitActionResult({
+      action: 'commit_push_pr',
+      pr: { status: 'created', number: 12, title: 'Add files' },
+    }, { shortLabel: 'PR', singular: 'pull request' })).toEqual({
+      title: 'Created PR #12',
+      description: 'Add files',
+    })
+    expect(summarizeGitActionResult({
+      action: 'commit_push',
+      commit: { status: 'created', commitSha: 'abcdef123456', subject: 'Add files' },
+      push: { status: 'pushed', upstreamBranch: 'origin/feature' },
+    }, { shortLabel: 'PR', singular: 'pull request' })).toEqual({
+      title: 'Pushed abcdef1 to origin/feature',
+      description: 'Add files',
+    })
+    expect(summarizeGitActionResult({
+      action: 'commit',
+      commit: { status: 'created', commitSha: 'abcdef123456', subject: 'Add files' },
+    }, { shortLabel: 'PR', singular: 'pull request' })).toEqual({
+      title: 'Committed abcdef1',
+      description: 'Add files',
+    })
+  })
+
+  it('resolveCompletionCta offers Push after commit and Create PR after push', () => {
+    expect(resolveCompletionCta({
+      action: 'commit',
+      commit: { status: 'created', commitSha: 'abc' },
+    }, { shortLabel: 'PR', singular: 'pull request' }, false)).toEqual({
+      kind: 'run_action',
+      label: 'Push',
+      action: 'push',
+    })
+    expect(resolveCompletionCta({
+      action: 'push',
+      push: { status: 'pushed' },
+    }, { shortLabel: 'PR', singular: 'pull request' }, false)).toEqual({
+      kind: 'run_action',
+      label: 'Create PR',
+      action: 'create_pr',
+    })
+    expect(resolveCompletionCta({
+      action: 'commit_push_pr',
+      pr: { status: 'created', url: 'https://example.com/pr/1' },
+    }, { shortLabel: 'PR', singular: 'pull request' }, false)).toEqual({
+      kind: 'open_pr',
+      label: 'View PR',
+      url: 'https://example.com/pr/1',
+    })
+    expect(resolveCompletionCta({
+      action: 'commit_push',
+      push: { status: 'pushed' },
+    }, { shortLabel: 'PR', singular: 'pull request' }, true)).toEqual({ kind: 'none' })
+    expect(resolveCompletionCta(attachOpenPrForCta({
+      action: 'commit_push',
+      push: { status: 'pushed' },
+    }, status({
+      refName: 'feature/add-files',
+      isDefaultRef: false,
+      hasWorkingTreeChanges: false,
+    })), { shortLabel: 'PR', singular: 'pull request' }, false)).toEqual({
+      kind: 'run_action',
+      label: 'Create PR',
+      action: 'create_pr',
+    })
+    expect(resolveCompletionCta(attachOpenPrForCta({
+      action: 'push',
+      push: { status: 'pushed' },
+    }, status({
+      pr: {
+        number: 4,
+        title: 'Add files',
+        url: 'https://example.com/4',
+        baseRef: 'main',
+        headRef: 'feature/test',
+        state: 'open',
+      },
+    })), { shortLabel: 'PR', singular: 'pull request' }, false)).toEqual({
+      kind: 'open_pr',
+      label: 'View PR',
+      url: 'https://example.com/4',
+    })
+  })
+})
+
+describe('when: a feature ref has commits and no upstream', () => {
+  it('resolveQuickAction pushes and creates a PR when aheadCount is vs the default ref', () => {
+    expect(resolveQuickAction(status({
+      hasUpstream: false,
+      aheadCount: 2,
+      aheadOfDefaultCount: 2,
+    }), false)).toMatchObject({
+      kind: 'run_action',
+      action: 'create_pr',
+      label: 'Push & create PR',
+    })
+  })
+
+  it('buildMenuItems enables Push only from aheadCount, not aheadOfDefaultCount alone', () => {
+    expect(buildMenuItems(status({
+      hasUpstream: false,
+      aheadCount: 0,
+      aheadOfDefaultCount: 2,
+    }), false)[1]).toMatchObject({
+      id: 'push',
+      disabled: true,
+    })
+    expect(buildMenuItems(status({
+      hasUpstream: false,
+      aheadCount: 2,
+      aheadOfDefaultCount: 2,
+    }), false)[1]).toMatchObject({
+      id: 'push',
+      disabled: false,
+    })
+  })
+
+  it('keeps Push enabled when no-upstream aheadCount is unreliable', () => {
+    const unreliable = status({
+      hasUpstream: false,
+      aheadCount: 0,
+      aheadOfDefaultCount: 0,
+      aheadUnreliable: true,
+    })
+    expect(resolveQuickAction(unreliable, false)).toMatchObject({
+      kind: 'run_action',
+      action: 'push',
+      label: 'Push',
+      disabled: false,
+    })
+    expect(buildMenuItems(unreliable, false).find(item => item.id === 'push')?.disabled).toBe(false)
+    expect(buildMenuItems(unreliable, false).find(item => item.id === 'pr')?.disabled).toBe(true)
+  })
+})
+
+describe('supportsGitHubChangeRequests', () => {
+  it('fail-closes when the provider is absent or not GitHub', () => {
+    expect(supportsGitHubChangeRequests(undefined)).toBe(false)
+    expect(supportsGitHubChangeRequests(null)).toBe(false)
+    expect(supportsGitHubChangeRequests(GITHUB)).toBe(true)
+    expect(resolveQuickAction(status({
+      aheadCount: 2,
+      sourceControlProvider: undefined,
+    }), false)).toMatchObject({
+      kind: 'run_action',
+      action: 'push',
+      label: 'Push',
+    })
+    expect(buildMenuItems(status({
+      aheadCount: 2,
+      sourceControlProvider: undefined,
+    }), false).map(item => item.id)).toEqual(['commit', 'push'])
+  })
+})
+
+describe('getMenuActionDisabledReason', () => {
+  it('explains a clean worktree, no-ahead push, and dirty create PR', () => {
+    const clean = status({ aheadCount: 0 })
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(clean, false)[0]!,
+      gitStatus: clean,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBe('Worktree is clean. Make changes before committing.')
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(clean, false)[1]!,
+      gitStatus: clean,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBe('No local commits to push.')
+    const dirty = status({ hasWorkingTreeChanges: true })
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(dirty, false)[2]!,
+      gitStatus: dirty,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBe('Commit local changes before creating a pull request.')
+  })
+
+  it('returns null for an enabled row and busy copy while an action runs', () => {
+    const ahead = status({ aheadCount: 2 })
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(ahead, false)[1]!,
+      gitStatus: ahead,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBeNull()
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(ahead, true)[1]!,
+      gitStatus: ahead,
+      isBusy: true,
+      hasPrimaryRemote: true,
+    })).toBe('Git action in progress.')
   })
 })

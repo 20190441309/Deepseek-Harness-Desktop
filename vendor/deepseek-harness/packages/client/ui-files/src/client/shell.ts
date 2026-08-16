@@ -31,11 +31,18 @@ export interface ReadFileMediaResult {
   truncated?: boolean
 }
 
+/** writeFile IPC result. */
+export interface WriteFileResult {
+  ok: boolean
+  message?: string
+}
+
 /** Injected workspace listing callbacks. */
 export interface FilesShellInjected {
   listDir: (cwd: string, relativePath: string) => Promise<ListDirResult>
   readFile: (cwd: string, relativePath: string) => Promise<ReadFileResult>
   readFileMedia: (cwd: string, relativePath: string) => Promise<ReadFileMediaResult>
+  writeFile: (cwd: string, relativePath: string, text: string) => Promise<WriteFileResult>
   mentionFile: (sessionId: string, relativePath: string) => void
 }
 
@@ -43,6 +50,7 @@ interface FilesShell {
   listDir?: (cwd: string, relativePath?: string) => Promise<ListDirResult>
   readFile?: (cwd: string, relativePath: string) => Promise<ReadFileResult>
   readFileMedia?: (cwd: string, relativePath: string) => Promise<ReadFileMediaResult>
+  writeFile?: (cwd: string, relativePath: string, text: string) => Promise<WriteFileResult>
 }
 
 function missingList(): ListDirResult {
@@ -54,6 +62,10 @@ function missingRead(): ReadFileResult {
 }
 
 function missingMedia(): ReadFileMediaResult {
+  return { ok: false, message: 'Workspace listing is unavailable.' }
+}
+
+function missingWrite(): WriteFileResult {
   return { ok: false, message: 'Workspace listing is unavailable.' }
 }
 
@@ -70,5 +82,6 @@ export function readFilesShell(): Omit<FilesShellInjected, 'mentionFile'> {
     listDir: (cwd, relativePath) => shell?.listDir?.(cwd, relativePath) ?? Promise.resolve(missingList()),
     readFile: (cwd, relativePath) => shell?.readFile?.(cwd, relativePath) ?? Promise.resolve(missingRead()),
     readFileMedia: (cwd, relativePath) => shell?.readFileMedia?.(cwd, relativePath) ?? Promise.resolve(missingMedia()),
+    writeFile: (cwd, relativePath, text) => shell?.writeFile?.(cwd, relativePath, text) ?? Promise.resolve(missingWrite()),
   }
 }

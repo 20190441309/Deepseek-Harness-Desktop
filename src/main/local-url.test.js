@@ -1,0 +1,104 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
+const {
+  isLoopbackHttpUrl,
+  isLocalAppNavigationUrl,
+  isMarketplaceNavigationUrl,
+  rewriteLoopbackLoadUrl,
+  isHttpOrHttpsUrl,
+  shouldAllowPrivilegedNavigate,
+  shouldAllowPrivilegedRedirect,
+} = require('./local-url.js');
+
+test('isLoopbackHttpUrl accepts exact loopback hosts including 0.0.0.0', () => {
+  assert.equal(isLoopbackHttpUrl('http://127.0.0.1:3080/'), true);
+  assert.equal(isLoopbackHttpUrl('http://localhost:5173/app'), true);
+  assert.equal(isLoopbackHttpUrl('http://[::1]:3000/'), true);
+  assert.equal(isLoopbackHttpUrl('http://0.0.0.0:5173/'), true);
+  assert.equal(isLoopbackHttpUrl('https://127.0.0.1/'), true);
+});
+
+test('isLoopbackHttpUrl rejects prefix and userinfo spoofs', () => {
+  assert.equal(isLoopbackHttpUrl('http://127.0.0.1.evil.example/'), false);
+  assert.equal(isLoopbackHttpUrl('http://localhost.attacker.example/'), false);
+  assert.equal(isLoopbackHttpUrl('http://127.0.0.1@evil.example/'), false);
+  assert.equal(isLoopbackHttpUrl('http://localhost@evil.example/'), false);
+  assert.equal(isLoopbackHttpUrl('https://example.com'), false);
+  assert.equal(isLoopbackHttpUrl('file:///tmp/x'), false);
+  assert.equal(isLoopbackHttpUrl('javascript:alert(1)'), false);
+});
+
+test('isLocalAppNavigationUrl allows only the packaged boot.html path', () => {
+  const boot = path.join(os.tmpdir(), `dsh-boot-${process.pid}`, 'boot.html');
+  fs.mkdirSync(path.dirname(boot), { recursive: true });
+  fs.writeFileSync(boot, '<html></html>');
+  const resolveBootPath = () => boot;
+  const packaged = pathToFileURL(boot).href;
+  assert.equal(isLocalAppNavigationUrl(packaged, { resolveBootPath }), true);
+  assert.equal(isLocalAppNavigationUrl(pathToFileURL(path.join(path.dirname(boot), 'evilboot.html')).href, { resolveBootPath }), false);
+  assert.equal(isLocalAppNavigationUrl(pathToFileURL(path.join(os.tmpdir(), 'Downloads', 'boot.html')).href, { resolveBootPath }), false);
+  assert.equal(isLocalAppNavigationUrl('http://127.0.0.1:3080/'), true);
+  assert.equal(isLocalAppNavigationUrl('http://127.0.0.1.evil.example/'), false);
+  fs.rmSync(path.dirname(boot), { recursive: true, force: true });
+});
+
+test('isMarketplaceNavigationUrl allows only packaged marketplace/index.html', () => {
+  const root = path.join(os.tmpdir(), `dsh-mkt-${process.pid}`);
+  const market = path.join(root, 'marketplace', 'index.html');
+  fs.mkdirSync(path.dirname(market), { recursive: true });
+  fs.writeFileSync(market, '<html></html>');
+  const resolveMarketplacePath = () => market;
+  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(market).href, { resolveMarketplacePath }), true);
+  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(path.join(root, 'boot.html')).href, { resolveMarketplacePath }), false);
+  assert.equal(isMarketplaceNavigationUrl('http://127.0.0.1:3080/', { resolveMarketplacePath }), false);
+  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(path.join(os.tmpdir(), 'evil', 'index.html')).href, { resolveMarketplacePath }), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('rewriteLoopbackLoadUrl maps 0.0.0.0 to 127.0.0.1', () => {
+  assert.equal(rewriteLoopbackLoadUrl('http://0.0.0.0:5173/app'), 'http://127.0.0.1:5173/app');
+  assert.equal(rewriteLoopbackLoadUrl('http://127.0.0.1:5173/'), 'http://127.0.0.1:5173/');
+  assert.equal(rewriteLoopbackLoadUrl('http://evil.example/'), null);
+});
+
+test('isHttpOrHttpsUrl rejects file and custom schemes', () => {
+  assert.equal(isHttpOrHttpsUrl('https://example.com'), true);
+  assert.equal(isHttpOrHttpsUrl('http://127.0.0.1/'), true);
+  assert.equal(isHttpOrHttpsUrl('file:///C:/x'), false);
+  assert.equal(isHttpOrHttpsUrl('javascript:alert(1)'), false);
+});
+
+test('privileged navigate allows same-document URL even when allowlist would reject', () => {
+  const allowUrl = (url) => url === 'http://127.0.0.1:3080/';
+  assert.equal(shouldAllowPrivilegedNavigate({
+    nextUrl: 'http://127.0.0.1:3080/',
+    currentUrl: 'file:///boot.html',
+    allowUrl,
+  }), true);
+  assert.equal(shouldAllowPrivilegedNavigate({
+    nextUrl: 'https://evil.example/',
+    currentUrl: 'https://evil.example/',
+    allowUrl,
+  }), true);
+  assert.equal(shouldAllowPrivilegedNavigate({
+    nextUrl: 'https://evil.example/',
+    currentUrl: 'http://127.0.0.1:3080/',
+    allowUrl,
+  }), false);
+});
+
+test('privileged redirect never uses the current-URL escape hatch', () => {
+  const allowUrl = isLoopbackHttpUrl;
+  assert.equal(shouldAllowPrivilegedRedirect({
+    nextUrl: 'http://127.0.0.1:3080/',
+    allowUrl,
+  }), true);
+  assert.equal(shouldAllowPrivilegedRedirect({
+    nextUrl: 'https://evil.example/',
+    allowUrl,
+  }), false);
+});

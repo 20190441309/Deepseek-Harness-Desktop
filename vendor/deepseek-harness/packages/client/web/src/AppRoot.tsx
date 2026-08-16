@@ -37,9 +37,21 @@ export function AppRoot(props: AppRootProps) {
   if (settled) return <>{props.renderApp()}</>
 
   const loud = error !== undefined || failed.length > 0
+  const bootReport = [error, ...failed.map(([id]) => id)]
+    .filter((item): item is string => item !== undefined && item !== '')
+    .join('\n')
+    .slice(0, 400)
 
+  // data-dsh-boot-* is the desktop shell's boot probe surface (it must not scrape
+  // rendered copy to decide when the harness view may be revealed).
   return (
-    <div className={css.boot}>
+    <div
+      className={css.boot}
+      data-dsh-boot-status={loud ? 'failed' : 'loading'}
+      data-dsh-boot-ready={String(ready)}
+      data-dsh-boot-total={String(total)}
+      data-dsh-boot-error={loud ? bootReport : ''}
+    >
       <div className={css.card}>
         <div className={css.wordmark}>HARNESS</div>
         {!loud

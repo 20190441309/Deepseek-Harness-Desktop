@@ -8,7 +8,7 @@ import { readDiffShell, type DiffShellInjected } from './shell.ts'
 
 export type { DiffPanelProps } from './DiffPanel.tsx'
 export type { DiffKey } from './locales.ts'
-export type { DiffFile, DiffHunk, DiffLine, DiffShellInjected, GitDiffResult, GitStatusEntriesResult, GitStatusEntry } from './shell.ts'
+export type { DiffBranchRef, DiffFile, DiffHunk, DiffLine, DiffShellInjected, GitBranchListResult, GitDiffOptions, GitDiffResult, GitStatusEntriesResult, GitStatusEntry } from './shell.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {

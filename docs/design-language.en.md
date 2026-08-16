@@ -2,13 +2,14 @@
 
 [中文](design-language.md) · English
 
-This product’s visual language **is** the official `dsh web` UI. The desktop chrome, boot screen, closing overlay, title-bar injection, right-hand surfaces, the official page opened by phone remote, and any new frontend must look like the same application. Do not invent a second skin.
+This product’s visual language **is** the official `dsh web` UI. The desktop chrome, closing overlay, title-bar injection, right-hand surfaces, the official page opened by phone remote, and any new frontend must look like the same application. Do not invent a second skin. The boot page’s instrument look lives only in [`src/renderer/boot.html`](../src/renderer/boot.html); see [Desktop boot page](#desktop-boot-page). Do not spread it.
 
 Read this before changing UI, layout, or frontend. Engineering mechanics (CSS Modules, token layers, motion recipes) live in the official docs — this file does not duplicate them:
 
 - Token source: [design-platform.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/design-platform.css), [base.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/base.css), [gradient-shadow-text.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/gradient-shadow-text.css), [motion.css](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/motion.css)
 - Control primitives: `vendor/deepseek-harness/packages/client/ui-primitives/` (`Button` / `Input` / `Menu` / `Modal` / `Tooltip` / icons)
 - Engineering rules: [web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
+- Motion contract and inventory: [motion.en.md](motion.en.md)
 
 ## Scope
 
@@ -31,7 +32,7 @@ Terminal, diff, and code blocks keep official monospace / no-wrap rules. That is
 8. **Font size always pairs with line-height.** Title 16/24, body 14/22, compact 12/18, tooltip 13/20. Weights 400 / 500 / 600 / 700; Figma 510 renders as 500. No `font-weight: 650`.
 9. **Spacing is a multiple of 4.** Padding, gap, and column gutters use 4 / 8 / 12 / 14 / 16 / 20 / 24.
 10. **Icons are 16px `currentColor`.** Use `ui-primitives` `ic_ds_*`. Dense title-bar chrome may use 14px. Do not add another icon pack or filled brand-color glyphs.
-11. **Motion animates only opacity and transform.** Durations are `--ds-transition-duration*` (100–200ms, flip 400ms). New dialogs / menus use `usePresence` plus a `motion.css` recipe. Do not animate `backdrop-filter` or large-panel width/height, and do not add an animation library.
+11. **Motion animates only opacity and transform.** Durations are `--ds-transition-duration*` (100–200ms, flip 400ms). New dialogs / menus use `usePresence` plus a `motion.css` recipe. Do not animate `backdrop-filter` or large-panel width/height, and do not add an animation library. Inventory and exceptions: [Motion](motion.en.md).
 12. **Shadows are lv1 / lv2 / lv3 only.** Menus and dialogs use `lv3`; composer and floating cards use `lv2`. No `0 18px 40px` slabs.
 13. **Glass stops at the official recipe.** Mask `blur(2px)` + `--dsw-alias-bg-mask-*`; raised surfaces `color-mix(..., var(--dsw-alias-glass-opacity), transparent)`. No heavier blur, no shadow on every layer.
 14. **Scrollbars are the shared sheet.** No component-local `::-webkit-scrollbar`.
@@ -57,11 +58,22 @@ Layout: `AppFrame` is columns, not a card grid. A closed column is width 0 and p
 
 - **xterm / diff / code**: monospace, ANSI, character grid — not capsules.
 - **Native window controls**: min / max / close keep system hit targets; paint still follows theme tokens.
-- **Shells that cannot import the theme package** (boot page, remote pairing page): reuse the same semantic colors and geometry, or import the `ui-theme` sheets. Do not open a parallel `--bg` / `--accent` palette.
+- **Shells that cannot import the theme package** (remote pairing page): reuse the same semantic colors and geometry, or import the `ui-theme` sheets. Do not open a parallel `--bg` / `--accent` palette.
+- **Desktop boot page**: a full-window instrument canvas and a dedicated `--boot-*` table; see [Desktop boot page](#desktop-boot-page).
+
+## Desktop boot page
+
+The boot page is one instrument canvas for the whole window. It is not a centered card, and the log is not locked in a bordered box. Sources: [`boot.html`](../src/renderer/boot.html), [`boot.css`](../src/renderer/boot.css), [`boot-tokens.css`](../src/renderer/boot-tokens.css), [`boot.js`](../src/renderer/boot.js).
+
+Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the DeepSeek mark, the brand `Deepseek-Harness-Desktop`, status and hint, and square retry buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. The block sits 52px above the bottom edge so the corner rails do not clip the last line. After the runtime is ready, official client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the official “正在加载插件” page is not shown.
+
+Color and theme: [`boot-tokens.css`](../src/renderer/boot-tokens.css) is the only color table. Light is paper near-black; dark is CRT near-white. `--boot-accent` matches body ink; failure uses `--boot-alert`. `html[data-boot-theme]` makes [`theme.js`](../src/renderer/theme.js) apply only the light/dark half of `theme.scheme` and skip the user’s `bg` / `accent`. [`boot.css`](../src/renderer/boot.css) consumes `--boot-*` plus official font and motion tokens; it does not branch on `[data-ds-dark-theme]` and does not contain color literals.
+
+Window controls stay on [`window-controls.css`](../src/renderer/window-controls.css). Do not use NERV / MAGI / SEELE / EVA marks or official logos. Do not use `--boot-*` on settings, the closing overlay, the title bar, or the official Web UI.
 
 ## Known drift (do not spread)
 
-The boot page and remote login page now consume official tokens. `src/renderer/marketplace/marketplace.css` still uses a parallel palette — **new code must not copy its hex values**. Converge it when touched.
+The remote login page now consumes official tokens. `src/renderer/marketplace/marketplace.css` still uses a parallel palette — **new code must not copy its hex values**. Converge it when touched.
 
 ## Self-check
 

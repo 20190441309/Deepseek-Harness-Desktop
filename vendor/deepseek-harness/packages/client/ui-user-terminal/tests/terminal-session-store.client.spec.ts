@@ -1,6 +1,6 @@
 /**
- * Shared terminal session store: two shells activate the same id and see
- * one session record. Split honors MAX_TERMINALS_PER_GROUP.
+ * Terminal session store: one handle owns one session table. Split honors
+ * MAX_TERMINALS_PER_GROUP. Separate handles do not share sessions.
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -11,7 +11,7 @@ import {
   releaseCreate,
 } from '../src/client/stores.ts'
 
-function sharedShells() {
+function sameHandleShells() {
   const instance = createTerminalSessionStore().create('session-1')
   return { drawer: instance, surface: instance }
 }
@@ -27,36 +27,35 @@ describe('createTerminalSessionStore', () => {
     })
   })
 
-  it('lets two shells activate the same id and read one session record', () => {
-    const { drawer, surface } = sharedShells()
+  it('keeps two handles on independent session tables', () => {
+    const drawer = createTerminalSessionStore().create('session-1')
+    const surface = createTerminalSessionStore().create('session-1')
     drawer.actions.newTerminal('term-a', '/work')
+    drawer.actions.setSize('term-a', 120, 40)
     surface.actions.activate('term-a')
-    surface.actions.setSize('term-a', 120, 40)
 
-    const drawerRecord = drawer.store.getSnapshot().sessions.find(session => session.id === 'term-a')
-    const surfaceRecord = surface.store.getSnapshot().sessions.find(session => session.id === 'term-a')
     expect(drawer.store.getSnapshot().activeId).toBe('term-a')
-    expect(surface.store.getSnapshot().activeId).toBe('term-a')
-    expect(drawerRecord).toBe(surfaceRecord)
-    expect(drawerRecord).toEqual({
+    expect(drawer.store.getSnapshot().sessions[0]).toEqual({
       id: 'term-a',
       cwd: '/work',
       cols: 120,
       rows: 40,
       buffer: '',
     })
+    expect(surface.store.getSnapshot().sessions).toHaveLength(0)
+    expect(surface.store.getSnapshot().activeId).toBe('')
   })
 
   it('refuses split once the active group reaches MAX_TERMINALS_PER_GROUP', () => {
     const { store, actions } = createTerminalSessionStore().create('session-1')
     actions.newTerminal('t1', '/work')
     for (let index = 2; index <= MAX_TERMINALS_PER_GROUP; index += 1) {
-      actions.split(`t${index}`, '/work')
+      actions.split(`t${index}`, '/work', 'horizontal')
     }
     expect(store.getSnapshot().sessions).toHaveLength(MAX_TERMINALS_PER_GROUP)
     expect(store.getSnapshot().groups[0]?.terminalIds).toHaveLength(MAX_TERMINALS_PER_GROUP)
 
-    actions.split('overflow', '/work')
+    actions.split('overflow', '/work', 'horizontal')
     expect(store.getSnapshot().sessions).toHaveLength(MAX_TERMINALS_PER_GROUP)
     expect(store.getSnapshot().sessions.some(session => session.id === 'overflow')).toBe(false)
     expect(store.getSnapshot().activeId).toBe(`t${MAX_TERMINALS_PER_GROUP}`)
@@ -65,18 +64,40 @@ describe('createTerminalSessionStore', () => {
   it('newTerminal opens a separate group so split can continue', () => {
     const { store, actions } = createTerminalSessionStore().create('session-1')
     actions.newTerminal('t1', '/work')
-    actions.split('t2', '/work')
+    actions.split('t2', '/work', 'horizontal')
     actions.newTerminal('t3', '/work')
     expect(store.getSnapshot().groups).toHaveLength(2)
     expect(store.getSnapshot().activeId).toBe('t3')
-    actions.split('t4', '/work')
+    expect(store.getSnapshot().groups[1]?.splitDirection).toBeUndefined()
+    actions.split('t4', '/work', 'horizontal')
     expect(store.getSnapshot().groups[1]?.terminalIds).toEqual(['t3', 't4'])
+  })
+
+  it('stores vertical splitDirection and omits it for a horizontal split', () => {
+    const { store, actions } = createTerminalSessionStore().create('session-1')
+    actions.newTerminal('t1', '/work')
+    expect(store.getSnapshot().groups[0]?.splitDirection).toBeUndefined()
+    actions.split('t2', '/work', 'vertical')
+    expect(store.getSnapshot().groups[0]?.splitDirection).toBe('vertical')
+    expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1', 't2'])
+    actions.close('t2')
+    actions.split('t3', '/work', 'horizontal')
+    expect(store.getSnapshot().groups[0]?.splitDirection).toBeUndefined()
+    expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1', 't3'])
+  })
+
+  it('split with no sessions opens the first group and ignores direction', () => {
+    const { store, actions } = createTerminalSessionStore().create('session-1')
+    actions.split('t1', '/work', 'vertical')
+    expect(store.getSnapshot().sessions).toHaveLength(1)
+    expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1'])
+    expect(store.getSnapshot().groups[0]?.splitDirection).toBeUndefined()
   })
 
   it('close removes the session and activates a neighbor', () => {
     const { store, actions } = createTerminalSessionStore().create('session-1')
     actions.newTerminal('t1', '/work')
-    actions.split('t2', '/work')
+    actions.split('t2', '/work', 'horizontal')
     actions.close('t2')
     expect(store.getSnapshot().sessions.map(session => session.id)).toEqual(['t1'])
     expect(store.getSnapshot().activeId).toBe('t1')
@@ -85,11 +106,20 @@ describe('createTerminalSessionStore', () => {
   })
 
   it('shares one in-flight create lock across two shells on the same actions object', () => {
-    const { drawer, surface } = sharedShells()
+    const { drawer, surface } = sameHandleShells()
     expect(acquireCreate(drawer.actions)).toBe(true)
     expect(acquireCreate(surface.actions)).toBe(false)
     releaseCreate(drawer.actions)
     expect(acquireCreate(surface.actions)).toBe(true)
+    releaseCreate(surface.actions)
+  })
+
+  it('does not share the create lock across different handles', () => {
+    const drawer = createTerminalSessionStore().create('session-1')
+    const surface = createTerminalSessionStore().create('session-1')
+    expect(acquireCreate(drawer.actions)).toBe(true)
+    expect(acquireCreate(surface.actions)).toBe(true)
+    releaseCreate(drawer.actions)
     releaseCreate(surface.actions)
   })
 

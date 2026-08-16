@@ -2,7 +2,6 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'title': '代理',
   'empty.title': '还没有子代理',
   'empty.body': '当前会话生成子代理后，会显示在这里。',
   'activity.running': '正在运行',
@@ -12,6 +11,11 @@ export const zh = {
   'list.aria': '当前会话的子代理',
   'jobs.title': '后台任务',
   'jobs.aria': '当前会话的后台任务',
+  'jobs.status.running': '正在运行',
+  'jobs.status.stopping': '正在停止',
+  'jobs.status.completed': '已完成',
+  'jobs.status.killed': '已终止',
+  'jobs.status.failed': '失败',
 } satisfies Record<string, string>
 
 /** The agents namespace key union. */
@@ -19,7 +23,6 @@ export type AgentsKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
-  'title': 'Agents',
   'empty.title': 'No agents yet',
   'empty.body': 'When this session spawns subagents, they show up here.',
   'activity.running': 'running',
@@ -29,6 +32,11 @@ export const en = {
   'list.aria': 'Subagents in this session',
   'jobs.title': 'Background jobs',
   'jobs.aria': 'Background jobs in this session',
+  'jobs.status.running': 'running',
+  'jobs.status.stopping': 'stopping',
+  'jobs.status.completed': 'completed',
+  'jobs.status.killed': 'killed',
+  'jobs.status.failed': 'failed',
 } satisfies Record<AgentsKey, string>
 
 /** Dictionary namespace owned by this plugin. */

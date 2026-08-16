@@ -23,6 +23,8 @@ const {
   showHarness,
   sendToBoot,
   isBootLoaded,
+  getHarnessWebContents,
+  hideHarnessView,
 } = require('./window');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
@@ -59,6 +61,7 @@ const harness = new HarnessController({
   showHarness,
   sendToBoot,
   isBootLoaded,
+  getHarnessWebContents,
   resolveLaunchTarget,
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
@@ -108,16 +111,17 @@ function reloadWithCleanup() {
 /** One-shot launch smoke: report the assembled chrome and exit with its status. */
 async function runSmoke(win) {
   const pageErrors = [];
+  const wc = getHarnessWebContents(win) || win.webContents;
   const onError = (_event, error) => { pageErrors.push(String(error).slice(0, 500)); };
-  win.webContents.on('render-process-gone', (_event, details) => {
+  wc.on('render-process-gone', (_event, details) => {
     pageErrors.push(`render-process-gone: ${details.reason}`);
   });
-  win.webContents.on('console-message', (_event, _level, message) => {
+  wc.on('console-message', (_event, _level, message) => {
     if (String(message).includes('Uncaught')) pageErrors.push(String(message).slice(0, 500));
   });
-  win.webContents.on('did-fail-load', onError);
+  wc.on('did-fail-load', onError);
   try {
-    const result = await win.webContents.executeJavaScript(`(async () => {
+    const result = await wc.executeJavaScript(`(async () => {
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       for (let i = 0; i < 60 && !document.querySelector('[class*="frame"]'); i += 1) await sleep(250);
       await sleep(2500);
@@ -244,7 +248,9 @@ if (!gotLock) {
     });
 
     globalShortcut.register('CommandOrControl+Shift+I', () => {
-      getMainWindow()?.webContents.toggleDevTools();
+      const win = getMainWindow();
+      const wc = getHarnessWebContents(win) || win?.webContents;
+      wc?.toggleDevTools();
     });
 
     try {
@@ -276,6 +282,7 @@ if (!gotLock) {
     stoppingForQuit = true;
     stopDesktopInstallControl();
     cleanupDesktopResources();
+    hideHarnessView(getMainWindow());
     showClosingOverlay(getMainWindow(), loadConfig().locale)
       .catch(() => {})
       .then(() => harness.shutdown())

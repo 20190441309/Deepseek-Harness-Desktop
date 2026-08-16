@@ -11,7 +11,7 @@ import { readFilesShell, type FilesShellInjected } from './shell.ts'
 export type { FilesPanelProps } from './FilesPanel.tsx'
 export type { FilePreviewProps } from './FilePreview.tsx'
 export type { FilesKey } from './locales.ts'
-export type { DirEntry, FilesShellInjected, ListDirResult, ReadFileMediaResult, ReadFileResult } from './shell.ts'
+export type { DirEntry, FilesShellInjected, ListDirResult, ReadFileMediaResult, ReadFileResult, WriteFileResult } from './shell.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {

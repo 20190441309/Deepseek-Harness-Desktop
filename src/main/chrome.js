@@ -34,7 +34,8 @@ function hideNativeMenu(win) {
 }
 
 function isHarnessUrl(url) {
-  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\b/i.test(url || '');
+  const { isLoopbackHttpUrl } = require('./local-url');
+  return isLoopbackHttpUrl(url);
 }
 
 function paintBackground(win, color) {
@@ -52,11 +53,21 @@ function sendWindowState(win) {
   if (!win || win.isDestroyed()) {
     return;
   }
-  win.webContents.send('shell:window-state', {
+  const payload = {
     maximized: win.isMaximized(),
     minimizable: win.minimizable,
     maximizable: win.maximizable,
-  });
+  };
+  win.webContents.send('shell:window-state', payload);
+  try {
+    const { getHarnessWebContents } = require('./window');
+    const harnessWc = getHarnessWebContents(win);
+    if (harnessWc && !harnessWc.isDestroyed()) {
+      harnessWc.send('shell:window-state', payload);
+    }
+  } catch {
+    // window module is still loading
+  }
 }
 
 function bindChromeIpc() {
@@ -103,12 +114,12 @@ function bindChromeIpc() {
   });
 }
 
-async function syncHarnessChrome(win) {
-  if (win.isDestroyed() || !isHarnessUrl(win.webContents.getURL())) {
+async function syncHarnessChrome(win, webContents = win.webContents) {
+  if (win.isDestroyed() || !webContents || webContents.isDestroyed() || !isHarnessUrl(webContents.getURL())) {
     return;
   }
   try {
-    const sample = await win.webContents.executeJavaScript(injectScript);
+    const sample = await webContents.executeJavaScript(injectScript);
     if (sample?.bg) {
       paintBackground(win, sample.bg);
     }
@@ -123,8 +134,12 @@ function prepareHarnessChrome(win) {
 
 function applyAppTheme() {
   const theme = currentTheme();
+  const { getHarnessWebContents } = require('./window');
   for (const win of BrowserWindow.getAllWindows()) {
-    if (isHarnessUrl(win.webContents.getURL())) {
+    const harnessWc = getHarnessWebContents(win);
+    if (harnessWc && isHarnessUrl(harnessWc.getURL())) {
+      syncHarnessChrome(win, harnessWc);
+    } else if (isHarnessUrl(win.webContents.getURL())) {
       syncHarnessChrome(win);
     } else {
       paintBackground(win, theme.bg);
@@ -168,5 +183,7 @@ module.exports = {
   attachIntegratedChrome,
   applyAppTheme,
   prepareHarnessChrome,
+  syncHarnessChrome,
   currentTheme,
+  isHarnessUrl,
 };

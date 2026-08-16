@@ -36,8 +36,8 @@ export function apply(ctx: ClientContext): void {
   const injected = (): McpSectionInjected => ({
     t,
     list: async () => unwrap(await ctx.remote.mcpServers.list(), 'mcpServers.list'),
-    upsert: async spec => { unwrap(await ctx.remote.mcpServers.upsert({ spec }), 'mcpServers.upsert') },
-    remove: async id => { unwrap(await ctx.remote.mcpServers.delete({ id }), 'mcpServers.delete') },
+    upsert: async (spec) => { unwrap(await ctx.remote.mcpServers.upsert({ spec }), 'mcpServers.upsert') },
+    remove: async (id) => { unwrap(await ctx.remote.mcpServers.delete({ id }), 'mcpServers.delete') },
     setEnabled: async (id, enabled) => {
       unwrap(await ctx.remote.mcpServers.setEnabled({ id, enabled }), 'mcpServers.setEnabled')
     },
@@ -52,7 +52,7 @@ export function apply(ctx: ClientContext): void {
   }, McpSection))
 }
 
-function unwrap<T>(result: { ok: true, value: T } | { ok: false, error: { code: string, message: string } }, label: string): T {
+function unwrap<T>(result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }, label: string): T {
   if (!result.ok) throw new Error(`${label} failed: ${result.error.code}: ${result.error.message}`)
   return result.value
 }

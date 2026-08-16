@@ -2,7 +2,6 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'title': '文件',
   'empty.cwd': '没有工作区，无法浏览文件。',
   'empty.dir': '此目录为空。',
   'error.list': '无法读取目录。',
@@ -16,6 +15,15 @@ export const zh = {
   'copy.absolute': '复制绝对路径',
   'refresh': '刷新',
   'copied': '已复制',
+  'search': '搜索文件',
+  'search.clear': '清除搜索',
+  'search.truncated': '搜索已提前停止（深度或目录数量上限）。',
+  'preview.save': '保存',
+  'preview.saved': '已保存',
+  'preview.source': '源码',
+  'preview.render': '渲染',
+  'error.write': '无法保存文件。',
+  'error.changed': '磁盘上的文件已更改。再次保存将覆盖。',
 } satisfies Record<string, string>
 
 /** The files namespace key union. */
@@ -23,7 +31,6 @@ export type FilesKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
-  'title': 'Files',
   'empty.cwd': 'A workspace is required to browse files.',
   'empty.dir': 'This directory is empty.',
   'error.list': 'Could not list the directory.',
@@ -37,6 +44,15 @@ export const en = {
   'copy.absolute': 'Copy absolute path',
   'refresh': 'Refresh',
   'copied': 'Copied',
+  'search': 'Search files',
+  'search.clear': 'Clear search',
+  'search.truncated': 'Search stopped early (depth or directory limit).',
+  'preview.save': 'Save',
+  'preview.saved': 'Saved',
+  'preview.source': 'Source',
+  'preview.render': 'Rendered',
+  'error.write': 'Could not save the file.',
+  'error.changed': 'The file changed on disk. Save again to overwrite.',
 } satisfies Record<FilesKey, string>
 
 /** Dictionary namespace owned by this plugin. */
