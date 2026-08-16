@@ -64,7 +64,7 @@ export function ThemeEditor({
         <span>{t('editor.name')}</span>
         <Input
           value={family.name}
-          onChange={event => { onChange({ ...family, name: event.currentTarget.value }) }}
+          onChange={(event) => { onChange({ ...family, name: event.currentTarget.value }) }}
         />
       </label>
       <HalfEditor
@@ -73,7 +73,7 @@ export function ThemeEditor({
         seeds={family.light}
         advanced={advanced}
         t={t}
-        onChange={light => { onChange({ ...family, light }) }}
+        onChange={(light) => { onChange({ ...family, light }) }}
       />
       <HalfEditor
         title={t('editor.dark')}
@@ -81,7 +81,7 @@ export function ThemeEditor({
         seeds={family.dark}
         advanced={advanced}
         t={t}
-        onChange={dark => { onChange({ ...family, dark }) }}
+        onChange={(dark) => { onChange({ ...family, dark }) }}
       />
       <button type="button" className={css.linkButton} onClick={() => { setAdvanced(value => !value) }}>
         {t('library.advanced')}
@@ -110,15 +110,15 @@ function HalfEditor({
   onChange: (seeds: ThemeSeeds) => void
 }) {
   return (
-    <fieldset className={css.half}>
+    <fieldset className={css.editorHalf}>
       <legend>
         {title}
         {current ? <span className={css.halfCurrent}>{t('library.currentMode')}</span> : null}
       </legend>
       <div className={css.colorRow}>
-        <ColorField label={t('editor.accent')} value={seeds.accent} onChange={accent => { onChange({ ...seeds, accent }) }} />
-        <ColorField label={t('editor.background')} value={seeds.background} onChange={background => { onChange({ ...seeds, background }) }} />
-        <ColorField label={t('editor.foreground')} value={seeds.foreground} onChange={foreground => { onChange({ ...seeds, foreground }) }} />
+        <ColorField label={t('editor.accent')} value={seeds.accent} onChange={(accent) => { onChange({ ...seeds, accent }) }} />
+        <ColorField label={t('editor.background')} value={seeds.background} onChange={(background) => { onChange({ ...seeds, background }) }} />
+        <ColorField label={t('editor.foreground')} value={seeds.foreground} onChange={(foreground) => { onChange({ ...seeds, foreground }) }} />
       </div>
       <label className={css.field}>
         <span>{t('editor.contrast')} ({seeds.contrast})</span>
@@ -129,7 +129,7 @@ function HalfEditor({
           max={100}
           value={seeds.contrast}
           style={sliderFillStyle(seeds.contrast, 0, 100)}
-          onChange={event => { onChange({ ...seeds, contrast: Number(event.currentTarget.value) }) }}
+          onChange={(event) => { onChange({ ...seeds, contrast: Number(event.currentTarget.value) }) }}
         />
       </label>
       {advanced ? (
@@ -140,7 +140,7 @@ function HalfEditor({
               <Input
                 value={seeds.overrides?.[name] ?? ''}
                 placeholder="Auto"
-                onChange={event => {
+                onChange={(event) => {
                   const next = { ...seeds.overrides, [name]: event.currentTarget.value }
                   onChange({ ...seeds, overrides: next })
                 }}
@@ -164,7 +164,7 @@ function ColorField({
 }) {
   return (
     <label className={css.colorField}>
-      <input type="color" value={value} onChange={event => { onChange(event.currentTarget.value) }} />
+      <input type="color" value={value} onChange={(event) => { onChange(event.currentTarget.value) }} />
       <span>
         <span className={css.colorLabel}>{label}</span>
         <code>{value}</code>

@@ -38,6 +38,14 @@
   border-bottom: 1px solid var(--dsw-alias-border-l3);
 }
 
+.titleRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
 .title {
   display: flex;
   align-items: flex-end;
@@ -47,6 +55,30 @@
   line-height: 24px;
   font-weight: 510;
   color: var(--dsw-alias-label-primary);
+}
+
+.homeJump {
+  flex: none;
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.homeJump:hover:enabled {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.homeJump:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 /* The bar IS the editor's box in both modes: it carries the rounded outline

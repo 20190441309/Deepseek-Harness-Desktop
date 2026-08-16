@@ -9,8 +9,8 @@
  * previous view keeps rendering while a crumb jump or a submitted path is
  * scanned, then target and parent legs land as one two-pane frame (a slow
  * parent leg falls back to landing the target alone and upgrading in
- * place), so stepping back keeps two panes away from the display root and
- * navigation never flashes an intermediate frame. Selecting in the
+ * place), so stepping back keeps two panes away from the filesystem / volume
+ * display root and navigation never flashes an intermediate frame. Selecting in the
  * right column shifts the view one level deeper. "New folder" opens a nested
  * create dialog targeting the selected folder (or the level itself) and
  * selects the created folder. Open adopts the selected folder, falling back
@@ -97,15 +97,30 @@ const PARENT_LEG_WAIT_MS = 200
 const DRAFT_PREVIEW_DEBOUNCE_MS = 250
 
 /**
- * Breadcrumb rows for display: inside the home subtree the chain starts at a
- * localized Home crumb; outside it the full ancestry shows, the root labeled
- * by its own path.
+ * Win32 volume-picker list path; must match `WINDOWS_VOLUME_ROOT` on the
+ * directory-picker seam. Duplicated here so the browser bundle does not
+ * import the host Service Definition package.
  */
-function displayCrumbs(listing: DirectoryListing, homeLabel: string): DirectoryEntry[] {
-  const homeIndex = listing.crumbs.findIndex(crumb => crumb.path === listing.home)
-  if (homeIndex === -1) return listing.crumbs
-  const tail = listing.crumbs.slice(homeIndex + 1)
-  return [{ name: homeLabel, path: listing.home, hidden: false }, ...tail]
+const WINDOWS_VOLUME_ROOT = '\\\\.\\dsh-computer'
+
+/**
+ * Breadcrumb rows for display: the host chain in full, with Home and the
+ * Win32 volume picker localized. Home is a label on its crumb (and a header
+ * shortcut), not a ceiling that hides ancestors.
+ */
+function displayCrumbs(
+  listing: DirectoryListing, homeLabel: string, computerLabel = '',
+): DirectoryEntry[] {
+  return listing.crumbs.map((crumb) => {
+    if (crumb.path === WINDOWS_VOLUME_ROOT) return { ...crumb, name: computerLabel || crumb.name }
+    if (crumb.path === listing.home) return { ...crumb, name: homeLabel }
+    return crumb
+  })
+}
+
+/** True when the listed level is the Win32 volume picker, not a filesystem directory. */
+function isVolumeRoot(path: string): boolean {
+  return path === WINDOWS_VOLUME_ROOT
 }
 
 /**
@@ -432,7 +447,9 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
         setChild(null)
         settle()
       }
-      // Arity is label-independent: only the collapsed chain's depth decides.
+      // Arity is label-independent: only the host chain's depth decides.
+      // The display root is the volume picker (Win32) or filesystem root
+      // (POSIX), never the account home — home is a jump target inside the chain.
       if (displayCrumbs(target, '').length < 2) { landSingle(); return }
       const parentCrumb = target.crumbs.at(-2)
       /* v8 ignore next -- narrowing: a two-deep display chain implies a parent crumb (root-to-target inclusive). */
@@ -591,8 +608,12 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
 
   /** The folder a create or Open acts on: the selection, else the listed level. */
   const targetPath = selected?.path ?? parent?.path ?? null
-  const targetName = selected?.name
-    ?? (parent === null ? '' : (displayCrumbs(parent, t('browser.home')).at(-1)?.name ?? parent.path))
+  const targetName = ((): string => {
+    if (parent !== null && targetPath === parent.home) return t('browser.home')
+    if (selected !== null) return selected.name
+    if (parent === null) return ''
+    return displayCrumbs(parent, t('browser.home'), t('browser.computer')).at(-1)?.name ?? parent.path
+  })()
 
   const confirmCreate = (): void => {
     /* v8 ignore next -- reentry fence: the nested dialog only renders with a target and disables while creating. */
@@ -685,8 +706,9 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
   const typedPrefix = crumbSource === null || pathDraft === null
     ? null
     : readDraft(crumbSource, pathDraft, scanned.current).tail
-  const crumbs = crumbSource === null ? [] : displayCrumbs(crumbSource, t('browser.home'))
+  const crumbs = crumbSource === null ? [] : displayCrumbs(crumbSource, t('browser.home'), t('browser.computer'))
   const crumbTail = crumbs.at(-1)?.path
+  const volumePickerIdle = parent !== null && isVolumeRoot(parent.path) && selected === null
   useEffect(() => {
     const trail = crumbTrailRef.current
     if (trail !== null) trail.scrollLeft = trail.scrollWidth
@@ -748,6 +770,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
   // committing actions must not act on the previous selection/listing while
   // a different path is displayed.
   const draftPending = pathDraft !== null
+  const confirmBlocked = targetPath === null || loading || parentInert || draftPending || volumePickerIdle
 
   return (
     <Modal
@@ -806,7 +829,19 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
         }}
       >
         <div className={css.header}>
-          <h2 className={css.title}>{t('browser.title')}</h2>
+          <div className={css.titleRow}>
+            <h2 className={css.title}>{t('browser.title')}</h2>
+            <button
+              type="button"
+              className={css.homeJump}
+              aria-label={t('browser.goHome')}
+              title={t('browser.goHome')}
+              disabled={parentInert}
+              onClick={() => { navigate(parent?.home) }}
+            >
+              {t('browser.home')}
+            </button>
+          </div>
           <div className={css.crumbBar}>
             {pathDraft === null
               ? (
@@ -955,7 +990,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
           <Button
             variant="outline"
             icon={<IconPlusOutline16 size={14} />}
-            disabled={parent === null || loading || parentInert || draftPending}
+            disabled={parent === null || loading || parentInert || draftPending || volumePickerIdle}
             onClick={() => {
               setFolderDraft('')
               setCreateError(null)
@@ -985,7 +1020,7 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
           <Button
             variant="primary"
             className={clsx(css.footerAction)}
-            disabled={targetPath === null || loading || parentInert || draftPending}
+            disabled={confirmBlocked}
             /* v8 ignore next -- narrowing guard: Open disables while no target exists. */
             onClick={() => { if (targetPath !== null) onOpen(targetPath) }}
           >

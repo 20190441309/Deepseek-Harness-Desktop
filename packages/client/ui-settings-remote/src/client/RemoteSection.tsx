@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Button, IconChevronRightOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import type { RemoteDevice, RemotePatch, RemoteSnapshot } from './desktop-shell.ts'
+import type { RemotePatch, RemoteSnapshot } from './desktop-shell.ts'
 import { qrSvg } from './qr.ts'
 import css from './RemoteSection.module.css'
 
@@ -11,7 +12,7 @@ export interface RemoteSectionInjected {
   getRemote: () => Promise<RemoteSnapshot | null>
   /** Persist a remote config patch and return the new snapshot. */
   saveRemote: (patch: RemotePatch) => Promise<RemoteSnapshot | null>
-  /** Drop one bound phone; its cookie stops authorizing. */
+  /** Drop one bound device; its cookie stops authorizing. */
   unbindRemoteDevice: (id: string) => Promise<RemoteSnapshot | null>
 }
 
@@ -33,15 +34,14 @@ function PhoneIcon({ size }: { size: number }): ReactNode {
   )
 }
 
-function seenLabel(device: RemoteDevice, t: RemoteSectionProps['t']): string {
-  if (!device.lastSeenAt) return t('devicesSeenUnknown')
-  const stamp = Date.parse(device.lastSeenAt)
-  if (!Number.isFinite(stamp)) return t('devicesSeenUnknown')
-  return t('devicesSeen', { time: new Date(stamp).toLocaleString() })
+function formatStamp(value: string, unknown: string): string {
+  const stamp = Date.parse(value)
+  if (!Number.isFinite(stamp)) return unknown
+  return new Date(stamp).toLocaleString()
 }
 
 /**
- * Sidebar-foot Remote control: a phone trigger plus a popup with on/off,
+ * Sidebar-foot Remote control: a phone trigger plus a popup with On/Off,
  * LAN versus server relay, the pairing QR, and bound-device management.
  * @param props - composed slot props plus the desktop inject face.
  * @returns the trigger and optional popup.
@@ -58,6 +58,7 @@ export function RemoteSection({
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
   const [devicesOpen, setDevicesOpen] = useState(false)
+  const modeWrites = useRef(0)
 
   const applySnap = useCallback((next: RemoteSnapshot | null) => {
     const value = next ?? EMPTY
@@ -77,6 +78,7 @@ export function RemoteSection({
   }, [applySnap, getRemote])
 
   const refresh = useCallback(async () => {
+    if (modeWrites.current > 0) return
     try {
       applySnap(await getRemote())
     } catch (caught) {
@@ -109,6 +111,26 @@ export function RemoteSection({
   }, [open, devicesOpen])
 
   const save = useCallback(async (patch: RemotePatch) => {
+    // A local const keeps the narrowing alive inside the setState closure.
+    const nextMode = patch.remoteMode
+    if (nextMode) {
+      modeWrites.current += 1
+      setSnap(current => (current === null ? null : { ...current, mode: nextMode }))
+      try {
+        applySnap(await saveRemote(patch))
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught)
+        try {
+          applySnap(await getRemote())
+        } catch {
+          /* The optimistic mode stays until the next refresh. */
+        }
+        setError(message)
+      } finally {
+        modeWrites.current -= 1
+      }
+      return
+    }
     setBusy(true)
     try {
       applySnap(await saveRemote(patch))
@@ -117,7 +139,7 @@ export function RemoteSection({
     } finally {
       setBusy(false)
     }
-  }, [applySnap, saveRemote])
+  }, [applySnap, getRemote, saveRemote])
 
   const unbind = useCallback(async (id: string) => {
     setBusy(true)
@@ -164,45 +186,61 @@ export function RemoteSection({
               <p className={css.status} role="status">{t('loading')}</p>
             ) : (
               <>
-                <label className={css.switch}>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={enabled}
+                <div className={css.modes} role="radiogroup" aria-label={t('enable')}>
+                  <Button
+                    size="sm"
+                    variant={enabled ? 'primary' : 'ghost'}
+                    className={css.modeButton}
+                    role="radio"
+                    aria-checked={enabled}
                     disabled={busy}
-                    aria-label={t('enable')}
-                    onChange={(event) => { void save({ remoteEnabled: event.target.checked }) }}
-                  />
-                  {enabled ? t('enabledOn') : t('enabledOff')}
-                </label>
+                    onClick={() => { if (!enabled) void save({ remoteEnabled: true }) }}
+                  >
+                    {t('enabledOn')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={enabled ? 'ghost' : 'primary'}
+                    className={css.modeButton}
+                    role="radio"
+                    aria-checked={!enabled}
+                    disabled={busy}
+                    onClick={() => { if (enabled) void save({ remoteEnabled: false }) }}
+                  >
+                    {t('enabledOff')}
+                  </Button>
+                </div>
                 <div className={css.modes} role="radiogroup" aria-label={t('mode')}>
-                  <label className={mode === 'lan' ? css.modeOn : undefined}>
-                    <input
-                      type="radio"
-                      name="dsh-remote-mode"
-                      checked={mode === 'lan'}
-                      disabled={busy}
-                      onChange={() => { void save({ remoteMode: 'lan' }) }}
-                    />
+                  <Button
+                    size="sm"
+                    variant={mode === 'lan' ? 'primary' : 'ghost'}
+                    className={css.modeButton}
+                    role="radio"
+                    aria-checked={mode === 'lan'}
+                    onClick={() => { void save({ remoteMode: 'lan' }) }}
+                  >
                     {t('modeLan')}
-                  </label>
-                  <label className={mode === 'relay' ? css.modeOn : undefined}>
-                    <input
-                      type="radio"
-                      name="dsh-remote-mode"
-                      checked={mode === 'relay'}
-                      disabled={busy}
-                      onChange={() => { void save({ remoteMode: 'relay' }) }}
-                    />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={mode === 'relay' ? 'primary' : 'ghost'}
+                    className={css.modeButton}
+                    role="radio"
+                    aria-checked={mode === 'relay'}
+                    onClick={() => { void save({ remoteMode: 'relay' }) }}
+                  >
                     {t('modeRelay')}
-                  </label>
+                  </Button>
                 </div>
                 <button
                   type="button"
                   className={css.devices}
                   onClick={() => { setDevicesOpen(true) }}
                 >
-                  {t('devices')} {devices.length}
+                  <span>{t('devices')} {devices.length}</span>
+                  <span className={css.devicesChevron} aria-hidden="true">
+                    <IconChevronRightOutline14 />
+                  </span>
                 </button>
                 {error ? <p className={css.status} role="status">{t('statusError', { message: error })}</p> : null}
                 {enabled && qr ? (
@@ -222,14 +260,25 @@ export function RemoteSection({
                   <p className={css.hint}>{t('devicesEmpty')}</p>
                 ) : (
                   <ul className={css.deviceList}>
-                    {devices.map((device) => (
+                    {devices.map(device => (
                       <li key={device.id} className={css.deviceRow}>
                         <div className={css.deviceMeta}>
                           <span className={css.deviceName}>
                             {device.name}
                             {device.online ? <span className={css.online}>{t('devicesOnline')}</span> : null}
                           </span>
-                          <span className={css.deviceSeen}>{seenLabel(device, t)}</span>
+                          {device.detail ? <span className={css.deviceDetail}>{device.detail}</span> : null}
+                          {device.shortId ? <span className={css.deviceSeen}>{t('devicesId', { id: device.shortId })}</span> : null}
+                          {device.createdAt ? (
+                            <span className={css.deviceSeen}>
+                              {t('devicesBound', { time: formatStamp(device.createdAt, t('devicesSeenUnknown')) })}
+                            </span>
+                          ) : null}
+                          <span className={css.deviceSeen}>
+                            {device.lastSeenAt
+                              ? t('devicesSeen', { time: formatStamp(device.lastSeenAt, t('devicesSeenUnknown')) })
+                              : t('devicesSeenUnknown')}
+                          </span>
                         </div>
                         <button
                           type="button"

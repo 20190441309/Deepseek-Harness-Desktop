@@ -205,6 +205,52 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, t }: 
   )
 }
 
+/**
+ * Tasks section header: chevron + localized "Tasks" title + create. No
+ * folder icon and no Workspace menu — ungrouped sessions sit directly under
+ * this row at the same indent as sessions under a project.
+ * @param props.expanded - whether the session list below is shown.
+ * @param props.containsCurrent - the current session is in this section.
+ * @param props.onToggle - expand/collapse.
+ * @param props.onCreate - mint a no-directory session.
+ * @param props.t - the browser root's locale seat.
+ * @returns the row element.
+ */
+export function TasksSectionHeader({ expanded, containsCurrent, onToggle, onCreate, t }: {
+  expanded: boolean
+  containsCurrent: boolean
+  onToggle: () => void
+  onCreate: () => void
+  t: RowTranslate
+}) {
+  const label = t('section.tasks')
+  return (
+    <div
+      className={clsx(css.projectRow, css.tasksSection)}
+      role="treeitem"
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      <span className={clsx(css.slot, css.chevron, css.tasksChevron, containsCurrent && css.folderActive)}>
+        <IconTriangleRightFill14 className={clsx(css.arrow, expanded && css.arrowOpen)} />
+      </span>
+      <span className={css.projectText}>
+        <span className={css.title}>{label}</span>
+      </span>
+      <span className={css.rowActions}>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-label={t('actions.newSession.aria', { name: label })}
+          onClick={(e) => { e.stopPropagation(); onCreate() }}
+        >
+          <IconPlusOutline16 />
+        </button>
+      </span>
+    </div>
+  )
+}
+
 /* v8 ignore next 3 -- closed-union backstop; only reached if the status is forged */
 function assertNever(value: never): never {
   throw new Error(`unknown pending interaction: ${String(value)}`)

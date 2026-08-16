@@ -44,7 +44,7 @@ function renderRemote(overrides: Partial<RemoteSectionProps> = {}) {
 }
 
 describe('RemoteSection', () => {
-  it('keeps the phone trigger dim until remote is on, then lights it', async () => {
+  it('keeps the Remote trigger dim until remote is on, then lights it', async () => {
     const props = renderRemote({
       getRemote: vi.fn(async () => snap({ enabled: false, listening: false })),
       saveRemote: vi.fn(async (patch: RemotePatch) => snap({ enabled: patch.remoteEnabled ?? false })),
@@ -52,8 +52,7 @@ describe('RemoteSection', () => {
     const trigger = await screen.findByRole('button', { name: en.trigger })
     expect(trigger.getAttribute('data-on')).toBeNull()
     fireEvent.click(trigger)
-    const toggle = await screen.findByRole('switch', { name: en.enable })
-    fireEvent.click(toggle)
+    fireEvent.click(await screen.findByRole('radio', { name: en.enabledOn }))
     await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteEnabled: true }) })
     expect(screen.getByRole('button', { name: en.trigger }).hasAttribute('data-on')).toBe(true)
   })
@@ -62,6 +61,8 @@ describe('RemoteSection', () => {
     renderRemote()
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.getByRole('radio', { name: en.enabledOn })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: en.enabledOff })).toBeTruthy()
     expect(screen.getByRole('radio', { name: en.modeLan })).toBeTruthy()
     expect(screen.getByRole('radio', { name: en.modeRelay })).toBeTruthy()
     expect(screen.getByRole('img', { name: en.qr })).toBeTruthy()
@@ -84,6 +85,58 @@ describe('RemoteSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     fireEvent.click(await screen.findByRole('radio', { name: en.modeLan }))
     await waitFor(() => { expect(back.saveRemote).toHaveBeenCalledWith({ remoteMode: 'lan' }) })
+  })
+
+  it('keeps the enable buttons live while a mode save is in flight', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      let finish: (value: RemoteSnapshot) => void = () => {}
+      const getRemote = vi.fn(async () => SNAP)
+      const saveRemote = vi.fn(() => new Promise<RemoteSnapshot>((resolve) => { finish = resolve }))
+      renderRemote({ getRemote, saveRemote })
+      fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+      await screen.findByRole('img', { name: en.qr })
+      const enableOn = screen.getByRole('radio', { name: en.enabledOn }) as HTMLButtonElement
+      const enableOff = screen.getByRole('radio', { name: en.enabledOff }) as HTMLButtonElement
+      expect(enableOn.disabled).toBe(false)
+      expect(enableOff.disabled).toBe(false)
+      fireEvent.click(screen.getByRole('radio', { name: en.modeRelay }))
+      expect(enableOn.disabled).toBe(false)
+      expect(enableOff.disabled).toBe(false)
+      expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
+      const calls = getRemote.mock.calls.length
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(getRemote.mock.calls.length).toBe(calls)
+      expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
+      finish(snap({ mode: 'relay' }))
+      await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reverts an optimistic mode change when save fails and a reread succeeds', async () => {
+    const getRemote = vi.fn(async () => SNAP)
+    const saveRemote = vi.fn(async () => { throw 'write failed' })
+    renderRemote({ getRemote, saveRemote })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    fireEvent.click(await screen.findByRole('radio', { name: en.modeRelay }))
+    await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
+    await screen.findByText('Remote error: write failed')
+    expect(screen.getByRole('radio', { name: en.modeLan }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('keeps the optimistic mode when both save and the reread fail', async () => {
+    const getRemote = vi.fn()
+      .mockResolvedValueOnce(SNAP)
+      .mockRejectedValueOnce(new Error('offline'))
+    const saveRemote = vi.fn(async () => { throw new Error('save exploded') })
+    renderRemote({ getRemote, saveRemote })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    fireEvent.click(await screen.findByRole('radio', { name: en.modeRelay }))
+    await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
+    await screen.findByText('Remote error: save exploded')
+    expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('shows the off hint until the gateway is enabled', async () => {
@@ -125,7 +178,7 @@ describe('RemoteSection', () => {
       saveRemote: vi.fn(async () => { throw 'write failed' }),
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    fireEvent.click(await screen.findByRole('switch', { name: en.enable }))
+    fireEvent.click(await screen.findByRole('radio', { name: en.enabledOff }))
     await waitFor(() => { expect(props.saveRemote).toHaveBeenCalled() })
     await screen.findByText('Remote error: write failed')
     cleanup()
@@ -135,7 +188,7 @@ describe('RemoteSection', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByText('Remote error: gateway down')
-    fireEvent.click(screen.getByRole('switch', { name: en.enable }))
+    fireEvent.click(screen.getByRole('radio', { name: en.enabledOff }))
     await waitFor(() => { expect(fromSnap.saveRemote).toHaveBeenCalled() })
     await screen.findByText('Remote error: save exploded')
   })
@@ -179,6 +232,9 @@ describe('RemoteSection', () => {
     const device = {
       id: 'dev-1',
       name: 'iPhone',
+      detail: 'iPhone · iOS 18 · Safari',
+      shortId: 'ev-1',
+      createdAt: '2026-08-14T11:00:00.000Z',
       lastSeenAt: '2026-08-14T12:00:00.000Z',
       online: true,
     }
@@ -192,6 +248,10 @@ describe('RemoteSection', () => {
     await screen.findByRole('dialog', { name: en.devicesManage })
     expect(screen.getByText('iPhone')).toBeTruthy()
     expect(screen.getByText(en.devicesOnline)).toBeTruthy()
+    expect(screen.getByText('iPhone · iOS 18 · Safari')).toBeTruthy()
+    expect(screen.getByText(`ID ${device.shortId}`)).toBeTruthy()
+    expect(screen.getByText(/Bound /)).toBeTruthy()
+    expect(screen.getByText(/Last seen /)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: en.unbind }))
     await waitFor(() => { expect(props.unbindRemoteDevice).toHaveBeenCalledWith('dev-1') })
     await screen.findByText(en.devicesEmpty)
@@ -209,7 +269,8 @@ describe('RemoteSection', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     fireEvent.click(await screen.findByRole('button', { name: `${en.devices} 2` }))
-    expect(screen.getAllByText(en.devicesSeenUnknown)).toHaveLength(2)
+    expect(screen.getByText(en.devicesSeenUnknown)).toBeTruthy()
+    expect(screen.getByText(en.devicesSeen.replace('{time}', en.devicesSeenUnknown))).toBeTruthy()
     fireEvent.click(screen.getAllByRole('button', { name: en.unbind })[0]!)
     await waitFor(() => { expect(props.unbindRemoteDevice).toHaveBeenCalledWith('dev-2') })
     await screen.findByText('Remote error: drop failed')

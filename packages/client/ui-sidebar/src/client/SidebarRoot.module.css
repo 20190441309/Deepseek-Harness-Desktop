@@ -1,5 +1,6 @@
 /* Sidebar column (figma 133:7629): vertical stack, padding 12/6, sidebar
-   fill + 1px right border painted by the layout column. Collapse is a
+   fill. The layout column paints the same fill over the frame canvas so the
+   rail stays thicker than the chat. Collapse is a
    slide + crossfade, not a morph: the content holds its frozen expanded
    layout (inline width set by the component) and fades in place (.fading)
    while the sliding column (AppFrame grid tracks) clips it; the rail layout

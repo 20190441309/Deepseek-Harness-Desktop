@@ -10,11 +10,9 @@ The user bubble's IconActions row carried an edit button beside copy and branch.
 
 ## Decision
 
-`MessageIconActions` renders clock / copy / branch only, and its `edit` prop is gone with the button; `MessageItem` no longer passes it. The user bubble and the assistant chrome now differ only by clock side. The package README records the missing capability under Known Limitations, and the web message-actions golden pins the row without the control.
+`MessageIconActions` renders clock / copy / branch only, and its `edit` prop is gone with the button; `MessageItem` no longer passes it. The user bubble and the assistant chrome now differ only by clock side. A plugin may occupy `conversation.chat.user-actions` and `conversation.chat.user-editor` to put the control back; that path is [inline edit then fork-on-confirm](../feature/2026-08-15-inline-user-message-edit.md), not an in-log mutation.
 
 The common locale keeps its generic `edit` term, which is shared vocabulary rather than this component's copy.
-
-Reintroduce the control together with the capability: a client mutation that edits a settled user message and the host behavior that decides what the edited message does to the turn that already consumed it.
 
 ## Alternatives considered
 
@@ -24,4 +22,4 @@ Reintroduce the control together with the capability: a client mutation that edi
 
 ## Consequences
 
-Web offers no way to correct a sent message; branching from the message is the nearest available gesture. Reintroduction is a UI-only change once the mutation exists, since the row composes its actions from props.
+Web core chrome still has no edit button. The shipped reintroduction is a plugin that edits the bubble in place and forks before that message on confirm, because the Host still has no mutation over a settled user event.

@@ -333,6 +333,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the connected session id.',
       },
       {
+        signature: 'connectNoDirectory(): Promise<SessionId>',
+        description: 'Connect a Session that is not a Workspace member: reuse a blank Session whose cwd is the Host scratch directory and whose id is in no Workspace index, else create one with that cwd.',
+        parameters: [],
+        returns: 'the connected session id.',
+      },
+      {
         signature: 'startSession(workspaceId?: WorkspaceId): void',
         description: 'The New Session flow: connect the explicit, current-Session, or recent Workspace and open the resulting session; failures surface on the session list state.',
         parameters: [{ name: 'workspaceId', description: 'explicit target; omitted inherits the current Session\'s Workspace before falling back to the recency projection.' }],

@@ -25,7 +25,7 @@ export const NS = 'settings.remote'
 export const inject = ['slots', 'locale']
 
 /**
- * Contribute the Remote phone control only when the desktop shell exposes remote APIs.
+ * Contribute the Remote control only when the desktop shell exposes remote APIs.
  * @param ctx - client context with slots and locale.
  * @returns nothing; slot registration is an effect when the desktop API is present.
  */
@@ -37,8 +37,8 @@ export function apply(ctx: ClientContext): void {
 
   const injected = (): RemoteSectionInjected => ({
     getRemote: () => shell.getRemote(),
-    saveRemote: (patch) => shell.saveRemote(patch),
-    unbindRemoteDevice: (id) => shell.unbindRemoteDevice(id),
+    saveRemote: patch => shell.saveRemote(patch),
+    unbindRemoteDevice: id => shell.unbindRemoteDevice(id),
   })
 
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({

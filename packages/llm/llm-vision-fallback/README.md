@@ -1,4 +1,5 @@
 # @deepseek-ai/dsh-llm-vision-fallback
+English | [中文](README.zh.md)
 
 A user-designated vision-capable model describes image attachments so a text-only main model (e.g. DeepSeek) can act on them.
 

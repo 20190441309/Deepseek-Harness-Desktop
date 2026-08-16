@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -229,6 +229,21 @@ describe('host.listDirectory / host.createDirectory', () => {
 })
 
 describe('host.openPath', () => {
+  it('advertises a Host-owned scratch directory under DSH_HOME and creates it', async () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-scratch-home-')))
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const { api } = await harness()
+      const described = expectOk(await api.host.describe(request({})))
+      expect(described.scratchCwd).toBe(join(home, 'no-workspace'))
+      expect(statSync(described.scratchCwd).isDirectory()).toBe(true)
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+    }
+  })
+
   it('describes whether this deployment can reach a user-visible native desktop', async () => {
     const visible = await harness(undefined, undefined, { canOpenPath: () => true })
     const headless = await harness(undefined, undefined, { canOpenPath: () => false })

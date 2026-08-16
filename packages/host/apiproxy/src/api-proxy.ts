@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
@@ -2989,10 +2990,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     host: {
-      describe(request) {
+      async describe(request) {
         // TODO: version should read apps/cli's package.json; placeholder for now.
         const selection = defaults.defaultModelSelection()
-        return Promise.resolve(ok(request, {
+        const scratchCwd = dshHomePath('no-workspace')
+        await mkdir(scratchCwd, { recursive: true })
+        return ok(request, {
           version: '0.0.1',
           // Same source as session.create's fallback: the UI's default project
           // must match where an unspecified-cwd session actually lands.
@@ -3003,7 +3006,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           model: selection.model,
           attachedSessions: ctx.agents.list().length,
           canOpenPath: canOpenPaths(),
-        }))
+          scratchCwd,
+        })
       },
 
       async pickDirectory(request, signal) {

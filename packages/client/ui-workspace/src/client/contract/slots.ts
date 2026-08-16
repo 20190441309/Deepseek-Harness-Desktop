@@ -96,6 +96,11 @@ export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
    * Workspace, then the recent Workspace, or clear into the New Session view.
    */
   startSession: (workspaceId?: WorkspaceId) => void
+  /**
+   * Mint or reuse a Session that is not a Workspace member (Host scratch cwd)
+   * and open it. The Tasks-section ＋ uses this instead of {@link startSession}.
+   */
+  connectNoDirectory: () => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
   /**

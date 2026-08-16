@@ -6,9 +6,11 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'group.ungrouped': '未分组',
+  'group.ungrouped': '任务',
   'session.new': '新会话',
   'section.workspaces': '工作区',
+  'section.projects': '项目',
+  'section.tasks': '任务',
   'section.sessions': '会话',
   'viewOptions.label': '视图选项',
   'groupBy.label': '分组方式',
@@ -31,6 +33,7 @@ export const zh = {
   'search.noMatches': '无匹配会话',
   'search.hasMore': '仅显示前 {n} 条结果，请缩小搜索范围。',
   'menu.addWorkspace': '添加工作区…',
+  'menu.noDirectory': '无工作目录',
   'picker.loading': '正在加载工作区…',
   'conflict.named': '已存在名为“{name}”的工作区。',
   'folderError.title': '无法打开文件夹',
@@ -41,7 +44,7 @@ export const zh = {
   'field.workspaceName': '工作区名称',
   'field.sessionName': '会话名称',
   'delete.workspace': '删除工作区',
-  'delete.desc': '将把“{name}”从工作区列表中移除。文件夹与会话记录会保留，其会话将显示在“未分组”下。',
+  'delete.desc': '将把“{name}”从工作区列表中移除。文件夹与会话记录会保留，其会话将显示在“任务”下。',
   'delete.pending': '正在删除工作区…',
   'menu.fork': '分叉会话',
   'menu.archiveSession': '归档会话',
@@ -75,9 +78,11 @@ export type WorkspaceKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
-  'group.ungrouped': 'Ungrouped',
+  'group.ungrouped': 'Tasks',
   'session.new': 'New Session',
   'section.workspaces': 'Workspaces',
+  'section.projects': 'Projects',
+  'section.tasks': 'Tasks',
   'section.sessions': 'Sessions',
   'viewOptions.label': 'View options',
   'groupBy.label': 'Group by',
@@ -100,6 +105,7 @@ export const en = {
   'search.noMatches': 'No matching sessions',
   'search.hasMore': 'Showing the first {n} results. Narrow your search.',
   'menu.addWorkspace': 'Add workspace…',
+  'menu.noDirectory': 'No workspace folder',
   'picker.loading': 'Loading workspaces…',
   'conflict.named': 'A workspace named “{name}” already exists.',
   'folderError.title': 'Couldn’t open folder',
@@ -110,7 +116,7 @@ export const en = {
   'field.workspaceName': 'Workspace name',
   'field.sessionName': 'Session name',
   'delete.workspace': 'Delete workspace',
-  'delete.desc': 'This removes “{name}” from the workspace list. The folder and session logs will be kept. Its sessions will appear under Ungrouped.',
+  'delete.desc': 'This removes “{name}” from the workspace list. The folder and session logs will be kept. Its sessions will appear under Tasks.',
   'delete.pending': 'Deleting workspace…',
   'menu.fork': 'Fork session',
   'menu.archiveSession': 'Archive session',

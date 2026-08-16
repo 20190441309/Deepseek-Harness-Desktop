@@ -55,6 +55,10 @@ export class WorkspaceRuntime implements IWorkspaces {
   private readonly manager: WorkspaceManager
   /** In-flight blank-session creates keyed by workspace (connectWorkspace coalescing). */
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
+  /** In-flight no-directory blank-session create (connectNoDirectory coalescing). */
+  private connectingNone: Promise<SessionId> | undefined
+  /** Host scratch cwd from the last successful `host.describe`. */
+  private scratchCwd: string | undefined
   /** Guards the runtime-owned one-shot initial-selection subscription. */
   private initialSelectionStarted = false
 
@@ -113,6 +117,50 @@ export class WorkspaceRuntime implements IWorkspaces {
       .finally(() => { this.connecting.delete(workspaceId) })
     this.connecting.set(workspaceId, attempt)
     return attempt
+  }
+
+  /**
+   * Resolve the Host scratch directory advertised by `host.describe`.
+   * Cached for the page lifetime; the Host creates the directory on describe.
+   * @returns the scratch cwd.
+   */
+  private async resolveScratchCwd(): Promise<string> {
+    if (this.scratchCwd !== undefined) return this.scratchCwd
+    const response = await this.api.host.describe({})
+    if (!response.result.ok) {
+      throw new Error(`host.describe failed: ${response.result.error.code}: ${response.result.error.message}`)
+    }
+    this.scratchCwd = response.result.value.scratchCwd
+    return this.scratchCwd
+  }
+
+  /**
+   * Resolve the session a no-directory New Session flow lands in: reuse a
+   * blank session whose cwd is the Host scratch directory and whose id is
+   * in no Workspace index, else create one with that cwd. Archived blanks
+   * are never reused. The caller owns navigation.
+   * @returns the reused or newly created session id.
+   */
+  async connectNoDirectory(): Promise<SessionId> {
+    if (this.connectingNone !== undefined) return this.connectingNone
+    const attempt = this.connectNoDirectoryOnce()
+      .finally(() => { this.connectingNone = undefined })
+    this.connectingNone = attempt
+    return attempt
+  }
+
+  private async connectNoDirectoryOnce(): Promise<SessionId> {
+    const cwd = await this.resolveScratchCwd()
+    const archived = this.list.getSnapshot().archivedSessionIds
+    const memberIds = new Set(this.list.getSnapshot().items.flatMap(item => item.sessionIds))
+    const sessions = this.sessions.list.getSnapshot()
+    for (const id of sessions.ids) {
+      const summary = sessions.byId[id]
+      if (summary !== undefined && summary.blank && summary.cwd === cwd
+        && !memberIds.has(summary.id)
+        && !archived.includes(summary.id)) return summary.id
+    }
+    return this.sessions.create({ cwd })
   }
 
   /**

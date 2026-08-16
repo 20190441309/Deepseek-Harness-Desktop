@@ -83,6 +83,7 @@ function mount(
   occupancy = occupancySource(),
 ) {
   const onPick = vi.fn()
+  const onPickNoDirectory = vi.fn()
   const onClose = vi.fn()
   const anchorRef = anchor()
   const { probe, renderSlot } = flowProbe()
@@ -93,6 +94,7 @@ function mount(
       useSessions={hook(sessions)}
       useWorkspaces={hook(workspaceState(nextItems))}
       onPick={onPick}
+      onPickNoDirectory={onPickNoDirectory}
       onClose={onClose}
       createWorkspace={createWorkspace}
       useDirectoryFlow={occupancy.useDirectoryFlow}
@@ -104,7 +106,7 @@ function mount(
     renderPicker(items),
   )
   return {
-    view, onPick, onClose, createWorkspace, probe, occupancy,
+    view, onPick, onPickNoDirectory, onClose, createWorkspace, probe, occupancy,
     rerenderItems: (nextItems: readonly WorkspaceView[]) => { view.rerender(renderPicker(nextItems)) },
   }
 }
@@ -137,14 +139,21 @@ describe('WorkspacePicker', () => {
     expect(screen.queryByTestId('directory-flow')).toBeNull()
   })
 
-  it('raises the flow straight from the anchor gesture when adding is the only entry', () => {
-    // Nothing to list and one action left: a one-row menu would offer no
-    // choice, so the owner's open request lands in the flow itself.
+  it('keeps the menu when the list is empty so No workspace folder and Add workspace are both choices', () => {
     const b = mount([])
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
-    expect(b.onClose).toHaveBeenCalled()
-    expect(screen.getByTestId('directory-flow')).toBeTruthy()
+    expect(screen.getByRole('menu')).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: '无工作目录' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
+    expect(b.onClose).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+  })
+
+  it('selecting No workspace folder does not create a Workspace', () => {
+    const b = mount([workspace('alpha', 'Alpha')])
+    fireEvent.click(screen.getByRole('menuitem', { name: '无工作目录' }))
+    expect(b.onPickNoDirectory).toHaveBeenCalledTimes(1)
+    expect(b.createWorkspace).not.toHaveBeenCalled()
+    expect(b.onPick).not.toHaveBeenCalled()
   })
 
   it('treats flow cancellation as a silent no-op', () => {
@@ -180,10 +189,12 @@ describe('WorkspacePicker', () => {
     // The flow is open but nothing is picked yet: a chooser pending on the
     // host display must already block concurrent workspace actions.
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: 'Alpha' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '无工作目录' }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '添加工作区…' }).disabled).toBe(true)
     act(() => { b.probe.owner!.onPicked('/tmp/project') })
     expect(b.probe.owner!.busy).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: 'Alpha' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '无工作目录' }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '添加工作区…' }).disabled).toBe(true)
     await act(async () => { resolve(created); await pending })
     expect(b.probe.owner!.busy).toBe(false)
@@ -211,7 +222,7 @@ describe('WorkspacePicker', () => {
     render(
       <WorkspacePicker
         open useSessions={hook(sessions)} useWorkspaces={hook(workspaceState([workspace('alpha', 'Alpha')]))}
-        onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
+        onPick={vi.fn()} onPickNoDirectory={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
         useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
       />,
     )
@@ -226,7 +237,7 @@ describe('WorkspacePicker', () => {
     render(
       <WorkspacePicker
         open anchorRef={anchor()} useSessions={hook(sessions)} useWorkspaces={hook(state)}
-        onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
+        onPick={vi.fn()} onPickNoDirectory={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
         useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
       />,
     )
@@ -237,12 +248,10 @@ describe('WorkspacePicker', () => {
     expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
   })
 
-  it('shows no popover at all when nothing is listed and nothing can be added', () => {
-    // A composition mounting this package without any directory-picker: the
-    // hero anchor has neither a Workspace to pick nor a way to add one, so it
-    // must not claim a choice with an empty menu.
+  it('still offers No workspace folder when nothing is listed and nothing can be added', () => {
     const b = mount([], vi.fn(), occupancySource(false))
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '无工作目录' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
     expect(screen.queryByTestId('directory-flow')).toBeNull()
     expect(b.createWorkspace).not.toHaveBeenCalled()
   })

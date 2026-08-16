@@ -71,6 +71,12 @@ export function apply(ctx: ClientContext): void {
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { ctx.workspaces.startSession(workspaceId) },
+    connectNoDirectory: () => {
+      void ctx.workspaces.connectNoDirectory().then(
+        (sessionId) => { ctx.sessions.open(sessionId) },
+        (reason: unknown) => { console.warn('no-directory session failed:', reason) },
+      )
+    },
     open: (sessionId) => { ctx.sessions.open(sessionId) },
     searchSessions,
     searchResultLimit: ctx.sessions.searchResultLimit,

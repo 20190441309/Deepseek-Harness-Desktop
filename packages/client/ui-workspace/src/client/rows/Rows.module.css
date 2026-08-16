@@ -154,6 +154,20 @@
 .projectRow:hover .chevron { display: inline-flex; }
 .projectRow:hover .folder { display: none; }
 
+/* Tasks section: chevron stays visible (there is no folder to swap). */
+.tasksSection .chevron,
+.tasksSection.projectRow .chevron,
+.tasksSection .tasksChevron {
+  display: inline-flex;
+}
+
+.tasksSection .title {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 /* Expand arrow (filled triangle): points right closed, rotates to point down open. */
 .arrow {
   transition: transform 150ms var(--ds-ease-in-out);

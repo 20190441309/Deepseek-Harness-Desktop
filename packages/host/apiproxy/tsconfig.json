@@ -12,6 +12,9 @@
       "path": "../../goal/goal"
     },
     {
+      "path": "../../util/home-paths"
+    },
+    {
       "path": "../../settings/settings"
     },
     {
