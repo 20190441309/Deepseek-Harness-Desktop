@@ -4,13 +4,13 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已撤回，不要再装。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已撤回，不要再装。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-0.2.1 相对 0.1.3：
+下一版（源码已合入，安装包尚未发布）将包含：
 
 1. 设置 → MCP、设置 → 技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。文件菜单也有入口。
 2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（可搜索）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
@@ -111,11 +111,9 @@
 
 ## 安装
 
-只想用的话，去 [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1) 下载安装包，装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
+只想用的话，去 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 下载 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-0.1.3.exe`），装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
 
-- Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.1.exe`
-- macOS Apple Silicon（arm64）：`Deepseek-Harness-Desktop-0.2.1-mac-arm64.dmg`。包未签名，下载后请右键点「打开」，或先执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`。Intel Mac 暂未提供安装包。
-- Linux 请从源码运行。
+目前对外仍只提供 Windows x64 安装包；macOS / Linux 请从源码运行。
 
 ## 从源码跑
 
