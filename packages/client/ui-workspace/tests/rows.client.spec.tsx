@@ -4,8 +4,9 @@ import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-l
 import type { SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { PRESENCE_EXIT_MS } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RowDragProps } from '../src/client/rows/Rows.tsx'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from '../src/client/rows/Rows.tsx'
+import { GroupSessionRun, ProjectRowItem, SearchResultItem, SessionNodeItem } from '../src/client/rows/Rows.tsx'
 import type { GroupNode, SearchResultNode, SessionNode } from '../src/client/tree.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -126,6 +127,25 @@ describe('workspace browser rows', () => {
     expect(onToggle).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
+  })
+
+  it('does not mount a grouped session run before the first expand', () => {
+    render(<GroupSessionRun open={false}><span>held row</span></GroupSessionRun>)
+    expect(screen.queryByText('held row')).toBeNull()
+  })
+
+  it('keeps a grouped session run mounted through fade exit', () => {
+    vi.useFakeTimers()
+    const { rerender } = render(<GroupSessionRun open><span>held row</span></GroupSessionRun>)
+    act(() => { vi.advanceTimersToNextFrame(); vi.advanceTimersToNextFrame() })
+    expect(screen.getByText('held row').closest('[data-dsh-motion]')?.getAttribute('data-state')).toBe('open')
+    rerender(<GroupSessionRun open={false}><span>held row</span></GroupSessionRun>)
+    const run = screen.getByText('held row').closest('[data-dsh-motion]')
+    expect(run?.getAttribute('aria-hidden')).toBe('true')
+    expect(run?.getAttribute('data-state')).toBe('closed')
+    act(() => { vi.advanceTimersByTime(PRESENCE_EXIT_MS) })
+    expect(screen.queryByText('held row')).toBeNull()
+    vi.useRealTimers()
   })
 
   it('renders and opens a selected running Session row', () => {

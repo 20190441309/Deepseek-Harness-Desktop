@@ -13,7 +13,7 @@ export type TerminalSurfaceProps =
 
 /**
  * Right-panel Terminal occupant of `surfaces.terminal` (declared by Task 6).
- * @param props - session-maybe seats, the shared store, and PTY IPC.
+ * @param props - session-maybe seats, this shell's store, and PTY IPC.
  * @returns the surface chrome, or nothing before a session exists.
  */
 export function TerminalSurface(props: TerminalSurfaceProps): ReactNode {
@@ -30,6 +30,11 @@ export function TerminalSurface(props: TerminalSurfaceProps): ReactNode {
       ptyKill={props.ptyKill}
       toggleTerminalDrawer={props.toggleTerminalDrawer}
       setTerminalDrawer={props.setTerminalDrawer}
+      mentionTerminal={props.mentionTerminal}
+      writeClipboard={props.writeClipboard}
+      openWorkspacePath={props.openWorkspacePath}
+      openLocalUrl={props.openLocalUrl}
+      openExternal={props.openExternal}
       t={props.t}
     />
   )

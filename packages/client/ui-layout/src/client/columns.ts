@@ -49,11 +49,11 @@ export const DETAILS_MAX = 520
 /** Details width before any user drag. */
 export const DETAILS_DEFAULT = 360
 /** Surfaces drag clamp floor. */
-export const SURFACES_MIN = 320
-/** Surfaces drag clamp ceiling. */
-export const SURFACES_MAX = 560
+export const SURFACES_MIN = 360
+/** Surfaces store clamp ceiling; high enough that 70vw on a large desktop still fits. */
+export const SURFACES_MAX = 1400
 /** Surfaces width before any user drag. */
-export const SURFACES_DEFAULT = 400
+export const SURFACES_DEFAULT = 540
 /** Terminal drawer height clamp floor. */
 export const TERMINAL_DRAWER_MIN = 180
 /** Terminal drawer height before any user drag. */
@@ -71,10 +71,21 @@ export function clampWidth(px: number, min: number, max: number): number {
 }
 
 /**
+ * Viewport-relative surfaces ceiling: 70% of the frame, inside SURFACES_MIN..SURFACES_MAX.
+ * @param viewport - available frame width in px.
+ * @returns the clamp ceiling for an open surfaces preference at this viewport.
+ */
+export function surfacesMaxForViewport(viewport: number): number {
+  return Math.max(SURFACES_MIN, Math.min(SURFACES_MAX, Math.floor(viewport * 0.7)))
+}
+
+/**
  * Solve the four column widths for one viewport frame. Pure: no hysteresis —
  * the output is a function of (viewport, preferences) only, so recovery on
  * re-widening is automatic. Preferences re-clamp here because they cross the
  * store boundary and callers may still supply stale ranges.
+ * An open surfaces preference also clamps to 70% of the viewport
+ * (`surfacesMaxForViewport`) before the concession chain runs.
  * @param viewport - available frame width in px.
  * @param sidebar - sidebar width preference in px (0 = closed).
  * @param details - details width preference in px (0 = closed).
@@ -85,7 +96,7 @@ export function computeColumns(viewport: number, sidebar: number, details: numbe
   // The sidebar is fixed at its preference (or the rail) — it never concedes.
   const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
   const d0 = details === 0 ? 0 : clampWidth(details, DETAILS_MIN, DETAILS_MAX)
-  const surf0 = surfaces === 0 ? 0 : clampWidth(surfaces, SURFACES_MIN, SURFACES_MAX)
+  const surf0 = surfaces === 0 ? 0 : clampWidth(surfaces, SURFACES_MIN, surfacesMaxForViewport(viewport))
 
   // Step 1: everything fits at preferred widths.
   if (s + d0 + surf0 + CENTER_MIN <= viewport) {

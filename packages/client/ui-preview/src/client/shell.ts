@@ -16,11 +16,35 @@ export interface PreviewResult {
   message?: string
 }
 
+/** Navigation / history snapshot for one guest. */
+export interface PreviewNavState {
+  ok: boolean
+  id?: string
+  url?: string
+  canGoBack?: boolean
+  canGoForward?: boolean
+  message?: string
+}
+
+/** One discovered loopback server. */
+export interface DiscoveredServer {
+  url: string
+  port: number
+}
+
 /** Injected preview callbacks. */
 export interface PreviewShellInjected {
   previewAvailable: boolean
   previewOpen: (input: { url: string; bounds?: PreviewBounds }) => Promise<PreviewResult>
   previewNavigate: (id: string, url: string) => Promise<PreviewResult>
+  previewBack: (id: string) => Promise<PreviewNavState>
+  previewForward: (id: string) => Promise<PreviewNavState>
+  previewReload: (id: string) => Promise<PreviewNavState>
+  previewState: (id: string) => Promise<PreviewNavState>
+  onPreviewStateChange: (handler: (state: PreviewNavState) => void) => () => void
+  previewOpenDevTools: (id: string) => Promise<{ ok: boolean; id?: string }>
+  previewDiscover: () => Promise<DiscoveredServer[]>
+  openExternal: (url: string) => Promise<unknown>
   previewResize: (id: string, bounds: PreviewBounds) => Promise<void>
   previewHide: (id: string) => Promise<void>
   previewShow: (id: string, bounds?: PreviewBounds) => Promise<void>
@@ -30,6 +54,14 @@ export interface PreviewShellInjected {
 interface PreviewShell {
   previewOpen?: PreviewShellInjected['previewOpen']
   previewNavigate?: PreviewShellInjected['previewNavigate']
+  previewBack?: PreviewShellInjected['previewBack']
+  previewForward?: PreviewShellInjected['previewForward']
+  previewReload?: PreviewShellInjected['previewReload']
+  previewState?: PreviewShellInjected['previewState']
+  onPreviewStateChange?: PreviewShellInjected['onPreviewStateChange']
+  previewOpenDevTools?: PreviewShellInjected['previewOpenDevTools']
+  previewDiscover?: PreviewShellInjected['previewDiscover']
+  openExternal?: PreviewShellInjected['openExternal']
   previewResize?: PreviewShellInjected['previewResize']
   previewHide?: PreviewShellInjected['previewHide']
   previewShow?: PreviewShellInjected['previewShow']
@@ -53,6 +85,18 @@ export function readPreviewShell(): PreviewShellInjected {
     previewAvailable: typeof shell?.previewOpen === 'function',
     previewOpen: input => shell?.previewOpen?.(input) ?? Promise.resolve(missing()),
     previewNavigate: (id, url) => shell?.previewNavigate?.(id, url) ?? Promise.resolve(missing()),
+    previewBack: id => shell?.previewBack?.(id) ?? Promise.resolve(missing()),
+    previewForward: id => shell?.previewForward?.(id) ?? Promise.resolve(missing()),
+    previewReload: id => shell?.previewReload?.(id) ?? Promise.resolve(missing()),
+    previewState: id => shell?.previewState?.(id) ?? Promise.resolve(missing()),
+    onPreviewStateChange: handler => (
+      typeof shell?.onPreviewStateChange === 'function'
+        ? shell.onPreviewStateChange(handler)
+        : () => {}
+    ),
+    previewOpenDevTools: id => shell?.previewOpenDevTools?.(id) ?? Promise.resolve({ ok: false }),
+    previewDiscover: () => shell?.previewDiscover?.() ?? Promise.resolve([]),
+    openExternal: url => shell?.openExternal?.(url) ?? Promise.resolve(),
     previewResize: (id, bounds) => shell?.previewResize?.(id, bounds) ?? Promise.resolve(),
     previewHide: id => shell?.previewHide?.(id) ?? Promise.resolve(),
     previewShow: (id, bounds) => shell?.previewShow?.(id, bounds) ?? Promise.resolve(),

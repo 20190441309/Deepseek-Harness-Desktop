@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { defaultMounter, McpServersFile } from '../src/service.ts'
 import type { ChildHandle, McpClientMounter } from '../src/service.ts'
+import { reportMcpClientStatus } from '@deepseek-ai/dsh-mcp-client'
 import type { Config as McpClientConfig } from '@deepseek-ai/dsh-mcp-client'
 
 const contexts: Context[] = []
@@ -31,6 +32,36 @@ function trackingMounter(mounted: McpClientConfig[]): McpClientMounter {
 }
 
 describe('McpServersFile', () => {
+  it('exposes live child and composition connection health by serverName', async () => {
+    const dshHome = await home()
+    const ctx = new Context()
+    contexts.push(ctx)
+    const mounted: McpClientConfig[] = []
+    const service = new McpServersFile(ctx, { dshHome, watch: false })
+    service.useMounter(trackingMounter(mounted))
+    const stop = service.start()
+    await service.upsert({
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    })
+
+    // No mcp-client has reported for either server yet.
+    expect(service.childHealth('github')).toBeUndefined()
+    expect(service.connectionStatus('github')).toBeUndefined()
+    expect(service.childHealth('missing-id')).toBeUndefined()
+
+    reportMcpClientStatus(ctx.root, 'github', { health: 'reconnecting', lastError: 'Error: spawn failed' })
+    expect(service.childHealth('github')).toMatchObject({ health: 'reconnecting', lastError: 'Error: spawn failed' })
+    expect(service.connectionStatus('github')).toMatchObject({ health: 'reconnecting' })
+
+    reportMcpClientStatus(ctx.root, 'github', undefined)
+    expect(service.childHealth('github')).toBeUndefined()
+    stop()
+  })
+
   it('loads an absent file as empty and writes an upsert', async () => {
     const dshHome = await home()
     const ctx = new Context()

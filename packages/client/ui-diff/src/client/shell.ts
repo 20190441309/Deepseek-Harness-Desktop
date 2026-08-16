@@ -39,23 +39,46 @@ export interface GitStatusEntriesResult {
   entries?: GitStatusEntry[]
 }
 
+/** One ref from `gitBranchList`. */
+export interface DiffBranchRef {
+  name: string
+  isRemote?: boolean
+  isCurrent?: boolean
+  isDefault?: boolean
+}
+
+/** gitBranchList IPC result. */
+export interface GitBranchListResult {
+  ok: boolean
+  message?: string
+  branches?: DiffBranchRef[]
+  defaultRef?: string | null
+}
+
+/** Optional three-dot range for `gitDiff`. */
+export interface GitDiffOptions {
+  baseRef?: string
+}
+
 /** Injected git probes. */
 export interface DiffShellInjected {
   gitStatus: (cwd: string) => Promise<unknown>
-  gitDiff: (cwd: string) => Promise<GitDiffResult | null>
+  gitDiff: (cwd: string, options?: GitDiffOptions) => Promise<GitDiffResult | null>
   gitStatusEntries: (cwd: string) => Promise<GitStatusEntriesResult | null>
   gitStage: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
   gitUnstage: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
   gitDiscard: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitBranchList: (cwd: string) => Promise<GitBranchListResult | null>
 }
 
 interface DiffShell {
   gitStatus?: (cwd: string) => Promise<unknown>
-  gitDiff?: (cwd: string) => Promise<GitDiffResult | null>
+  gitDiff?: (cwd: string, options?: GitDiffOptions) => Promise<GitDiffResult | null>
   gitStatusEntries?: (cwd: string) => Promise<GitStatusEntriesResult | null>
   gitStage?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
   gitUnstage?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
   gitDiscard?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitBranchList?: (cwd: string) => Promise<GitBranchListResult | null>
 }
 
 function missingOp(): Promise<{ ok: boolean; message?: string }> {
@@ -73,8 +96,9 @@ export function readDiffShell(): DiffShellInjected {
     : (window as Window & { shell?: DiffShell }).shell
   return {
     gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
-    gitDiff: cwd => shell?.gitDiff?.(cwd) ?? Promise.resolve(null),
+    gitDiff: (cwd, options) => shell?.gitDiff?.(cwd, options) ?? Promise.resolve(null),
     gitStatusEntries: cwd => shell?.gitStatusEntries?.(cwd) ?? Promise.resolve(null),
+    gitBranchList: cwd => shell?.gitBranchList?.(cwd) ?? Promise.resolve(null),
     gitStage: (cwd, relativePath) => shell?.gitStage?.(cwd, relativePath) ?? missingOp(),
     gitUnstage: (cwd, relativePath) => shell?.gitUnstage?.(cwd, relativePath) ?? missingOp(),
     gitDiscard: (cwd, relativePath) => shell?.gitDiscard?.(cwd, relativePath) ?? missingOp(),

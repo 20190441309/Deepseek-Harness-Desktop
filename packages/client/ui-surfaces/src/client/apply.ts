@@ -22,6 +22,22 @@ export interface FilesOwnerProps {
 /** Owner props the single-file occupant receives. */
 export interface FileOwnerProps {
   relativePath: string
+  /** True while this file surface is the active tab (reread on activate). */
+  active: boolean
+  /** Report whether the editor has unsaved changes (for tab-close confirm). */
+  onDirtyChange: (dirty: boolean) => void
+  /** Read a remembered buffer for this file (survives occupant remount / session switches). */
+  readBuffer: () => { text: string; draft: string } | undefined
+  /** Remember or clear the in-memory buffer for this file. */
+  writeBuffer: (buffer: { text: string; draft: string } | null) => void
+  /** Register a save that returns whether the write succeeded (tab-close Save). */
+  registerSave: (save: (() => Promise<boolean>) | null) => void
+}
+
+/** Owner props the Browser occupant receives so tab switches hide the guest. */
+export interface BrowserOwnerProps {
+  /** True while this preview surface is the active tab. */
+  active: boolean
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -33,7 +49,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Browser / preview occupant. ui-preview injects here.
      */
-    'surfaces.browser': { kind: 'single'; scope: 'session-maybe'; owner: {} }
+    'surfaces.browser': { kind: 'single'; scope: 'session-maybe'; owner: BrowserOwnerProps }
     /**
      * Terminal occupant. ui-user-terminal already injects here; kind and
      * scope must stay `single` + `session-maybe` so that inject attaches.

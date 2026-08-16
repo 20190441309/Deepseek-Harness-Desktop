@@ -108,9 +108,9 @@
 .sessionRow {
   height: 32px;
   gap: 0;
-  /* Mount fade: session rows appear by unfolding a group (or the tree
-     mounting). Stable row keys keep already-visible rows from replaying it. */
-  animation: row-in 150ms var(--ds-ease-in-out);
+  /* Flat-list / first-mount fade. Grouped rows skip this: GroupSessionRun
+     owns enter/exit through the shared fade recipe. */
+  animation: row-in var(--ds-motion-duration-swap) var(--ds-ease-in-out);
 }
 
 .sessionRow .title {
@@ -170,7 +170,36 @@
 
 /* Expand arrow (filled triangle): points right closed, rotates to point down open. */
 .arrow {
-  transition: transform 150ms var(--ds-ease-in-out);
+  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+/* Grouped session run: fade recipe on the outer node; 0fr/1fr on the track
+   so rows below slide with the official duration token, not a height tween. */
+.sessionRunFade {
+  min-width: 0;
+}
+
+.sessionRun {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.sessionRun[data-state='closed'] {
+  grid-template-rows: 0fr;
+}
+
+.sessionRunInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sessionRunInner > * + * {
+  margin-top: 2px;
+}
+
+.sessionRunInner .sessionRow {
+  animation: none;
 }
 
 .arrowOpen {

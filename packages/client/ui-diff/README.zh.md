@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-右边栏 Diff occupant，挂在 `surfaces.diff`（`single`，`session-maybe`，由 ui-surfaces 声明）。展示工作区变更列表和统一 diff hunk，数据来自桌面 `window.shell.gitDiff(cwd)`。有 porcelain `gitStatusEntries` 时按已暂存／未暂存分组，并提供暂存、取消暂存、还原。点击文件名调用 owner `openFile`。`gitStatus(cwd)` 为 null 时显示 T3code 理由：`Diff is only available for server threads in Git repositories.` 约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
+右边栏 Diff occupant，挂在 `surfaces.diff`（`single`，`session-maybe`，由 ui-surfaces 声明）。展示工作区变更列表和统一 diff hunk，数据来自桌面 `window.shell.gitDiff(cwd)`。工作区 hunk 是 `git diff HEAD`（同一文件的暂存与未暂存合并）。范围菜单在「工作区」（porcelain 暂存／取消暂存／还原；未跟踪还原走 `git clean -f`，目录 `-fd`）和「分支」（`gitDiff(cwd, { baseRef })` 三点范围，不改 index）之间切换。暂存／取消暂存／还原失败时文件列表仍在，并显示 `opError` 横幅。分支 Menu 可搜索全部列出的引用。全部折叠／全部展开切换 hunk。点击文件名调用 owner `openFile`。`gitStatus(cwd)` 为 null 时显示：`差异仅适用于 Git 仓库。` 约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
 工作区根是当前会话的 `cwd`，只通过一次 `useSessions` 读取。渲染进程不加载 Node。
 
@@ -18,5 +18,5 @@
 
 ## 已知限制与暂缓事项
 
-- **只看工作区**：没有 turn diff、分支基线选择，也没有左右分栏。
+- **没有 turn diff、左右分栏、忽略空白或折行**：分支范围只做 `baseRef...HEAD`；没有 checkpoint 回合范围。不移植 T3 的分栏／折行／忽略空白开关。
 - **标题栏 Commit 不变**：Diff 上的暂存／取消暂存／还原不替代 `git add -A`。

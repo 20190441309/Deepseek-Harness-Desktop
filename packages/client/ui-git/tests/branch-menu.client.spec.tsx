@@ -6,6 +6,7 @@ import {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
   orderBranchRefs,
+  resolveAutoFeatureBranchName,
   shouldIncludeBranchPickerItem,
   type BranchRef,
 } from '../src/client/branches.ts'
@@ -47,6 +48,16 @@ describe('branches pure logic (ported from T3code, MIT)', () => {
     expect(orderBranchRefs(refs).map(ref => ref.name)).toEqual(['main', 'b', 'origin/z'])
   })
 
+  it('picks a unique feature/update name', () => {
+    expect(resolveAutoFeatureBranchName([])).toBe('feature/update')
+    expect(resolveAutoFeatureBranchName(['feature/update'])).toBe('feature/update-2')
+    expect(resolveAutoFeatureBranchName(['feature/update', 'feature/update-2'])).toBe('feature/update-3')
+    expect(resolveAutoFeatureBranchName(['feature/update', 'feature/update-2'], 'demo')).toBe('feature/demo')
+    expect(resolveAutoFeatureBranchName([], 'feature/demo')).toBe('feature/demo')
+    expect(resolveAutoFeatureBranchName([], 'foo/bar')).toBe('feature/foo/bar')
+    expect(resolveAutoFeatureBranchName([], 'Add README.md')).toBe('feature/add-readme-md')
+  })
+
   it('keeps the create row visible for any query', () => {
     expect(shouldIncludeBranchPickerItem({
       itemValue: '__create__:x',
@@ -77,6 +88,7 @@ function mountMenu(overrides: Partial<BranchMenuProps> = {}) {
   const gitSwitchBranch = overrides.gitSwitchBranch ?? vi.fn(async () => ({ ok: true, refName: 'feature/qa' }))
   const gitCreateBranch = overrides.gitCreateBranch ?? vi.fn(async () => ({ ok: true, refName: 'qa-2' }))
   const onChanged = overrides.onChanged ?? vi.fn()
+  const onError = overrides.onError ?? vi.fn()
   const props: BranchMenuProps = {
     cwd: 'C:/proj',
     currentRef: 'main',
@@ -85,10 +97,11 @@ function mountMenu(overrides: Partial<BranchMenuProps> = {}) {
     gitSwitchBranch,
     gitCreateBranch,
     onChanged,
+    onError,
     ...overrides,
   }
   render(<BranchMenu {...props} />)
-  return { gitBranchList, gitSwitchBranch, gitCreateBranch, onChanged }
+  return { gitBranchList, gitSwitchBranch, gitCreateBranch, onChanged, onError }
 }
 
 describe('BranchMenu', () => {
@@ -96,63 +109,78 @@ describe('BranchMenu', () => {
     const b = mountMenu()
     expect(screen.getByRole('button', { name: 'Switch branch' }).textContent).toContain('main')
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    expect(await screen.findByText('feature/qa')).toBeTruthy()
-    expect(await screen.findByText('current')).toBeTruthy()
+    expect(await screen.findByRole('menuitem', { name: 'feature/qa' })).toBeTruthy()
+    expect(await screen.findByRole('menuitem', { name: 'main' })).toBeTruthy()
     expect(b.gitBranchList).toHaveBeenCalledWith('C:/proj')
+  })
+
+  it('opens the shared Menu with a filter and branch rows', async () => {
+    mountMenu()
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    expect(await screen.findByRole('menuitem', { name: 'feature/qa' })).toBeTruthy()
+    expect(screen.getByRole('searchbox', { name: 'Search branches…' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Create and checkout new branch…' })).toBeTruthy()
   })
 
   it('filters by query and offers create for unknown names', async () => {
     mountMenu()
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    await screen.findByText('feature/qa')
-    fireEvent.change(screen.getByPlaceholderText('Search branches…'), { target: { value: 'qa-2' } })
-    expect(screen.queryByText('feature/qa')).toBeNull()
-    expect(screen.getByText(/Create and checkout/).textContent).toContain('qa-2')
+    await screen.findByRole('menuitem', { name: 'feature/qa' })
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search branches…' }), { target: { value: 'qa-2' } })
+    expect(screen.queryByRole('menuitem', { name: 'feature/qa' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: /Create and checkout branch/ }).textContent).toContain('qa-2')
   })
 
   it('switches on row click and notifies the parent', async () => {
     const b = mountMenu()
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    fireEvent.click(await screen.findByText('feature/qa'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'feature/qa' }))
     await waitFor(() => { expect(b.gitSwitchBranch).toHaveBeenCalledWith('C:/proj', 'feature/qa') })
     await waitFor(() => { expect(b.onChanged).toHaveBeenCalled() })
   })
 
-  it('creates the typed branch from the create row', async () => {
+  it('opens the create dialog from the footer and creates the named branch', async () => {
     const b = mountMenu()
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    await screen.findByText('feature/qa')
-    fireEvent.change(screen.getByPlaceholderText('Search branches…'), { target: { value: 'qa-2' } })
-    fireEvent.click(screen.getByText(/Create and checkout/))
+    await screen.findByRole('menuitem', { name: 'feature/qa' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create and checkout new branch…' }))
+    expect(await screen.findByRole('dialog', { name: 'Create and checkout new branch' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Branch name' }), {
+      target: { value: 'qa-2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create and switch' }))
     await waitFor(() => { expect(b.gitCreateBranch).toHaveBeenCalledWith('C:/proj', 'qa-2') })
   })
 
-  it('always shows the create entry; the hint focuses the search box', async () => {
+  it('prefills the create dialog from the typed query', async () => {
     const b = mountMenu()
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    await screen.findByText('feature/qa')
-    // Hint variant before a name is typed; clicking it focuses the input.
-    const hint = screen.getByRole('button', { name: 'Create and checkout new branch…' })
-    expect(hint.textContent).not.toContain('qa')
-    fireEvent.click(hint)
-    const input = screen.getByPlaceholderText('Search branches…')
-    expect(document.activeElement).toBe(input)
-    // An existing local name keeps the hint variant instead of offering create.
-    fireEvent.change(input, { target: { value: 'main' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create and checkout new branch…' }))
-    expect(b.gitCreateBranch).not.toHaveBeenCalled()
+    await screen.findByRole('menuitem', { name: 'feature/qa' })
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search branches…' }), { target: { value: 'qa-2' } })
+    fireEvent.click(screen.getByRole('menuitem', { name: /Create and checkout branch/ }))
+    expect(await screen.findByRole('dialog', { name: 'Create and checkout new branch' })).toBeTruthy()
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Branch name' }).value).toBe('qa-2')
+    fireEvent.click(screen.getByRole('button', { name: 'Create and switch' }))
+    await waitFor(() => { expect(b.gitCreateBranch).toHaveBeenCalledWith('C:/proj', 'qa-2') })
   })
 
-  it('keeps the panel open with an alert when the switch fails', async () => {
+  it('reports switch failure on the parent error toast', async () => {
     const b = mountMenu({
       gitSwitchBranch: vi.fn(async () => ({ ok: false, message: 'checkout failed' })),
     })
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    fireEvent.click(await screen.findByText('feature/qa'))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('checkout failed')
-    // The panel stays open so the failure is visible.
-    expect(screen.getByPlaceholderText('Search branches…')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'feature/qa' }))
+    await waitFor(() => {
+      expect(b.onError).toHaveBeenCalledWith('checkout failed', 'Failed to switch branch.')
+    })
+    expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
     expect(b.gitSwitchBranch).toHaveBeenCalled()
+  })
+
+  it('disables the trigger while a stacked Git action holds the titlebar', () => {
+    mountMenu({ disabled: true })
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    expect(screen.queryByRole('menuitem')).toBeNull()
   })
 })

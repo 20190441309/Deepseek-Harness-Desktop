@@ -60,11 +60,18 @@ describe('ui-git apply', () => {
     const b = await bench()
     const injected = (b.slots.entries('shell.titlebar.trailing')[0]?.inject as unknown as () => GitActionsInjected)()
     await expect(injected.gitStatus('/tmp')).resolves.toBeNull()
+    await expect(injected.gitFetchForStatus('/tmp')).resolves.toBeNull()
+    await expect(injected.gitReadPullRequest('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.', pr: null,
+    })
     await expect(injected.gitInit('/tmp')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
     })
     await expect(injected.gitCommit('/tmp', 'msg')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitChangedFiles('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.', files: [],
     })
     await expect(injected.gitPush('/tmp')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
@@ -75,7 +82,18 @@ describe('ui-git apply', () => {
     await expect(injected.gitCreateChangeRequest('/tmp', { title: 't', body: '' })).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
     })
+    await expect(injected.gitBranchList('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.', branches: [],
+    })
+    await expect(injected.gitSwitchBranch('/tmp', 'main')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitCreateBranch('/tmp', 'feature/x')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
     await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
+    expect(typeof injected.onGitProgress(() => {})).toBe('function')
+    injected.onGitProgress(() => {})()
     await b.fiber.dispose()
   })
 })

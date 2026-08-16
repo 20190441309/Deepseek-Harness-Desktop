@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Button,
   IconBranchOutline16,
   IconChevronDownOutline14,
+  IconCloudUploadOutline16,
   IconCommitOutline16,
   IconPullRequestOutline16,
-  IconPushOutline16,
   Menu,
   Modal,
   Tooltip,
@@ -15,32 +15,52 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {
   DefaultBranchConfirmableAction,
   GitActionIconName,
+  GitProgressEvent,
   GitResult,
   GitStackedAction,
+  StackedActionResult,
   VcsStatus,
 } from './git-logic.ts'
 import {
+  attachOpenPrForCta,
+  buildGitActionProgressStages,
   buildMenuItems,
+  getChangeRequestTerminology,
+  getMenuActionDisabledReason,
+  GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS,
   requiresDefaultBranchConfirmation,
+  resolveCompletionCta,
   resolveQuickAction,
+  summarizeGitActionResult,
+  supportsGitHubChangeRequests,
+  toastFailureDescription,
 } from './git-logic.ts'
 import { NS } from './locales.ts'
 import { BranchMenu } from './BranchMenu.tsx'
 import type { BranchRef } from './branches.ts'
+import { CommitDialog, type CommitFileRow } from './CommitDialog.tsx'
+import { GitProgressToast, type GitProgressState } from './GitProgressToast.tsx'
+import { PublishDialog } from './PublishDialog.tsx'
 import css from './GitActionsControl.module.css'
 
 /** Desktop git IPC the plugin injects from `window.shell`. */
 export interface GitActionsInjected {
   gitStatus: (cwd: string) => Promise<VcsStatus | null>
+  gitFetchForStatus: (cwd: string) => Promise<VcsStatus | null>
+  gitReadPullRequest: (cwd: string) => Promise<GitResult & { pr?: VcsStatus['pr'] }>
   gitInit: (cwd: string) => Promise<GitResult>
-  gitCommit: (cwd: string, message: string) => Promise<GitResult>
-  gitPush: (cwd: string) => Promise<GitResult>
-  gitPull: (cwd: string) => Promise<GitResult>
-  gitCreateChangeRequest: (cwd: string, input: { title: string; body: string }) => Promise<GitResult>
+  gitCommit: (cwd: string, message: string, filePaths?: readonly string[], actionId?: number, options?: { featureBranch?: boolean }) => Promise<GitResult>
+  gitChangedFiles: (cwd: string) => Promise<GitResult & { files?: CommitFileRow[] }>
+  gitPush: (cwd: string, actionId?: number) => Promise<GitResult>
+  gitPull: (cwd: string, actionId?: number) => Promise<GitResult>
+  onGitProgress: (handler: (event: GitProgressEvent) => void) => () => void
+  gitCreateChangeRequest: (cwd: string, input?: { title?: string; body?: string }, actionId?: number) => Promise<GitResult>
+  gitPublishRepository: (cwd: string, input: { name: string; visibility: 'public' | 'private'; remoteUrl?: string }, actionId?: number) => Promise<GitResult>
   gitBranchList: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: BranchRef[] }>
   gitSwitchBranch: (cwd: string, ref: string) => Promise<GitResult & { refName?: string }>
   gitCreateBranch: (cwd: string, name: string) => Promise<GitResult & { refName?: string }>
   openExternal: (url: string) => Promise<boolean>
+  openWorkspacePath: (cwd: string, relativePath: string) => Promise<GitResult>
 }
 
 export type GitActionsProps =
@@ -53,6 +73,7 @@ interface PendingDefaultBranchAction {
   branchName: string
   includesCommit: boolean
   commitMessage?: string
+  filePaths?: readonly string[]
 }
 
 function localizeGitLabel(label: string, t: GitActionsProps['t']): string {
@@ -78,15 +99,12 @@ function localizeGitLabel(label: string, t: GitActionsProps['t']): string {
 
 function iconFor(name: GitActionIconName): ReactNode {
   if (name === 'commit') return <IconCommitOutline16 size={14} />
-  if (name === 'push') return <IconPushOutline16 size={14} />
+  if (name === 'push') return <IconCloudUploadOutline16 size={14} />
   return <IconPullRequestOutline16 size={14} />
 }
 
 function quickIcon(action: { kind: string; action?: string; label: string }): GitActionIconName {
-  if (action.kind === 'run_pull') return 'push'
-  if (action.kind === 'open_pr' || action.action === 'create_pr' || action.action === 'commit_push_pr') {
-    return 'pr'
-  }
+  if (action.kind === 'open_pr') return 'pr'
   if (action.action === 'commit' || action.label === 'Commit') return 'commit'
   return 'push'
 }
@@ -94,8 +112,10 @@ function quickIcon(action: { kind: string; action?: string; label: string }): Gi
 function localizeDefaultBranchDialog(
   pending: PendingDefaultBranchAction,
   t: GitActionsProps['t'],
+  terms: ReturnType<typeof getChangeRequestTerminology>,
 ): { title: string; description: string; continueLabel: string } {
   const branch = pending.branchName
+  const kind = terms.shortLabel
   const isPush = pending.action === 'push' || pending.action === 'commit_push'
   if (isPush) {
     if (pending.includesCommit) {
@@ -113,15 +133,15 @@ function localizeDefaultBranchDialog(
   }
   if (pending.includesCommit) {
     return {
-      title: t('confirm.commitPr.title'),
-      description: t('confirm.commitPr.description', { branch }),
-      continueLabel: t('confirm.commitPr.continue'),
+      title: t('confirm.commitPr.title', { kind }),
+      description: t('confirm.commitPr.description', { branch, kind }),
+      continueLabel: t('confirm.commitPr.continue', { kind }),
     }
   }
   return {
-    title: t('confirm.pr.title'),
-    description: t('confirm.pr.description', { branch }),
-    continueLabel: t('confirm.pr.continue'),
+    title: t('confirm.pr.title', { kind }),
+    description: t('confirm.pr.description', { branch, kind }),
+    continueLabel: t('confirm.pr.continue', { kind }),
   }
 }
 
@@ -129,6 +149,39 @@ function failureMessage(result: GitResult, fallback: string): string | undefined
   if (result.ok) return undefined
   const message = result.message?.trim()
   return message !== undefined && message !== '' ? message : fallback
+}
+
+function foldCommit(result: GitResult): NonNullable<StackedActionResult['commit']> {
+  return {
+    status: result.skipped ? 'skipped' : 'created',
+    ...(result.commitSha ? { commitSha: result.commitSha } : {}),
+    ...(result.subject ? { subject: result.subject } : {}),
+  }
+}
+
+function foldPush(result: GitResult): NonNullable<StackedActionResult['push']> {
+  return {
+    status: result.skipped ? 'skipped' : 'pushed',
+    ...(result.branch || result.refName ? { branch: result.branch ?? result.refName } : {}),
+    ...(result.upstreamBranch ? { upstreamBranch: result.upstreamBranch } : {}),
+  }
+}
+
+function foldPr(result: GitResult): NonNullable<StackedActionResult['pr']> {
+  if (result.skipped) {
+    return {
+      status: 'opened_existing',
+      ...(result.url ? { url: result.url } : {}),
+      ...(result.number ? { number: result.number } : {}),
+      ...(result.title ? { title: result.title } : {}),
+    }
+  }
+  return {
+    status: result.status === 'opened_existing' ? 'opened_existing' : 'created',
+    ...(result.url ? { url: result.url } : {}),
+    ...(result.number ? { number: result.number } : {}),
+    ...(result.title ? { title: result.title } : {}),
+  }
 }
 
 /**
@@ -139,15 +192,21 @@ function failureMessage(result: GitResult, fallback: string): string | undefined
 export function GitActionsControl({
   useSessions,
   gitStatus,
+  gitFetchForStatus,
+  gitReadPullRequest,
   gitInit,
   gitCommit,
+  gitChangedFiles,
   gitPush,
   gitPull,
+  onGitProgress,
   gitCreateChangeRequest,
+  gitPublishRepository,
   gitBranchList,
   gitSwitchBranch,
   gitCreateBranch,
   openExternal,
+  openWorkspacePath,
   t,
 }: GitActionsProps): ReactNode {
   const cwd = useSessions((s) => {
@@ -161,14 +220,108 @@ export function GitActionsControl({
   const [menuOpen, setMenuOpen] = useState(false)
   const [commitOpen, setCommitOpen] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
+  const [commitFiles, setCommitFiles] = useState<CommitFileRow[]>([])
+  const [excludedFiles, setExcludedFiles] = useState<Set<string>>(() => new Set())
+  const [editingFiles, setEditingFiles] = useState(false)
   const [pending, setPending] = useState<PendingDefaultBranchAction | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<GitProgressState | null>(null)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [publishName, setPublishName] = useState('')
+  const [publishVisibility, setPublishVisibility] = useState<'public' | 'private'>('private')
+  const [publishRemoteUrl, setPublishRemoteUrl] = useState('')
+  const actionSeq = useRef(0)
+  const refreshSeq = useRef(0)
+  const lastProgressLine = useRef<string | null>(null)
+  const currentPhaseLabel = useRef('Running git action...')
+
+  const beginProgress = (title: string): number => {
+    const id = actionSeq.current + 1
+    actionSeq.current = id
+    lastProgressLine.current = null
+    currentPhaseLabel.current = title
+    setProgress({
+      tone: 'loading',
+      title,
+      description: t('progress.waiting'),
+      startedAt: null,
+    })
+    return id
+  }
+
+  const failProgress = (message: string, title = t('error.title')): void => {
+    setProgress({
+      tone: 'error',
+      title,
+      description: toastFailureDescription(message, lastProgressLine.current, t('error.fallback')),
+      details: message,
+      startedAt: null,
+      copyLabel: t('progress.copy'),
+      detailsLabel: t('progress.details'),
+      hideDetailsLabel: t('progress.hideDetails'),
+    })
+  }
+
+  const succeedProgress = (
+    title: string,
+    description?: string | undefined,
+    action?: { label: string; onAction: () => void } | undefined,
+  ): void => {
+    setProgress({
+      tone: 'success',
+      title,
+      ...(description ? { description } : {}),
+      startedAt: null,
+      ...(action ? { actionLabel: action.label, onAction: action.onAction } : {}),
+    })
+  }
 
   const refresh = async (target: string): Promise<VcsStatus | null> => {
+    const token = refreshSeq.current + 1
+    refreshSeq.current = token
     const next = await gitStatus(target)
-    setStatus(next)
+    if (token !== refreshSeq.current) return next
+    // Only keep a prior PR badge when still on the same ref (T3code keys lastKnown by branch).
+    setStatus(prev => (
+      next && prev?.refName && next.refName === prev.refName
+        ? { ...next, pr: next.pr ?? prev.pr ?? null }
+        : next
+    ))
     setLoaded(true)
+    void gitFetchForStatus(target).then((fresh) => {
+      if (token !== refreshSeq.current || !fresh) return
+      setStatus(prev => (
+        prev?.refName && fresh.refName === prev.refName
+          ? { ...fresh, pr: prev.pr ?? fresh.pr ?? null }
+          : fresh
+      ))
+    })
+    void gitReadPullRequest(target).then((result) => {
+      if (token !== refreshSeq.current || !result.ok) return
+      setStatus(prev => (prev ? { ...prev, pr: result.pr ?? null } : prev))
+    })
     return next
+  }
+
+  const settleStatus = async (target: string): Promise<VcsStatus | null> => {
+    const token = refreshSeq.current + 1
+    refreshSeq.current = token
+    const local = await gitStatus(target)
+    if (token !== refreshSeq.current) return local
+    setStatus(prev => (
+      local && prev?.refName && local.refName === prev.refName
+        ? { ...local, pr: local.pr ?? prev.pr ?? null }
+        : local
+    ))
+    setLoaded(true)
+    const [fresh, prResult] = await Promise.all([
+      gitFetchForStatus(target),
+      gitReadPullRequest(target),
+    ])
+    if (token !== refreshSeq.current) return local
+    const pr = prResult.ok ? (prResult.pr ?? null) : (fresh?.pr ?? local?.pr ?? null)
+    const merged = fresh ? { ...fresh, pr } : (local ? { ...local, pr } : null)
+    if (merged) setStatus(merged)
+    return merged
   }
 
   useEffect(() => {
@@ -178,33 +331,76 @@ export function GitActionsControl({
       return
     }
     setLoaded(false)
-    let cancelled = false
-    void gitStatus(cwd).then((next) => {
-      if (cancelled) return
-      setStatus(next)
-      setLoaded(true)
+    void refresh(cwd)
+    return () => { refreshSeq.current += 1 }
+  }, [cwd, gitStatus, gitFetchForStatus, gitReadPullRequest])
+
+  useEffect(() => {
+    return onGitProgress((event) => {
+      if (event.actionId !== actionSeq.current) return
+      setProgress((prev) => {
+        if (!prev || prev.tone !== 'loading') return prev
+        if (event.kind === 'phase' && event.title) {
+          lastProgressLine.current = null
+          currentPhaseLabel.current = event.title
+          return { ...prev, title: event.title, description: undefined, startedAt: Date.now() }
+        }
+        if (event.kind === 'hook_finished') {
+          lastProgressLine.current = null
+          return {
+            ...prev,
+            title: currentPhaseLabel.current,
+            description: undefined,
+            startedAt: Date.now(),
+          }
+        }
+        if (event.kind === 'hook' && event.title) {
+          lastProgressLine.current = event.text ?? null
+          return { ...prev, title: event.title, description: event.text, startedAt: Date.now() }
+        }
+        if (event.kind === 'line' && event.text) {
+          lastProgressLine.current = event.text
+          return { ...prev, description: event.text }
+        }
+        return prev
+      })
     })
-    return () => { cancelled = true }
-  }, [cwd, gitStatus])
+  }, [onGitProgress])
+
+  useEffect(() => {
+    if (progress?.tone !== 'success') return
+    const timer = window.setTimeout(() => { setProgress(null) }, 10_000)
+    return () => { window.clearTimeout(timer) }
+  }, [progress?.tone, progress?.title])
 
   useEffect(() => {
     if (cwd === undefined) return
-    const onFocus = (): void => { void refresh(cwd) }
+    let timer: number | null = null
+    const schedule = (): void => {
+      if (busy) return
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = null
+        void refresh(cwd)
+      }, GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS)
+    }
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') return
-      void refresh(cwd)
+      schedule()
     }
-    window.addEventListener('focus', onFocus)
+    window.addEventListener('focus', schedule)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      window.removeEventListener('focus', onFocus)
+      if (timer !== null) window.clearTimeout(timer)
+      window.removeEventListener('focus', schedule)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [cwd, gitStatus])
+  }, [busy, cwd, gitStatus])
 
   const isDefaultRef = status?.isDefaultRef ?? false
   const hasPrimaryRemote = status?.hasPrimaryRemote ?? false
   const isRepo = status?.isRepo ?? true
+  const canPublish = loaded && status !== null && isRepo && !hasPrimaryRemote
   const showInit = loaded && cwd !== undefined && status !== null && ! isRepo
   const quickAction = useMemo(() => {
     if (cwd === undefined) {
@@ -213,110 +409,266 @@ export function GitActionsControl({
     if (!loaded) {
       return { label: 'Commit', disabled: true, kind: 'show_hint' as const, hint: t('hint.busy') }
     }
-    const resolved = resolveQuickAction(status, busy, isDefaultRef, hasPrimaryRemote)
-    if (resolved.kind === 'open_publish') {
-      return {
-        label: resolved.label,
-        disabled: true,
-        kind: 'show_hint' as const,
-        hint: t('publish.unavailable'),
-      }
-    }
-    return resolved
+    return resolveQuickAction(status, busy, isDefaultRef, hasPrimaryRemote)
   }, [busy, cwd, hasPrimaryRemote, isDefaultRef, loaded, status, t])
   const menuItems = useMemo(
     () => buildMenuItems(status, busy, hasPrimaryRemote),
     [busy, hasPrimaryRemote, status],
   )
   const pendingCopy = pending
-    ? localizeDefaultBranchDialog(pending, t)
+    ? localizeDefaultBranchDialog(pending, t, getChangeRequestTerminology(status?.sourceControlProvider))
     : null
 
   const runInit = (): void => {
     if (cwd === undefined) return
+    beginProgress(t('action.init.busy'))
     setBusy(true)
-    setError(null)
     void gitInit(cwd).then((result) => {
       const failed = failureMessage(result, t('error.fallback'))
-      if (failed !== undefined) setError(failed)
+      if (failed !== undefined) failProgress(failed)
+      else succeedProgress(t('action.init'))
     }).finally(() => {
       setBusy(false)
       void refresh(cwd)
     })
   }
 
+  const closeCommit = (): void => {
+    setCommitOpen(false)
+    setCommitMessage('')
+    setCommitFiles([])
+    setExcludedFiles(new Set())
+    setEditingFiles(false)
+  }
+
+  const openCommit = (): void => {
+    setExcludedFiles(new Set())
+    setEditingFiles(false)
+    setCommitOpen(true)
+    if (cwd === undefined) {
+      setCommitFiles([])
+      return
+    }
+    void gitChangedFiles(cwd).then((result) => {
+      if (result.ok) setCommitFiles(result.files ?? [])
+      else {
+        setCommitFiles([])
+        setCommitOpen(false)
+        failProgress(result.message ?? t('error.fallback'))
+      }
+    })
+  }
+
+  const selectedCommitPaths = (): string[] | undefined => {
+    const selected = commitFiles.filter(file => !excludedFiles.has(file.path)).map(file => file.path)
+    if (selected.length === 0 || selected.length === commitFiles.length) return undefined
+    return selected
+  }
+
   const runStacked = async (
     action: GitStackedAction,
-    options: { commitMessage?: string; skipConfirm?: boolean } = {},
+    options: { commitMessage?: string; skipConfirm?: boolean; filePaths?: readonly string[]; featureBranch?: boolean } = {},
   ): Promise<void> => {
     if (cwd === undefined) return
-    const includesCommit = (action === 'commit' || action === 'commit_push' || action === 'commit_push_pr')
-      && (action === 'commit' || Boolean(status?.hasWorkingTreeChanges))
+    // T3code: featureBranch forces a commit step even when the working tree looks clean.
+    const includesCommitPreview = (action === 'commit' || action === 'commit_push' || action === 'commit_push_pr')
+      && (action === 'commit' || Boolean(status?.hasWorkingTreeChanges) || Boolean(options.featureBranch))
+    // T3code `actionIsDefaultBranch`: leaving via a feature ref skips the default-branch prompt.
+    const actionIsDefaultBranch = options.featureBranch ? false : isDefaultRef
     if (
       !options.skipConfirm
-      && requiresDefaultBranchConfirmation(action, isDefaultRef)
+      && requiresDefaultBranchConfirmation(action, actionIsDefaultBranch)
       && status?.refName
     ) {
       setPending({
         action: action as DefaultBranchConfirmableAction,
         branchName: status.refName,
-        includesCommit,
+        includesCommit: includesCommitPreview,
         ...(options.commitMessage ? { commitMessage: options.commitMessage } : {}),
+        ...(options.filePaths ? { filePaths: options.filePaths } : {}),
       })
       return
     }
     setBusy(true)
-    setError(null)
     const fallback = t('error.fallback')
+    const folded: StackedActionResult = { action }
+    let settled = false
+    let actionId = 0
     try {
-      if (includesCommit) {
-        const committed = await gitCommit(cwd, options.commitMessage?.trim() || 'Update')
+      // T3code opens the progress card before any IPC. Stages use the last-known
+      // status snapshot; gates re-read after a refresh below.
+      const previewStatus = status
+      const previewTerms = getChangeRequestTerminology(previewStatus?.sourceControlProvider)
+      actionId = beginProgress(buildGitActionProgressStages({
+        action,
+        hasCustomCommitMessage: Boolean(options.commitMessage?.trim()),
+        hasWorkingTreeChanges: Boolean(previewStatus?.hasWorkingTreeChanges),
+        ...(options.featureBranch !== undefined ? { featureBranch: options.featureBranch } : {}),
+        shouldPushBeforePr: action === 'create_pr'
+          && (!previewStatus?.hasUpstream || (previewStatus?.aheadCount ?? 0) > 0),
+        terminology: previewTerms,
+      })[0] ?? 'Running git action...')
+
+      // T3code statusDetails refreshes upstream before push/PR gates. Commit-only
+      // stays on local porcelain so success is not blocked on fetch (Desktop contract).
+      const live = (action === 'create_pr' || action === 'push')
+        ? await gitFetchForStatus(cwd)
+        : await gitStatus(cwd)
+      if (live) {
+        setStatus(prev => (
+          prev?.refName && live.refName === prev.refName
+            ? { ...live, pr: live.pr ?? prev.pr ?? null }
+            : live
+        ))
+      }
+      const actionStatus = live ?? previewStatus
+      // T3code GitManager always runs the commit step for commit_* actions.
+      // A clean tree is skipped_no_changes on the desktop, not a skipped IPC call.
+      const wantsCommit = action === 'commit' || action === 'commit_push' || action === 'commit_push_pr'
+      if (options.featureBranch && !wantsCommit) {
+        failProgress('Feature-branch checkout is only supported for commit actions.')
+        return
+      }
+      if (!actionStatus?.refName && action !== 'commit') {
+        failProgress('Cannot run this git action from detached HEAD.')
+        return
+      }
+      if (action === 'create_pr' && actionStatus?.hasWorkingTreeChanges) {
+        failProgress('Commit local changes before creating a PR.')
+        return
+      }
+      if (wantsCommit) {
+        const committed = await gitCommit(
+          cwd,
+          options.commitMessage?.trim() ?? '',
+          options.filePaths,
+          actionId,
+          options.featureBranch ? { featureBranch: true } : undefined,
+        )
         const failed = failureMessage(committed, fallback)
         if (failed !== undefined) {
-          setError(failed)
+          failProgress(failed)
           return
         }
+        folded.commit = foldCommit(committed)
       }
       const needsPush = action === 'push'
         || action === 'commit_push'
         || action === 'commit_push_pr'
-        || (action === 'create_pr' && (!status?.hasUpstream || status.aheadCount > 0 || includesCommit))
+        || (action === 'create_pr' && (!actionStatus?.hasUpstream || (actionStatus?.aheadCount ?? 0) > 0))
       if (needsPush) {
-        const pushed = await gitPush(cwd)
+        if (!actionStatus?.refName) {
+          failProgress('Cannot push from detached HEAD.')
+          return
+        }
+        const pushed = await gitPush(cwd, actionId)
         const failed = failureMessage(pushed, fallback)
         if (failed !== undefined) {
-          setError(failed)
+          failProgress(failed)
           return
+        }
+        folded.push = foldPush(pushed)
+        if (!folded.commit && pushed.commitSha) {
+          folded.commit = { status: 'created', commitSha: pushed.commitSha }
         }
       }
       if (action === 'create_pr' || action === 'commit_push_pr') {
-        const created = await gitCreateChangeRequest(cwd, {
-          title: options.commitMessage?.trim() || status?.refName || 'Change',
-          body: '',
-        })
+        const created = await gitCreateChangeRequest(cwd, {}, actionId)
         const failed = failureMessage(created, fallback)
-        if (failed !== undefined) setError(failed)
+        if (failed !== undefined) {
+          failProgress(failed)
+          return
+        }
+        folded.pr = foldPr(created)
       }
+      const terms = getChangeRequestTerminology(actionStatus?.sourceControlProvider)
+      const nextStatus = action === 'commit'
+        ? await gitStatus(cwd)
+        : await settleStatus(cwd)
+      if (action === 'commit') {
+        if (nextStatus) {
+          setStatus(prev => (
+            prev?.refName && nextStatus.refName === prev.refName
+              ? { ...nextStatus, pr: nextStatus.pr ?? prev.pr ?? null }
+              : nextStatus
+          ))
+        }
+        void refresh(cwd)
+      }
+      settled = true
+      const summary = summarizeGitActionResult(folded, terms)
+      const cta = resolveCompletionCta(
+        attachOpenPrForCta(folded, nextStatus),
+        terms,
+        nextStatus?.isDefaultRef ?? false,
+        supportsGitHubChangeRequests(nextStatus?.sourceControlProvider ?? actionStatus?.sourceControlProvider),
+      )
+      succeedProgress(
+        summary.title,
+        summary.description,
+        cta.kind === 'open_pr'
+          ? { label: cta.label, onAction: () => { void openExternal(cta.url) } }
+          : cta.kind === 'run_action'
+            ? { label: cta.label, onAction: () => { void runStacked(cta.action) } }
+            : undefined,
+      )
     } finally {
       setBusy(false)
-      await refresh(cwd)
+      if (!settled) await refresh(cwd)
     }
+  }
+
+  const openPublish = (): void => {
+    if (cwd === undefined || !canPublish) return
+    setPublishName(cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? '')
+    setPublishVisibility('private')
+    setPublishRemoteUrl('')
+    setPublishOpen(true)
+  }
+
+  const openExistingPr = (): void => {
+    const url = status?.pr?.state === 'open' ? status.pr.url : ''
+    if (!url) {
+      failProgress(`No open ${getChangeRequestTerminology(status?.sourceControlProvider).shortLabel} URL.`)
+      return
+    }
+    void openExternal(url)
   }
 
   const runQuick = (): void => {
     if (quickAction.disabled || quickAction.kind === 'show_hint') return
     if (quickAction.kind === 'open_pr') {
-      const url = status?.pr?.state === 'open' ? status.pr.url : ''
-      if (url) void openExternal(url)
+      openExistingPr()
+      return
+    }
+    if (quickAction.kind === 'open_publish') {
+      openPublish()
       return
     }
     if (quickAction.kind === 'run_pull') {
       if (cwd === undefined) return
+      const actionId = beginProgress('Pulling...')
       setBusy(true)
-      setError(null)
-      void gitPull(cwd).then((result) => {
+      void gitPull(cwd, actionId).then((result) => {
         const failed = failureMessage(result, t('error.fallback'))
-        if (failed !== undefined) setError(failed)
+        if (failed !== undefined) {
+          failProgress(failed)
+          return
+        }
+        if (result.status === 'up_to_date') {
+          succeedProgress(
+            t('progress.upToDate'),
+            t('progress.synced', { branch: result.refName || status?.refName || '' }),
+          )
+          return
+        }
+        succeedProgress(
+          t('progress.pulled'),
+          t('progress.pulledFrom', {
+            branch: result.refName || status?.refName || '',
+            upstream: result.upstreamRef || 'upstream',
+          }),
+        )
       }).finally(() => {
         setBusy(false)
         void refresh(cwd)
@@ -324,7 +676,7 @@ export function GitActionsControl({
       return
     }
     if (quickAction.action === 'commit') {
-      setCommitOpen(true)
+      openCommit()
       return
     }
     if (quickAction.action) void runStacked(quickAction.action)
@@ -332,15 +684,18 @@ export function GitActionsControl({
 
   const onMenuSelect = (id: string): void => {
     setMenuOpen(false)
+    if (id === 'publish') {
+      openPublish()
+      return
+    }
     const item = menuItems.find(entry => entry.id === id)
     if (!item || item.disabled) return
     if (item.kind === 'open_pr') {
-      const url = status?.pr?.state === 'open' ? status.pr.url : ''
-      if (url) void openExternal(url)
+      openExistingPr()
       return
     }
     if (item.dialogAction === 'commit') {
-      setCommitOpen(true)
+      openCommit()
       return
     }
     if (item.dialogAction === 'push') void runStacked('push')
@@ -386,13 +741,16 @@ export function GitActionsControl({
             cwd={cwd}
             currentRef={status?.refName ?? null}
             t={t}
+            disabled={busy}
             gitBranchList={gitBranchList}
             gitSwitchBranch={gitSwitchBranch}
             gitCreateBranch={gitCreateBranch}
             onChanged={() => { if (cwd !== undefined) void refresh(cwd) }}
+            onError={(message, title) => { failProgress(message, title) }}
           />
+          <span className={css.rule} aria-hidden="true" />
           {hint
-            ? <Tooltip label={hint} side="bottom">{mainButton}</Tooltip>
+            ? <Tooltip label={hint} side="bottom"><span className={css.hintWrap}>{mainButton}</span></Tooltip>
             : mainButton}
           <span className={css.rule} aria-hidden="true" />
           <Menu
@@ -414,67 +772,149 @@ export function GitActionsControl({
                 <IconChevronDownOutline14 size={14} />
               </button>
             )}
-            items={menuItems.map(item => ({
-              id: item.id,
-              label: localizeGitLabel(item.label, t),
-              disabled: item.disabled,
-              icon: iconFor(item.icon),
-            }))}
+            items={[
+              ...menuItems.map(item => {
+                const hint = getMenuActionDisabledReason({
+                  item,
+                  gitStatus: status,
+                  isBusy: busy,
+                  hasPrimaryRemote,
+                })
+                return {
+                  id: item.id,
+                  label: localizeGitLabel(item.label, t),
+                  disabled: item.disabled,
+                  icon: iconFor(item.icon),
+                  ...(hint ? { hint } : {}),
+                }
+              }),
+              ...(!canPublish
+                ? []
+                : [{
+                  id: 'publish',
+                  label: t('action.publish'),
+                  disabled: busy,
+                  icon: iconFor('push'),
+                }]),
+            ]}
+            footer={[
+              ...(status?.refName === null
+                ? [{ type: 'label' as const, id: 'detached', text: t('menu.detached') }]
+                : []),
+              ...(status
+                && status.refName !== null
+                && !status.hasWorkingTreeChanges
+                && status.behindCount > 0
+                && status.aheadCount === 0
+                ? [{ type: 'label' as const, id: 'behind', text: t('menu.behind') }]
+                : []),
+            ]}
             onSelect={onMenuSelect}
             onClose={() => { setMenuOpen(false) }}
           />
         </div>
       )}
 
-      <Modal
+      <CommitDialog
         open={!showInit && commitOpen}
-        onClose={() => { setCommitOpen(false); setCommitMessage('') }}
-        title={t('commit.title')}
-        closeLabel={t('commit.cancel')}
-        description={t('commit.description')}
-        footer={(
-          <>
-            <Button variant="ghost" size="sm" onClick={() => { setCommitOpen(false); setCommitMessage('') }}>
-              {t('commit.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                const message = commitMessage
-                setCommitOpen(false)
-                setCommitMessage('')
-                void runStacked('commit', { commitMessage: message })
-              }}
-            >
-              {t('commit.submit')}
-            </Button>
-          </>
-        )}
-      >
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('commit.message')}</span>
-          <textarea
-            className={css.message}
-            value={commitMessage}
-            placeholder={t('commit.placeholder')}
-            onChange={(event) => { setCommitMessage(event.target.value) }}
-          />
-        </label>
-      </Modal>
-
-      <Modal
-        open={error !== null}
-        onClose={() => { setError(null) }}
-        title={t('error.title')}
-        closeLabel={t('error.close')}
-        description={error ?? ''}
-        footer={(
-          <Button variant="primary" size="sm" onClick={() => { setError(null) }}>
-            {t('error.close')}
-          </Button>
-        )}
+        branchName={status?.refName ?? null}
+        isDefaultRef={isDefaultRef}
+        files={commitFiles}
+        excluded={excludedFiles}
+        editing={editingFiles}
+        message={commitMessage}
+        t={t}
+        onClose={closeCommit}
+        onMessage={setCommitMessage}
+        onToggleEdit={() => { setEditingFiles(next => !next) }}
+        onTogglePath={(filePath) => {
+          setExcludedFiles(prev => {
+            const next = new Set(prev)
+            if (next.has(filePath)) next.delete(filePath)
+            else next.add(filePath)
+            return next
+          })
+        }}
+        onToggleAll={() => {
+          const allOn = commitFiles.length > 0 && commitFiles.every(file => !excludedFiles.has(file.path))
+          setExcludedFiles(allOn ? new Set(commitFiles.map(file => file.path)) : new Set())
+        }}
+        onCommit={() => {
+          const message = commitMessage
+          const filePaths = selectedCommitPaths()
+          closeCommit()
+          void runStacked('commit', {
+            commitMessage: message,
+            ...(filePaths ? { filePaths } : {}),
+          })
+        }}
+        onCommitNewRef={() => {
+          const message = commitMessage
+          const filePaths = selectedCommitPaths()
+          closeCommit()
+          void runStacked('commit', {
+            commitMessage: message,
+            featureBranch: true,
+            skipConfirm: true,
+            ...(filePaths ? { filePaths } : {}),
+          })
+        }}
+        onOpenFile={(filePath) => {
+          if (cwd === undefined) return
+          void openWorkspacePath(cwd, filePath).then((result) => {
+            const failed = failureMessage(result, t('error.fallback'))
+            if (failed !== undefined) failProgress(failed, t('commit.openFailed'))
+          })
+        }}
       />
+
+      <PublishDialog
+        open={!showInit && publishOpen}
+        name={publishName}
+        visibility={publishVisibility}
+        remoteUrl={publishRemoteUrl}
+        t={t}
+        onClose={() => { setPublishOpen(false) }}
+        onName={setPublishName}
+        onVisibility={setPublishVisibility}
+        onRemoteUrl={setPublishRemoteUrl}
+        onSubmit={() => {
+          if (cwd === undefined) return
+          const actionId = beginProgress('Publishing repository...')
+          setBusy(true)
+          void gitPublishRepository(cwd, {
+            name: publishName.trim(),
+            visibility: publishVisibility,
+            ...(publishRemoteUrl.trim() ? { remoteUrl: publishRemoteUrl.trim() } : {}),
+          }, actionId).then((result) => {
+            const failed = failureMessage(result, t('error.fallback'))
+            if (failed !== undefined) {
+              failProgress(failed)
+              return
+            }
+            setPublishOpen(false)
+            const url = result.url
+            succeedProgress(
+              t('action.publish'),
+              url,
+              url
+                ? { label: t('progress.openRepo'), onAction: () => { void openExternal(url) } }
+                : undefined,
+            )
+          }).finally(() => {
+            setBusy(false)
+            void refresh(cwd)
+          })
+        }}
+      />
+
+      {progress !== null && (
+        <GitProgressToast
+          state={progress}
+          dismissLabel={t('progress.dismiss')}
+          onClose={() => { setProgress(null) }}
+        />
+      )}
 
       <Modal
         open={!showInit && pending !== null}
@@ -488,7 +928,7 @@ export function GitActionsControl({
               {t('confirm.abort')}
             </Button>
             <Button
-              variant="primary"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 if (!pending) return
@@ -497,11 +937,31 @@ export function GitActionsControl({
                 void runStacked(next.action, {
                   skipConfirm: true,
                   ...(next.commitMessage ? { commitMessage: next.commitMessage } : {}),
+                  ...(next.filePaths ? { filePaths: next.filePaths } : {}),
                 })
               }}
             >
               {pendingCopy?.continueLabel}
             </Button>
+            {pending?.includesCommit ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  if (!pending) return
+                  const next = pending
+                  setPending(null)
+                  void runStacked(next.action, {
+                    skipConfirm: true,
+                    featureBranch: true,
+                    ...(next.commitMessage ? { commitMessage: next.commitMessage } : {}),
+                    ...(next.filePaths ? { filePaths: next.filePaths } : {}),
+                  })
+                }}
+              >
+                {t('confirm.featureContinue')}
+              </Button>
+            ) : null}
           </>
         )}
       />

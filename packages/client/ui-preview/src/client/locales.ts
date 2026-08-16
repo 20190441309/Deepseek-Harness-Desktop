@@ -8,6 +8,12 @@ export const zh = {
   'unavailable': '浏览器预览仅在桌面应用中可用。',
   'empty': '输入本地应用或 URL。',
   'rejected': '只能预览本机地址。',
+  'back': '后退',
+  'forward': '前进',
+  'reload': '刷新',
+  'external': '在系统浏览器打开',
+  'devtools': '开发者工具',
+  'discovered': '发现的本地服务',
 } satisfies Record<string, string>
 
 /** The preview namespace key union. */
@@ -21,6 +27,12 @@ export const en = {
   'unavailable': 'Browser previews are only available in the desktop app.',
   'empty': 'Open a local app or URL.',
   'rejected': 'Preview only opens local URLs.',
+  'back': 'Back',
+  'forward': 'Forward',
+  'reload': 'Reload',
+  'external': 'Open in system browser',
+  'devtools': 'Developer tools',
+  'discovered': 'Discovered local servers',
 } satisfies Record<PreviewKey, string>
 
 /** Dictionary namespace owned by this plugin. */

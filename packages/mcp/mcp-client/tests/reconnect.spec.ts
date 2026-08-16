@@ -60,6 +60,7 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 // mocked SDK even through a static import.
 import { apply } from '@deepseek-ai/dsh-mcp-client/src/index.ts'
 import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from '@deepseek-ai/dsh-mcp-client/src/connection.ts'
+import { mcpClientStatus } from '@deepseek-ai/dsh-mcp-client/src/status.ts'
 
 // ---- Helpers ----
 
@@ -475,6 +476,75 @@ describe('reconnect supervisor', () => {
 })
 
 // ---- Policy resolution ----
+
+// ---- Connection status reporting ----
+
+describe('connection status reporting', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    instances.length = 0
+    mockConnect.mockResolvedValue(undefined)
+    mockClose.mockImplementation(function (this: { onclose?: () => void }) {
+      this.onclose?.()
+      return Promise.resolve()
+    })
+    mockListTools.mockResolvedValue(listing('remote'))
+    mockCallTool.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+  })
+
+  it('reports connected after a successful mount and undefined after dispose', async () => {
+    const ctx = await mountRegistry()
+    const fiber = ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    await fiber.dispose()
+    expect(mcpClientStatus(ctx, 'srv')).toBeUndefined()
+  })
+
+  it('reports reconnecting with the loss reason while waiting out the backoff', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig({ initialDelayMs: 60_000, maxDelayMs: 60_000, maxAttempts: 5 }))
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    instances[0]!.onclose?.()
+    await vi.waitFor(() => {
+      expect(mcpClientStatus(ctx, 'srv')).toMatchObject({ health: 'reconnecting', lastError: 'connection lost' })
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('reports failed with the last attempt error once the budget is exhausted', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig({ initialDelayMs: 2, maxDelayMs: 8, maxAttempts: 1 }))
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    mockConnect.mockRejectedValue(new Error('server gone'))
+    instances[0]!.onclose?.()
+    await vi.waitFor(() => {
+      expect(mcpClientStatus(ctx, 'srv')).toMatchObject({ health: 'failed', lastError: 'Error: server gone' })
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('reports failed when reconnect is disabled and the connection drops', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig({ enabled: false }))
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    instances[0]!.onclose?.()
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('failed') })
+    await ctx.fiber.dispose()
+  })
+
+  it('keys each instance by its own runtime root', async () => {
+    const ctxA = await mountRegistry()
+    const ctxB = await mountRegistry()
+    ctxA.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
+    ctxB.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
+    await vi.waitFor(() => { expect(mcpClientStatus(ctxA, 'srv')?.health).toBe('connected') })
+    await vi.waitFor(() => { expect(mcpClientStatus(ctxB, 'srv')?.health).toBe('connected') })
+    await ctxB.fiber.dispose()
+    expect(mcpClientStatus(ctxB, 'srv')).toBeUndefined()
+    expect(mcpClientStatus(ctxA, 'srv')?.health).toBe('connected')
+    await ctxA.fiber.dispose()
+  })
+})
 
 describe('resolveReconnectPolicy', () => {
   const path = 'mcp-client(srv): reconnect'

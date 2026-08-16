@@ -1,9 +1,10 @@
 /**
  * Four-column shell frame, registered into the built-in 'root' slot (the web
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
- * details | surfaces) plus a shared titlebar row spanning columns 2–4, the
- * conversation-column terminal drawer, the titlebar trailing cluster (in that
- * row, not over column content), the phone overlay band (portrait below
+ * details | surfaces) plus a shared titlebar row over conversation and details
+ * (surfaces spans every row to the window top), the conversation-column
+ * terminal drawer, the titlebar trailing cluster (in that row, not over the
+ * open surfaces column), the phone overlay band (portrait below
  * PHONE_MAX), landscape sidebar (rotate keeps the column in the grid), the
  * drag handles (pointer capture + rAF throttle), the concession chain
  * (columns.ts), and the child-slot render decisions: the sidebar slot renders
@@ -333,7 +334,12 @@ export function AppFrame({
         {renderSlot('shell.overlay', {})}
       </div>
       <div className={css.titlebarBand} data-titlebar-row />
-      <div className={css.titlebarTrailing} data-titlebar-trailing id="dsh-shell-titlebar-trailing">
+      <div
+        className={css.titlebarTrailing}
+        data-titlebar-trailing
+        data-titlebar-trailing-over-surfaces={cols.surfaces === 0 || undefined}
+        id="dsh-shell-titlebar-trailing"
+      >
         {renderSlot('shell.titlebar.trailing', {
           surfaces: panels.surfaces,
           terminalDrawer: panels.terminalDrawer,

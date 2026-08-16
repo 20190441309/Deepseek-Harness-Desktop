@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 Right-panel Agents occupant of `surfaces.agents` (`single`, `session-maybe`, declared by ui-surfaces). Lists the current session's subagents from the existing session snapshot (`subagentsByParent`, then `byId` children). It does not spawn, dispatch, or invent a new kernel. Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
 
-When the catalog and lineage are empty the panel shows the empty state. Rows open the child session. Background jobs from `jobsBySession` list below the roster.
+When the catalog and lineage are empty the panel shows the empty state. Rows open the child session. Background jobs from `jobsBySession` list below the roster; lifecycle status uses locale copy, while `label` and `detail` stay the producer strings.
 
 The `/client` exports are the plugin body (`apply`/`inject`) plus the contract types only; AgentsPanel remains package-internal behind the slot registration.
 

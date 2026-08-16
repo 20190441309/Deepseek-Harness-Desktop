@@ -130,4 +130,27 @@ describe('SurfaceTabs', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
   })
+
+  it('keeps the bar mounted with no add button when there are zero surfaces', () => {
+    mount({ surfaces: [] })
+    expect(document.querySelector('[data-surfaces-tabs]')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open a surface' })).toBeNull()
+    expect(document.querySelector('[data-surfaces-tab]')).toBeNull()
+  })
+
+  it('shows a kind icon that morphs to close on hover and closes from the right control', () => {
+    const b = mount()
+    const tab = screen.getByRole('button', { name: 'Files' }).closest('[data-surfaces-tab]')
+    expect(tab?.querySelector('[data-surfaces-tab-icon]')).toBeTruthy()
+    expect(tab?.querySelector('[data-surfaces-tab-close-glyph]')).toBeTruthy()
+    fireEvent.mouseEnter(tab!)
+    expect(tab?.getAttribute('data-hover')).toBe('true')
+    fireEvent.mouseLeave(tab!)
+    expect(tab?.getAttribute('data-hover')).toBeNull()
+    const close = screen.getByRole('button', { name: 'Close Files' })
+    const label = screen.getByRole('button', { name: 'Files' })
+    expect(label.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(close)
+    expect(b.onClose).toHaveBeenCalledWith('files')
+  })
 })

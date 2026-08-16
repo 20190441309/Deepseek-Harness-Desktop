@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -6,10 +7,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { EmptyState } from './EmptyState.tsx'
 import { NS } from './locales.ts'
 import type { createSurfacesStore, OpenableKind, Surface } from './stores.ts'
-import { persistSession, cancelPersist, writeSession } from './persist.ts'
+import { persistSession, cancelPersist, writeSession, loadPersistedDrafts, collectDirtyDrafts } from './persist.ts'
 import { sessionSurfaces } from './stores.ts'
 import { SurfaceTabs } from './SurfaceTabs.tsx'
 import css from './SurfacesRoot.module.css'
+
+/** Must match ui-user-terminal; client packages cannot share a value export. */
+const OPEN_SURFACE_EVENT = 'dsh-open-surface'
 
 /** Layout write and probes injected so cards can open the column and disable Browser. */
 export interface SurfacesRootInjected {
@@ -30,16 +34,28 @@ function renderOccupant(
   surface: Surface,
   renderSlot: SurfacesRootProps['renderSlot'],
   openFile: (relativePath: string) => void,
+  active: boolean,
+  onDirtyChange: (dirty: boolean) => void,
+  readBuffer: () => { text: string; draft: string } | undefined,
+  writeBuffer: (buffer: { text: string; draft: string } | null) => void,
+  registerSave: (save: (() => Promise<boolean>) | null) => void,
 ): ReactNode {
   switch (surface.kind) {
     case 'preview':
-      return renderSlot('surfaces.browser', {})
+      return renderSlot('surfaces.browser', { active })
     case 'terminal':
       return renderSlot('surfaces.terminal', {})
     case 'files':
       return renderSlot('surfaces.files', { openFile })
     case 'file':
-      return renderSlot('surfaces.file', { relativePath: surface.relativePath })
+      return renderSlot('surfaces.file', {
+        relativePath: surface.relativePath,
+        active,
+        onDirtyChange,
+        readBuffer,
+        writeBuffer,
+        registerSave,
+      })
     case 'diff':
       return renderSlot('surfaces.diff', { openFile })
     case 'agents':
@@ -62,19 +78,36 @@ function currentCwd(useSessions: SurfacesRootProps['useSessions']): string | und
 }
 
 /**
- * Occupant of the layout `surfaces` column: empty five-card grid, or tabs
- * plus the active occupant slot. Titlebar toggle only writes layout width.
+ * Occupant of the layout `surfaces` column: tab chrome is always mounted;
+ * open occupants stay mounted (inactive ones are `hidden`) so Browser
+ * history and unsaved Files drafts survive tab switches. Dirty file buffers
+ * persist in localStorage with the tab list so reload and quit restore them.
+ * Titlebar toggle only writes layout width.
  * @param props - session-maybe seats, the surfaces store, child slots, and copy.
  * @returns the right-panel shell.
  */
 export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
   const cwd = currentCwd(props.useSessions)
+  const [gitRepo, setGitRepo] = useState(false)
+  useEffect(() => {
+    if (cwd === undefined) {
+      setGitRepo(false)
+      return
+    }
+    let cancelled = false
+    void props.gitStatus(cwd).then((status) => {
+      if (!cancelled) setGitRepo(status !== null && status !== undefined)
+    }).catch(() => {
+      if (!cancelled) setGitRepo(false)
+    })
+    return () => { cancelled = true }
+  }, [cwd, props.gitStatus])
   return (
     <SurfacesBody
       {...props}
       useStore={props.useStore}
       actions={props.actions}
-      diffAvailable={cwd !== undefined}
+      diffAvailable={cwd !== undefined && gitRepo}
     />
   )
 }
@@ -94,15 +127,63 @@ function SurfacesBody({
   diffAvailable,
 }: SurfacesBodyProps): ReactNode {
   const key = sessionId ?? ''
+  const keyRef = useRef(key)
+  keyRef.current = key
   const bucket = useStore(state => sessionSurfaces(state, key))
+  const bucketRef = useRef(bucket)
+  bucketRef.current = bucket
+  const fileBuffers = useRef(loadPersistedDrafts())
+  const flushDrafts = (): void => {
+    const sessionKey = keyRef.current
+    if (sessionKey.length === 0) return
+    cancelPersist(sessionKey)
+    writeSession(
+      sessionKey,
+      bucketRef.current,
+      undefined,
+      collectDirtyDrafts(sessionKey, fileBuffers.current, bucketRef.current.surfaces),
+    )
+  }
   useEffect(() => {
     if (key.length === 0) return
-    persistSession(key, bucket)
+    persistSession(
+      key,
+      bucket,
+      undefined,
+      collectDirtyDrafts(key, fileBuffers.current, bucket.surfaces),
+    )
     return () => {
       cancelPersist(key)
-      writeSession(key, bucket)
+      const live = keyRef.current === key ? bucketRef.current : bucket
+      writeSession(
+        key,
+        live,
+        undefined,
+        collectDirtyDrafts(key, fileBuffers.current, live.surfaces),
+      )
     }
   }, [key, bucket])
+  useEffect(() => {
+    const onHide = (): void => { flushDrafts() }
+    window.addEventListener('pagehide', onHide)
+    window.addEventListener('beforeunload', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('beforeunload', onHide)
+    }
+  }, [key])
+  useEffect(() => {
+    const onOpen = (event: Event): void => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind !== 'preview' && kind !== 'terminal' && kind !== 'files' && kind !== 'diff' && kind !== 'agents') {
+        return
+      }
+      actions.open(key, kind)
+      openSurfaces()
+    }
+    window.addEventListener(OPEN_SURFACE_EVENT, onOpen)
+    return () => { window.removeEventListener(OPEN_SURFACE_EVENT, onOpen) }
+  }, [key, actions, openSurfaces])
   const open = (kind: OpenableKind): void => {
     actions.open(key, kind)
     openSurfaces()
@@ -111,12 +192,160 @@ function SurfacesBody({
     actions.openFile(key, relativePath)
     openSurfaces()
   }
-  const active = bucket.surfaces.find(surface => surface.id === bucket.activeId)
-  /* v8 ignore next -- actions keep activeId on an open surface. */
-  const occupant = active === undefined ? null : renderOccupant(active, renderSlot, openFile)
+  const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [pendingClose, setPendingClose] = useState<
+    | { kind: 'one'; id: string }
+    | { kind: 'others'; id: string }
+    | { kind: 'toRight'; id: string }
+    | { kind: 'all' }
+    | null
+  >(null)
+
+  const setDirty = useCallback((sessionKey: string, id: string, dirty: boolean): void => {
+    if (sessionKey !== keyRef.current) return
+    setDirtyIds((current) => {
+      const has = current.has(id)
+      if (dirty === has) return current
+      const next = new Set(current)
+      if (dirty) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+
+  /** Stable per-session+surface callbacks so FilePreview dirty effects do not loop on identity. */
+  const dirtyChangeById = useRef(new Map<string, (dirty: boolean) => void>())
+  const dirtyChangeFor = (id: string): ((dirty: boolean) => void) => {
+    const dirtyKey = `${key}:${id}`
+    const cached = dirtyChangeById.current.get(dirtyKey)
+    if (cached !== undefined) return cached
+    const sessionKey = key
+    const next = (dirty: boolean): void => { setDirty(sessionKey, id, dirty) }
+    dirtyChangeById.current.set(dirtyKey, next)
+    return next
+  }
+
+  /** In-memory file buffers keyed by session+surface id; survive remount until tab close. */
+  const bufferAccessById = useRef(new Map<string, {
+    read: () => { text: string; draft: string } | undefined
+    write: (buffer: { text: string; draft: string } | null) => void
+  }>())
+  const bufferAccessFor = (id: string): {
+    read: () => { text: string; draft: string } | undefined
+    write: (buffer: { text: string; draft: string } | null) => void
+  } => {
+    const bufferKey = `${key}:${id}`
+    const cached = bufferAccessById.current.get(bufferKey)
+    if (cached !== undefined) return cached
+    const next = {
+      read: (): { text: string; draft: string } | undefined => fileBuffers.current.get(bufferKey),
+      write: (buffer: { text: string; draft: string } | null): void => {
+        if (buffer === null) fileBuffers.current.delete(bufferKey)
+        else fileBuffers.current.set(bufferKey, buffer)
+        persistSession(
+          key,
+          bucketRef.current,
+          undefined,
+          collectDirtyDrafts(key, fileBuffers.current, bucketRef.current.surfaces),
+        )
+      },
+    }
+    bufferAccessById.current.set(bufferKey, next)
+    return next
+  }
+
+  const saveById = useRef(new Map<string, () => Promise<boolean>>())
+  const saveRegisterById = useRef(new Map<string, (save: (() => Promise<boolean>) | null) => void>())
+  const registerSaveFor = (id: string): ((save: (() => Promise<boolean>) | null) => void) => {
+    const saveKey = `${key}:${id}`
+    const cached = saveRegisterById.current.get(saveKey)
+    if (cached !== undefined) return cached
+    const next = (save: (() => Promise<boolean>) | null): void => {
+      if (save === null) saveById.current.delete(saveKey)
+      else saveById.current.set(saveKey, save)
+    }
+    saveRegisterById.current.set(saveKey, next)
+    return next
+  }
+
+  useEffect(() => {
+    setPendingClose(null)
+    const prefix = `${key}:`
+    const next = new Set<string>()
+    for (const [bufferKey, buffer] of fileBuffers.current) {
+      if (!bufferKey.startsWith(prefix)) continue
+      if (buffer.draft === buffer.text) continue
+      next.add(bufferKey.slice(prefix.length))
+    }
+    setDirtyIds(next)
+  }, [key])
+
+  const idsClosing = (pending: NonNullable<typeof pendingClose>): string[] => {
+    if (pending.kind === 'one') return [pending.id]
+    if (pending.kind === 'all') return bucket.surfaces.map(surface => surface.id)
+    if (pending.kind === 'others') {
+      return bucket.surfaces.filter(surface => surface.id !== pending.id).map(surface => surface.id)
+    }
+    const index = bucket.surfaces.findIndex(surface => surface.id === pending.id)
+    if (index < 0) return []
+    return bucket.surfaces.slice(index + 1).map(surface => surface.id)
+  }
+
+  const bufferIsDirty = (id: string): boolean => {
+    const buffer = fileBuffers.current.get(`${key}:${id}`)
+    return buffer !== undefined && buffer.draft !== buffer.text
+  }
+
+  const runClose = (pending: NonNullable<typeof pendingClose>): void => {
+    const closed = new Set(idsClosing(pending))
+    if (pending.kind === 'one') actions.close(key, pending.id)
+    else if (pending.kind === 'others') actions.closeOthers(key, pending.id)
+    else if (pending.kind === 'toRight') actions.closeToRight(key, pending.id)
+    else actions.closeAll(key)
+    for (const id of closed) {
+      const bufferKey = `${key}:${id}`
+      fileBuffers.current.delete(bufferKey)
+      bufferAccessById.current.delete(bufferKey)
+      dirtyChangeById.current.delete(bufferKey)
+      saveById.current.delete(bufferKey)
+      saveRegisterById.current.delete(bufferKey)
+    }
+    setDirtyIds((current) => new Set([...current].filter(id => !closed.has(id))))
+    setPendingClose(null)
+    flushDrafts()
+  }
+
+  const requestClose = (
+    pending: NonNullable<typeof pendingClose>,
+  ): void => {
+    const closing = idsClosing(pending)
+    if (closing.some(id => dirtyIds.has(id) || bufferIsDirty(id))) {
+      setPendingClose(pending)
+      return
+    }
+    runClose(pending)
+  }
 
   return (
     <div className={css.root} data-surfaces-root>
+      <SurfaceTabs
+        surfaces={bucket.surfaces}
+        activeId={bucket.activeId}
+        onActivate={(id) => { actions.activate(key, id) }}
+        onClose={(id) => { requestClose({ kind: 'one', id }) }}
+        onCloseOthers={(id) => { requestClose({ kind: 'others', id }) }}
+        onCloseToRight={(id) => { requestClose({ kind: 'toRight', id }) }}
+        onCloseAll={() => { requestClose({ kind: 'all' }) }}
+        onOpenKind={open}
+        openable={{
+          preview: previewAvailable && !bucket.surfaces.some(surface => surface.kind === 'preview'),
+          terminal: !bucket.surfaces.some(surface => surface.kind === 'terminal'),
+          files: !bucket.surfaces.some(surface => surface.kind === 'files'),
+          diff: diffAvailable && !bucket.surfaces.some(surface => surface.kind === 'diff'),
+          agents: !bucket.surfaces.some(surface => surface.kind === 'agents'),
+        }}
+        t={t}
+      />
       {bucket.surfaces.length === 0 ? (
         <EmptyState
           onOpen={open}
@@ -125,30 +354,78 @@ function SurfacesBody({
           diffAvailable={diffAvailable}
         />
       ) : (
-        <>
-          <SurfaceTabs
-            surfaces={bucket.surfaces}
-            activeId={bucket.activeId}
-            onActivate={(id) => { actions.activate(key, id) }}
-            onClose={(id) => { actions.close(key, id) }}
-            onCloseOthers={(id) => { actions.closeOthers(key, id) }}
-            onCloseToRight={(id) => { actions.closeToRight(key, id) }}
-            onCloseAll={() => { actions.closeAll(key) }}
-            onOpenKind={open}
-            openable={{
-              preview: previewAvailable && !bucket.surfaces.some(surface => surface.kind === 'preview'),
-              terminal: !bucket.surfaces.some(surface => surface.kind === 'terminal'),
-              files: !bucket.surfaces.some(surface => surface.kind === 'files'),
-              diff: diffAvailable && !bucket.surfaces.some(surface => surface.kind === 'diff'),
-              agents: !bucket.surfaces.some(surface => surface.kind === 'agents'),
-            }}
-            t={t}
-          />
-          <div className={css.body} data-surfaces-occupant>
-            {occupant}
-          </div>
-        </>
+        <div className={css.body}>
+          {bucket.surfaces.map((surface) => {
+            const isActive = surface.id === bucket.activeId
+            const buffers = bufferAccessFor(surface.id)
+            return (
+              <div
+                key={`${key}:${surface.id}`}
+                className={css.occupant}
+                data-surfaces-occupant={isActive ? 'active' : 'idle'}
+                hidden={!isActive}
+                aria-hidden={!isActive}
+              >
+                {renderOccupant(
+                  surface,
+                  renderSlot,
+                  openFile,
+                  isActive,
+                  dirtyChangeFor(surface.id),
+                  buffers.read,
+                  buffers.write,
+                  registerSaveFor(surface.id),
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
+      <Modal
+        open={pendingClose !== null}
+        onClose={() => { setPendingClose(null) }}
+        title={t('unsaved.title')}
+        closeLabel={t('unsaved.close')}
+        description={
+          pendingClose !== null
+          && idsClosing(pendingClose).filter(id => dirtyIds.has(id) || bufferIsDirty(id)).length > 1
+            ? t('unsaved.bodyMany')
+            : t('unsaved.body')
+        }
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => { setPendingClose(null) }}>{t('unsaved.keep')}</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                /* v8 ignore next -- confirm is only rendered while pendingClose is set. */
+                if (pendingClose !== null) runClose(pendingClose)
+              }}
+            >
+              {t('unsaved.discard')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                void (async () => {
+                  if (pendingClose === null) return
+                  const pending = pendingClose
+                  const dirty = idsClosing(pending).filter(id => dirtyIds.has(id) || bufferIsDirty(id))
+                  for (const id of dirty) {
+                    const save = saveById.current.get(`${key}:${id}`)
+                    if (save === undefined) return
+                    const ok = await save()
+                    if (!ok) return
+                  }
+                  runClose(pending)
+                })()
+              }}
+            >
+              {t('unsaved.save')}
+            </Button>
+          </>
+        )}
+      />
     </div>
   )
 }

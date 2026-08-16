@@ -10,6 +10,12 @@ export type { McpServerRecord } from '@deepseek-ai/dsh-mcp-servers-file/types'
 /** Whether the row comes from the managed file or a composition plugin. */
 export type McpServerOrigin = 'managed' | 'composition'
 
+/** Live connection health reported by the mounted mcp-client instance. */
+export interface McpServerConnection {
+  readonly health: 'connecting' | 'connected' | 'reconnecting' | 'failed'
+  readonly lastError?: string
+}
+
 /** One MCP server as Settings lists it. */
 export interface McpServerEntry {
   readonly id: string
@@ -17,6 +23,8 @@ export interface McpServerEntry {
   readonly writable: boolean
   readonly enabled: boolean
   readonly fiberPhase: ChildFiberPhase
+  /** Present when a live mcp-client instance for this row reports connection health. */
+  readonly connection?: McpServerConnection
   readonly spec: McpServerRecord
 }
 

@@ -275,6 +275,8 @@ export interface LaunchOptions {
   remoteAuthority?: string
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
+  /** Bundled Skill Markdown seeded inside the temp world before skill discovery starts. */
+  bundledSkills?: readonly { name: string; markdown: string }[]
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
@@ -352,6 +354,14 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   Object.assign(process.env, skillRootEnvironment)
   let persistenceRoot: string
   try {
+    for (const skill of options.bundledSkills ?? []) {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill.name)) {
+        throw new Error(`web scaffold bundled Skill name must be kebab-case; got ${JSON.stringify(skill.name)}`)
+      }
+      const skillDir = join(skillRootEnvironment.DSH_BUNDLED_SKILL_DIR, skill.name)
+      await mkdir(skillDir, { recursive: true })
+      await writeFile(join(skillDir, 'SKILL.md'), skill.markdown)
+    }
     persistenceRoot = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sessions-'))
   } catch (error) {
     const failures: unknown[] = [error]

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  Button, DisclosureRow, IconCodeOutline16, IconRefreshOutline16, Modal, Tooltip,
+  Button, DisclosureRow, IconCodeOutline16, IconRefreshOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
 import {
-  isStaged, isUnstaged, type DiffFile, type DiffShellInjected, type GitStatusEntry,
+  isStaged, isUnstaged, type DiffBranchRef, type DiffFile, type DiffShellInjected, type GitStatusEntry,
 } from './shell.ts'
 import css from './DiffPanel.module.css'
 
@@ -30,6 +30,21 @@ function marker(kind: 'context' | 'add' | 'del'): string {
 }
 
 /**
+ * Prefer origin HEAD, then main/master, then the first local branch.
+ * @param branches - listed refs.
+ * @param defaultRef - `refs/remotes/origin/HEAD` short name when present.
+ */
+export function pickBranchBase(branches: readonly DiffBranchRef[], defaultRef: string | null | undefined): string {
+  if (typeof defaultRef === 'string' && defaultRef.length > 0) return defaultRef
+  const marked = branches.find(branch => branch.isDefault)
+  if (marked !== undefined) return marked.name
+  const main = branches.find(branch => branch.name === 'main' || branch.name === 'master' || branch.name.endsWith('/main'))
+  if (main !== undefined) return main.name
+  const local = branches.find(branch => branch.isRemote !== true)
+  return local?.name ?? 'main'
+}
+
+/**
  * Workspace diff occupant of `surfaces.diff`. Not a git repository shows the
  * T3code Diff disabled reason.
  * @param props - session-maybe seats, git IPC, openFile, and copy.
@@ -44,6 +59,7 @@ export function DiffPanel({
   gitStage,
   gitUnstage,
   gitDiscard,
+  gitBranchList,
   t,
 }: DiffPanelProps): ReactNode {
   const cwd = currentCwd(useSessions)
@@ -52,9 +68,15 @@ export function DiffPanel({
   const [entries, setEntries] = useState<GitStatusEntry[] | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [opError, setOpError] = useState<string | null>(null)
   const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(new Set())
   const [discardPath, setDiscardPath] = useState<string | null>(null)
   const [generation, setGeneration] = useState(0)
+  const [scope, setScope] = useState<'worktree' | 'branch'>('worktree')
+  const [baseRef, setBaseRef] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [branches, setBranches] = useState<DiffBranchRef[]>([])
 
   const reload = useCallback(() => { setGeneration(n => n + 1) }, [])
 
@@ -71,17 +93,30 @@ export function DiffPanel({
       setEntries(null)
       setTruncated(false)
       setError(null)
+      setOpError(null)
       return
     }
     let cancelled = false
-    void Promise.all([gitStatus(cwd), gitDiff(cwd), gitStatusEntries(cwd)]).then(([status, diff, porcelain]) => {
+    const options = scope === 'branch' && baseRef !== null ? { baseRef } : undefined
+    const porcelainProbe = scope === 'worktree' ? gitStatusEntries(cwd) : Promise.resolve(null)
+    void Promise.all([gitStatus(cwd), gitDiff(cwd, options), porcelainProbe]).then(([status, diff, porcelain]) => {
       if (cancelled) return
-      if (status === null || diff === null) {
+      if (status === null) {
         setAvailable(false)
         setFiles([])
         setEntries(null)
         setTruncated(false)
         setError(null)
+        setOpError(null)
+        return
+      }
+      if (diff === null) {
+        setAvailable(true)
+        setFiles([])
+        setEntries(null)
+        setTruncated(false)
+        setError(t('error.load'))
+        setOpError(null)
         return
       }
       setAvailable(true)
@@ -90,11 +125,15 @@ export function DiffPanel({
       setEntries(porcelain?.ok === true ? porcelain.entries ?? [] : null)
       setOpenPaths(new Set(diff.files.map(file => file.path)))
       setError(null)
+      setOpError(null)
     }).catch(() => {
-      if (!cancelled) setError(t('error.load'))
+      if (!cancelled) {
+        setError(t('error.load'))
+        setOpError(null)
+      }
     })
     return () => { cancelled = true }
-  }, [cwd, gitStatus, gitDiff, gitStatusEntries, t, generation])
+  }, [cwd, gitStatus, gitDiff, gitStatusEntries, t, generation, scope, baseRef])
 
   const toggle = (path: string): void => {
     const next = new Set(openPaths)
@@ -111,9 +150,10 @@ export function DiffPanel({
     if (cwd === undefined) return
     const result = await op(cwd, relativePath)
     if (!result.ok) {
-      setError(result.message ?? t('error.load'))
+      setOpError(result.message ?? t('error.load'))
       return
     }
+    setOpError(null)
     reload()
   }
 
@@ -165,11 +205,96 @@ export function DiffPanel({
 
   const staged = entries?.filter(entry => isStaged(entry.xy)) ?? []
   const unstaged = entries?.filter(entry => isUnstaged(entry.xy)) ?? []
+  const scopeLabel = scope === 'branch' && baseRef !== null
+    ? `${t('scope.branch')} · ${baseRef}`
+    : t('scope.worktree')
+  const normalizedQuery = query.trim().toLowerCase()
+  const branchItems = branches
+    .filter(branch => normalizedQuery.length === 0 || branch.name.toLowerCase().includes(normalizedQuery))
+    .map(branch => ({
+      id: `ref:${branch.name}`,
+      label: branch.name,
+    }))
+
+  const closeMenu = (): void => {
+    setMenuOpen(false)
+    setQuery('')
+  }
 
   return (
     <div className={css.root} data-diff-panel>
-      <div className={css.header} data-surface-subheader>
-        <h3 className={css.title}>{t('title')}</h3>
+      <div className={css.toolbar}>
+        <Menu
+          open={menuOpen}
+          portal
+          onClose={closeMenu}
+          selectedId={scope === 'worktree' ? 'worktree' : `ref:${baseRef ?? ''}`}
+          filter={{
+            value: query,
+            placeholder: t('scope.search'),
+            label: t('scope.search'),
+            onChange: setQuery,
+          }}
+          onSelect={(id) => {
+            closeMenu()
+            if (id === 'worktree') {
+              setScope('worktree')
+              setBaseRef(null)
+              reload()
+              return
+            }
+            const name = id.startsWith('ref:') ? id.slice(4) : id
+            setScope('branch')
+            setBaseRef(name)
+            reload()
+          }}
+          items={[
+            { id: 'worktree', label: t('scope.worktree') },
+            { type: 'separator', id: 'sep-scope' },
+            { type: 'label', id: 'branch-label', text: t('scope.branch') },
+            ...branchItems,
+          ]}
+          anchor={(
+            <button
+              type="button"
+              className={css.scope}
+              aria-label={scopeLabel}
+              onClick={() => {
+                const next = !menuOpen
+                setMenuOpen(next)
+                if (next && cwd !== undefined) {
+                  void gitBranchList(cwd).then((listed) => {
+                    if (listed?.ok !== true) {
+                      setBranches([])
+                      return
+                    }
+                    const nextBranches = listed.branches ?? []
+                    setBranches(nextBranches)
+                    if (scope === 'worktree' && baseRef === null) {
+                      setBaseRef(pickBranchBase(nextBranches, listed.defaultRef))
+                    }
+                  })
+                }
+              }}
+            >
+              {scopeLabel}
+            </button>
+          )}
+        />
+        <button
+          type="button"
+          className={css.action}
+          onClick={() => { setOpenPaths(new Set()) }}
+        >
+          {t('collapseAll')}
+        </button>
+        <button
+          type="button"
+          className={css.action}
+          onClick={() => { setOpenPaths(new Set(files.map(file => file.path))) }}
+        >
+          {t('expandAll')}
+        </button>
         <Tooltip label={t('refresh')} side="bottom">
           <button
             type="button"
@@ -188,7 +313,10 @@ export function DiffPanel({
           <p className={css.message}>{error}</p>
         ) : !available ? (
           <p className={css.message} data-diff-unavailable>{t('unavailable')}</p>
-        ) : entries !== null ? (
+        ) : (
+          <>
+            {opError !== null ? <p className={css.opError} role="alert">{opError}</p> : null}
+            {entries !== null ? (
           <>
             {truncated ? <p className={css.message}>{t('truncated')}</p> : null}
             {staged.length === 0 && unstaged.length === 0 ? (
@@ -250,6 +378,8 @@ export function DiffPanel({
           <>
             {truncated ? <p className={css.message}>{t('truncated')}</p> : null}
             {files.map(file => fileRow(file.path, null))}
+          </>
+            )}
           </>
         )}
       </div>

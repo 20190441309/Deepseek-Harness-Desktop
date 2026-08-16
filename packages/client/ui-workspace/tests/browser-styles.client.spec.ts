@@ -73,6 +73,10 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(declarations('.flatList > * + *')?.get('margin-top')).toBe('2px')
     expect(declarations(".searchTree > [role='treeitem'] + [role='treeitem']")?.get('margin-top')).toBe('2px')
     expect(declarations('.groupSection > * + *')?.get('margin-top')).toBe('2px')
+    expect(rowDeclarations('.sessionRunInner > * + *')?.get('margin-top')).toBe('2px')
+    expect(rowDeclarations('.sessionRun')?.get('display')).toBe('grid')
+    expect(rowDeclarations('.sessionRun')?.get('grid-template-rows')).toBe('1fr')
+    expect(rowDeclarations(".sessionRun[data-state='closed']")?.get('grid-template-rows')).toBe('0fr')
     expect(declarations('.groupSection + .groupSection')?.get('margin-top')).toBe('4px')
   })
 

@@ -134,6 +134,7 @@ function drag(handle: Element, fromX: number, toX: number): void {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   frameWidth = 1920
   orientationLandscape = true
   orientationListeners.clear()
@@ -347,7 +348,7 @@ describe('AppFrame', () => {
   it('open surfaces and terminal drawer write their contract default tracks', () => {
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.openSurfaces() })
-    expect(surfacesTrack(frame)).toBe(400)
+    expect(surfacesTrack(frame)).toBe(540)
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
@@ -356,24 +357,28 @@ describe('AppFrame', () => {
     expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(false)
   })
 
-  it('keeps an open surfaces column on the body row under the shared titlebar', () => {
+  it('keeps an open surfaces column full height; trailing cluster stops before column 4', () => {
     const { frame, instance } = mountFrame()
     expect(frame.style.gridTemplateRows.startsWith('auto minmax(0, 1fr)')).toBe(true)
     expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
+    const trailing = frame.querySelector('[data-titlebar-trailing]')!
+    expect(trailing.hasAttribute('data-titlebar-trailing-over-surfaces')).toBe(true)
     act(() => { instance.actions.openSurfaces() })
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    expect(trailing.hasAttribute('data-titlebar-trailing-over-surfaces')).toBe(false)
     act(() => { instance.actions.closeSurfaces() })
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)
+    expect(trailing.hasAttribute('data-titlebar-trailing-over-surfaces')).toBe(true)
   })
 
   it('surfaces drag widens leftward (negative dx grows the panel)', () => {
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.openSurfaces() })
     const handles = frame.querySelectorAll('[class*="handle"]')
-    drag(handles[1]!, 1520, 1460)
-    expect(surfacesTrack(frame)).toBe(460)
+    drag(handles[1]!, 1380, 1320)
+    expect(surfacesTrack(frame)).toBe(600)
   })
 
   it('keeps surfaces and the terminal drawer mounted at zero size when closed', () => {

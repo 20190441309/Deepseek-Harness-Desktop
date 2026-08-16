@@ -65,6 +65,7 @@ describe('ui-diff apply', () => {
     await expect(injected.gitDiscard('/tmp', 'a.ts')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
     })
+    await expect(injected.gitBranchList('/tmp')).resolves.toBeNull()
     await b.fiber.dispose()
   })
 })

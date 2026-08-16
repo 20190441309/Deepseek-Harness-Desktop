@@ -49,6 +49,6 @@ describe('EmptyState', () => {
     expect(diff).toHaveProperty('disabled', true)
     fireEvent.click(diff)
     expect(onOpen).not.toHaveBeenCalled()
-    expect(diff.getAttribute('title')).toBe('Diff is only available for server threads in Git repositories.')
+    expect(diff.getAttribute('title')).toBe('Diff is only available in Git repositories.')
   })
 })

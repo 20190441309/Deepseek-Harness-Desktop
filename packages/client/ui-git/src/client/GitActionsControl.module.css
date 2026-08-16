@@ -1,6 +1,8 @@
 .split {
   display: inline-flex;
   align-items: stretch;
+  overflow: hidden;
+  box-sizing: border-box;
   height: 32px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 18px;
@@ -42,9 +44,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 32px frame minus its 1px borders, so the buttons sit flush inside. */
-  height: 30px;
+  height: 100%;
   border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-family);
@@ -57,14 +59,12 @@
 .primary {
   gap: 4px;
   padding: 6px 12px;
-  border-radius: 18px 0 0 18px;
   white-space: nowrap;
 }
 
 .chevron {
   width: 28px;
   padding: 0;
-  border-radius: 0 18px 18px 0;
 }
 
 .primary:hover:not(:disabled),
@@ -78,41 +78,13 @@
   cursor: not-allowed;
 }
 
+.hintWrap {
+  display: inline-flex;
+}
+
 .rule {
   width: 1px;
   align-self: stretch;
   margin: 6px 0;
   background: var(--dsw-alias-border-l2);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.fieldLabel {
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.message {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 72px;
-  padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-primary);
-  font-family: var(--dsw-font-family);
-  font-size: 13px;
-  line-height: 20px;
-  resize: vertical;
-}
-
-.message:focus {
-  outline: none;
-  border-color: var(--dsw-alias-border-l1);
 }

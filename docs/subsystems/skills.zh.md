@@ -293,6 +293,14 @@ async list(options: SkillViewOptions = {}): Promise<SkillSummary[]>
 async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
 
 /**
+ * Drop every cached catalog observation so the next `list`/`snapshot`/`get`
+ * rediscovers from providers. Host mutations that write skill files without
+ * going through a provider call this after a successful write instead of
+ * waiting for filesystem watcher events.
+ */
+invalidate(): void
+
+/**
  * Load and validate the winning candidate, passing its opaque discovery locator back to the
  * provider. Cancellation is rechecked after selection, including cache hits, and raced against
  * loading so an uncooperative provider cannot hang the caller.

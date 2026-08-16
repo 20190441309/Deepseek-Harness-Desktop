@@ -69,6 +69,9 @@ describe('ui-files apply', () => {
     await expect(injected.readFileMedia('/tmp', 'a.png')).resolves.toEqual({
       ok: false, message: 'Workspace listing is unavailable.',
     })
+    await expect(injected.writeFile('/tmp', 'a.ts', 'x')).resolves.toEqual({
+      ok: false, message: 'Workspace listing is unavailable.',
+    })
     await b.fiber.dispose()
   })
 })

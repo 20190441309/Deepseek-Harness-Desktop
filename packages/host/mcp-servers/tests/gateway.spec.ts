@@ -13,7 +13,12 @@ afterEach(async () => {
 
 const mcpPlugin = { name: 'mcp-client', apply() {} }
 
-async function harness(managed: McpServerRecord[] = []) {
+type TestHealth = { health: 'connecting' | 'connected' | 'reconnecting' | 'failed'; lastError?: string }
+
+async function harness(managed: McpServerRecord[] = [], health: {
+  managed?: TestHealth
+  composition?: TestHealth
+} = {}) {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(Loader)
@@ -21,6 +26,8 @@ async function harness(managed: McpServerRecord[] = []) {
   ctx.provide('mcpServersFile', {
     listManaged: () => managed,
     childPhase: () => 'active' as const,
+    childHealth: () => health.managed,
+    connectionStatus: () => health.composition,
     upsert: async (spec: McpServerRecord) => { managed.splice(0, managed.length, spec) },
     remove: async (id: string) => {
       const index = managed.findIndex(item => item.id === id)
@@ -36,10 +43,10 @@ async function harness(managed: McpServerRecord[] = []) {
 }
 
 describe('McpServersGateway', () => {
-  it('publishes list, upsert, remove, and setEnabled remotes', async () => {
+  it('publishes list, upsert, delete, and setEnabled remotes', async () => {
     const { gateway } = await harness()
     expect(remoteMethods(gateway).map(item => item.method).sort()).toEqual([
-      'list', 'remove', 'setEnabled', 'upsert',
+      'delete', 'list', 'setEnabled', 'upsert',
     ])
   })
 
@@ -100,6 +107,57 @@ describe('McpServersGateway', () => {
       writable: false,
       spec: { transport: 'streamable-http', url: 'http://127.0.0.1:9/mcp' },
     })
+  })
+
+  it('masks secret env and headers on composition rows', async () => {
+    const { ctx, gateway } = await harness()
+    await ctx.loader.create({
+      name: 'cordis:mcp-client',
+      config: {
+        serverName: 'memory',
+        transport: 'stdio',
+        command: 'mcp-server-memory',
+        env: { API_TOKEN: 'plain-token', PATH: '/bin' },
+      },
+    })
+    await ctx.loader.create({
+      name: 'cordis:mcp-client',
+      config: {
+        serverName: 'remote',
+        transport: 'streamable-http',
+        url: 'http://127.0.0.1:9/mcp',
+        headers: { Authorization: 'Bearer token', Accept: 'application/json' },
+      },
+    })
+    const snapshot = gateway.list()
+    const stdio = snapshot.servers.find(entry => entry.spec.serverName === 'memory')?.spec
+    expect(stdio?.transport === 'stdio' && stdio.env?.API_TOKEN).toBe('********')
+    expect(stdio?.transport === 'stdio' && stdio.env?.PATH).toBe('/bin')
+    const http = snapshot.servers.find(entry => entry.spec.serverName === 'remote')?.spec
+    expect(http?.transport === 'streamable-http' && http.headers?.Authorization).toBe('********')
+    expect(http?.transport === 'streamable-http' && http.headers?.Accept).toBe('application/json')
+  })
+
+  it('carries live connection health on managed and composition rows', async () => {
+    const { ctx, gateway } = await harness([{
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    }], {
+      managed: { health: 'reconnecting', lastError: 'Error: spawn ENOENT' },
+      composition: { health: 'failed', lastError: 'connection refused' },
+    })
+    await ctx.loader.create({
+      name: 'cordis:mcp-client',
+      config: { serverName: 'memory', transport: 'stdio', command: 'mcp-server-memory' },
+    })
+    const snapshot = gateway.list()
+    expect(snapshot.servers.find(entry => entry.id === 'github')?.connection)
+      .toMatchObject({ health: 'reconnecting', lastError: 'Error: spawn ENOENT' })
+    expect(snapshot.servers.find(entry => entry.spec.serverName === 'memory')?.connection)
+      .toMatchObject({ health: 'failed', lastError: 'connection refused' })
   })
 
   it('rejects mutations against a composition-owned id', async () => {

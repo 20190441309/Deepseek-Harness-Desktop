@@ -13,7 +13,7 @@ export const zh = {
   'card.files.description': '浏览并阅读工作区文件。',
   'card.diff': '差异',
   'card.diff.description': '查看 git 变更。',
-  'card.diff.disabled': '差异仅适用于 Git 仓库中的服务端会话。',
+  'card.diff.disabled': '差异仅适用于 Git 仓库。',
   'card.agents': '代理',
   'card.agents.description': '查看正在运行的代理。',
   'tab.close': '关闭',
@@ -21,6 +21,13 @@ export const zh = {
   'tab.closeToRight': '关闭右侧',
   'tab.closeAll': '全部关闭',
   'tab.add': '打开面板',
+  'unsaved.title': '放弃未保存的更改？',
+  'unsaved.body': '关闭后，此文件中未保存的编辑将丢失。',
+  'unsaved.bodyMany': '关闭后，这些文件中未保存的编辑将丢失。',
+  'unsaved.discard': '放弃更改',
+  'unsaved.keep': '继续编辑',
+  'unsaved.save': '保存',
+  'unsaved.close': '关闭',
 } satisfies Record<string, string>
 
 /** The surfaces namespace key union. */
@@ -39,7 +46,7 @@ export const en = {
   'card.files.description': 'Browse and read workspace files.',
   'card.diff': 'Diff',
   'card.diff.description': 'Review git changes.',
-  'card.diff.disabled': 'Diff is only available for server threads in Git repositories.',
+  'card.diff.disabled': 'Diff is only available in Git repositories.',
   'card.agents': 'Agents',
   'card.agents.description': 'Inspect running agents.',
   'tab.close': 'Close',
@@ -47,6 +54,13 @@ export const en = {
   'tab.closeToRight': 'Close to the right',
   'tab.closeAll': 'Close all',
   'tab.add': 'Open a surface',
+  'unsaved.title': 'Discard unsaved changes?',
+  'unsaved.body': 'Closing discards unsaved edits in this file.',
+  'unsaved.bodyMany': 'Closing discards unsaved edits in these files.',
+  'unsaved.discard': 'Discard changes',
+  'unsaved.keep': 'Keep editing',
+  'unsaved.save': 'Save',
+  'unsaved.close': 'Close',
 } satisfies Record<SurfacesKey, string>
 
 /** Dictionary namespace owned by this plugin. */

@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconCloseOutline16, IconPlusOutline16, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconAgentPresetOutline16,
+  IconCloseOutline16,
+  IconCodeOutline16,
+  IconCommitOutline16,
+  IconFolderOpenOutline16,
+  IconGlobeOutline14,
+  IconPanelBottomOutline16,
+  IconPlusOutline16,
+  Menu,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
@@ -15,6 +25,15 @@ const ADD_LABEL: Record<OpenableKind, 'card.browser' | 'card.terminal' | 'card.f
   files: 'card.files',
   diff: 'card.diff',
   agents: 'card.agents',
+}
+
+const KIND_ICON: Record<Surface['kind'], ComponentType<{ size?: number; className?: string }>> = {
+  preview: IconGlobeOutline14,
+  terminal: IconPanelBottomOutline16,
+  files: IconFolderOpenOutline16,
+  diff: IconCommitOutline16,
+  agents: IconAgentPresetOutline16,
+  file: IconCodeOutline16,
 }
 
 export type SurfaceTabsProps = PropsLocale<typeof NS> & {
@@ -59,9 +78,15 @@ export function surfaceTitle(surface: Surface, t: SurfaceTabsProps['t']): string
   }
 }
 
+function SurfaceKindIcon({ kind }: { kind: Surface['kind'] }): ReactNode {
+  const Icon = KIND_ICON[kind]
+  return <Icon size={12} />
+}
+
 /**
  * Surface tab strip: activate, close, add-menu, middle-click, context menu,
- * and non-passive wheel-to-horizontal scroll.
+ * and non-passive wheel-to-horizontal scroll. Mounted even with zero surfaces
+ * so the titlebar drag region and window-control pad remain.
  * @param props - surfaces, the active id, callbacks, and copy.
  * @returns the tab bar.
  */
@@ -72,6 +97,7 @@ export function SurfaceTabs({
   const barRef = useRef<HTMLDivElement>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [hoverId, setHoverId] = useState<string | null>(null)
 
   useEffect(() => {
     const el = barRef.current
@@ -124,7 +150,11 @@ export function SurfaceTabs({
           <div
             key={surface.id}
             className={clsx(css.tab, active && css.active)}
+            data-surfaces-tab
             data-active-tab={active || undefined}
+            data-hover={hoverId === surface.id || undefined}
+            onMouseEnter={() => { setHoverId(surface.id) }}
+            onMouseLeave={() => { setHoverId(null) }}
             onMouseDown={(event) => { onTabMouseDown(surface.id, event) }}
             onContextMenu={(event) => { onTabContext(surface.id, event) }}
           >
@@ -141,39 +171,48 @@ export function SurfaceTabs({
               aria-label={`${t('tab.close')} ${title}`}
               onClick={() => { onClose(surface.id) }}
             >
-              <IconCloseOutline16 size={12} />
+              <span className={css.kindIcon} data-surfaces-tab-icon>
+                <SurfaceKindIcon kind={surface.kind} />
+              </span>
+              <span className={css.closeGlyph} data-surfaces-tab-close-glyph>
+                <IconCloseOutline16 size={12} />
+              </span>
             </button>
           </div>
         )
       })}
-      <Menu
-        open={addOpen}
-        portal
-        compact
-        align="end"
-        items={addItems}
-        onSelect={(id) => {
-          setAddOpen(false)
-          onOpenKind(id as OpenableKind)
-        }}
-        onClose={() => { setAddOpen(false) }}
-        anchor={(
-          <button
-            type="button"
-            className={css.add}
-            aria-label={t('tab.add')}
-            data-surfaces-tab-add
-            onClick={() => {
-              setMenu(null)
-              setAddOpen(open => !open)
-            }}
-          >
-            <IconPlusOutline16 size={14} />
-          </button>
-        )}
-      />
+      {surfaces.length > 0 ? (
+        <Menu
+          className={css.interactive}
+          open={addOpen}
+          portal
+          compact
+          align="end"
+          items={addItems}
+          onSelect={(id) => {
+            setAddOpen(false)
+            onOpenKind(id as OpenableKind)
+          }}
+          onClose={() => { setAddOpen(false) }}
+          anchor={(
+            <button
+              type="button"
+              className={css.add}
+              aria-label={t('tab.add')}
+              data-surfaces-tab-add
+              onClick={() => {
+                setMenu(null)
+                setAddOpen(open => !open)
+              }}
+            >
+              <IconPlusOutline16 size={14} />
+            </button>
+          )}
+        />
+      ) : null}
       {menu !== null ? (
         <Menu
+          className={css.interactive}
           open
           portal
           compact

@@ -1,7 +1,7 @@
 /**
- * Shared PTY session table for the bottom drawer and the right-panel
- * Terminal surface. One handle is seated on both registrations so
- * activate(id) reads the same record from either shell.
+ * PTY session table for one terminal shell. Production seats one handle on
+ * the drawer and a second handle on the right-panel Terminal surface so
+ * each shell keeps its own sessions, groups, and active id.
  */
 import { defineStore, type EngineStoreHandle, type EngineStoreInstance } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -14,7 +14,7 @@ export const DEFAULT_TERMINAL_ROWS = 24
 /** Retained scrollback cap; appendData drops from the head past this length. */
 export const MAX_TERMINAL_BUFFER = 256 * 1024
 
-/** One live PTY session the drawer and surface can both attach. */
+/** One live PTY session owned by a single terminal shell. */
 export type TerminalSessionRecord = {
   id: string
   cwd: string
@@ -23,10 +23,14 @@ export type TerminalSessionRecord = {
   buffer: string
 }
 
+/** How panes in a split group are tiled. Omitted means horizontal. */
+export type TerminalSplitDirection = 'horizontal' | 'vertical'
+
 /** Split group: terminals tiled together, capped at MAX_TERMINALS_PER_GROUP. */
 export type TerminalGroup = {
   id: string
   terminalIds: string[]
+  splitDirection?: TerminalSplitDirection
 }
 
 /** Shared terminal UI state. */
@@ -40,7 +44,7 @@ export type TerminalSessionState = {
 type TerminalSessionActions = {
   activate: (draft: TerminalSessionState, id: string) => void
   newTerminal: (draft: TerminalSessionState, id: string, cwd: string) => void
-  split: (draft: TerminalSessionState, id: string, cwd: string) => void
+  split: (draft: TerminalSessionState, id: string, cwd: string, direction: TerminalSplitDirection) => void
   close: (draft: TerminalSessionState, id: string) => void
   setSize: (draft: TerminalSessionState, id: string, cols: number, rows: number) => void
   appendData: (draft: TerminalSessionState, id: string, data: string) => void
@@ -66,7 +70,7 @@ export function snapshotOf(actions: object): TerminalSessionState | undefined {
 }
 
 /**
- * Take the shared create lock. Drawer and surface share one actions object.
+ * Take the create lock for this actions object. Separate handles do not share it.
  * @param actions - the store instance actions (identity is the lock key).
  * @returns whether this caller acquired the lock.
  */
@@ -111,8 +115,8 @@ function hasSession(state: TerminalSessionState, id: string): boolean {
 }
 
 /**
- * Create the shared terminal-session store handle. Production seats one
- * handle on both drawer and surface registrations; tests call create().
+ * Create a terminal-session store handle. Production seats one handle per
+ * shell; tests call create().
  * @returns the store handle.
  */
 export function createTerminalSessionStore(): TerminalSessionStoreHandle {
@@ -134,7 +138,7 @@ export function createTerminalSessionStore(): TerminalSessionStoreHandle {
         draft.groups.push({ id: groupIdFor(id), terminalIds: [id] })
         draft.activeId = id
       },
-      split: (draft, id: string, cwd: string) => {
+      split: (draft, id: string, cwd: string, direction: TerminalSplitDirection) => {
         draft.createFailed = false
         if (id.trim() === '' || hasSession(draft, id)) return
         if (draft.sessions.length === 0) {
@@ -148,6 +152,8 @@ export function createTerminalSessionStore(): TerminalSessionStoreHandle {
         if (group === undefined || group.terminalIds.length >= MAX_TERMINALS_PER_GROUP) return
         draft.sessions.push(recordOf(id, cwd))
         group.terminalIds.push(id)
+        if (direction === 'vertical') group.splitDirection = 'vertical'
+        else delete group.splitDirection
         draft.activeId = id
       },
       close: (draft, id: string) => {

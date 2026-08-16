@@ -14,7 +14,7 @@ import { usePresence } from './usePresence.ts'
 import css from './Tooltip.module.css'
 
 /** Bubble placement relative to the anchor. */
-export type TooltipSide = 'right' | 'bottom' | 'top'
+export type TooltipSide = 'right' | 'left' | 'bottom' | 'top'
 
 /** Props Tooltip injects into its anchor child; the child's own handlers are chained ahead of the tooltip's. */
 interface AnchorProps {
@@ -64,7 +64,7 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
   }, [mounted, pos, label])
   const y = pos === null
     ? 0
-    : placement === 'right'
+    : placement === 'right' || placement === 'left'
       ? pos.top + (pos.bottom - pos.top) / 2
       : placement === 'top' ? pos.top - 8 : pos.bottom + 8
   const EDGE_MARGIN = 12
@@ -83,6 +83,11 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
       if (el === null) return
       el.style.left = `${pos.x}px`
       const r = el.getBoundingClientRect()
+      if (side === 'left') {
+        el.style.left = `${pos.x - r.width - 10}px`
+        if (r.left - r.width - 10 < EDGE_MARGIN) el.style.left = `${EDGE_MARGIN}px`
+        return
+      }
       let dx = 0
       if (r.right > window.innerWidth - EDGE_MARGIN) dx = window.innerWidth - EDGE_MARGIN - r.right
       if (r.left + dx < EDGE_MARGIN) dx = EDGE_MARGIN - r.left
@@ -133,7 +138,7 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
     // Every show starts from the requested side; the fit pass flips it only
     // where this anchor's position demands it.
     setPlacement(side)
-    setPos({ x: side === 'right' ? r.right + 10 : r.left + r.width / 2, top: r.top, bottom: r.bottom })
+    setPos({ x: side === 'right' ? r.right + 10 : side === 'left' ? r.left : r.left + r.width / 2, top: r.top, bottom: r.bottom })
     setVisible(true)
   }
   const showAfterHoverDelay = () => {

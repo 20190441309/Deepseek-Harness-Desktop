@@ -77,6 +77,66 @@ export function shouldIncludeBranchPickerItem(input: {
   return itemValue.toLowerCase().includes(normalizedQuery)
 }
 
+const AUTO_FEATURE_BRANCH_FALLBACK = 'update'
+
+/**
+ * Sanitize an arbitrary string into a valid, lowercase git ref fragment.
+ * Ported from T3code `sanitizeBranchFragment` (MIT).
+ * @param raw - commit subject or typed name.
+ * @returns a non-empty fragment, or `update`.
+ */
+export function sanitizeBranchFragment(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/['"`]/g, '')
+    .replace(/^[./\s_-]+|[./\s_-]+$/g, '')
+  const fragment = normalized
+    .replace(/[^a-z0-9/_-]+/g, '-')
+    .replace(/\/+/g, '/')
+    .replace(/-+/g, '-')
+    .replace(/^[./_-]+|[./_-]+$/g, '')
+    .slice(0, 64)
+    .replace(/[./_-]+$/g, '')
+  return fragment.length > 0 ? fragment : AUTO_FEATURE_BRANCH_FALLBACK
+}
+
+/**
+ * Sanitize a string into a `feature/…` ref name.
+ * Ported from T3code `sanitizeFeatureBranchName` (MIT).
+ * @param raw - commit subject or typed name.
+ * @returns a feature ref name.
+ */
+export function sanitizeFeatureBranchName(raw: string): string {
+  const sanitized = sanitizeBranchFragment(raw)
+  if (sanitized.includes('/')) {
+    return sanitized.startsWith('feature/') ? sanitized : `feature/${sanitized}`
+  }
+  return `feature/${sanitized}`
+}
+
+/**
+ * Pick a unique `feature/…` name that does not collide with existing refs.
+ * Ported from T3code `resolveAutoFeatureBranchName` (MIT).
+ * @param existingBranchNames - current local and remote short names.
+ * @param preferredBranch - optional preferred fragment or subject.
+ * @returns a unique feature ref name.
+ */
+export function resolveAutoFeatureBranchName(
+  existingBranchNames: readonly string[],
+  preferredBranch?: string,
+): string {
+  const preferred = preferredBranch?.trim()
+  const resolvedBase = sanitizeFeatureBranchName(
+    preferred && preferred.length > 0 ? preferred : AUTO_FEATURE_BRANCH_FALLBACK,
+  )
+  const existingNames = new Set(existingBranchNames.map(name => name.toLowerCase()))
+  if (!existingNames.has(resolvedBase)) return resolvedBase
+  let suffix = 2
+  while (existingNames.has(`${resolvedBase}-${suffix}`)) suffix += 1
+  return `${resolvedBase}-${suffix}`
+}
+
 /**
  * Order the picker rows the way the titlebar shows them: current first, then
  * locals alphabetically, then remotes alphabetically.

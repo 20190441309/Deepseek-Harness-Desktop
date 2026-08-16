@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import type { McpServerRecord } from '@deepseek-ai/dsh-mcp-servers-file'
-import type {} from '@deepseek-ai/dsh-mcp-servers-file'
+import { maskRecordSecrets } from '@deepseek-ai/dsh-mcp-servers-file'
 import type {
   McpServerEnableRequest,
   McpServerEntry,
@@ -53,18 +53,22 @@ export class McpServersGateway extends TypertRemoteService {
 
   /**
    * List managed file records plus composition-owned mcp-client rows.
-   * @returns current snapshot; managed secrets are already masked.
+   * @returns current snapshot; secret env and header values are masked on every row.
    */
   @Remote('list')
   list(): McpServerSnapshot {
-    const managed = this.ctx.mcpServersFile.listManaged().map((spec): McpServerEntry => ({
-      id: spec.id,
-      origin: 'managed',
-      writable: true,
-      enabled: spec.enabled,
-      fiberPhase: this.ctx.mcpServersFile.childPhase(spec.id),
-      spec,
-    }))
+    const managed = this.ctx.mcpServersFile.listManaged().map((spec): McpServerEntry => {
+      const connection = this.ctx.mcpServersFile.childHealth(spec.id)
+      return {
+        id: spec.id,
+        origin: 'managed',
+        writable: true,
+        enabled: spec.enabled,
+        fiberPhase: this.ctx.mcpServersFile.childPhase(spec.id),
+        ...connection === undefined ? {} : { connection },
+        spec,
+      }
+    })
     const managedNames = new Set(managed.map(entry => entry.spec.serverName))
     const composition: McpServerEntry[] = []
     for (const entry of this.ctx.loader.entries()) {
@@ -73,13 +77,15 @@ export class McpServersGateway extends TypertRemoteService {
       if (!isMcpClientName(moduleName)) continue
       const spec = compositionSpec(entry.id, entry.options.config)
       if (spec === undefined || managedNames.has(spec.serverName)) continue
+      const connection = this.ctx.mcpServersFile.connectionStatus(spec.serverName)
       composition.push({
         id: entry.id,
         origin: 'composition',
         writable: false,
         enabled: !entry.disabled,
         fiberPhase: entry.fiber === undefined ? null : FIBER_PHASE[entry.fiber.state],
-        spec,
+        ...connection === undefined ? {} : { connection },
+        spec: maskRecordSecrets(spec),
       })
     }
     return { servers: [...managed, ...composition] }

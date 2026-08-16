@@ -5,12 +5,12 @@
  * except workspace Rename/Delete and session Rename/Fork/Archive; the session
  * and workspace hover cards are suppressed while a menu is open.
  */
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import clsx from 'clsx'
 import {
   HoverCard, IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
   IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
-  IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
+  IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot, usePresence,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
@@ -93,6 +93,31 @@ interface WorkspaceRowDragProps {
 function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' | 'after' {
   const rect = e.currentTarget.getBoundingClientRect()
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+}
+
+/**
+ * Fade-and-collapse the session run under a Workspace or Tasks header.
+ * Presence keeps the last open rows mounted through the fade recipe; the
+ * inner track collapses `0fr`/`1fr` on the same duration token as AppFrame.
+ * @param props.open - whether the group is logically expanded.
+ * @param props.children - session rows and the optional overflow control.
+ * @returns the animated run, or nothing before the first expand.
+ */
+export function GroupSessionRun({ open, children }: { open: boolean; children: ReactNode }) {
+  const { mounted, state } = usePresence(open)
+  if (!mounted) return null
+  return (
+    <div
+      className={css.sessionRunFade}
+      data-dsh-motion="fade"
+      data-state={state}
+      aria-hidden={open ? undefined : true}
+    >
+      <div className={css.sessionRun} data-state={state}>
+        <div className={css.sessionRunInner}>{children}</div>
+      </div>
+    </div>
+  )
 }
 
 /**

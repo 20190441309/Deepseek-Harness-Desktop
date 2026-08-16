@@ -8,6 +8,7 @@ import {
   Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import { filterEntries } from './filter.ts'
 import type { DirEntry } from './shell.ts'
 import css from './FileTree.module.css'
 
@@ -28,6 +29,8 @@ export interface FileTreeProps {
   mentionLabel?: string | undefined
   copyRelativeLabel?: string | undefined
   copyAbsoluteLabel?: string | undefined
+  /** Case-insensitive name filter; empty shows every row. */
+  query?: string | undefined
   /** False for nested directory lists so they keep indent. */
   root?: boolean | undefined
 }
@@ -59,11 +62,13 @@ export function FileTree({
   mentionLabel,
   copyRelativeLabel,
   copyAbsoluteLabel,
+  query = '',
   root = true,
 }: FileTreeProps): ReactNode {
+  const visible = filterEntries(entries, query, childrenByPath)
   return (
     <ul className={css.list} {...(root ? { 'data-file-tree': true } : {})}>
-      {entries.map(entry => (
+      {visible.map(entry => (
         <TreeNode
           key={entry.path}
           entry={entry}
@@ -77,6 +82,7 @@ export function FileTree({
           mentionLabel={mentionLabel}
           copyRelativeLabel={copyRelativeLabel}
           copyAbsoluteLabel={copyAbsoluteLabel}
+          query={query}
         />
       ))}
     </ul>
@@ -95,6 +101,7 @@ function TreeNode({
   mentionLabel,
   copyRelativeLabel,
   copyAbsoluteLabel,
+  query,
 }: {
   entry: TreeEntry
   childrenByPath: FileTreeProps['childrenByPath']
@@ -107,6 +114,7 @@ function TreeNode({
   mentionLabel: FileTreeProps['mentionLabel']
   copyRelativeLabel: FileTreeProps['copyRelativeLabel']
   copyAbsoluteLabel: FileTreeProps['copyAbsoluteLabel']
+  query: string
 }): ReactNode {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const items: MenuEntry[] = []
@@ -215,6 +223,7 @@ function TreeNode({
           mentionLabel={mentionLabel}
           copyRelativeLabel={copyRelativeLabel}
           copyAbsoluteLabel={copyAbsoluteLabel}
+          query={query}
           root={false}
         />
       ) : null}

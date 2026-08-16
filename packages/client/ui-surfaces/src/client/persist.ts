@@ -6,8 +6,17 @@ import type { SessionSurfaces, Surface, SurfacesState } from './stores.ts'
 export const SURFACES_PERSIST_PREFIX = 'dsh-surfaces:v1:'
 
 const WRITE_DELAY_MS = 80
+/** Dirty draft bytes per field; matches workspace-fs utf8 write cap. */
+const DRAFT_MAX_CHARS = 512 * 1024
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function resolveStorage(storage: Storage | undefined): Storage | undefined {
+  return storage ?? (typeof globalThis.localStorage === 'undefined' ? undefined : localStorage)
+}
+
+/** Unsaved file buffer persisted with the tab list so reload/quit does not drop it. */
+export type FileDraftBuffer = { text: string; draft: string }
 
 /**
  * Cancel a pending debounced write for one session.
@@ -25,38 +34,63 @@ export function cancelPersist(sessionId: string): void {
  * @param storage - `localStorage` in the browser; injectable in tests.
  * @returns a SurfacesState with only sanitized buckets.
  */
-export function loadPersistedState(storage: Storage | undefined = typeof globalThis.localStorage === 'undefined' ? undefined : localStorage): SurfacesState {
-  if (storage === undefined) return { bySession: {} }
+export function loadPersistedState(storage: Storage | undefined = undefined): SurfacesState {
+  const resolved = resolveStorage(storage)
+  if (resolved === undefined) return { bySession: {} }
   const bySession: SurfacesState['bySession'] = {}
-  for (let i = 0; i < storage.length; i += 1) {
-    const key = storage.key(i)
+  for (let i = 0; i < resolved.length; i += 1) {
+    const key = resolved.key(i)
     if (key === null || !key.startsWith(SURFACES_PERSIST_PREFIX)) continue
     const sessionId = key.slice(SURFACES_PERSIST_PREFIX.length)
     if (sessionId.length === 0) continue
-    const bucket = readBucket(storage.getItem(key))
+    const bucket = readBucket(resolved.getItem(key))
     if (bucket !== undefined) bySession[sessionId] = bucket
   }
   return { bySession }
 }
 
 /**
+ * Load dirty file drafts from every persisted session bucket.
+ * @param storage - `localStorage` in the browser; injectable in tests.
+ * @returns map keyed by `sessionId:surfaceId`.
+ */
+export function loadPersistedDrafts(storage: Storage | undefined = undefined): Map<string, FileDraftBuffer> {
+  const drafts = new Map<string, FileDraftBuffer>()
+  const resolved = resolveStorage(storage)
+  if (resolved === undefined) return drafts
+  for (let i = 0; i < resolved.length; i += 1) {
+    const key = resolved.key(i)
+    if (key === null || !key.startsWith(SURFACES_PERSIST_PREFIX)) continue
+    const sessionId = key.slice(SURFACES_PERSIST_PREFIX.length)
+    if (sessionId.length === 0) continue
+    for (const [id, buffer] of Object.entries(readDrafts(resolved.getItem(key)))) {
+      drafts.set(`${sessionId}:${id}`, buffer)
+    }
+  }
+  return drafts
+}
+
+/**
  * Debounced write of one session bucket. An empty list removes the key.
  * @param sessionId - store key.
  * @param bucket - live surfaces for that session.
- * @param storage - `localStorage` in the browser; injectable in tests.
+ * @param storage - `localStorage` in the browser; injectable in tests. `undefined` uses `localStorage` when it exists.
+ * @param drafts - dirty file buffers keyed by surface id.
  */
 export function persistSession(
   sessionId: string,
   bucket: SessionSurfaces,
-  storage: Storage | undefined = typeof globalThis.localStorage === 'undefined' ? undefined : localStorage,
+  storage: Storage | undefined = undefined,
+  drafts: Record<string, FileDraftBuffer> = {},
 ): void {
-  if (storage === undefined) return
+  const resolved = resolveStorage(storage)
+  if (resolved === undefined) return
   if (sessionId.length === 0) return
   const existing = timers.get(sessionId)
   if (existing !== undefined) clearTimeout(existing)
   timers.set(sessionId, setTimeout(() => {
     timers.delete(sessionId)
-    writeSession(sessionId, bucket, storage)
+    writeSession(sessionId, bucket, resolved, drafts)
   }, WRITE_DELAY_MS))
 }
 
@@ -64,22 +98,35 @@ export function persistSession(
  * Write one session bucket immediately (tests and flush).
  * @param sessionId - store key.
  * @param bucket - live surfaces for that session.
- * @param storage - target storage.
+ * @param storage - target storage. `undefined` uses `localStorage` when it exists.
+ * @param drafts - dirty file buffers keyed by surface id.
  */
 export function writeSession(
   sessionId: string,
   bucket: SessionSurfaces,
-  storage: Storage | undefined = typeof globalThis.localStorage === 'undefined' ? undefined : localStorage,
+  storage: Storage | undefined = undefined,
+  drafts: Record<string, FileDraftBuffer> = {},
 ): void {
-  if (storage === undefined) return
+  const resolved = resolveStorage(storage)
+  if (resolved === undefined) return
   const key = `${SURFACES_PERSIST_PREFIX}${sessionId}`
   if (bucket.surfaces.length === 0) {
-    storage.removeItem(key)
+    resolved.removeItem(key)
     return
   }
-  storage.setItem(key, JSON.stringify({
+  const openFiles = new Set(
+    bucket.surfaces.filter(surface => surface.kind === 'file').map(surface => surface.id),
+  )
+  const kept: Record<string, FileDraftBuffer> = {}
+  for (const [id, buffer] of Object.entries(drafts)) {
+    if (!openFiles.has(id)) continue
+    const sanitized = sanitizeDraft(buffer)
+    if (sanitized !== undefined) kept[id] = sanitized
+  }
+  resolved.setItem(key, JSON.stringify({
     activeId: bucket.activeId,
     surfaces: bucket.surfaces,
+    ...(Object.keys(kept).length > 0 ? { drafts: kept } : {}),
   }))
 }
 
@@ -110,6 +157,66 @@ export function readBucket(raw: string | null): SessionSurfaces | undefined {
     ? record.activeId
     : first.id
   return { activeId, surfaces }
+}
+
+/**
+ * Parse dirty drafts from one stored bucket JSON.
+ * @param raw - JSON text, or null when the key is missing.
+ * @returns surface-id keyed dirty buffers.
+ */
+export function readDrafts(raw: string | null): Record<string, FileDraftBuffer> {
+  if (raw === null || raw.length === 0) return {}
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch {
+    return {}
+  }
+  if (parsed === null || typeof parsed !== 'object') return {}
+  const drafts = (parsed as { drafts?: unknown }).drafts
+  if (drafts === null || typeof drafts !== 'object' || Array.isArray(drafts)) return {}
+  const kept: Record<string, FileDraftBuffer> = {}
+  for (const [id, buffer] of Object.entries(drafts as Record<string, unknown>)) {
+    const sanitized = sanitizeDraft(buffer)
+    if (sanitized !== undefined) kept[id] = sanitized
+  }
+  return kept
+}
+
+function sanitizeDraft(raw: unknown): FileDraftBuffer | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const entry = raw as { text?: unknown; draft?: unknown }
+  if (typeof entry.text !== 'string' || typeof entry.draft !== 'string') return undefined
+  if (entry.draft === entry.text) return undefined
+  if (entry.text.length > DRAFT_MAX_CHARS || entry.draft.length > DRAFT_MAX_CHARS) return undefined
+  return { text: entry.text, draft: entry.draft }
+}
+
+/**
+ * Dirty buffers for one session, keyed by surface id, for persist.
+ * @param sessionId - store key.
+ * @param buffers - live `sessionId:surfaceId` map.
+ * @param surfaces - open surfaces in that session.
+ * @returns drafts to store; omits clean and closed files.
+ */
+export function collectDirtyDrafts(
+  sessionId: string,
+  buffers: ReadonlyMap<string, FileDraftBuffer>,
+  surfaces: readonly Surface[],
+): Record<string, FileDraftBuffer> {
+  const openFiles = new Set(
+    surfaces.filter(surface => surface.kind === 'file').map(surface => surface.id),
+  )
+  const prefix = `${sessionId}:`
+  const kept: Record<string, FileDraftBuffer> = {}
+  for (const [key, buffer] of buffers) {
+    if (!key.startsWith(prefix)) continue
+    const id = key.slice(prefix.length)
+    if (!openFiles.has(id)) continue
+    const sanitized = sanitizeDraft(buffer)
+    if (sanitized !== undefined) kept[id] = sanitized
+  }
+  return kept
 }
 
 function sanitizeSurface(raw: unknown): Surface | undefined {

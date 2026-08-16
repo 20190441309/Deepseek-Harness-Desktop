@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CENTER_MIN, clampWidth, computeColumns,
   DETAILS_DEFAULT, DETAILS_MIN, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
-  SURFACES_DEFAULT, SURFACES_MIN,
+  SURFACES_DEFAULT, SURFACES_MAX, SURFACES_MIN, surfacesMaxForViewport,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
 // Numeric preference form (0 = closed); helpers keep the scenario names readable.
@@ -96,12 +96,20 @@ describe('computeColumns — degenerate viewports', () => {
   })
 })
 
+describe('surfacesMaxForViewport', () => {
+  it('returns 70% of the viewport inside SURFACES_MIN..SURFACES_MAX', () => {
+    expect(surfacesMaxForViewport(1920)).toBe(1344)
+    expect(surfacesMaxForViewport(100)).toBe(SURFACES_MIN)
+    expect(surfacesMaxForViewport(3000)).toBe(SURFACES_MAX)
+  })
+})
+
 describe('computeColumns — four-column concession', () => {
   const four = (viewport: number) =>
     computeColumns(viewport, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT), open(SURFACES_DEFAULT))
 
   it('wide window: all four columns open at preferred widths', () => {
-    // 280 + 360 + 400 + 640 = 1680 <= 1920; center takes the remainder.
+    // 280 + 360 + 540 + 640 = 1820 <= 1920; center takes the remainder.
     expect(four(1920)).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       center: 1920 - SIDEBAR_DEFAULT - DETAILS_DEFAULT - SURFACES_DEFAULT,
@@ -111,33 +119,42 @@ describe('computeColumns — four-column concession', () => {
   })
 
   it('narrowing shrinks surfaces first, details stays at preferred', () => {
-    // 1680 > 1640; surfaces concedes to 1640-280-360-640 = 360.
-    expect(four(1640)).toEqual({
+    // 1820 > 1700; surfaces concedes to 1700-280-360-640 = 420.
+    expect(four(1700)).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       center: CENTER_MIN,
       details: DETAILS_DEFAULT,
-      surfaces: 360,
+      surfaces: 420,
     })
   })
 
   it('further narrowing shrinks details after surfaces is at its minimum', () => {
-    // surfaces already at 320; details concedes to 1570-280-320-640 = 330.
-    expect(four(1570)).toEqual({
+    // surfaces already at 360; details concedes to 1600-280-360-640 = 320.
+    expect(four(1600)).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       center: CENTER_MIN,
-      details: 330,
+      details: 320,
       surfaces: SURFACES_MIN,
     })
   })
 
   it('derived-closes surfaces once details is at its minimum and center is still starved', () => {
-    // 280 + 300 + 320 + 640 = 1540 > 1500 → surfaces 0; details holds min; center = 920.
+    // 280 + 300 + 360 + 640 = 1580 > 1500 → surfaces 0; details holds min; center = 920.
     expect(four(1500)).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       center: 1500 - SIDEBAR_DEFAULT - DETAILS_MIN,
       details: DETAILS_MIN,
       surfaces: 0,
     })
+  })
+
+  it('clamps an open surfaces preference to 70% of the viewport before concession', () => {
+    // 70% of 1920 = 1344; store ceiling SURFACES_MAX = 1400.
+    expect(surfacesMaxForViewport(1920)).toBe(1344)
+    // Sidebar 280 + details 360 + CENTER_MIN 640 leaves 640 for surfaces,
+    // so concession (640) is tighter than the 70% cap (1344) and the preference (1400).
+    const cols = computeColumns(1920, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT), 1400)
+    expect(cols.surfaces).toBe(640) // min(1400, 1344, 640)
   })
 
   it('derived-closes details last; the sidebar never concedes', () => {

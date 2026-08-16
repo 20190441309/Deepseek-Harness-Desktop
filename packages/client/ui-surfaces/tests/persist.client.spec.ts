@@ -4,9 +4,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  cancelPersist, loadPersistedState, persistSession, readBucket, SURFACES_PERSIST_PREFIX, writeSession,
+  cancelPersist, collectDirtyDrafts, loadPersistedDrafts, loadPersistedState, persistSession, readBucket, readDrafts, SURFACES_PERSIST_PREFIX, writeSession,
 } from '../src/client/persist.ts'
 import { createSurfacesStore, sessionSurfaces } from '../src/client/stores.ts'
+import type { SessionSurfaces } from '../src/client/stores.ts'
 
 afterEach(() => {
   localStorage.clear()
@@ -134,15 +135,89 @@ describe('surfaces persist', () => {
     expect(loadPersistedState().bySession).toEqual({})
   })
 
-  it('no-ops when storage is unavailable', () => {
-    expect(loadPersistedState(undefined).bySession).toEqual({})
-    persistSession('sess-1', {
-      activeId: 'files',
-      surfaces: [{ id: 'files', kind: 'files' }],
-    }, undefined)
+  it('uses localStorage when the storage argument is omitted or undefined', () => {
     writeSession('sess-1', {
       activeId: 'files',
       surfaces: [{ id: 'files', kind: 'files' }],
     }, undefined)
+    expect(localStorage.getItem(`${SURFACES_PERSIST_PREFIX}sess-1`)).toContain('files')
+    persistSession('sess-2', {
+      activeId: 'diff',
+      surfaces: [{ id: 'diff', kind: 'diff' }],
+    }, undefined)
+    cancelPersist('sess-2')
+  })
+
+  it('round-trips dirty drafts and drops clean, closed, malformed, and oversized ones', () => {
+    const fileBucket: SessionSurfaces = {
+      activeId: 'file:a.ts',
+      surfaces: [
+        { id: 'files', kind: 'files' },
+        { id: 'file:a.ts', kind: 'file', relativePath: 'a.ts' },
+      ],
+    }
+    writeSession('sess-1', fileBucket, undefined, {
+      'file:a.ts': { text: 'disk', draft: 'edited' },
+      'file:gone.ts': { text: 'x', draft: 'y' },
+      'file:clean.ts': { text: 'same', draft: 'same' },
+    })
+    expect(loadPersistedDrafts().get('sess-1:file:a.ts')).toEqual({ text: 'disk', draft: 'edited' })
+    expect(loadPersistedDrafts().has('sess-1:file:gone.ts')).toBe(false)
+    expect(JSON.parse(localStorage.getItem(`${SURFACES_PERSIST_PREFIX}sess-1`) ?? '{}').drafts).toEqual({
+      'file:a.ts': { text: 'disk', draft: 'edited' },
+    })
+
+    expect(readDrafts(null)).toEqual({})
+    expect(readDrafts('')).toEqual({})
+    expect(readDrafts('{')).toEqual({})
+    expect(readDrafts('1')).toEqual({})
+    expect(readDrafts(JSON.stringify({ drafts: null }))).toEqual({})
+    expect(readDrafts(JSON.stringify({ drafts: [] }))).toEqual({})
+    expect(readDrafts(JSON.stringify({ drafts: { x: 1 } }))).toEqual({})
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'a', draft: 'a' } } }))).toEqual({})
+    const huge = 'x'.repeat(512 * 1024 + 1)
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: huge, draft: 'y' } } }))).toEqual({})
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: huge } } }))).toEqual({})
+
+    const buffers = new Map([
+      ['sess-1:file:a.ts', { text: 'disk', draft: 'edited' }],
+      ['sess-1:file:a.ts-clean', { text: 'a', draft: 'a' }],
+      ['sess-2:file:a.ts', { text: 'other', draft: 'session' }],
+      ['sess-1:file:closed.ts', { text: 'a', draft: 'b' }],
+    ])
+    expect(collectDirtyDrafts('sess-1', buffers, fileBucket.surfaces)).toEqual({
+      'file:a.ts': { text: 'disk', draft: 'edited' },
+    })
+
+    localStorage.setItem('other', '1')
+    localStorage.setItem(SURFACES_PERSIST_PREFIX, JSON.stringify({
+      drafts: { 'file:x': { text: 'a', draft: 'b' } },
+    }))
+    expect(loadPersistedDrafts().has(':file:x')).toBe(false)
+
+    const storage = {
+      length: 2,
+      key: (index: number) => (index === 0 ? null : `${SURFACES_PERSIST_PREFIX}sess-2`),
+      getItem: () => JSON.stringify({
+        activeId: 'file:b.ts',
+        surfaces: [{ id: 'file:b.ts', kind: 'file', relativePath: 'b.ts' }],
+        drafts: { 'file:b.ts': { text: 'old', draft: 'new' } },
+      }),
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+    } as Storage
+    expect(loadPersistedDrafts(storage).get('sess-2:file:b.ts')).toEqual({ text: 'old', draft: 'new' })
+  })
+
+  it('persistSession writes drafts after the debounce', () => {
+    vi.useFakeTimers()
+    persistSession('sess-1', {
+      activeId: 'file:a.ts',
+      surfaces: [{ id: 'file:a.ts', kind: 'file', relativePath: 'a.ts' }],
+    }, undefined, { 'file:a.ts': { text: 'disk', draft: 'typed' } })
+    expect(loadPersistedDrafts().size).toBe(0)
+    vi.advanceTimersByTime(80)
+    expect(loadPersistedDrafts().get('sess-1:file:a.ts')).toEqual({ text: 'disk', draft: 'typed' })
   })
 })

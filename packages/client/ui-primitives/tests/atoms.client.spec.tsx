@@ -89,6 +89,21 @@ describe('Menu', () => {
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
+  it('shows a tooltip for a disabled row that carries a hint', () => {
+    render(
+      <Menu
+        open
+        anchor={<span>trigger</span>}
+        items={[{ id: 'b', label: 'Beta', disabled: true, hint: 'No local commits to push.' }]}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    const item = screen.getByRole('menuitem', { name: 'Beta' })
+    fireEvent.mouseEnter(item.parentElement!)
+    expect(screen.getByRole('tooltip').textContent).toBe('No local commits to push.')
+  })
+
   it('inside pointerdown does not close', () => {
     const onClose = vi.fn()
     render(
@@ -343,6 +358,26 @@ describe('Menu', () => {
     expect(menu.style.top).not.toBe('')
     expect(menu.style.right).toBe('')
     expect(menu.style.bottom).toBe('')
+  })
+
+  it('renders a filter field above the items without treating it as a menuitem', () => {
+    const onChange = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <Menu
+        open
+        anchor={<span>trigger</span>}
+        items={items}
+        filter={{ value: '', placeholder: 'Search…', label: 'Search items', onChange }}
+        onSelect={() => {}}
+        onClose={onClose}
+      />)
+    const field = screen.getByRole('searchbox', { name: 'Search items' })
+    expect(field.closest('[role="menuitem"]')).toBeNull()
+    fireEvent.change(field, { target: { value: 'al' } })
+    expect(onChange).toHaveBeenCalledWith('al')
+    fireEvent.pointerDown(field)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('renders footer rows in a pinned section below the items; they still select', () => {

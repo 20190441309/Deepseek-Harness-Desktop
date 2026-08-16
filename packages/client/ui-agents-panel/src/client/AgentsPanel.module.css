@@ -6,22 +6,6 @@
   background: var(--dsw-alias-bg-base);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-}
-
-.title {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
-}
-
 .body {
   flex: 1;
   min-height: 0;
@@ -44,7 +28,7 @@
 .emptyTitle {
   margin: 0;
   font-size: 14px;
-  line-height: 20px;
+  line-height: 22px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
@@ -99,8 +83,8 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 22px;
   color: var(--dsw-alias-label-primary);
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -490,6 +490,16 @@ export class SkillRegistry extends Service {
   }
 
   /**
+   * Drop every cached catalog observation so the next `list`/`snapshot`/`get`
+   * rediscovers from providers. Host mutations that write skill files without
+   * going through a provider call this after a successful write instead of
+   * waiting for filesystem watcher events.
+   */
+  invalidate(): void {
+    this.invalidateCache()
+  }
+
+  /**
    * Load and validate the winning candidate, passing its opaque discovery locator back to the
    * provider. Cancellation is rechecked after selection, including cache hits, and raced against
    * loading so an uncooperative provider cannot hang the caller.
