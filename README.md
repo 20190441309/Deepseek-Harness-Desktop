@@ -14,6 +14,7 @@
 2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
 3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
 4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选，一键安装 / 卸载到 web profile。
+5.支持在设置里管理 MCP 服务器和技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。
 
 也欢迎有需求的朋友来提需求，或者提 PR。
 
