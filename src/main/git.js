@@ -49,15 +49,21 @@ function run(command, args, cwd, limits = {}) {
         ? { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(cwd) }
         : process.env,
     });
-    let stdout = '';
-    let stderr = '';
+    const stdoutChunks = [];
+    const stderrChunks = [];
     let stdoutBytes = 0;
     let truncated = false;
+    /** Decode once at a settle point so multibyte sequences split across
+     *  chunk boundaries never produce replacement characters. */
+    const decode = () => ({
+      stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+      stderr: Buffer.concat(stderrChunks).toString('utf8'),
+    });
     const timer = setTimeout(() => {
       child.kill();
       finish({
         code: -1,
-        stdout,
+        stdout: decode().stdout,
         stderr: 'git command timed out',
         missing: false,
         timedOut: true,
@@ -68,20 +74,21 @@ function run(command, args, cwd, limits = {}) {
       const next = stdoutBytes + chunk.length;
       if (next > maxBytes) {
         const remain = Math.max(0, maxBytes - stdoutBytes);
-        stdout += chunk.subarray(0, remain).toString();
+        if (remain > 0) stdoutChunks.push(chunk.subarray(0, remain));
         stdoutBytes = maxBytes;
         truncated = true;
         child.kill();
         return;
       }
       stdoutBytes = next;
-      stdout += chunk;
+      stdoutChunks.push(chunk);
     });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.stderr.on('data', (chunk) => { stderrChunks.push(chunk); });
     child.on('error', (error) => {
+      const decoded = decode();
       finish({
         code: -1,
-        stdout,
+        stdout: decoded.stdout,
         stderr: error.message,
         missing: error.code === 'ENOENT',
         timedOut: false,
@@ -89,10 +96,11 @@ function run(command, args, cwd, limits = {}) {
       });
     });
     child.on('close', (code) => {
+      const decoded = decode();
       finish({
         code: code ?? 1,
-        stdout,
-        stderr,
+        stdout: decoded.stdout,
+        stderr: decoded.stderr,
         missing: false,
         timedOut: false,
         truncated,

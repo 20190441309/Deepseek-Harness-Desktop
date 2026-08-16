@@ -178,6 +178,17 @@ test('run caps stdout and sets truncated', async () => {
   assert.ok(result.stdout.length <= 8);
 });
 
+test('run joins stdout chunks split mid-multibyte without replacement characters', async () => {
+  const result = await run(
+    process.execPath,
+    ['-e', "process.stdout.write('深'); setTimeout(() => { process.stdout.write('询\\n') }, 20)"],
+    os.tmpdir(),
+    { timeoutMs: 10_000 },
+  );
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout, '深询\n');
+});
+
 test('gitCommit records a message and clears working-tree changes', async () => {
   const cwd = makeTempDir();
   try {
