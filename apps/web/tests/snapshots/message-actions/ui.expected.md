@@ -1,9 +1,6 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Use the read tool twice" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -42,7 +39,7 @@
 - text: Stopped Now give the final answer. 7/25 {{clock}}
 - button "Copy":
   - img
-- button "Edit and resend":
+- button "Edit":
   - img
 - paragraph: DONE
 - button "Copy":

@@ -115,16 +115,29 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * Action strip attached to one finalized USER message, rendered inside
      * that message's IconActions row (after copy, before branch — the same
      * `extraActions` seat the assistant strip uses). The user node renderer
-     * owns the render site and passes the message's durable seq and frozen
-     * content; contributors add per-message actions without importing the
-     * conversation implementation. Entries render by ascending `order`. Only
-     * the `user` node declares this seat — steering bubbles and pending
-     * steering projections carry no user action strip.
+     * owns the render site and passes the message's durable seq, frozen
+     * content, and `startEdit`; contributors add per-message actions without
+     * importing the conversation implementation. Entries render by ascending
+     * `order`. Only the `user` node declares this seat — steering bubbles and
+     * pending steering projections carry no user action strip.
      */
     'conversation.chat.user-actions': {
       kind: 'list'
       scope: 'session'
       owner: UserActionOwnerProps
+    }
+    /**
+     * Replacement body for one finalized user message while it is in
+     * inline-edit mode. The user node renderer owns the render site and
+     * swaps the static bubble plus IconActions for this seat after
+     * `startEdit`; `cancelEdit` restores them. One occupant: taking it means
+     * rendering the editor chrome for every user message that enters edit
+     * mode. Only the `user` node declares this seat.
+     */
+    'conversation.chat.user-editor': {
+      kind: 'single'
+      scope: 'session'
+      owner: UserEditorOwnerProps
     }
     /**
      * The body of the details panel for the tool call the user selected —
@@ -366,13 +379,30 @@ export type UserActionContentBlock = UserMessageNode['content'][number]
  * Owner currency of the user-message action strip: the durable seq and the
  * frozen content blocks of the one user message the contributed actions
  * address (the same node payload reference the bubble renders — a
- * content-sensitive action can diff against what the user actually sent).
+ * content-sensitive action can diff against what the user actually sent),
+ * plus the callback that replaces this bubble with the user-editor seat.
  */
 export interface UserActionOwnerProps {
   /** Durable `user/message` event seq the contributed actions address. */
   seq: number
   /** The user message's content blocks (frozen node payload). */
   content: readonly UserActionContentBlock[]
+  /** Replace this bubble with the `conversation.chat.user-editor` occupant. */
+  startEdit: () => void
+}
+
+/**
+ * Owner currency of the inline user-message editor: the same durable seq and
+ * frozen content as the action strip, plus the callback that restores the
+ * static bubble. The occupant owns draft state and the confirm transaction.
+ */
+export interface UserEditorOwnerProps {
+  /** Durable `user/message` event seq the editor addresses. */
+  seq: number
+  /** The user message's content blocks (frozen node payload). */
+  content: readonly UserActionContentBlock[]
+  /** Restore the static bubble and IconActions row. */
+  cancelEdit: () => void
 }
 
 /** Hook constrained to business data published on the current Chat Node's Turn. */
@@ -451,6 +481,12 @@ export interface ConversationInjected {
    * When a blank session is already current, carry its draft to the target.
    */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /**
+   * Connect a Session that is not a Workspace member (Host scratch cwd) and
+   * open it. When a blank session is already current, carry its draft to the
+   * target.
+   */
+  selectNoDirectory: () => Promise<void>
   /**
    * Framework-bound sources. `composerBlock` is this session's block when a
    * plugin raised one; the reason is the blocker's own localized copy, which
@@ -766,6 +802,10 @@ export interface EmptyWorkspaceOwnerProps {
   anchorRef?: RefObject<HTMLElement>
   /** Currently active workspace (renders a trailing check in the picker list). */
   selectedId?: WorkspaceId | undefined
+  /** True when the current or pending target is a no-directory Session. */
+  noDirectorySelected?: boolean | undefined
   onPick: (workspaceId: WorkspaceId) => void
+  /** Adopt a Session that is not a Workspace member (Host scratch cwd). */
+  onPickNoDirectory: () => void
   onClose: () => void
 }

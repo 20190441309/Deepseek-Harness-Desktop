@@ -1,19 +1,19 @@
 /**
- * Message edit plugin, browser half: a pencil entry in the
- * conversation.chat.user-actions strip that forks a child session cut before
- * the latest user message, opens it, and prefills the composer with the
- * original text so the human can edit and resend. The fork/open/prefill
- * transaction and the failure notice live in the inject face; the component
- * only gates visibility and availability.
+ * Message edit plugin, browser half: a pencil in the latest user message's
+ * action strip that turns that bubble into an inline editor. Confirm forks a
+ * child session cut before the message, opens it, and submits the edited
+ * text. The fork/open/draft/submit transaction and the failure notice live in
+ * the editor inject face; the pencil only gates visibility and calls startEdit.
  * @module @deepseek-ai/dsh-client-ui-message-edit/client
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: pulls the ui-conversation SlotMap merge (the user-actions entry).
+// Type-only: pulls the ui-conversation SlotMap merge (user-actions / user-editor).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { MessageEditAction } from './MessageEditAction.tsx'
+import { MessageEditEditor } from './MessageEditEditor.tsx'
 import type { MessageEditInjected } from './slots.ts'
 import { en, zh } from './locales.ts'
 
@@ -28,7 +28,7 @@ const NS = 'messageEdit'
 export const inject = ['slots', 'sessions', 'conversation', 'locale']
 
 /**
- * Client plugin body: the latest-user-message edit entry.
+ * Client plugin body: the latest-user-message edit action and inline editor.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -39,18 +39,25 @@ export function apply(ctx: ClientContext): void {
     id: 'edit',
     order: 10,
     locale: NS,
+  }, MessageEditAction))
+
+  ctx.slots.inject('conversation.chat.user-editor', () => ctx.slots.register({
+    name: 'conversation.chat.user-editor',
+    locale: NS,
     inject: (sessionId): MessageEditInjected => ({
-      edit: async (seq, text) => {
+      resend: async (seq, text) => {
         const childId = await ctx.sessions.fork({ sessionId, beforeSeq: seq, increaseTitle: true })
-        ctx.sessions.open(childId)
         const scope = ctx.sessions.scope(childId)
         if (scope === undefined) throw new Error(`message edit child scope unavailable: ${childId}`)
-        ctx.conversation.input.for(scope).setDraft(text)
+        ctx.sessions.open(childId)
+        const input = ctx.conversation.input.for(scope)
+        input.setDraft(text)
+        input.submit()
       },
       notify: (message) => {
         const scope = ctx.sessions.scope(sessionId)
         if (scope !== undefined) ctx.conversation.input.for(scope).notify('error', message)
       },
     }),
-  }, MessageEditAction))
+  }, MessageEditEditor))
 }

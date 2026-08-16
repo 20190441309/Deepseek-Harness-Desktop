@@ -99,6 +99,8 @@ function mount(
     composerBlock?: { reason: string }
     /** Mutable view ledger used by registration-order regressions. */
     viewTabs?: ViewTab[]
+    /** Render the resident shell with no current session (cold start). */
+    noSession?: boolean
   } = {},
 ) {
   const root = sid('root')
@@ -235,7 +237,7 @@ function mount(
       : (opts?.fallback ?? null)
   )) as ConversationRootProps['renderSlotChain']
   const props: ConversationRootProps = {
-    sessionId: SID,
+    sessionId: options.noSession === true ? undefined : SID,
     SessionProvider: ({ children }) => children(SID),
     useSession,
     useSessions: bindSnapshotSelector(sessions),
@@ -247,6 +249,7 @@ function mount(
     renderSlot,
     renderSlotChain,
     selectWorkspace: retargetWorkspace,
+    selectNoDirectory: vi.fn(async () => {}),
     t,
   }
   const view = render(<ConversationRoot {...props} />)
@@ -286,12 +289,13 @@ describe('ConversationRoot resident composer', () => {
     expect(seat('conversation.input.plan')).toEqual({ locked: true })
   })
 
-  it('lets the no-workspace posture win over a block', () => {
+  it('lets the no-session posture win over a block', () => {
     // Picking a workspace is the earlier prerequisite; naming a model first
     // would send the user somewhere they cannot act yet.
     const b = mount(conversationSnapshot({ composerPhase: 'blank' }), [], undefined, {
       summaryBlank: true,
       composerBlock: { reason: 'select a model first' },
+      noSession: true,
     })
     const box = b.view.getByRole('textbox') as HTMLTextAreaElement
     expect(box.disabled).toBe(false)
@@ -300,6 +304,34 @@ describe('ConversationRoot resident composer', () => {
     expect(box.placeholder).not.toBe('select a model first')
     const modelSeat = b.seatOwners.filter(call => call.key === 'conversation.input.model').at(-1)?.owner
     expect(modelSeat).toEqual({ locked: true })
+  })
+
+  it('unlocks the composer for a session with no Workspace membership', () => {
+    const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }), [], undefined, {
+      summaryBlank: true,
+    })
+    expect(b.view.getByText('无工作目录')).toBeTruthy()
+    const box = b.view.getByRole('textbox') as HTMLTextAreaElement
+    expect(box.readOnly).toBe(false)
+    expect(box.getAttribute('aria-haspopup')).toBeNull()
+  })
+
+  it('a second chip click stays closed because pointerdown does not reach the document', () => {
+    const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }))
+    const chip = b.view.getByRole('button', { name: '选择工作区' })
+    fireEvent.click(chip)
+    const owner = b.pickerOwner() as { open: boolean; onClose(): void }
+    expect(owner.open).toBe(true)
+    const onDocumentPointerDown = vi.fn(() => { owner.onClose() })
+    document.addEventListener('pointerdown', onDocumentPointerDown)
+    try {
+      fireEvent.pointerDown(chip)
+      fireEvent.click(chip)
+    } finally {
+      document.removeEventListener('pointerdown', onDocumentPointerDown)
+    }
+    expect(onDocumentPointerDown).not.toHaveBeenCalled()
+    expect((b.pickerOwner() as { open: boolean }).open).toBe(false)
   })
 
   it('keeps composer text in the machine, mirrors to the chat store, and submits through the sink', () => {

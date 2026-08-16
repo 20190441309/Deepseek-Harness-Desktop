@@ -2,13 +2,13 @@
 
 English | [中文](README.zh.md)
 
-Edit-and-resend plugin, browser half: a pencil in the latest user message's action strip. Clicking it forks a child session cut *before* that message (so the child carries every earlier turn but not the edited message or its old answer), opens the child, and prefills its composer with the original text. The original session is left untouched; the child shows up under it in the sidebar, and sending there resumes from the edited prompt.
+Edit-and-resend plugin, browser half: a pencil on the latest user message turns that bubble into an inline editor (textarea plus Cancel / Send). Confirming forks a child session cut *before* that message, opens the child, and submits the edited text. The original session is left untouched; the child shows up under it in the sidebar and continues from the edited prompt. Clicking the pencil does not create a session.
 
-The control contributes the `edit` entry (order 10) of the `conversation.chat.user-actions` strip, declared by `ui-conversation` and rendered inside the user message's IconActions row next to copy, so it inherits that row's chrome and hover behavior. It renders only when the addressed node is the newest `kind: 'user'` node in the transcript — historical user messages carry no edit control — and it is unavailable while the session is still running, while the message contains non-text blocks (images etc.), and while its own fork request is in flight.
+The pencil contributes the `edit` entry (order 10) of the `conversation.chat.user-actions` strip. The editor occupies `conversation.chat.user-editor`. Both seats are declared by `ui-conversation` on the finalized user node. The pencil renders only when the addressed node is the newest `kind: 'user'` node in the transcript — historical user messages carry no edit control — and it is unavailable while the session is still running or the message contains non-text blocks (images etc.). The editor locks Cancel / Send while its own fork-and-submit request is in flight.
 
-The fork/open/prefill transaction lives in the injected face: `sessions.fork({ sessionId, beforeSeq, increaseTitle })`, then `sessions.open(childId)`, then the child scope's input facade `setDraft(text)`. A failed fork leaves the source session selected and publishes a localized failure notice on its composer.
+The fork/open/draft/submit transaction lives in the editor inject face: `sessions.fork({ sessionId, beforeSeq, increaseTitle })`, then the child scope, then `sessions.open(childId)`, then that scope's input facade `setDraft(text)` and `submit()`. A failed fork or a missing child scope leaves the source session selected, restores the static bubble, and publishes a localized failure notice on its composer.
 
-The `/client` exports are the plugin body (`apply`/`inject`), the `MessageEditAction` component, and the injected face types.
+The `/client` exports are the plugin body (`apply`/`inject`), `MessageEditAction`, and the injected face types.
 
 ## Model Experience
 

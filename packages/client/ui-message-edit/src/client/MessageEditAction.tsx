@@ -1,53 +1,39 @@
 /**
  * Latest-user-message edit control: a pencil in the user message's IconActions
- * row that forks a child session cut before that message, opens it, and prefills
- * the composer with the original text. Only the newest user message in the
- * transcript arms the button; historical messages render nothing here.
+ * row that asks the owning bubble to enter inline-edit mode. Only the newest
+ * user message in the transcript arms the button; historical messages render
+ * nothing here. The fork/resend transaction lives on the editor, not here.
  * @module @deepseek-ai/dsh-client-ui-message-edit/client/MessageEditAction
  */
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useId } from 'react'
 import { IconEditOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { joinedText } from './text.ts'
 import type { MessageEditActionProps } from './slots.ts'
 import css from './MessageEditAction.module.css'
 
 /**
  * One message's edit control.
- * @param props - the addressed user message, the injected fork/prefill verbs,
- * and the session snapshot hook.
+ * @param props - the addressed user message, startEdit, and the session snapshot hook.
  * @returns the pencil action, or nothing when this is not the latest user message.
  */
-export function MessageEditAction({ seq, content, edit, notify, useSession, t }: MessageEditActionProps) {
+export function MessageEditAction({ seq, content, startEdit, useSession, t }: MessageEditActionProps) {
   const latest = useSession(snapshot => snapshot.nodes.findLast(node => node.kind === 'user')?.seq === seq)
   const running = useSession(snapshot => snapshot.running)
-  const [pending, setPending] = useState(false)
-  const alive = useRef(true)
   const reasonId = useId()
 
-  useEffect(() => () => { alive.current = false }, [])
-
-  const textOnly = content.every(block => block.type === 'text')
-  const text = textOnly
-    ? content.map(block => block.type === 'text' ? block.text : '').join('')
-    : ''
-  const unavailable = running || !textOnly || pending
-  const label = pending
-    ? t('action.pending')
-    : running
-      ? t('action.running')
-      : !textOnly
-        ? t('action.unsupported')
-        : t('action.edit')
+  const textOnly = joinedText(content) !== null
+  const unavailable = running || !textOnly
+  const label = running
+    ? t('action.running')
+    : !textOnly
+      ? t('action.unsupported')
+      : t('action.edit')
 
   const onEdit = useCallback(() => {
     if (unavailable) return
-    setPending(true)
-    void edit(seq, text).catch(() => {
-      notify(t('error.generic'))
-    }).finally(() => {
-      if (alive.current) setPending(false)
-    })
-  }, [edit, notify, seq, t, text, unavailable])
+    startEdit()
+  }, [startEdit, unavailable])
 
   if (!latest) return null
   return (
@@ -61,7 +47,7 @@ export function MessageEditAction({ seq, content, edit, notify, useSession, t }:
           aria-disabled={unavailable || undefined}
           aria-describedby={unavailable ? reasonId : undefined}
           data-unavailable={unavailable || undefined}
-          onClick={unavailable ? undefined : onEdit}
+          onClick={onEdit}
         >
           <IconEditOutline16 />
         </button>
