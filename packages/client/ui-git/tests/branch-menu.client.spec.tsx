@@ -107,7 +107,7 @@ describe('BranchMenu', () => {
     await screen.findByText('feature/qa')
     fireEvent.change(screen.getByPlaceholderText('Search branches…'), { target: { value: 'qa-2' } })
     expect(screen.queryByText('feature/qa')).toBeNull()
-    expect(screen.getByText(/Create branch/).textContent).toContain('qa-2')
+    expect(screen.getByText(/Create and checkout/).textContent).toContain('qa-2')
   })
 
   it('switches on row click and notifies the parent', async () => {
@@ -123,8 +123,24 @@ describe('BranchMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
     await screen.findByText('feature/qa')
     fireEvent.change(screen.getByPlaceholderText('Search branches…'), { target: { value: 'qa-2' } })
-    fireEvent.click(screen.getByText(/Create branch/))
+    fireEvent.click(screen.getByText(/Create and checkout/))
     await waitFor(() => { expect(b.gitCreateBranch).toHaveBeenCalledWith('C:/proj', 'qa-2') })
+  })
+
+  it('always shows the create entry; the hint focuses the search box', async () => {
+    const b = mountMenu()
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    await screen.findByText('feature/qa')
+    // Hint variant before a name is typed; clicking it focuses the input.
+    const hint = screen.getByRole('button', { name: 'Create and checkout new branch…' })
+    expect(hint.textContent).not.toContain('qa')
+    fireEvent.click(hint)
+    const input = screen.getByPlaceholderText('Search branches…')
+    expect(document.activeElement).toBe(input)
+    // An existing local name keeps the hint variant instead of offering create.
+    fireEvent.change(input, { target: { value: 'main' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create and checkout new branch…' }))
+    expect(b.gitCreateBranch).not.toHaveBeenCalled()
   })
 
   it('keeps the panel open with an alert when the switch fails', async () => {

@@ -42,7 +42,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 32px;
+  /* 32px frame minus its 1px borders, so the buttons sit flush inside. */
+  height: 30px;
   border: none;
   background: transparent;
   color: var(--dsw-alias-label-primary);
