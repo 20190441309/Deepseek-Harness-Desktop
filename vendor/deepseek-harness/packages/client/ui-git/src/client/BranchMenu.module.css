@@ -8,7 +8,9 @@
   gap: 4px;
   max-width: 200px;
   padding: 0 8px;
-  height: 28px;
+  /* Match the 30px inner height of the GitActionsControl split frame so the
+     branch trigger aligns with the commit button and chevron. */
+  height: 30px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -116,6 +118,20 @@
 
 .createRow {
   color: var(--dsw-alias-state-business-primary);
+}
+
+/* Persistent create entry while no new name is typed (or the typed name
+   already exists): dimmed, and clicking it focuses the search box. */
+.createRowHint {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.createLabel {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .error {

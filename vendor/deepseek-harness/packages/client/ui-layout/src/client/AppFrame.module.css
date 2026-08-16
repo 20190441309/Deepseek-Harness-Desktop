@@ -162,11 +162,12 @@
   pointer-events: auto;
 }
 
-/* Shared titlebar band across conversation + details + surfaces. Height
-   comes from the conversation header via centerCol subgrid (row 1 = auto).
-   Hairline matches conversation header::after (1px up from the row bottom). */
+/* Shared titlebar band over the details column only. Height comes from the
+   conversation header via centerCol subgrid (row 1 = auto). Hairline matches
+   conversation header::after (1px up from the row bottom). The surfaces
+   column keeps a clean top edge — no hairline under the titlebar. */
 .titlebarBand {
-  grid-column: 3 / -1;
+  grid-column: 3 / 4;
   grid-row: 1;
   position: relative;
   pointer-events: none;

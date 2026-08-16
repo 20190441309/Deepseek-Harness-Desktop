@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
   IconBranchOutline16,
   IconChevronDownOutline14,
+  IconPlusOutline16,
   IconSearchOutline16,
   Input,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -139,6 +140,11 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, gitBranchList, gitSw
     }
   }
 
+  /** Focus the search box (the Input atom does not forward refs). */
+  const focusSearch = (): void => {
+    anchorRef.current?.querySelector('input')?.focus()
+  }
+
   const label = currentRef ?? t('branch.select')
 
   return (
@@ -168,11 +174,6 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, gitBranchList, gitSw
             onKeyDown={onSearchKeyDown}
           />
           <div className={css.list}>
-            {createValue !== null && (
-              <button type="button" className={`${css.row} ${css.createRow}`} disabled={busy} onClick={onCreate}>
-                <span className={css.rowName}>{t('branch.create')}「{trimmedQuery}」</span>
-              </button>
-            )}
             {rows.map(ref => (
               <button
                 key={ref.name}
@@ -193,9 +194,23 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, gitBranchList, gitSw
                 </span>
               </button>
             ))}
-            {refs !== null && rows.length === 0 && createValue === null && (
+            {refs !== null && rows.length === 0 && (
               <div className={css.empty}>{t('branch.empty')}</div>
             )}
+            <button
+              type="button"
+              className={`${css.row} ${css.createRow} ${canCreate ? '' : css.createRowHint}`}
+              disabled={busy}
+              aria-label={canCreate ? t('branch.createNamed', { name: trimmedQuery }) : t('branch.createHint')}
+              onClick={() => { if (canCreate) onCreate(); else focusSearch() }}
+            >
+              <span className={css.createLabel}>
+                <IconPlusOutline16 size={14} />
+                <span className={css.rowName}>
+                  {canCreate ? t('branch.createNamed', { name: trimmedQuery }) : t('branch.createHint')}
+                </span>
+              </span>
+            </button>
           </div>
           {error !== null && <div className={css.error} role="alert">{error}</div>}
         </div>
