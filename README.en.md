@@ -10,7 +10,7 @@ No custom chat UI: Electron owns the window, tray, workspace, API key, and launc
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-Shipped since [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3): close-to-tray vs quit, title-bar Git / VT terminal / right-hand surfaces (including a branch switcher with search and inline create, interaction ported from T3code), edit-and-resend on the latest user message, and Harness crash auto-recovery. Phone-remote access is built but its entry point is hidden in this release; it ships in the next one.
+Shipped since [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0): close-to-tray vs quit, title-bar Git / VT terminal / right-hand surfaces (including a branch switcher with search and inline create, interaction ported from T3code), edit-and-resend on the latest user message, and Harness crash auto-recovery. Phone-remote access is built but its entry point is hidden in this release; it ships in the next one.
 
 ## WeChat group
 

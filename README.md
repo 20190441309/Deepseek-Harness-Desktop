@@ -16,7 +16,7 @@
 4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选；安装会预填会话草稿由你发送，卸载仍是一键。
 5.支持在设置里管理 MCP 服务器和技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。
 
-自 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 起新增：
+自 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) 起新增：
 6.设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
 7.手机远程办公（电脑出站连中继，手机扫码打开官方 Web 页继续本机会话）本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
 8.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。价值是这些工作环，不是五张卡都在。所有文件与命令都限定在当前工作区内。
