@@ -4,38 +4,34 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题和标题栏 Git / 终端这类地方补了一点；手机远程将在下一版本发布。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前版本 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0)；手机远程入口本版隐藏，下一版再开。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
-目前已开发功能：
-1.支持第三方模型设置思考强度。
-2.支持配置专门的识图模型，可以在主模型不能识图的时候（对就是你DeepSeek），调用识图模型来进行识图。
-3.支持自定义主题和背景图：浅/深两套色、毛玻璃、像素化、玻璃透明度都可以调。
-4.支持插件市场：浏览 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按分类筛选；安装会预填会话草稿由你发送，卸载仍是一键。
-5.支持在设置里管理 MCP 服务器和技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。
 
-自 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) 起新增：
-6.设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
-7.手机远程办公（电脑出站连中继，手机扫码打开官方 Web 页继续本机会话）本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
-8.标题栏集成 Git 操作、完整 VT 终端与纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。价值是这些工作环，不是五张卡都在。所有文件与命令都限定在当前工作区内。
-9.最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
-10.Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
+[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) 新增：
+
+1. 设置 → MCP、设置 → 技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。文件菜单也有入口。
+2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（搜索面板，交互移植自 T3code）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。价值是这些工作环，不是五张空态卡。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
+3. 最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
+4. Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
+5. 设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
+6. 插件市场安装改为打开空白会话并预填草稿，由你自己发送；卸载仍是一键。
+7. 手机远程办公本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
+
+一直可用：第三方思考强度、识图模型兜底、自定义主题和背景图。
 
 也欢迎有需求的朋友来提需求，或者提 PR。
 
-
-
-
-
+## 特性
 ## 特性
 
 - **无边框窗口 + 自绘标题栏**：可以拖动、双击最大化，最小化 / 最大化 / 关闭按钮齐全，标题栏背景跟随主题
 - **自动启动 Harness**：启动时检测 `127.0.0.1:3080` 端口——杀掉上次残留的 dsh 进程；被其他程序占用就自动跳到空闲端口
 - **三重启动链**：优先跑 `vendor/deepseek-harness` 构建产物 → 本机 `dsh` → `npx @deepseek-ai/dsh`，总有一条能起来
 - **工作区自动注册**：启动时通过 RPC 把工作区目录注册进 Harness，不用手动建
-- **设置就是 Harness 设置**（`Ctrl+,`）：模型、插件、关于、检测更新和在线安装都在官方设置里
+- **设置就是 Harness 设置**（`Ctrl+,`）：模型、插件、MCP、技能、关于、检测更新和在线安装都在官方设置里
 - **托盘常驻**：显示窗口、设置、重启 Harness、退出。设置 → 通用 →「关闭窗口时」可选最小化到托盘（默认）或直接退出；退出会先停本机 Harness，全屏「关闭中」遮罩跟随当前浅/深主题
 - **自动更新**：有新版本时设置按钮旁出现绿色"有新版本"按钮，点击即可在线更新；设置 → 关于里也可手动检查 GitHub Releases
 - **API Key 独立存放**：`config.json` 与 `credentials.json` 分开，Key 通过 `DEEPSEEK_API_KEY` 注入 dsh 进程
@@ -43,6 +39,7 @@
 - **识图模型兜底**：主模型（比如 DeepSeek）不支持图片时，先由专门的识图模型看图，再把描述交给主模型
 - **主题与背景图**：设置 → 外观里选内置主题或自己做一套；可铺背景图，毛玻璃、像素化、玻璃透明度都能调。对话框、菜单和模型名切换走同一套进出场动效，系统开了「减少动效」会自动关掉。
 - **插件市场**：在设置 → 插件 →「插件市场」里，和插件配置、插件列表并排。菜单 / 托盘 / 标题栏 / `Ctrl+Shift+M` 会打开这一页。目录只认 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，按界面、工作流、工具、通知、开发、学习分类；点安装会关闭设置、打开空白会话并预填「帮我安装 …」，由你自己发送，Agent 通过 `install_dsh_plugin` 调用官方 `dsh plugin --profile web add github:owner/repo`，成功后重启 Harness。卸载仍是设置里一键。git 安装会在本机执行仓库的 prepare 脚本，只装你信任的插件。GitHub API 被限流时可把 Token 写进这一页。
+- **MCP 与技能**：设置 → MCP、设置 → 技能；文件 → MCP… / 技能… 也会打开对应页。可增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`，保存后立即生效。
 - **远程办公（下一版本）**：本版已隐藏远程入口（侧栏「远程」按钮），设置与配对能力保留，下一版本恢复发布。开启后桌面端出站连接中继，展示配对二维码。手机扫码打开官方 `dsh web`（竖屏覆盖层侧栏，横屏常驻工作区列表）。已绑定设备可单独解绑。说明见 [`mobile/README.md`](mobile/README.md)。
 - **编辑并重新发送**：最新一条用户消息旁有铅笔；点了会把那条气泡变成可编辑输入，确认后才在该消息之前分出子会话并发送修改后的文本，原会话和旧回答都保留。
 - **Harness 自动恢复**：主界面起来之后 `dsh` 意外退出，窗口立刻回到故障页，默认最多自动重启 3 次（间隔 1 / 2 / 4 秒），可取消或立刻重启。设置 → 通用可改策略。崩溃期间手机远程不再代理已经死掉的端口。
@@ -113,7 +110,7 @@
 
 ## 安装
 
-只想用的话，去 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 下载最新的 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`），装完不需要本机 Node 环境。
+只想用的话，去 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) 下载 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-0.2.0.exe`），装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
 
 目前只提供 Windows x64 安装包；macOS / Linux 请从源码运行，官方打包暂未提供。
 
@@ -136,7 +133,11 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 | 操作 | 方式 |
 | --- | --- |
 | 设置 | `Ctrl+,` 或托盘菜单 |
+| MCP | 文件 → MCP…，或设置 → MCP |
+| 技能 | 文件 → 技能…，或设置 → 技能 |
 | 插件市场 | 设置 → 插件 →「插件市场」；`Ctrl+Shift+M`、托盘或标题栏也会打开这一页 |
+| 终端抽屉 | Ctrl+` 或标题栏终端按钮 |
+| 右边栏 | `Ctrl+\` 或标题栏右栏按钮 |
 | 重启 Harness | `Ctrl+Shift+R` |
 | 重新加载界面 | `Ctrl+R` |
 | 开发者工具 | `Ctrl+Shift+I` |
@@ -175,7 +176,7 @@ npm run dist
 
 - **PR / 推 main**：`.github/workflows/test.yml` 跑 `npm test`（桌面壳单测，不启动 Electron）
 - **手动构建**：Actions 页 → Build Windows Installer → Run workflow；打包前同样先跑 `npm test`，安装包在 artifacts 里下载
-- **自动发布**：推送 `v*` 标签（如 `v0.1.0`）自动构建并发布 GitHub Release
+- **自动发布**：推送 `v*` 标签（如 `v0.2.0`）自动构建并发布 GitHub Release
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
 

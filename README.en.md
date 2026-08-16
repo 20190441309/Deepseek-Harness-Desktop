@@ -4,13 +4,23 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, remote office, and title-bar Git / terminal. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Current release: [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0). Phone-remote access is built but its entry point is hidden in this release; it ships in the next one. I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-Shipped since [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0): close-to-tray vs quit, title-bar Git / VT terminal / right-hand surfaces (including a branch switcher with search and inline create, interaction ported from T3code), edit-and-resend on the latest user message, and Harness crash auto-recovery. Phone-remote access is built but its entry point is hidden in this release; it ships in the next one.
+[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) adds:
+
+1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
+2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (search panel, interaction ported from T3code), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. The value is these work loops, not five empty-state cards. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
+3. Edit-and-resend on the latest user message: the pencil edits that bubble; confirming sends from a child session, the parent stays put.
+4. If Harness exits after the UI is up, the window returns to a failure page and retries a limited number of times; Settings → General owns the policy. A transcript that recorded tool calls without results is completed on the next send.
+5. Settings → General → When closing the window: minimize to tray or quit. Quit stops the local Harness and shows a theme-following Closing overlay.
+6. Plugin marketplace install opens a blank session and prefills a draft for you to send; uninstall stays one-click.
+7. Phone-remote access: entry point hidden this release, ships in the next one. Capability and docs stay; see Remote access below.
+
+Still available: third-party thinking intensity, vision fallback, custom themes and wallpaper.
 
 ## WeChat group
 
@@ -28,7 +38,7 @@ Scan to join: tips, troubleshooting, and feature requests.
 - **Automatic Harness launch**: probes `127.0.0.1:3080` on startup — kills leftover dsh processes from a previous run, or hops to a free port if something else is bound there
 - **Three-stage launch chain**: bundled build in `vendor/deepseek-harness` → local `dsh` → `npx @deepseek-ai/dsh`; one of them will come up
 - **Auto workspace registration**: registers the workspace directory into Harness over RPC at boot, no manual setup
-- **Settings are Harness settings** (`Ctrl+,`): models, plugins, About, update check, and online install all live in the official settings panel
+- **Settings are Harness settings** (`Ctrl+,`): models, plugins, MCP, Skills, About, update check, and online install all live in the official settings panel
 - **System tray**: show window, settings, restart Harness, quit. Settings → General → When closing the window can minimize to tray (default) or quit; quit stops the local Harness service and shows a fullscreen Closing overlay that follows the current light/dark theme
 - **Auto-update**: a green "Update available" button appears beside Settings when a newer release exists — one click updates online; Settings → About still offers a manual check
 - **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
@@ -87,7 +97,9 @@ A wallpaper sits behind the whole UI. Once set, frost, pixelation, and glass opa
   <img src="assets/screenshot-theme-wallpaper-chat.png" alt="Conversation with a wallpaper behind the glass UI" width="920" />
 </p>
 
-### Remote access
+### Remote access (next release)
+
+The entry point is hidden in this release; the following ships with it in the next one.
 
 Settings → General → Remote access. The desktop dials out to the relay and shows a pairing QR. Scan it with the phone camera to open the official Web UI: portrait uses an overlay workspace drawer; landscape keeps the sidebar. The pairing secret lives only in `#offer=`; the page never asks you to type a token. Unbind one device without rotating the QR for the others. Model keys, the plugin marketplace, and pairing stay on the desktop. `dsh web` still binds to `127.0.0.1`; privileged APIs (settings, credentials) are blocked on the remote path.
 
@@ -105,7 +117,7 @@ A Git workspace gets Commit / Commit & push / Push / pull-request in the title b
 
 ## Install
 
-Just want to use it? Grab the latest NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`) from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) — no local Node required.
+Just want to use it? Grab the [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.0) NSIS installer (`Deepseek-Harness-Desktop-Setup-0.2.0.exe`) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
 
 Only Windows x64 packages are published for now; on macOS / Linux, run from source — official packaging is not provided yet.
 
@@ -128,7 +140,11 @@ The Harness source ships with the repo (`vendor/deepseek-harness`); the first `s
 | Action | How |
 | --- | --- |
 | Settings | `Ctrl+,` or tray menu |
+| MCP | File → MCP…, or Settings → MCP |
+| Skills | File → Skills…, or Settings → Skills |
 | Plugin marketplace | Settings → Plugins → Marketplace; `Ctrl+Shift+M`, tray, or the title-bar button open the same tab |
+| Terminal drawer | Ctrl+` or the title-bar terminal button |
+| Right column | `Ctrl+\` or the title-bar surfaces button |
 | Restart Harness | `Ctrl+Shift+R` |
 | Reload UI | `Ctrl+R` |
 | DevTools | `Ctrl+Shift+I` |
@@ -167,7 +183,7 @@ Shipping the ~1.4 GB vendored harness into the installer makes local builds slow
 
 - **PR / push to main**: `.github/workflows/test.yml` runs `npm test` (desktop unit tests, no Electron)
 - **Manual build**: Actions page → Build Windows Installer → Run workflow; the job runs `npm test` before packaging; grab the installers from the artifacts
-- **Auto release**: pushing a `v*` tag (e.g. `v0.1.0`) builds and publishes a GitHub Release automatically
+- **Auto release**: pushing a `v*` tag (e.g. `v0.2.0`) builds and publishes a GitHub Release automatically
 
 Once a version is on GitHub Releases, the in-app update check picks it up.
 
