@@ -4,7 +4,7 @@
 
 标题栏尾簇插件：两个 ghost 开关，分别写入 `ctx.layout.toggleTerminalDrawer` 与 `ctx.layout.toggleSurfaces`。条目挂在 `shell.titlebar.trailing`，`id: 'panel-toggles'`，`order: 40`，因此空白首页也能看到，并落在 Session log（`order: 10`）右侧，中间留给 Git（`order: 20`）。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
-按下态跟随布局 owner 宽度（`surfaces` / `terminalDrawer`；0 表示关闭）。`useWorkspaces` 报告没有工作区时，终端开关为 disabled。右侧栏开关在空白首页仍可用。Tooltip 展示 T3code 默认快捷键：Ctrl+` 切换终端抽屉，Ctrl+\ 切换右侧栏。
+按下态跟随布局 owner 宽度（`surfaces` / `terminalDrawer`；0 表示关闭）。`useWorkspaces` 报告没有工作区时，终端开关为 disabled。右侧栏开关在空白首页仍可用。Ctrl/Cmd+` 切换终端抽屉，Ctrl/Cmd+\\ 切换右侧栏；焦点在 input、textarea、contenteditable 或 `.xterm` 内时不抢键。
 
 `PanelTogglesProps` 组合标题栏尾簇 owner share、全局 `useWorkspaces` 钩子、注入的切换回调，以及 `titlebar` 文案 seat。这里没有插件 store。
 
@@ -21,4 +21,3 @@
 ## 已知限制与暂缓事项
 
 - **Git 是同级标题栏条目**：本包不渲染 Git 操作；后续 `ui-git` 条目占用 `order: 20`。
-- **键盘快捷键只是 tooltip 文案**：开关上展示 Ctrl+` 与 Ctrl+\；宿主快捷键注册不由本包持有。

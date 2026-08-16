@@ -6,6 +6,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
 import { FilePreview } from '../src/client/FilePreview.tsx'
 import { FilesPanel } from '../src/client/FilesPanel.tsx'
+import type { FilesShellInjected } from '../src/client/shell.ts'
 
 function declare(slots: SlotRegistry): () => void {
   return slots.register({
@@ -52,6 +53,22 @@ describe('ui-files apply', () => {
     expect(b.slots.entries('surfaces.files')[0]?.component).toBe(FilesPanel)
     expect(b.slots.entries('surfaces.file')[0]?.component).toBe(FilePreview)
     redeclare()
+    await b.fiber.dispose()
+  })
+
+  it('binds mentionFile and missing-shell fallbacks', async () => {
+    const b = await bench()
+    const injected = (b.slots.entries('surfaces.files')[0]?.inject as unknown as () => FilesShellInjected)()
+    injected.mentionFile('sess', 'a.ts')
+    await expect(injected.listDir('/tmp', '')).resolves.toEqual({
+      ok: false, message: 'Workspace listing is unavailable.',
+    })
+    await expect(injected.readFile('/tmp', 'a.ts')).resolves.toEqual({
+      ok: false, message: 'Workspace listing is unavailable.',
+    })
+    await expect(injected.readFileMedia('/tmp', 'a.png')).resolves.toEqual({
+      ok: false, message: 'Workspace listing is unavailable.',
+    })
     await b.fiber.dispose()
   })
 })

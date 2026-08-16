@@ -21,7 +21,7 @@ function fromCatalog(
       id: entry.id,
       label: labeled && labeled.length > 0 ? labeled : summary?.displayTitle ?? String(entry.id),
       activity: entry.activity,
-      ...('mode' in entry && entry.mode !== undefined ? { mode: entry.mode } : {}),
+      mode: entry.mode,
     })
   }
   return rows

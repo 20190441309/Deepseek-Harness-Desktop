@@ -1,11 +1,13 @@
-import type { ReactNode } from 'react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconChevronRightOutline14,
   IconCodeOutline16,
   IconFolderClose16,
   IconFolderOpen16,
+  Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DirEntry } from './shell.ts'
 import css from './FileTree.module.css'
 
@@ -20,8 +22,14 @@ export interface FileTreeProps {
   expanded: ReadonlySet<string>
   onToggle: (path: string) => void
   onOpenFile: (path: string) => void
+  onMention?: ((path: string) => void) | undefined
+  onCopyRelative?: ((path: string) => void) | undefined
+  onCopyAbsolute?: ((path: string) => void) | undefined
+  mentionLabel?: string | undefined
+  copyRelativeLabel?: string | undefined
+  copyAbsoluteLabel?: string | undefined
   /** False for nested directory lists so they keep indent. */
-  root?: boolean
+  root?: boolean | undefined
 }
 
 /**
@@ -45,6 +53,12 @@ export function FileTree({
   expanded,
   onToggle,
   onOpenFile,
+  onMention,
+  onCopyRelative,
+  onCopyAbsolute,
+  mentionLabel,
+  copyRelativeLabel,
+  copyAbsoluteLabel,
   root = true,
 }: FileTreeProps): ReactNode {
   return (
@@ -57,6 +71,12 @@ export function FileTree({
           expanded={expanded}
           onToggle={onToggle}
           onOpenFile={onOpenFile}
+          onMention={onMention}
+          onCopyRelative={onCopyRelative}
+          onCopyAbsolute={onCopyAbsolute}
+          mentionLabel={mentionLabel}
+          copyRelativeLabel={copyRelativeLabel}
+          copyAbsoluteLabel={copyAbsoluteLabel}
         />
       ))}
     </ul>
@@ -69,47 +89,119 @@ function TreeNode({
   expanded,
   onToggle,
   onOpenFile,
+  onMention,
+  onCopyRelative,
+  onCopyAbsolute,
+  mentionLabel,
+  copyRelativeLabel,
+  copyAbsoluteLabel,
 }: {
   entry: TreeEntry
   childrenByPath: FileTreeProps['childrenByPath']
   expanded: ReadonlySet<string>
   onToggle: (path: string) => void
   onOpenFile: (path: string) => void
+  onMention: FileTreeProps['onMention']
+  onCopyRelative: FileTreeProps['onCopyRelative']
+  onCopyAbsolute: FileTreeProps['onCopyAbsolute']
+  mentionLabel: FileTreeProps['mentionLabel']
+  copyRelativeLabel: FileTreeProps['copyRelativeLabel']
+  copyAbsoluteLabel: FileTreeProps['copyAbsoluteLabel']
 }): ReactNode {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const items: MenuEntry[] = []
+  if (onCopyRelative !== undefined && copyRelativeLabel !== undefined) {
+    items.push({ id: 'relative', label: copyRelativeLabel })
+  }
+  if (onCopyAbsolute !== undefined && copyAbsoluteLabel !== undefined) {
+    items.push({ id: 'absolute', label: copyAbsoluteLabel })
+  }
+
+  const onContext = (event: MouseEvent) => {
+    if (items.length === 0) return
+    event.preventDefault()
+    setMenu({ x: event.clientX, y: event.clientY })
+  }
+
+  const row = (
+    <button
+      type="button"
+      className={css.row}
+      aria-expanded={entry.kind === 'directory' ? expanded.has(entry.path) : undefined}
+      onClick={() => {
+        if (entry.kind === 'file') onOpenFile(entry.path)
+        else onToggle(entry.path)
+      }}
+      onContextMenu={onContext}
+    >
+      {entry.kind === 'directory' ? (
+        <IconChevronRightOutline14
+          size={12}
+          className={clsx(css.twist, expanded.has(entry.path) && css.twistOpen)}
+        />
+      ) : (
+        <span className={css.twist} aria-hidden="true" />
+      )}
+      {entry.kind === 'directory'
+        ? (expanded.has(entry.path)
+          ? <IconFolderOpen16 size={14} className={css.icon} />
+          : <IconFolderClose16 size={14} className={css.icon} />)
+        : <IconCodeOutline16 size={14} className={css.icon} />}
+      <span className={css.name}>{entry.name}</span>
+    </button>
+  )
+
+  const mention = entry.kind === 'file' && onMention !== undefined && mentionLabel !== undefined ? (
+    <button
+      type="button"
+      className={css.mention}
+      aria-label={mentionLabel}
+      onClick={(event) => {
+        event.stopPropagation()
+        onMention(entry.path)
+      }}
+    >
+      @
+    </button>
+  ) : null
+
+  const menuNode = menu !== null && items.length > 0 ? (
+    <Menu
+      open
+      portal
+      compact
+      getAnchorRect={() => new DOMRect(menu.x, menu.y, 0, 0)}
+      items={items}
+      onSelect={(id) => {
+        setMenu(null)
+        if (id === 'relative') {
+          onCopyRelative?.(entry.path)
+          return
+        }
+        /* v8 ignore next -- Menu only emits the declared item ids. */
+        if (id !== 'absolute') return
+        onCopyAbsolute?.(entry.path)
+      }}
+      onClose={() => { setMenu(null) }}
+      anchor={<span className={css.contextAnchor} />}
+    />
+  ) : null
+
   if (entry.kind === 'file') {
     return (
-      <li>
-        <button
-          type="button"
-          className={css.row}
-          onClick={() => { onOpenFile(entry.path) }}
-        >
-          <span className={css.twist} aria-hidden="true" />
-          <IconCodeOutline16 size={14} className={css.icon} />
-          <span className={css.name}>{entry.name}</span>
-        </button>
+      <li className={css.item}>
+        {row}
+        {mention}
+        {menuNode}
       </li>
     )
   }
   const open = expanded.has(entry.path)
   const children = childrenByPath[entry.path] ?? []
   return (
-    <li>
-      <button
-        type="button"
-        className={css.row}
-        aria-expanded={open}
-        onClick={() => { onToggle(entry.path) }}
-      >
-        <IconChevronRightOutline14
-          size={12}
-          className={clsx(css.twist, open && css.twistOpen)}
-        />
-        {open
-          ? <IconFolderOpen16 size={14} className={css.icon} />
-          : <IconFolderClose16 size={14} className={css.icon} />}
-        <span className={css.name}>{entry.name}</span>
-      </button>
+    <li className={css.item}>
+      {row}
+      {menuNode}
       {open ? (
         <FileTree
           entries={children}
@@ -117,6 +209,12 @@ function TreeNode({
           expanded={expanded}
           onToggle={onToggle}
           onOpenFile={onOpenFile}
+          onMention={onMention}
+          onCopyRelative={onCopyRelative}
+          onCopyAbsolute={onCopyAbsolute}
+          mentionLabel={mentionLabel}
+          copyRelativeLabel={copyRelativeLabel}
+          copyAbsoluteLabel={copyAbsoluteLabel}
           root={false}
         />
       ) : null}

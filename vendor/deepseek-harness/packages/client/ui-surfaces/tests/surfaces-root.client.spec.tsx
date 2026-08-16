@@ -19,15 +19,15 @@ function sessions(cwd?: string): SurfacesRootProps['useSessions'] {
     byId: cwd === undefined
       ? {}
       : {
-          [current]: {
-            id: current,
-            displayTitle: 'proj',
-            running: false,
-            blank: false,
-            updatedAt: 1,
-            cwd,
-          },
+        [current]: {
+          id: current,
+          displayTitle: 'proj',
+          running: false,
+          blank: false,
+          updatedAt: 1,
+          cwd,
         },
+      },
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
@@ -39,7 +39,11 @@ function sessions(cwd?: string): SurfacesRootProps['useSessions'] {
 function bindStore(instance: ReturnType<ReturnType<typeof createSurfacesStore>['create']>) {
   return {
     useStore: <S,>(sel: (state: ReturnType<typeof instance.getSnapshot>) => S) => {
-      const snap = useSyncExternalStore(instance.subscribe, instance.getSnapshot, instance.getSnapshot)
+      const snap = useSyncExternalStore(
+        onStoreChange => instance.subscribe(onStoreChange),
+        () => instance.getSnapshot(),
+        () => instance.getSnapshot(),
+      )
       return sel(snap)
     },
     actions: instance.actions,
@@ -75,7 +79,11 @@ function mount(opts: {
   return { instance, openSurfaces, renderSlot, gitStatus }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+  vi.useRealTimers()
+})
 
 describe('SurfacesRoot', () => {
   it('shows empty cards when the session has no surfaces', () => {
@@ -93,8 +101,9 @@ describe('SurfacesRoot', () => {
       { id: 'files', kind: 'files' },
     ])
     expect(screen.getByRole('button', { name: 'Close Files' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open a surface' })).toBeTruthy()
     expect(b.renderSlot).toHaveBeenCalledWith('surfaces.files', expect.objectContaining({
-      openFile: expect.any(Function),
+      openFile: expect.any(Function) as unknown as (relativePath: string) => void,
     }))
   })
 
@@ -105,6 +114,7 @@ describe('SurfacesRoot', () => {
       .find(call => call[0] === 'surfaces.files')![1]
     act(() => { owner.openFile('src/app.ts') })
     expect(b.instance.getSnapshot().bySession['session-1']?.surfaces).toEqual([
+      { id: 'files', kind: 'files' },
       { id: 'file:src/app.ts', kind: 'file', relativePath: 'src/app.ts' },
     ])
     await waitFor(() => {
@@ -119,7 +129,7 @@ describe('SurfacesRoot', () => {
     expect(screen.getByRole('button', { name: 'Close Files' })).toBeTruthy()
     expect(screen.queryByText('Open a surface')).toBeNull()
     expect(b.renderSlot).toHaveBeenCalledWith('surfaces.files', expect.objectContaining({
-      openFile: expect.any(Function),
+      openFile: expect.any(Function) as unknown as (relativePath: string) => void,
     }))
 
     b.openSurfaces()
@@ -164,24 +174,152 @@ describe('SurfacesRoot', () => {
     expect(browser.getAttribute('title')).toBe('Browser previews are only available in the desktop app.')
   })
 
-  it('disables Diff when gitStatus is null and enables it for a repository', async () => {
-    const missing = mount({ cwd: '/tmp/plain' })
-    await waitFor(() => {
-      expect(missing.gitStatus).toHaveBeenCalledWith('/tmp/plain')
-    })
+  it('enables Diff when the session has a cwd', () => {
+    mount()
     expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', true)
 
     cleanup()
-    const present = mount({
-      cwd: '/tmp/repo',
-      gitStatus: vi.fn(async () => ({ refName: 'main' })),
-    })
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', false)
-    })
+    const present = mount({ cwd: '/tmp/plain' })
+    expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', false)
     fireEvent.click(screen.getByRole('button', { name: /Diff/ }))
     expect(present.instance.getSnapshot().bySession['session-1']?.surfaces).toEqual([
       { id: 'diff', kind: 'diff' },
     ])
+  })
+
+  it('persists the open files tab for the session', async () => {
+    vi.useFakeTimers()
+    mount({ cwd: '/tmp/proj' })
+    fireEvent.click(screen.getByRole('button', { name: /Files/ }))
+    await act(async () => {
+      vi.advanceTimersByTime(80)
+    })
+    expect(localStorage.getItem('dsh-surfaces:v1:session-1')).toContain('files')
+    vi.useRealTimers()
+  })
+
+  it('opens terminal, agents, and preview occupants and honors tab chrome', () => {
+    const b = mount({ cwd: '/tmp/proj' })
+    expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', false)
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }))
+    expect(b.renderSlot).toHaveBeenCalledWith('surfaces.terminal', {})
+    fireEvent.click(screen.getByRole('button', { name: 'Open a surface' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }))
+    expect(b.renderSlot).toHaveBeenCalledWith('surfaces.agents', {})
+    fireEvent.click(screen.getByRole('button', { name: 'Open a surface' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Browser' }))
+    expect(b.renderSlot).toHaveBeenCalledWith('surfaces.browser', {})
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal' }).parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close others' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal' }).parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close to the right' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Terminal' }).parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close all' }))
+    expect(b.instance.getSnapshot()).toEqual({ bySession: {} })
+  })
+
+  it('skips persist when the surfaces slot has no session', () => {
+    const instance = createSurfacesStore().create()
+    render(
+      <SurfacesRoot
+        sessionId={undefined}
+        useSession={neverHook}
+        useSessions={sessions('/tmp/proj')}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        {...bindStore(instance)}
+        renderSlot={vi.fn(() => null)}
+        openSurfaces={vi.fn()}
+        previewAvailable
+        gitStatus={vi.fn(async () => null)}
+        t={t}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Files/ }))
+    expect(instance.getSnapshot().bySession['']).toBeDefined()
+  })
+
+  it('treats an empty cwd as missing', () => {
+    const current = 'session-1' as SessionId
+    const emptyCwd = {
+      current,
+      ids: [current],
+      byId: {
+        [current]: {
+          id: current,
+          displayTitle: 'proj',
+          running: false,
+          blank: false,
+          updatedAt: 1,
+          cwd: '',
+        },
+      },
+      phase: 'ready',
+      subagentsByParent: {},
+      jobsBySession: {},
+      currentAddress: undefined,
+    } as SessionListState
+    render(
+      <SurfacesRoot
+        sessionId={current}
+        useSession={neverHook}
+        useSessions={sel => sel(emptyCwd)}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        {...bindStore(createSurfacesStore().create())}
+        renderSlot={vi.fn(() => null)}
+        openSurfaces={vi.fn()}
+        previewAvailable
+        gitStatus={vi.fn(async () => ({ refName: 'main' }))}
+        t={t}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', true)
+  })
+
+  it('treats a session list without a current id as having no cwd', () => {
+    const state = {
+      current: undefined,
+      ids: [],
+      byId: {},
+      phase: 'ready',
+      subagentsByParent: {},
+      jobsBySession: {},
+      currentAddress: undefined,
+    } as SessionListState
+    render(
+      <SurfacesRoot
+        sessionId={'session-1' as SessionId}
+        useSession={neverHook}
+        useSessions={sel => sel(state)}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        {...bindStore(createSurfacesStore().create())}
+        renderSlot={vi.fn(() => null)}
+        openSurfaces={vi.fn()}
+        previewAvailable
+        gitStatus={vi.fn(async () => ({ refName: 'main' }))}
+        t={t}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', true)
+  })
+
+  it('closes tabs to the right from the tab strip', async () => {
+    const instance = createSurfacesStore().create()
+    instance.actions.open('session-1', 'files')
+    instance.actions.open('session-1', 'diff')
+    instance.actions.open('session-1', 'agents')
+    mount({ store: instance, cwd: '/tmp/proj' })
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Files' }).parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close to the right' }))
+    expect(instance.getSnapshot().bySession['session-1']?.surfaces.map(surface => surface.id)).toEqual(['files'])
   })
 })

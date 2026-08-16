@@ -12,13 +12,13 @@ Status: implemented
 
 ## 决策
 
-AppFrame 是四栏：`sidebar | conversation | details | surfaces`，外加只位于会话栏下方的终端抽屉。关闭的 `details` 与 `surfaces` 宽度为 0。让步顺序是先把 surfaces 压到下限，再压 details，再派生关闭 surfaces，再派生关闭 details；侧栏不让步。`ctx.layout` 对 surfaces 和抽屉的写入与 details 相互独立：标题栏开关从不打开或关闭详情栏，关闭其中一栏也不会关闭另一栏。
+AppFrame 是四栏：`sidebar | conversation | details | surfaces`，外加只位于会话栏下方的终端抽屉。共享标题栏行横跨第 2–4 列；侧栏仍通高，顶部保留字标行。关闭的 `details` 与 `surfaces` 宽度为 0。让步顺序是先把 surfaces 压到下限，再压 details，再派生关闭 surfaces，再派生关闭 details；侧栏不让步。`ctx.layout` 对 surfaces 和抽屉的写入与 details 相互独立：标题栏开关从不打开或关闭详情栏，关闭其中一栏也不会关闭另一栏。
 
 标题栏尾簇是布局拥有的列表 slot `shell.titlebar.trailing`，包装为 `#dsh-shell-titlebar-trailing`。贡献方通过 [slot 声明注入](2026-08-05-slot-declaration-injection.md) 注册。从左到右：Session log（`id: 'session-log-download'`，`order: 10`）、Git（`id: 'git-actions'`，`order: 20`）、面板开关（`id: 'panel-toggles'`，`order: 40`），然后是 Electron 窗口控件。开关只写入 `toggleTerminalDrawer` 和 `toggleSurfaces`。Session log 仍是原来的下载控件；仅在当前有会话时渲染。
 
 Harness 客户端插件拥有 UI。Electron 只暴露 `window.shell.git*`、`window.shell.pty*` 和 `window.shell.preview*`；注入脚本不绘制 Git、终端或右侧栏。底栏抽屉与 Terminal surface 共用同一组面向工作区 cwd 的 PTY 会话。五个 surface 是 Browser、Terminal、Files、Diff 和 Agents。在桌面应用之外，Git IPC 为空操作，Browser 卡禁用。
 
-`reservedRight()` 等于窗口控件宽度加上实测的 `#dsh-shell-titlebar-trailing` 宽度再加一段簇间距；该宽度为 0 时只保留控件宽度。注入脚本发布 `--dsh-wco-pad`（完整避让）和 `--dsh-wco-controls`（仅窗口控件）。尾簇使用 `right: var(--dsh-wco-controls, var(--dsh-wco-pad))` 定位，避免已增大的 pad 把尾簇推向左侧并再次加宽自己。注入脚本是可重复执行的 IIFE：对同一文件的第二次 `executeJavaScript` 不得抛错。可供 Node require 的辅助函数放在 `src/main/harness-chrome-metrics.js`。
+`reservedRight()` 等于窗口控件宽度加上实测的 `#dsh-shell-titlebar-trailing` 宽度再加一段簇间距；该宽度为 0 时只保留控件宽度。注入脚本发布 `--dsh-wco-pad`（完整避让）和 `--dsh-wco-controls`（仅窗口控件）。AppFrame 有一行共享标题栏网格（`auto` + 主体 + 抽屉）。会话栏页头与滚动主体是该行对的 subgrid 项（`ConversationRoot` 为 `display: contents`）。详情栏与 surfaces 占用主体行，因此分割线和占用者从标题栏带下方开始，而不是压在 Session log、Git、面板开关或窗口控件下面。尾簇是该标题栏行的网格项（`justify-self: end`，`margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad))`），不是盖在栏内容上的 overlay。手机与 compact-header 框架隐藏尾簇；关闭的列宽度为 0 且不画分割线，因此不会留下空洞。注入脚本是可重复执行的 IIFE：对同一文件的第二次 `executeJavaScript` 不得抛错。可供 Node require 的辅助函数放在 `src/main/harness-chrome-metrics.js`。
 
 ## 备选方案
 
@@ -27,6 +27,8 @@ Harness 客户端插件拥有 UI。Electron 只暴露 `window.shell.git*`、`win
 **用 surfaces 替换 details 栏，或让标题栏开关驱动 details。** Inspect、轨迹表的 TOOL 检查器和现有的详情开闭仍属于 `details`。共用一个开关会把两列耦合在一起。
 
 **整段拷贝 T3code 的 Ghostty / Effect / zustand 右侧栏栈。** 客户端已经通过 slot 和 `defineStore` 组合。第二套状态栈会重复所有权，并破坏四份 props 规则。
+
+**把尾簇绝对定位在框架上，再用 `margin-top` inset surfaces。** overlay 会压在空态卡片和 Tab 上；56px 的列 spacer 会在右栏上方留出空洞，而会话栏仍有自己的页头。标题栏行才是共享带；栏内容从下一行开始。
 
 **用 `--dsh-wco-pad` 定位尾簇。** pad 包含尾簇自身宽度，每次测量都会把尾簇推向左侧。`--dsh-wco-controls` 才是仅窗口控件的 inset。
 

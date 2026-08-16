@@ -1,13 +1,15 @@
 /**
  * Four-column shell frame, registered into the built-in 'root' slot (the web
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
- * details | surfaces), the conversation-column terminal drawer, the titlebar
- * trailing cluster, the phone overlay band below PHONE_MAX, the drag handles
- * (pointer capture + rAF throttle), the concession chain (columns.ts), and the
- * child-slot render decisions: the sidebar slot renders HERE with live
- * parameters from the concession solve, and the session-aware occupants
- * render in fixed column positions; strict entries gate themselves on
- * current-session availability while session-maybe entries retain identity.
+ * details | surfaces) plus a shared titlebar row spanning columns 2–4, the
+ * conversation-column terminal drawer, the titlebar trailing cluster (in that
+ * row, not over column content), the phone overlay band (portrait below
+ * PHONE_MAX), landscape sidebar (rotate keeps the column in the grid), the
+ * drag handles (pointer capture + rAF throttle), the concession chain
+ * (columns.ts), and the child-slot render decisions: the sidebar slot renders
+ * HERE with live parameters from the concession solve, and the session-aware
+ * occupants render in fixed column positions; strict entries gate themselves
+ * on current-session availability while session-maybe entries retain identity.
  * Pure component: everything arrives through the three framework shares —
  * zero cordis or framework imports, zero self-made hooks.
  */
@@ -94,6 +96,63 @@ function DragHandle(props: { side: 'sidebar' | 'details' | 'surfaces'; left: num
   )
 }
 
+/**
+ * Physical screen aspect. A keyboard resizes the layout viewport and can
+ * flip CSS `orientation` without rotating the device; `availWidth`/`availHeight`
+ * stay put. Returns `undefined` when the screen box is missing or square.
+ */
+function physicalScreenLandscape(): boolean | undefined {
+  const width = window.screen.availWidth
+  const height = window.screen.availHeight
+  if (typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0) return undefined
+  if (width === height) return undefined
+  return width > height
+}
+
+/**
+ * Device rotation, not the viewport's aspect ratio. Prefer
+ * `screen.orientation.type`, then the physical screen, then matchMedia.
+ * When type and the physical screen disagree, trust the screen: some
+ * browsers leave `orientation.type` stale or skip `orientation.change`.
+ */
+function screenOrientation(): ScreenOrientation | undefined {
+  // The DOM lib types screen.orientation as always present, but jsdom and
+  // older browsers omit it; the cast mirrors desktop-shell's window.shell probe.
+  return (window.screen as Screen & { orientation?: ScreenOrientation }).orientation
+}
+
+function readDeviceLandscape(): boolean {
+  const type = screenOrientation()?.type
+  const fromScreen = physicalScreenLandscape()
+  if (typeof type === 'string' && type.length > 0) {
+    const fromType = type.startsWith('landscape')
+    if (fromScreen !== undefined && fromScreen !== fromType) return fromScreen
+    return fromType
+  }
+  if (fromScreen !== undefined) return fromScreen
+  return window.matchMedia('(orientation: landscape)').matches
+}
+
+/** EventTarget-shaped target that may be presence-only (e.g. `screen.orientation`). */
+interface OptionalEventTarget {
+  addEventListener?: (type: string, fn: () => void) => void
+  removeEventListener?: (type: string, fn: () => void) => void
+}
+
+/** Subscribe only when the target implements EventTarget; a presence-only
+ * `screen.orientation` object must not throw and take down the shell. */
+function subscribe(
+  target: OptionalEventTarget | null | undefined,
+  type: string,
+  fn: () => void,
+): () => void {
+  if (target === null || target === undefined) return () => {}
+  if (typeof target.addEventListener !== 'function' || typeof target.removeEventListener !== 'function') return () => {}
+  target.addEventListener(type, fn)
+  // The typeof guards above do not narrow the property access inside this closure.
+  return () => { target.removeEventListener?.(type, fn) }
+}
+
 /** The four-column frame (see module doc). */
 export function AppFrame({
   useStore,
@@ -108,32 +167,48 @@ export function AppFrame({
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState(() => window.innerWidth)
+  const [landscape, setLandscape] = useState(() => readDeviceLandscape())
 
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
     if (detailsSession === undefined) return
     if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
       actions.closeDetails()
+      actions.closeNarrowSidebar()
     }
     lastSession.current = detailsSession
   }, [actions, detailsSession])
 
-  // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
+  // Track the frame box and device rotation together. Cap width to innerWidth
+  // so a min-content overflow cannot promote the shell out of the phone/narrow
+  // bands. Re-read landscape on resize as well as orientation.change: some
+  // mobile browsers skip that event after a rotate.
   useEffect(() => {
     const el = frameRef.current
     /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
     if (el === null) return
     let raf: number | null = null
-    const observer = new ResizeObserver(() => {
+    const apply = (): void => {
       raf ??= requestAnimationFrame(() => {
         raf = null
-        const width = el.getBoundingClientRect().width
+        setLandscape(readDeviceLandscape())
+        const width = Math.min(el.getBoundingClientRect().width, window.innerWidth)
         if (width > 0) setViewport(width)
       })
-    })
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
     observer.observe(el)
+    window.addEventListener('resize', apply)
+    const stopMedia = subscribe(window.matchMedia('(orientation: landscape)'), 'change', apply)
+    const stopOrientation = subscribe(window.screen.orientation, 'change', apply)
+    const stopVisual = subscribe(window.visualViewport, 'resize', apply)
     return () => {
       observer.disconnect()
+      window.removeEventListener('resize', apply)
+      stopMedia()
+      stopOrientation()
+      stopVisual()
       if (raf !== null) cancelAnimationFrame(raf)
     }
   }, [])
@@ -144,8 +219,13 @@ export function AppFrame({
   // solver stays breakpoint-free: a narrow re-expand passes the preference
   // (or the default when the wide preference is closed) and the center
   // absorbs the squeeze.
-  const phone = viewport < PHONE_MAX
-  const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
+  // Landscape keeps the sidebar in the grid: a phone rotate must not fall
+  // into the 56px rail or the overlay drawer.
+  const phone = viewport < PHONE_MAX && !landscape
+  const narrow = viewport < SIDEBAR_AUTO_COLLAPSE && !landscape
+  // Hide the titlebar trailing cluster on any phone-width frame, including
+  // landscape: rotation must not re-show Session log / Git over the title.
+  const compactHeader = viewport < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
@@ -194,7 +274,7 @@ export function AppFrame({
         gridTemplateColumns: phone
           ? `0px minmax(0, 1fr) 0px ${cols.surfaces}px`
           : `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${cols.surfaces}px`,
-        gridTemplateRows: `minmax(0, 1fr) ${panels.terminalDrawer}px`,
+        gridTemplateRows: `auto minmax(0, 1fr) ${panels.terminalDrawer}px`,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={detailsOpen ? undefined : true}
@@ -203,6 +283,7 @@ export function AppFrame({
       data-phone={phone || undefined}
       data-phone-sidebar={phone && !sidebarCollapsed || undefined}
       data-phone-details={phone && detailsOpen || undefined}
+      data-compact-header={compactHeader || undefined}
       data-dragging={dragging || undefined}
     >
       {phone && sidebarCollapsed && (
@@ -251,6 +332,7 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
+      <div className={css.titlebarBand} data-titlebar-row />
       <div className={css.titlebarTrailing} data-titlebar-trailing id="dsh-shell-titlebar-trailing">
         {renderSlot('shell.titlebar.trailing', {
           surfaces: panels.surfaces,

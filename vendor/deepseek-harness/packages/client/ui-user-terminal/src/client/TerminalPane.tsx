@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import type { TerminalSessionRecord } from './stores.ts'
+import { readXtermTheme } from './terminal-theme.ts'
 import css from './TerminalWorkspace.module.css'
 
 export interface TerminalPaneProps {
@@ -35,12 +36,14 @@ export function TerminalPane({ id, session, onData, onResize }: TerminalPaneProp
     const host = hostRef.current
     if (host === null) return
     const term = new Terminal({
-      fontFamily: 'var(--dsw-font-family, monospace)',
+      fontFamily: 'var(--dsw-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)',
       fontSize: 13,
-      lineHeight: 1.4,
+      lineHeight: 20 / 13,
       cursorBlink: true,
+      cursorStyle: 'bar',
       scrollback: 2000,
       allowProposedApi: false,
+      theme: readXtermTheme(host),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -48,7 +51,7 @@ export function TerminalPane({ id, session, onData, onResize }: TerminalPaneProp
     const seed = session?.buffer ?? ''
     if (seed.length > 0) term.write(seed)
     writtenRef.current = seed.length
-    const disposeData = term.onData(bytes => { callbacksRef.current.onData(bytes) })
+    const disposeData = term.onData((bytes) => { callbacksRef.current.onData(bytes) })
     let raf = 0
     const fitNow = (): void => {
       try {
@@ -79,7 +82,6 @@ export function TerminalPane({ id, session, onData, onResize }: TerminalPaneProp
       writtenRef.current = 0
     }
     // The terminal instance is per-pane: rebuild when the pane id changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   // Backfill output that arrived while this pane was unmounted (replay buffer).

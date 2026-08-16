@@ -10,6 +10,8 @@ export const zh = {
   'mode.oneShot': '一次性',
   'mode.continuable': '可继续',
   'list.aria': '当前会话的子代理',
+  'jobs.title': '后台任务',
+  'jobs.aria': '当前会话的后台任务',
 } satisfies Record<string, string>
 
 /** The agents namespace key union. */
@@ -25,6 +27,8 @@ export const en = {
   'mode.oneShot': 'one-shot',
   'mode.continuable': 'continuable',
   'list.aria': 'Subagents in this session',
+  'jobs.title': 'Background jobs',
+  'jobs.aria': 'Background jobs in this session',
 } satisfies Record<AgentsKey, string>
 
 /** Dictionary namespace owned by this plugin. */

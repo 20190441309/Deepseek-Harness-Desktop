@@ -80,6 +80,16 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().narrowExpanded).toBe(false)
   })
 
+  it('closeNarrowSidebar drops the override and leaves the width preference', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setSidebar(400)
+    actions.setNarrow(true)
+    actions.toggleSidebar()
+    expect(store.getSnapshot().narrowExpanded).toBe(true)
+    actions.closeNarrowSidebar()
+    expect(store.getSnapshot()).toMatchObject({ sidebar: 400, narrow: true, narrowExpanded: false })
+  })
+
   it('openDetails uses the contract default, preserves an open width, and closeDetails zeroes', () => {
     const { store, actions } = createLayoutStore().create()
     actions.openDetails()

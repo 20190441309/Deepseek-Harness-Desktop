@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 Titlebar trailing plugin: a Session-log-style split button that commits, pushes, and opens a change request through desktop `window.shell` git IPC. The entry sits in `shell.titlebar.trailing` at `id: 'git-actions'`, `order: 20`, between Session log (`order: 10`) and the panel toggles (`order: 40`). Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
 
-The main-button label follows `resolveQuickAction`. The dropdown is Commit, Push, and Create change request (GitHub wording is Pull request / PR; GitLab uses MR). A missing session `cwd` or a null `gitStatus` disables the main button and shows the hint `Git status is unavailable.` Push and commit_push on the default ref open `resolveDefaultBranchActionDialogCopy` before running.
+The main-button label follows `resolveQuickAction` and is localized through the `git` dictionary. The dropdown is Commit, Push, and Create change request (GitHub wording is Pull request / PR; GitLab uses MR). A missing session `cwd` or a null `gitStatus` disables the main button and shows the hint `Git status is unavailable.` An authorized cwd with `isRepo: false` replaces the split button with Initialize Git and calls `gitInit`. Push and commit_push on the default ref open `resolveDefaultBranchActionDialogCopy` before running. `hasPrimaryRemote` defaults to false when the status omits it.
 
 `GitActionsProps` composes the titlebar trailing owner share, `useSessions` for the current session cwd, injected git IPC callbacks, and the `git` locale seat. There is no plugin store. Desktop methods live only on `window.shell`; the renderer never loads Node.
 

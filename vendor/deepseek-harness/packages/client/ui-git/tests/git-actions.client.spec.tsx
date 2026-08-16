@@ -22,15 +22,15 @@ function sessionList(cwd: string | undefined): SessionListState {
   const byId = current === undefined
     ? {}
     : {
-        [SID]: {
-          id: SID,
-          displayTitle: 'proj',
-          running: false,
-          blank: false,
-          updatedAt: 1,
-          ...(cwd ? { cwd } : {}),
-        },
-      }
+      [SID]: {
+        id: SID,
+        displayTitle: 'proj',
+        running: false,
+        blank: false,
+        updatedAt: 1,
+        ...(cwd ? { cwd } : {}),
+      },
+    }
   return {
     ids: current === undefined ? [] : [SID],
     byId,
@@ -43,7 +43,7 @@ function sessionList(cwd: string | undefined): SessionListState {
 }
 
 function useSessionsStub(list: SessionListState): GitActionsProps['useSessions'] {
-  return (sel) => sel(list)
+  return sel => sel(list)
 }
 
 function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
@@ -56,6 +56,7 @@ function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
     pr: null,
     isDefaultRef: false,
     hasPrimaryRemote: true,
+    isRepo: true,
     ...overrides,
   }
 }
@@ -64,16 +65,24 @@ function mount(opts: {
   cwd?: string | undefined
   git?: VcsStatus | null
   gitStatus?: GitActionsProps['gitStatus']
+  gitInit?: GitActionsProps['gitInit']
   gitCommit?: GitActionsProps['gitCommit']
   gitPush?: GitActionsProps['gitPush']
   gitPull?: GitActionsProps['gitPull']
   gitCreateChangeRequest?: GitActionsProps['gitCreateChangeRequest']
+  gitBranchList?: GitActionsProps['gitBranchList']
+  gitSwitchBranch?: GitActionsProps['gitSwitchBranch']
+  gitCreateBranch?: GitActionsProps['gitCreateBranch']
 } = {}) {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => opts.git ?? null)
+  const gitInit = opts.gitInit ?? vi.fn(async () => ({ ok: true }))
   const gitCommit = opts.gitCommit ?? vi.fn(async () => ({ ok: true }))
   const gitPush = opts.gitPush ?? vi.fn(async () => ({ ok: true }))
   const gitPull = opts.gitPull ?? vi.fn(async () => ({ ok: true }))
   const gitCreateChangeRequest = opts.gitCreateChangeRequest ?? vi.fn(async () => ({ ok: true }))
+  const gitBranchList = opts.gitBranchList ?? vi.fn(async () => ({ ok: true, branches: [] }))
+  const gitSwitchBranch = opts.gitSwitchBranch ?? vi.fn(async () => ({ ok: true }))
+  const gitCreateBranch = opts.gitCreateBranch ?? vi.fn(async () => ({ ok: true }))
   const openExternal = vi.fn(async () => true)
   const view = render(
     <GitActionsControl
@@ -82,15 +91,22 @@ function mount(opts: {
       useSessions={useSessionsStub(sessionList(opts.cwd))}
       useWorkspaces={neverWorkspaces}
       gitStatus={gitStatus}
+      gitInit={gitInit}
       gitCommit={gitCommit}
       gitPush={gitPush}
       gitPull={gitPull}
       gitCreateChangeRequest={gitCreateChangeRequest}
+      gitBranchList={gitBranchList}
+      gitSwitchBranch={gitSwitchBranch}
+      gitCreateBranch={gitCreateBranch}
       openExternal={openExternal}
       t={t}
     />,
   )
-  return { gitStatus, gitCommit, gitPush, gitPull, gitCreateChangeRequest, openExternal, rerender: view.rerender }
+  return {
+    gitStatus, gitInit, gitCommit, gitPush, gitPull, gitCreateChangeRequest,
+    gitBranchList, gitSwitchBranch, gitCreateBranch, openExternal, rerender: view.rerender,
+  }
 }
 
 afterEach(cleanup)
@@ -170,10 +186,14 @@ describe('GitActionsControl', () => {
       terminalDrawer: 0,
       useWorkspaces: neverWorkspaces,
       gitStatus,
+      gitInit: vi.fn(async () => ({ ok: true })),
       gitCommit: vi.fn(async () => ({ ok: true })),
       gitPush: vi.fn(async () => ({ ok: true })),
       gitPull: vi.fn(async () => ({ ok: true })),
       gitCreateChangeRequest: vi.fn(async () => ({ ok: true })),
+      gitBranchList: vi.fn(async () => ({ ok: true, branches: [] })),
+      gitSwitchBranch: vi.fn(async () => ({ ok: true })),
+      gitCreateBranch: vi.fn(async () => ({ ok: true })),
       openExternal: vi.fn(async () => true),
       t,
     } satisfies Omit<GitActionsProps, 'useSessions'>
@@ -228,5 +248,79 @@ describe('GitActionsControl', () => {
     expect(main.disabled).toBe(true)
     fireEvent.focus(main)
     expect(await screen.findByText('Publish repository is unavailable.')).toBeTruthy()
+  })
+
+  it('shows Initialize Git when the cwd is not a repository', async () => {
+    mount({
+      cwd: '/work',
+      git: status({
+        isRepo: false,
+        refName: null,
+        hasPrimaryRemote: false,
+      }),
+    })
+    expect(await screen.findByRole('button', { name: 'Initialize Git' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Git actions' })).toBeNull()
+  })
+
+  it('runs gitInit when Initialize Git is clicked', async () => {
+    const gitInit = vi.fn(async () => ({ ok: true }))
+    const gitStatus = vi.fn()
+      .mockResolvedValueOnce(status({ isRepo: false, refName: null, hasPrimaryRemote: false }))
+      .mockResolvedValue(status({ isRepo: true, hasWorkingTreeChanges: true }))
+    mount({ cwd: '/work', gitStatus, gitInit })
+    fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
+    await waitFor(() => { expect(gitInit).toHaveBeenCalledWith('/work') })
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(2) })
+  })
+
+  it('shows Initializing and the IPC failure when gitInit fails', async () => {
+    let finish: (result: { ok: boolean; message: string }) => void = () => {}
+    const gitInit = vi.fn(() => new Promise<{ ok: boolean; message: string }>((resolve) => {
+      finish = resolve
+    }))
+    mount({
+      cwd: '/work',
+      git: status({ isRepo: false, refName: null, hasPrimaryRemote: false }),
+      gitInit,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
+    expect(await screen.findByText('Initializing...')).toBeTruthy()
+    finish({ ok: false, message: 'cannot init' })
+    expect(await screen.findByRole('dialog', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('cannot init')).toBeTruthy()
+  })
+
+  it('labels the main button Pull when the ref is behind', async () => {
+    mount({ cwd: '/work', git: status({ behindCount: 1 }) })
+    expect((await screen.findByRole<HTMLButtonElement>('button', { name: 'Pull' })).disabled).toBe(false)
+  })
+
+  it('labels the main button View PR when an open change request exists', async () => {
+    mount({
+      cwd: '/work',
+      git: status({
+        pr: {
+          number: 1,
+          title: 'x',
+          url: 'https://example.com/1',
+          baseRef: 'main',
+          headRef: 'feature/test',
+          state: 'open',
+        },
+      }),
+    })
+    expect(await screen.findByRole('button', { name: 'View PR' })).toBeTruthy()
+  })
+
+  it('labels the main button Sync ref when the ref has diverged', async () => {
+    mount({ cwd: '/work', git: status({ aheadCount: 1, behindCount: 1 }) })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Sync ref' })
+    expect(main.disabled).toBe(true)
+  })
+
+  it('labels the main button Commit, push & PR on a feature ref with local changes', async () => {
+    mount({ cwd: '/work', git: status({ hasWorkingTreeChanges: true }) })
+    expect(await screen.findByRole('button', { name: 'Commit, push & PR' })).toBeTruthy()
   })
 })

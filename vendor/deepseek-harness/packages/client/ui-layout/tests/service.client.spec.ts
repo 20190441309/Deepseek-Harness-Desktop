@@ -22,6 +22,7 @@ function fakePanels(): PanelActions {
     closeSurfaces: vi.fn(),
     toggleTerminalDrawer: vi.fn(),
     setTerminalDrawer: vi.fn(),
+    closeNarrowSidebar: vi.fn(),
   }
 }
 

@@ -9,6 +9,13 @@ export const zh = {
   'error.read': '无法读取文件。',
   'preview.binary': '无法预览二进制文件。',
   'preview.truncated': '文件过长，仅显示开头。',
+  'preview.copy': '复制',
+  'preview.copied': '已复制',
+  'mention': '引用到输入框',
+  'copy.relative': '复制相对路径',
+  'copy.absolute': '复制绝对路径',
+  'refresh': '刷新',
+  'copied': '已复制',
 } satisfies Record<string, string>
 
 /** The files namespace key union. */
@@ -23,6 +30,13 @@ export const en = {
   'error.read': 'Could not read the file.',
   'preview.binary': 'This binary file cannot be previewed.',
   'preview.truncated': 'File is too large; showing the beginning.',
+  'preview.copy': 'Copy',
+  'preview.copied': 'Copied',
+  'mention': 'Mention in composer',
+  'copy.relative': 'Copy relative path',
+  'copy.absolute': 'Copy absolute path',
+  'refresh': 'Refresh',
+  'copied': 'Copied',
 } satisfies Record<FilesKey, string>
 
 /** Dictionary namespace owned by this plugin. */

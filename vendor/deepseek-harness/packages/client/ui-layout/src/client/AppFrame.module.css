@@ -1,6 +1,9 @@
 .frame {
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
@@ -29,21 +32,24 @@
   min-width: 0;
   overflow: hidden;
   background: var(--dsw-specific-sidebar-fill);
-  border-right: 1px solid var(--dsw-alias-border-l1);
 }
 
 .centerCol {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 1 / 3;
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+  /* Contain conversation z-index (sticky composer 7, ContextMeter 100) so
+     those layers cannot paint over the phone overlay drawer. */
+  isolation: isolate;
 }
 
 .terminalDrawerCol {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -52,7 +58,7 @@
 
 .detailsCol {
   grid-column: 3;
-  grid-row: 1 / -1;
+  grid-row: 2 / -1;
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--dsw-alias-border-l2);
@@ -60,14 +66,14 @@
 
 .surfacesCol {
   grid-column: 4;
-  grid-row: 1 / -1;
+  grid-row: 2 / -1;
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--dsw-alias-border-l2);
 }
 
 /* The details subtree stays mounted at zero width, so its border must not paint
-   a 1px seam. The collapsed sidebar instead retains a bordered compact rail. */
+   a 1px seam. The collapsed sidebar instead retains its compact rail. */
 .frame[data-details-collapsed] .detailsCol {
   border-left: none;
 }
@@ -156,16 +162,50 @@
   pointer-events: auto;
 }
 
-.titlebarTrailing {
+/* Shared titlebar band across conversation + details + surfaces. Height
+   comes from the conversation header via centerCol subgrid (row 1 = auto).
+   Hairline matches conversation header::after (1px up from the row bottom). */
+.titlebarBand {
+  grid-column: 3 / -1;
+  grid-row: 1;
+  position: relative;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.titlebarBand::after {
+  content: '';
   position: absolute;
-  top: 12px;
-  right: var(--dsh-wco-controls, var(--dsh-wco-pad));
+  right: 0;
+  bottom: 1px;
+  left: 0;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
+  pointer-events: none;
+}
+
+.titlebarTrailing {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  justify-self: end;
+  align-self: start;
   z-index: 21;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 32px;
+  margin-top: 12px;
+  margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad, 8px));
   -webkit-app-region: no-drag;
+}
+
+/* Phone overlay and portrait-narrow frames: Session log / Git / panel toggles
+   sit in this cluster and would paint over the session title. Do not key this
+   off CSS orientation — a phone keyboard flips that media query. Landscape
+   and wide desktop keep the cluster. */
+.frame[data-phone] .titlebarTrailing,
+.frame[data-compact-header] .titlebarTrailing {
+  display: none;
 }
 
 /* Phone overlay shell: conversation owns the grid; sidebar and details leave
@@ -174,7 +214,7 @@
   position: absolute;
   top: max(10px, env(safe-area-inset-top, 0px));
   left: max(10px, env(safe-area-inset-left, 0px));
-  z-index: 6;
+  z-index: 12;
   display: grid;
   place-items: center;
   width: 36px;
@@ -195,10 +235,11 @@
 .phoneBackdrop {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 10;
   padding: 0;
   border: none;
   background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
   cursor: pointer;
 }
 
@@ -207,12 +248,19 @@
   top: 0;
   bottom: 0;
   left: 0;
-  z-index: 5;
+  z-index: 11;
   width: min(320px, calc(100% - 48px));
   pointer-events: none;
   transform: translateX(-100%);
   transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
   padding-top: env(safe-area-inset-top, 0px);
+  /* Opaque canvas under sidebar-fill: wallpaper glass must mix with the
+     drawer, not with the dimmed conversation showing through. */
+  background-color: var(--dsw-alias-bg-base);
+  background-image: linear-gradient(
+    var(--dsw-specific-sidebar-fill),
+    var(--dsw-specific-sidebar-fill)
+  );
 }
 
 .frame[data-phone-sidebar] .sidebarCol {
@@ -223,7 +271,7 @@
 .frame[data-phone] .detailsCol {
   position: absolute;
   inset: 0;
-  z-index: 7;
+  z-index: 13;
   width: auto;
   pointer-events: none;
   background: var(--dsw-alias-bg-base);

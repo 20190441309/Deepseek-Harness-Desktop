@@ -4,7 +4,7 @@
 
 右边栏 Files occupant：在 `surfaces.files` 上展示只读工作区树，在 `surfaces.file` 上展示单文件预览。两个槽位都是 `single` + `session-maybe`，由 ui-surfaces 声明。点击文件会调用 owner 的 `openFile(relativePath)`（T3code `openFile`）。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
-工作区根是当前会话的 `cwd`，只通过一次 `useSessions` 读取。目录与文件字节来自桌面 `window.shell` 的 `listDir`／`readFile`；渲染进程不加载 Node。目录按需展开。
+工作区根是当前会话的 `cwd`，只通过一次 `useSessions` 读取。目录与文件字节来自桌面 `window.shell` 的 `listDir`／`readFile`／`readFileMedia`；渲染进程不加载 Node。目录按需展开。图片以 data URL 渲染；`.md` 使用带 `codeLabels` 的 `MarkdownText`。
 
 `/client` 导出表层只包含插件主体（`apply`／`inject`）及约定类型；FilesPanel、FilePreview 与 FileTree 仍由 slot 注册封装在包内。
 
@@ -18,5 +18,5 @@
 
 ## 已知限制与暂缓事项
 
-- **树是只读的**：没有新建、重命名、删除，也不能拖到输入框提及。
-- **预览是纯文本**：二进制文件显示 `preview.binary`；没有图片或 Markdown 渲染模式。
+- **树是只读的**：没有新建、重命名、删除，也不能拖到输入框提及。`@` 会把提及插入到输入框草稿。
+- **预览不可写**：图片和 Markdown 可以渲染；保存修改仍暂缓。

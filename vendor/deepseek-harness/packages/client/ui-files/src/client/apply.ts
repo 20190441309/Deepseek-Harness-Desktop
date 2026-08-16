@@ -2,6 +2,7 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-surfaces/client'
+import { appendToDraft } from './draft.ts'
 import { FilePreview } from './FilePreview.tsx'
 import { FilesPanel } from './FilesPanel.tsx'
 import { en, NS, zh, type FilesKey } from './locales.ts'
@@ -10,7 +11,7 @@ import { readFilesShell, type FilesShellInjected } from './shell.ts'
 export type { FilesPanelProps } from './FilesPanel.tsx'
 export type { FilePreviewProps } from './FilePreview.tsx'
 export type { FilesKey } from './locales.ts'
-export type { DirEntry, FilesShellInjected, ListDirResult, ReadFileResult } from './shell.ts'
+export type { DirEntry, FilesShellInjected, ListDirResult, ReadFileMediaResult, ReadFileResult } from './shell.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -28,7 +29,12 @@ export const inject = ['slots', 'locale']
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-files: dictionaries')
-  const injected = (): FilesShellInjected => readFilesShell()
+  const injected = (): FilesShellInjected => ({
+    ...readFilesShell(),
+    mentionFile: (sessionId, relativePath) => {
+      appendToDraft(ctx, sessionId, `\`@${relativePath}\``)
+    },
+  })
 
   ctx.slots.inject('surfaces.files', () => ctx.slots.register({
     name: 'surfaces.files',

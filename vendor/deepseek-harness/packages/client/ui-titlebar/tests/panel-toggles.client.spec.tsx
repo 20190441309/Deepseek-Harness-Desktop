@@ -19,7 +19,7 @@ function workspaces(itemCount: number): PanelTogglesProps['useWorkspaces'] {
     baselinesReady: true,
     recentWorkspaceId: undefined,
   } as unknown as WorkspaceListState
-  return (sel) => sel(state)
+  return sel => sel(state)
 }
 
 function mount(opts: {
@@ -78,6 +78,36 @@ describe('PanelToggles', () => {
     expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
   })
 
+  it('Ctrl+` toggles the terminal drawer when a workspace exists', () => {
+    const b = mount()
+    fireEvent.keyDown(window, { key: '`', ctrlKey: true })
+    expect(b.toggleTerminalDrawer).toHaveBeenCalledOnce()
+    expect(b.toggleSurfaces).not.toHaveBeenCalled()
+  })
+
+  it('ignores shortcuts while typing in an input', () => {
+    const b = mount()
+    const input = document.createElement('input')
+    document.body.append(input)
+    fireEvent.keyDown(input, { key: '\\', ctrlKey: true })
+    fireEvent.keyDown(input, { key: '`', ctrlKey: true })
+    expect(b.toggleSurfaces).not.toHaveBeenCalled()
+    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+    input.remove()
+  })
+
+  it('does not toggle the terminal drawer from an xterm target', () => {
+    const b = mount()
+    const term = document.createElement('div')
+    term.className = 'xterm'
+    const inner = document.createElement('div')
+    term.append(inner)
+    document.body.append(term)
+    fireEvent.keyDown(inner, { key: '`', ctrlKey: true })
+    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+    term.remove()
+  })
+
   it('disables the terminal toggle when no workspace is available', () => {
     const b = mount({ workspaceCount: 0 })
     const terminal = screen.getByRole<HTMLButtonElement>('button', { name: 'Toggle terminal drawer' })
@@ -85,5 +115,11 @@ describe('PanelToggles', () => {
     fireEvent.click(terminal)
     expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Toggle right panel' }).disabled).toBe(false)
+    fireEvent.keyDown(window, { key: '`', ctrlKey: true })
+    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: '\\', ctrlKey: true })
+    expect(b.toggleSurfaces).toHaveBeenCalledOnce()
+    fireEvent.keyDown(window, { key: 'a', ctrlKey: true })
+    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
   })
 })

@@ -71,9 +71,28 @@
   align-items: center;
   gap: 8px;
   min-height: 36px;
-  padding: 8px 10px;
+  padding: 0;
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-2);
+}
+
+.open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.open:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .label {
@@ -92,4 +111,16 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.jobs {
+  margin-top: 16px;
+}
+
+.jobsTitle {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
 }

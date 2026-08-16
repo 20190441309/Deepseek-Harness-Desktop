@@ -4,7 +4,7 @@
 
 标题栏尾簇插件：一枚 Session log 语汇的分裂按钮，通过桌面 `window.shell` git IPC 提交、推送并打开变更请求。条目挂在 `shell.titlebar.trailing`，`id: 'git-actions'`，`order: 20`，位于 Session log（`order: 10`）与面板开关（`order: 40`）之间。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
-主按钮文案跟随 `resolveQuickAction`。下拉三项为 Commit、Push 与 Create change request（GitHub 用语为 Pull request / PR；GitLab 为 MR）。当前会话没有 `cwd`，或 `gitStatus` 为 null 时，主按钮 disabled，并提示 `Git status is unavailable.`。默认分支上的 push / commit_push 先弹出 `resolveDefaultBranchActionDialogCopy` 再执行。
+主按钮文案跟随 `resolveQuickAction`，并通过 `git` 字典本地化。下拉三项为提交、推送与创建变更请求（GitHub 用语为 Pull request / PR；GitLab 为 MR）。当前会话没有 `cwd`，或 `gitStatus` 为 null 时，主按钮 disabled，并提示 Git 状态不可用。已授权但 `isRepo: false` 的 cwd 用「初始化 Git」替换分裂按钮，并调用 `gitInit`。默认分支上的 push / commit_push 先弹出 `resolveDefaultBranchActionDialogCopy` 再执行。状态省略 `hasPrimaryRemote` 时按 false 处理。
 
 `GitActionsProps` 组合标题栏尾簇 owner share、用于当前会话 cwd 的 `useSessions`、注入的 git IPC 回调，以及 `git` 文案 seat。这里没有插件 store。桌面方法只挂在 `window.shell` 上；渲染进程不加载 Node。
 

@@ -5,6 +5,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
 import { GitActionsControl } from '../src/client/GitActionsControl.tsx'
+import type { GitActionsInjected } from '../src/client/GitActionsControl.tsx'
 
 function declare(slots: SlotRegistry): () => void {
   return slots.register({
@@ -52,6 +53,29 @@ describe('ui-git apply', () => {
       order: 20,
     })
     redeclare()
+    await b.fiber.dispose()
+  })
+
+  it('binds missing-shell git fallbacks', async () => {
+    const b = await bench()
+    const injected = (b.slots.entries('shell.titlebar.trailing')[0]?.inject as unknown as () => GitActionsInjected)()
+    await expect(injected.gitStatus('/tmp')).resolves.toBeNull()
+    await expect(injected.gitInit('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitCommit('/tmp', 'msg')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitPush('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitPull('/tmp')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitCreateChangeRequest('/tmp', { title: 't', body: '' })).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
     await b.fiber.dispose()
   })
 })

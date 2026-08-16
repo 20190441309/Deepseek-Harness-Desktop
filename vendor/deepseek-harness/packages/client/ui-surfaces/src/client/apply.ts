@@ -1,8 +1,10 @@
 /** Registers the right-panel surfaces shell into the layout-owned column. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { en, NS, zh, type SurfacesKey } from './locales.ts'
+import { wrapOpenPath } from './openpath-intercept.ts'
+import { relativeTo } from './paths.ts'
 import { createSurfacesStore } from './stores.ts'
 import type { SurfacesRootInjected } from './SurfacesRoot.tsx'
 import { SurfacesRoot } from './SurfacesRoot.tsx'
@@ -48,7 +50,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Git diff occupant. ui-diff injects here.
      */
-    'surfaces.diff': { kind: 'single'; scope: 'session-maybe'; owner: {} }
+    'surfaces.diff': { kind: 'single'; scope: 'session-maybe'; owner: FilesOwnerProps }
     /**
      * Running-agents occupant. ui-agents-panel injects here.
      */
@@ -57,8 +59,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 interface DesktopShell {
-  gitStatus?: (cwd: string) => Promise<unknown | null>
+  gitStatus?: (cwd: string) => Promise<unknown>
   previewOpen?: (input: { url: string }) => Promise<unknown>
+  listDir?: (cwd: string, relativePath?: string) => Promise<unknown>
+}
+
+interface SurfacesStoreActions {
+  openFile: (sessionId: string, relativePath: string) => void
 }
 
 /**
@@ -76,15 +83,30 @@ function readDesktopShell(): Pick<SurfacesRootInjected, 'gitStatus' | 'previewAv
   }
 }
 
+/**
+ * True only in the desktop renderer where workspace listing IPC exists.
+ * The web e2e lane must fall through to OS `openPath`.
+ * @returns whether `window.shell.listDir` is a function.
+ */
+export function desktopListingAvailable(): boolean {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
+  if (typeof window === 'undefined') return false
+  const shell = (window as Window & { shell?: DesktopShell }).shell
+  return typeof shell?.listDir === 'function'
+}
+
 /** Services required by the surfaces plugin. */
-export const inject = ['slots', 'layout', 'locale']
+export const inject = ['slots', 'layout', 'locale', 'workspaces', 'sessions']
 
 /**
- * Register dictionaries and occupy the layout `surfaces` column.
+ * Register dictionaries, occupy the layout `surfaces` column, and intercept
+ * `workspaces.openPath` into the files surface on desktop.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-surfaces: dictionaries')
+
+  const live: { openFile?: SurfacesStoreActions['openFile'] } = {}
 
   ctx.slots.inject('surfaces', () => ctx.slots.register({
     name: 'surfaces',
@@ -98,9 +120,29 @@ export function apply(ctx: ClientContext): void {
       'surfaces.diff': { kind: 'single', scope: 'session-maybe' },
       'surfaces.agents': { kind: 'single', scope: 'session-maybe' },
     },
-    inject: (): SurfacesRootInjected => ({
-      openSurfaces: () => { ctx.layout.openSurfaces() },
-      ...readDesktopShell(),
-    }),
+    inject: (_sessionId, actions): SurfacesRootInjected => {
+      if (actions !== undefined) {
+        live.openFile = (sessionId, relativePath) => { actions.openFile(sessionId, relativePath) }
+      }
+      return {
+        openSurfaces: () => { ctx.layout.openSurfaces() },
+        ...readDesktopShell(),
+      }
+    },
   }, SurfacesRoot))
+
+  ctx.effect(() => wrapOpenPath(ctx.workspaces, {
+    takeoverEnabled: desktopListingAvailable,
+    currentSessionId: () => ctx.sessions.list.getSnapshot().current,
+    openInSurfaces: (path, sessionId) => {
+      const cwd = ctx.sessions.list.getSnapshot().byId[sessionId as SessionId]?.cwd
+      if (typeof cwd !== 'string' || cwd.length === 0) return false
+      const relative = relativeTo(cwd, path)
+      if (relative === undefined || relative === '') return false
+      if (live.openFile === undefined) return false
+      live.openFile(sessionId, relative)
+      ctx.layout.openSurfaces()
+      return true
+    },
+  }), 'ui-surfaces: openPath intercept')
 }
