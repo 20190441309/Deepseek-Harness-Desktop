@@ -20,6 +20,7 @@ describe('HOST_FEATURES', () => {
       'conversation.chat.user-actions',
       'session.fork.beforeSeq',
       'session.fork.blank',
+      'conversation.chat.user-editor',
     ])
   })
 })
@@ -79,12 +80,12 @@ describe('parseCompatibilityFeatures', () => {
 
 describe('assertHostFeatures', () => {
   it('passes silently when every required feature is supported', () => {
-    expect(() => assertHostFeatures('pkg', ['conversation.chat.user-actions'])).not.toThrow()
-    expect(() => assertHostFeatures('pkg', [])).not.toThrow()
+    expect(() =>{  assertHostFeatures('pkg', ['conversation.chat.user-actions']) }).not.toThrow()
+    expect(() =>{  assertHostFeatures('pkg', []) }).not.toThrow()
   })
 
   it('throws naming the plugin and the missing features', () => {
-    expect(() => assertHostFeatures('turtle-ui', ['session.fork.blank', 'editor.unsupported']))
+    expect(() =>{  assertHostFeatures('turtle-ui', ['session.fork.blank', 'editor.unsupported']) })
       .toThrow(/turtle-ui requires host features this dsh host does not support: editor\.unsupported/)
   })
 })

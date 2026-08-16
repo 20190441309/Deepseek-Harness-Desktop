@@ -4,11 +4,11 @@
    a 2px active bar. */
 
 .root {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  background: var(--dsw-alias-bg-base);
+  /* display:contents so the header and scroll body become AppFrame subgrid
+     items (titlebar row + body row). Custom properties still inherit. */
+  display: contents;
+  /* AppFrame already paints `--dsw-alias-bg-base`. A second fill stacks with
+     that mix and hides a wallpaper. */
 
   /* Shared width axis for the whole column: one content width W
      (--dsh-chat-content-width) for the transcript, the dock cards
@@ -27,7 +27,9 @@
 
 .header {
   position: relative;
+  grid-row: 1;
   flex: none;
+  min-width: 0;
   padding: 12px 28px 0 20px;
   border-bottom: 1px solid transparent;
 }
@@ -37,6 +39,21 @@
     padding-top: max(12px, env(safe-area-inset-top, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
     padding-left: 56px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .titleRow {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .headerActions {
+    min-width: 0;
+  }
+
+  .headerUtilities {
+    display: none;
   }
 }
 
@@ -232,8 +249,10 @@
 
 .scrollBody {
   display: flex;
+  grid-row: 2;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   /* The column scrolls on ONE axis. Stating `hidden` rather than leaving the

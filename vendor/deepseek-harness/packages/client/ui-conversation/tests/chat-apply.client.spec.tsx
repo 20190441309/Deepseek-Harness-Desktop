@@ -80,13 +80,17 @@ describe('apply wiring', () => {
     expect(user).toBeDefined()
     expect(steering).toBeDefined()
     // Declaring is claiming: the user renderer's registration put the list
-    // seat on the ledger (kind/scope) and authorized its own renderSlot for
-    // it — the render site of a plugin's per-message user actions.
+    // and single seats on the ledger (kind/scope) and authorized its own
+    // renderSlot for them — the render site of a plugin's per-message user
+    // actions and the inline-editor replacement.
     expect(b.slots.spec('conversation.chat.user-actions')).toEqual({ kind: 'list', scope: 'session' })
+    expect(b.slots.spec('conversation.chat.user-editor')).toEqual({ kind: 'single', scope: 'session' })
     expect(user?.children?.['conversation.chat.user-actions']).toEqual({ kind: 'list', scope: 'session' })
-    // Steering carries no strip: no children declaration, so its renderer
+    expect(user?.children?.['conversation.chat.user-editor']).toEqual({ kind: 'single', scope: 'session' })
+    // Steering carries neither seat: no children declaration, so its renderer
     // receives no renderSlot seat and a plugin can never attach there.
     expect(steering?.children?.['conversation.chat.user-actions']).toBeUndefined()
+    expect(steering?.children?.['conversation.chat.user-editor']).toBeUndefined()
     expect(steering?.children).toBeUndefined()
     await b.runtime.dispose()
   })

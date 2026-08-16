@@ -129,7 +129,7 @@ describe('MessageItem arms', () => {
       value: { writeText },
     })
     const content = [{ type: 'text', text: 'editable bubble' }] as never
-    const renderUserActions = vi.fn(() => (
+    const renderUserActions = vi.fn((_name: string, _owner: unknown) => (
       <button data-testid="user-edit-probe" type="button">编辑</button>
     ))
     const node = {
@@ -150,15 +150,60 @@ describe('MessageItem arms', () => {
       />,
     )
     // The render site dispatches exactly this owner currency: the durable
-    // message seq plus the frozen content blocks the bubble renders.
+    // message seq plus the frozen content blocks the bubble renders, and
+    // startEdit to swap the row for the user-editor seat.
     expect(renderUserActions).toHaveBeenCalledOnce()
-    expect(renderUserActions).toHaveBeenCalledWith('conversation.chat.user-actions', { seq: 7, content })
+    expect(renderUserActions).toHaveBeenCalledWith(
+      'conversation.chat.user-actions',
+      expect.objectContaining({ seq: 7, content }),
+    )
+    const owner = renderUserActions.mock.calls[0]?.[1] as { startEdit: unknown }
+    expect(owner.startEdit).toBeTypeOf('function')
     // extraActions lands inside the same IconActions row, after the copy
     // button (the strip's position between copy and branch).
     const copy = view.getByRole('button', { name: '复制' })
     const probe = view.getByTestId('user-edit-probe')
     expect(probe.parentElement).toBe(copy.parentElement)
     expect(copy.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
+  it('replaces the bubble and IconActions with the user-editor seat after startEdit', () => {
+    const content = [{ type: 'text', text: 'editable bubble' }] as never
+    const renderSlot = vi.fn((name: string, owner: { startEdit?: () => void; cancelEdit?: () => void; seq: number }) => {
+      if (name === 'conversation.chat.user-actions') {
+        return <button type="button" onClick={owner.startEdit}>start-edit</button>
+      }
+      return <div data-testid="user-editor-probe">{owner.seq}<button type="button" onClick={owner.cancelEdit}>cancel-edit</button></div>
+    })
+    const node = {
+      key: 'fixture:user:7',
+      kind: 'user',
+      id: '7',
+      target: 'chat',
+      anchorSeq: 7,
+      location: { kind: 'session' },
+      visibility: 'visible',
+      data: { kind: 'user', seq: 7, time: 1_000, content, source: null },
+    }
+    const view = render(
+      <UserMessageNodeView
+        {...{ node, t } as unknown as ChatNodeViewProps<'user'>}
+        renderSlot={renderSlot as unknown as React.ComponentProps<typeof UserMessageNodeView>['renderSlot']}
+        SessionProvider={stubSessionProvider}
+      />,
+    )
+    expect(view.getByText('editable bubble')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'start-edit' }))
+    expect(view.queryByText('editable bubble')).toBeNull()
+    expect(view.queryByRole('button', { name: '复制' })).toBeNull()
+    expect(view.getByTestId('user-editor-probe').textContent).toContain('7')
+    expect(renderSlot).toHaveBeenCalledWith(
+      'conversation.chat.user-editor',
+      expect.objectContaining({ seq: 7, content }),
+    )
+    fireEvent.click(view.getByRole('button', { name: 'cancel-edit' }))
+    expect(view.getByText('editable bubble')).toBeTruthy()
+    expect(view.getByRole('button', { name: '复制' })).toBeTruthy()
   })
 
   it('pending steering keeps copy-only chrome and never hosts the user-actions seat', () => {

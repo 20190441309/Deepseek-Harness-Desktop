@@ -3,7 +3,7 @@
 // assistant answers), pending steering (copy only), context injection,
 // compaction marker, retry disclosure, and unknown-surface JSON rows.
 
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ModelRetryNode, TurnErrorNode, UserMessageNode,
@@ -238,15 +238,26 @@ export function PendingSteeringBubble({ content, loadImage, t }: {
 /** User and admitted-steering keyed Chat renderers. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
   node, loadImage, renderSlot, t,
-}: ChatNodeViewProps<'user'> & PropsRenderSlots<'conversation.chat.user-actions'>) {
+}: ChatNodeViewProps<'user'> & PropsRenderSlots<'conversation.chat.user-actions' | 'conversation.chat.user-editor'>) {
   const data = node.data
+  const [editing, setEditing] = useState(false)
+  const startEdit = useCallback(() => { setEditing(true) }, [])
+  const cancelEdit = useCallback(() => { setEditing(false) }, [])
+  if (editing) {
+    return renderSlot('conversation.chat.user-editor', {
+      seq: data.seq,
+      content: data.content,
+      cancelEdit,
+    })
+  }
   // The action strip addresses the finalized user message: its durable seq
   // and frozen content blocks. Plugins mount per-message actions here; the
   // core itself ships no user action (no edit) — the seat is empty without a
-  // plugin.
+  // plugin. startEdit swaps this bubble for the user-editor occupant.
   const userActions = renderSlot('conversation.chat.user-actions', {
     seq: data.seq,
     content: data.content,
+    startEdit,
   })
   return (
     <UserStyleBubble

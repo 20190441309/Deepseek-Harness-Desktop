@@ -21,6 +21,7 @@ export const HOST_FEATURES = [
   'conversation.chat.user-actions',
   'session.fork.beforeSeq',
   'session.fork.blank',
+  'conversation.chat.user-editor',
 ] as const
 
 /** One supported host feature id. */

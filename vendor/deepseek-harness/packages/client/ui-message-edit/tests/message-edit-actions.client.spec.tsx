@@ -2,11 +2,10 @@
 /**
  * MessageEditAction rendering and gestures: the pencil renders only on the
  * newest user message, stays unavailable while the session runs or the message
- * carries non-text blocks, locks while its own fork is in flight, and routes a
- * failure to the inject notify verb.
+ * carries non-text blocks, and calls the owner startEdit callback on click.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
@@ -31,21 +30,18 @@ function mount(options: {
   seq: number
   content: readonly unknown[]
   snapshot?: SnapshotLike
-  editResult?: Promise<void>
 }) {
-  const edit = vi.fn((_seq: number, _text: string) => options.editResult ?? Promise.resolve())
-  const notify = vi.fn()
+  const startEdit = vi.fn()
   const useSession = (<T,>(select: (s: SnapshotLike) => T): T =>
     select(options.snapshot ?? snapshot([{ kind: 'user', seq: options.seq, time: 1, content: [], source: null }]))) as never
   const props = {
     seq: options.seq,
     content: options.content as MessageEditActionProps['content'],
-    edit,
-    notify,
+    startEdit,
     useSession,
     t,
   } as unknown as MessageEditActionProps
-  return { ...render(<MessageEditAction {...props} />), edit, notify }
+  return { ...render(<MessageEditAction {...props} />), startEdit }
 }
 
 const textBlock = (text: string) => ({ type: 'text' as const, text })
@@ -77,20 +73,10 @@ describe('MessageEditAction', () => {
     expect(ui.getByRole('button', { name: zh['action.edit'] })).toBeTruthy()
   })
 
-  it('joins multi-part text blocks in order when prefilling', async () => {
-    const ui = mount({ seq: 1, content: [textBlock('part one '), textBlock('part two')] })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.edit'] }))
-    await Promise.resolve()
-    expect(ui.edit).toHaveBeenCalledWith(1, 'part one part two')
-  })
-
-  it('forks and prefills through the inject verb on click', async () => {
+  it('enters inline-edit mode on click without forking', () => {
     const ui = mount({ seq: 1, content: [textBlock('hello')] })
     fireEvent.click(ui.getByRole('button', { name: zh['action.edit'] }))
-    await Promise.resolve()
-    expect(ui.edit).toHaveBeenCalledTimes(1)
-    expect(ui.edit).toHaveBeenCalledWith(1, 'hello')
-    expect(ui.notify).not.toHaveBeenCalled()
+    expect(ui.startEdit).toHaveBeenCalledTimes(1)
   })
 
   it('stays unavailable while the session is running', () => {
@@ -102,7 +88,7 @@ describe('MessageEditAction', () => {
     const button = ui.getByRole('button', { name: zh['action.edit'] })
     expect(button.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(button)
-    expect(ui.edit).not.toHaveBeenCalled()
+    expect(ui.startEdit).not.toHaveBeenCalled()
   })
 
   it('stays unavailable for a message with non-text content and explains why', () => {
@@ -113,43 +99,6 @@ describe('MessageEditAction', () => {
     const button = ui.getByRole('button', { name: zh['action.edit'] })
     expect(button.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(button)
-    expect(ui.edit).not.toHaveBeenCalled()
-  })
-
-  it('locks while its own fork is in flight and settles afterwards', async () => {
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    const ui = mount({ seq: 1, content: [textBlock('hello')], editResult: gate })
-    const button = ui.getByRole('button', { name: zh['action.edit'] })
-    fireEvent.click(button)
-    expect(button.getAttribute('aria-disabled')).toBe('true')
-    fireEvent.click(button)
-    expect(ui.edit).toHaveBeenCalledTimes(1)
-    release()
-    await waitFor(() => {
-      expect(ui.getByRole('button', { name: zh['action.edit'] }).getAttribute('aria-disabled')).toBeNull()
-    })
-  })
-
-  it('routes a rejected fork to the notify verb with the localized copy', async () => {
-    const ui = mount({
-      seq: 1,
-      content: [textBlock('hello')],
-      editResult: Promise.reject(new Error('fork-unavailable')),
-    })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.edit'] }))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(ui.notify).toHaveBeenCalledWith(zh['error.generic'])
-  })
-
-  it('publishes no state after the row unmounts mid-flight', async () => {
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    const ui = mount({ seq: 1, content: [textBlock('hello')], editResult: gate })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.edit'] }))
-    ui.unmount()
-    release()
-    await gate
+    expect(ui.startEdit).not.toHaveBeenCalled()
   })
 })

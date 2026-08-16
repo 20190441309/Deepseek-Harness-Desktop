@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-message-edit",
-  "description": "Edit-and-resend control contributed to the latest user-message action strip",
+  "description": "Inline edit-and-resend for the latest user message",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"
