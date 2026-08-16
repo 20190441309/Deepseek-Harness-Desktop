@@ -137,9 +137,17 @@
   overflow: hidden;
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
 }
 
 .paneTerminal :global(.xterm) {
   height: 100%;
-  padding: 4px 8px;
+  padding: 8px 12px;
+}
+
+.paneTerminal :global(.xterm-viewport),
+.paneTerminal :global(.xterm-screen) {
+  width: 100%;
+  height: 100%;
+  background: transparent;
 }

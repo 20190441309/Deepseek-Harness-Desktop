@@ -26,15 +26,40 @@ export interface GitDiffResult {
   truncated?: boolean
 }
 
+/** One porcelain v1 status row. */
+export interface GitStatusEntry {
+  path: string
+  xy: string
+}
+
+/** gitStatusEntries IPC result. */
+export interface GitStatusEntriesResult {
+  ok: boolean
+  message?: string
+  entries?: GitStatusEntry[]
+}
+
 /** Injected git probes. */
 export interface DiffShellInjected {
-  gitStatus: (cwd: string) => Promise<unknown | null>
+  gitStatus: (cwd: string) => Promise<unknown>
   gitDiff: (cwd: string) => Promise<GitDiffResult | null>
+  gitStatusEntries: (cwd: string) => Promise<GitStatusEntriesResult | null>
+  gitStage: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitUnstage: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitDiscard: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
 }
 
 interface DiffShell {
-  gitStatus?: (cwd: string) => Promise<unknown | null>
+  gitStatus?: (cwd: string) => Promise<unknown>
   gitDiff?: (cwd: string) => Promise<GitDiffResult | null>
+  gitStatusEntries?: (cwd: string) => Promise<GitStatusEntriesResult | null>
+  gitStage?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitUnstage?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+  gitDiscard?: (cwd: string, relativePath: string) => Promise<{ ok: boolean; message?: string }>
+}
+
+function missingOp(): Promise<{ ok: boolean; message?: string }> {
+  return Promise.resolve({ ok: false, message: 'Git status is unavailable.' })
 }
 
 /**
@@ -49,5 +74,27 @@ export function readDiffShell(): DiffShellInjected {
   return {
     gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
     gitDiff: cwd => shell?.gitDiff?.(cwd) ?? Promise.resolve(null),
+    gitStatusEntries: cwd => shell?.gitStatusEntries?.(cwd) ?? Promise.resolve(null),
+    gitStage: (cwd, relativePath) => shell?.gitStage?.(cwd, relativePath) ?? missingOp(),
+    gitUnstage: (cwd, relativePath) => shell?.gitUnstage?.(cwd, relativePath) ?? missingOp(),
+    gitDiscard: (cwd, relativePath) => shell?.gitDiscard?.(cwd, relativePath) ?? missingOp(),
   }
+}
+
+/**
+ * Index (X) has a staged change.
+ * @param xy - two-character porcelain status.
+ */
+export function isStaged(xy: string): boolean {
+  const x = xy[0]
+  return x !== undefined && x !== ' ' && x !== '?' && x !== '!'
+}
+
+/**
+ * Worktree (Y) has an unstaged change.
+ * @param xy - two-character porcelain status.
+ */
+export function isUnstaged(xy: string): boolean {
+  const y = xy[1]
+  return y !== undefined && y !== ' '
 }

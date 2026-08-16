@@ -5,6 +5,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
 import { DiffPanel } from '../src/client/DiffPanel.tsx'
+import type { DiffShellInjected } from '../src/client/shell.ts'
 
 function declare(slots: SlotRegistry): () => void {
   return slots.register({
@@ -46,6 +47,24 @@ describe('ui-diff apply', () => {
     await Promise.resolve()
     expect(b.slots.entries('surfaces.diff')[0]?.component).toBe(DiffPanel)
     redeclare()
+    await b.fiber.dispose()
+  })
+
+  it('binds missing-shell git fallbacks', async () => {
+    const b = await bench()
+    const injected = (b.slots.entries('surfaces.diff')[0]?.inject as unknown as () => DiffShellInjected)()
+    await expect(injected.gitStatus('/tmp')).resolves.toBeNull()
+    await expect(injected.gitDiff('/tmp')).resolves.toBeNull()
+    await expect(injected.gitStatusEntries('/tmp')).resolves.toBeNull()
+    await expect(injected.gitStage('/tmp', 'a.ts')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitUnstage('/tmp', 'a.ts')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
+    await expect(injected.gitDiscard('/tmp', 'a.ts')).resolves.toEqual({
+      ok: false, message: 'Git status is unavailable.',
+    })
     await b.fiber.dispose()
   })
 })

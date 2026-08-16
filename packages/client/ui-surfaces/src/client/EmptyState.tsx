@@ -58,7 +58,7 @@ export function EmptyState({
           <p className={css.subtitle}>{t('empty.subtitle')}</p>
         </div>
         <div className={css.grid}>
-          {CARDS.map(card => {
+          {CARDS.map((card) => {
             const available = card.kind === 'preview'
               ? browserAvailable
               : card.kind !== 'diff' || diffAvailable
@@ -73,7 +73,7 @@ export function EmptyState({
                 title={reason}
                 onClick={() => { onOpen(card.kind) }}
               >
-                <card.Icon className={css.icon!} size={20} />
+                <card.Icon className={css.icon ?? ''} size={20} />
                 <span className={css.cardTitle}>{t(card.title)}</span>
                 <span className={css.cardDescription}>{t(card.description)}</span>
               </button>

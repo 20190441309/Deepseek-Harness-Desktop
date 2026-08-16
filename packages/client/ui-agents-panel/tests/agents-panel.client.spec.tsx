@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionId, SessionListState, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import type { AgentsPanelProps } from '../src/client/AgentsPanel.tsx'
 import { AgentsPanel } from '../src/client/AgentsPanel.tsx'
@@ -27,16 +27,16 @@ function sessionList(opts: {
       },
       ...(opts.childInList === true
         ? {
-            [CHILD]: {
-              id: CHILD,
-              displayTitle: 'writer',
-              running: true,
-              blank: false,
-              updatedAt: 2,
-              parentId: PARENT,
-              origin: 'subagent' as const,
-            },
-          }
+          [CHILD]: {
+            id: CHILD,
+            displayTitle: 'writer',
+            running: true,
+            blank: false,
+            updatedAt: 2,
+            parentId: PARENT,
+            origin: 'subagent' as const,
+          },
+        }
         : {}),
     },
     current: PARENT,
@@ -47,7 +47,7 @@ function sessionList(opts: {
   }
 }
 
-function mount(state: SessionListState) {
+function mount(state: SessionListState, openAgent = () => {}) {
   render(
     <AgentsPanel {...({
       sessionId: PARENT,
@@ -55,6 +55,7 @@ function mount(state: SessionListState) {
       useSessions: (sel: (s: SessionListState) => unknown) => sel(state),
       useWorkspaces: neverHook,
       useProjection: neverHook,
+      openAgent,
       t,
     } as unknown as AgentsPanelProps)} />,
   )
@@ -95,5 +96,94 @@ describe('AgentsPanel', () => {
     mount(sessionList({ childInList: true }))
     expect(screen.getByText('writer')).toBeTruthy()
     expect(screen.getByText('running')).toBeTruthy()
+  })
+
+  it('opens a catalog child when the row is clicked', () => {
+    const openAgent = vi.fn()
+    mount(sessionList({
+      catalog: {
+        entries: [{
+          kind: 'child',
+          id: CHILD,
+          activity: 'running',
+          hasChildren: false,
+          mode: 'continuable',
+          label: 'writer',
+        }],
+        parentAvailable: true,
+        state: 'ready',
+        error: null,
+      },
+    }), openAgent)
+    fireEvent.click(screen.getByRole('button', { name: /writer/ }))
+    expect(openAgent).toHaveBeenCalledWith(CHILD)
+  })
+
+  it('lists background jobs for the session', () => {
+    const state = sessionList({ childInList: true })
+    state.jobsBySession = {
+      [PARENT]: [{
+        id: 'bash-1' as never,
+        kind: 'bash',
+        label: 'sleep 2',
+        status: 'running',
+        startedAt: 1,
+      }],
+    }
+    mount(state)
+    expect(screen.getByText('Background jobs')).toBeTruthy()
+    expect(screen.getByText('sleep 2')).toBeTruthy()
+    expect(screen.getAllByText('running').length).toBeGreaterThan(0)
+  })
+
+  it('shows inactive one-shot rows and job detail', () => {
+    const state = sessionList({
+      catalog: {
+        entries: [{
+          kind: 'child',
+          id: CHILD,
+          activity: 'inactive',
+          hasChildren: false,
+          mode: 'one-shot',
+          label: 'once',
+        }],
+        parentAvailable: true,
+        state: 'ready',
+        error: null,
+      },
+    })
+    state.jobsBySession = {
+      [PARENT]: [{
+        id: 'bash-2' as never,
+        kind: 'bash',
+        label: 'echo',
+        status: 'completed',
+        startedAt: 1,
+        detail: 'exit 0',
+      }],
+    }
+    mount(state)
+    expect(screen.getByText('once')).toBeTruthy()
+    expect(screen.getByText(/not running/)).toBeTruthy()
+    expect(screen.getByText(/one-shot/)).toBeTruthy()
+    expect(screen.getByText(/exit 0/)).toBeTruthy()
+  })
+
+  it('lists no jobs when the session id cannot be resolved', () => {
+    const state = sessionList({})
+    state.current = undefined
+    render(
+      <AgentsPanel {...({
+        sessionId: undefined,
+        useSession: neverHook,
+        useSessions: (sel: (s: SessionListState) => unknown) => sel(state),
+        useWorkspaces: neverHook,
+        useProjection: neverHook,
+        openAgent: () => {},
+        t,
+      } as unknown as AgentsPanelProps)} />,
+    )
+    expect(screen.getByText('No agents yet')).toBeTruthy()
+    expect(screen.queryByText('Background jobs')).toBeNull()
   })
 })

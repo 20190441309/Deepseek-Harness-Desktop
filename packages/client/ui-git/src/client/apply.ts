@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { GitActionsInjected } from './GitActionsControl.tsx'
 import { GitActionsControl } from './GitActionsControl.tsx'
+import type { BranchRef } from './branches.ts'
 import type { GitResult, VcsStatus } from './git-logic.ts'
 import { en, NS, zh, type GitKey } from './locales.ts'
 
@@ -21,11 +22,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Desktop git methods the Electron preload exposes on `window.shell`. */
 interface GitShell {
   gitStatus?: (cwd: string) => Promise<VcsStatus | null>
+  gitInit?: (cwd: string) => Promise<GitResult>
   gitCommit?: (cwd: string, message: string) => Promise<GitResult>
   gitPush?: (cwd: string) => Promise<GitResult>
   gitPull?: (cwd: string) => Promise<GitResult>
   gitCreateChangeRequest?: (cwd: string, input: { title: string; body: string }) => Promise<GitResult>
+  gitBranchList?: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: import('./branches.ts').BranchRef[] }>
+  gitSwitchBranch?: (cwd: string, ref: string) => Promise<GitResult & { refName?: string }>
+  gitCreateBranch?: (cwd: string, name: string) => Promise<GitResult & { refName?: string }>
   openExternal?: (url: string) => Promise<boolean>
+}
+
+function noBranchList(): Promise<{ ok: boolean; message: string; branches: BranchRef[] }> {
+  return Promise.resolve({ ok: false, message: unavailable().message ?? 'Git status is unavailable.', branches: [] })
 }
 
 function unavailable(): GitResult {
@@ -43,11 +52,15 @@ function readGitShell(): GitActionsInjected {
     : (window as Window & { shell?: GitShell }).shell
   return {
     gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
+    gitInit: cwd => shell?.gitInit?.(cwd) ?? Promise.resolve(unavailable()),
     gitCommit: (cwd, message) => shell?.gitCommit?.(cwd, message) ?? Promise.resolve(unavailable()),
     gitPush: cwd => shell?.gitPush?.(cwd) ?? Promise.resolve(unavailable()),
     gitPull: cwd => shell?.gitPull?.(cwd) ?? Promise.resolve(unavailable()),
     gitCreateChangeRequest: (cwd, input) =>
       shell?.gitCreateChangeRequest?.(cwd, input) ?? Promise.resolve(unavailable()),
+    gitBranchList: cwd => shell?.gitBranchList?.(cwd) ?? noBranchList(),
+    gitSwitchBranch: (cwd, ref) => shell?.gitSwitchBranch?.(cwd, ref) ?? Promise.resolve(unavailable()),
+    gitCreateBranch: (cwd, name) => shell?.gitCreateBranch?.(cwd, name) ?? Promise.resolve(unavailable()),
     openExternal: url => shell?.openExternal?.(url) ?? Promise.resolve(false),
   }
 }

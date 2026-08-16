@@ -9,6 +9,7 @@
 .header {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: 40px;
   padding: 0 16px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
@@ -16,9 +17,29 @@
 
 .title {
   margin: 0;
+  flex: 1;
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.refresh {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.refresh:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
 

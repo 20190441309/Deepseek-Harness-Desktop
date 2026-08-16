@@ -40,6 +40,7 @@ type LayoutActions = {
   setDetails: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
+  closeNarrowSidebar: (draft: LayoutState) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
   setSurfaces: (draft: LayoutState, px: number) => void
@@ -81,6 +82,9 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         d.narrow = narrow
         d.narrowExpanded = false
       },
+      // Session switch on phone/tablet: drop the overlay/re-expanded drawer
+      // without rewriting the wide-window width preference.
+      closeNarrowSidebar: (d) => { d.narrowExpanded = false },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
       setSurfaces: (d, px: number) => { d.surfaces = clampWidth(px, SURFACES_MIN, SURFACES_MAX) },

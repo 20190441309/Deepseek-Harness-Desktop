@@ -12,13 +12,13 @@ The desktop shell needed T3code-style Git, a bottom terminal, and a far-right su
 
 ## Decision
 
-AppFrame is four columns, `sidebar | conversation | details | surfaces`, plus a conversation-only terminal drawer. Closed `details` and `surfaces` are width 0. Concession shrinks surfaces to its minimum, then details, then derived-closes surfaces, then details; the sidebar never concedes. `ctx.layout` writes surfaces and the drawer independently of details: titlebar toggles never open or close the details column, and closing one column does not close the other.
+AppFrame is four columns, `sidebar | conversation | details | surfaces`, plus a conversation-only terminal drawer. A shared titlebar row spans columns 2–4; the sidebar still spans full height with its logo row. Closed `details` and `surfaces` are width 0. Concession shrinks surfaces to its minimum, then details, then derived-closes surfaces, then details; the sidebar never concedes. `ctx.layout` writes surfaces and the drawer independently of details: titlebar toggles never open or close the details column, and closing one column does not close the other.
 
 The titlebar cluster is the layout-owned list slot `shell.titlebar.trailing`, wrapped as `#dsh-shell-titlebar-trailing`. Contributors inject with [slot declaration injection](2026-08-05-slot-declaration-injection.md). Left to right: Session log (`id: 'session-log-download'`, `order: 10`), Git (`id: 'git-actions'`, `order: 20`), panel toggles (`id: 'panel-toggles'`, `order: 40`), then the Electron window controls. Toggles write only `toggleTerminalDrawer` and `toggleSurfaces`. Session log remains the same download control; it renders only while a Session is current.
 
 Harness client plugins own the UI. Electron exposes `window.shell.git*`, `window.shell.pty*`, and `window.shell.preview*` only; the inject script does not paint Git, the terminal, or the right panel. The drawer and the Terminal surface share one PTY session family for the workspace cwd. The five surfaces are Browser, Terminal, Files, Diff, and Agents. Outside the desktop app, Git IPC no-ops and the Browser card is disabled.
 
-`reservedRight()` is window-control width plus the measured `#dsh-shell-titlebar-trailing` width and one cluster gap, or controls only when that width is 0. The inject script publishes `--dsh-wco-pad` (full reserved inset) and `--dsh-wco-controls` (controls only). The trailing cluster positions with `right: var(--dsh-wco-controls, var(--dsh-wco-pad))` so the grown pad cannot push the cluster left and widen itself again. The inject script is a re-runnable IIFE: a second `executeJavaScript` of the same file must not throw. Node-requireable helpers live in `src/main/harness-chrome-metrics.js`.
+`reservedRight()` is window-control width plus the measured `#dsh-shell-titlebar-trailing` width and one cluster gap, or controls only when that width is 0. The inject script publishes `--dsh-wco-pad` (full reserved inset) and `--dsh-wco-controls` (controls only). AppFrame has a shared titlebar grid row (`auto` + body + drawer). The conversation header and scroll body are subgrid items of that row pair (`ConversationRoot` is `display: contents`). Details and surfaces occupy the body row, so their hairlines and occupants start below the titlebar band rather than under Session log, Git, panel toggles, or window controls. The trailing cluster is a grid item of that titlebar row (`justify-self: end`, `margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad))`), not an overlay on column content. Phone and compact-header frames hide the cluster; a closed column is width 0 with no hairline, so it does not leave a hole. The inject script is a re-runnable IIFE: a second `executeJavaScript` of the same file must not throw. Node-requireable helpers live in `src/main/harness-chrome-metrics.js`.
 
 ## Alternatives considered
 
@@ -27,6 +27,8 @@ Harness client plugins own the UI. Electron exposes `window.shell.git*`, `window
 **Replace the details column with surfaces, or let the titlebar toggles drive details.** Inspect, the trajectory TOOL inspector, and existing details open/close stay on `details`. A shared toggle would couple two independent columns.
 
 **Copy T3code's Ghostty / Effect / zustand right-panel stack.** The client already composes through slots and `defineStore`. A second state stack would duplicate ownership and break the four-share props rule.
+
+**Absolutely position the trailing cluster over the frame and inset surfaces with `margin-top`.** An overlay sits on empty-state cards and tab chrome; a 56px column spacer leaves a hole above the right column while conversation still has its own header. The titlebar row is the shared band; column content starts on the row below.
 
 **Position the trailing cluster with `--dsh-wco-pad`.** The pad includes the cluster's own width, so the cluster would walk left on every measure. `--dsh-wco-controls` is the controls-only inset.
 

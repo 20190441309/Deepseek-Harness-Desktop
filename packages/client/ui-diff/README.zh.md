@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-右边栏 Diff occupant，挂在 `surfaces.diff`（`single`，`session-maybe`，由 ui-surfaces 声明）。展示工作区变更列表和统一 diff hunk，数据来自桌面 `window.shell.gitDiff(cwd)`。`gitStatus(cwd)` 为 null 时显示 T3code 理由：`Diff is only available for server threads in Git repositories.` 约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
+右边栏 Diff occupant，挂在 `surfaces.diff`（`single`，`session-maybe`，由 ui-surfaces 声明）。展示工作区变更列表和统一 diff hunk，数据来自桌面 `window.shell.gitDiff(cwd)`。有 porcelain `gitStatusEntries` 时按已暂存／未暂存分组，并提供暂存、取消暂存、还原。点击文件名调用 owner `openFile`。`gitStatus(cwd)` 为 null 时显示 T3code 理由：`Diff is only available for server threads in Git repositories.` 约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
 工作区根是当前会话的 `cwd`，只通过一次 `useSessions` 读取。渲染进程不加载 Node。
 
@@ -19,4 +19,4 @@
 ## 已知限制与暂缓事项
 
 - **只看工作区**：没有 turn diff、分支基线选择，也没有左右分栏。
-- **hunk 是堆叠的统一文本**：没有折行开关，也不忽略空白。
+- **标题栏 Commit 不变**：Diff 上的暂存／取消暂存／还原不替代 `git add -A`。

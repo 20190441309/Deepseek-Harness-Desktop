@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type {
   InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -6,16 +6,17 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { EmptyState } from './EmptyState.tsx'
 import { NS } from './locales.ts'
 import type { createSurfacesStore, OpenableKind, Surface } from './stores.ts'
+import { persistSession, cancelPersist, writeSession } from './persist.ts'
 import { sessionSurfaces } from './stores.ts'
 import { SurfaceTabs } from './SurfaceTabs.tsx'
 import css from './SurfacesRoot.module.css'
 
-/** Layout write and probes injected so cards can open the column and disable Browser / Diff. */
+/** Layout write and probes injected so cards can open the column and disable Browser. */
 export interface SurfacesRootInjected {
   openSurfaces: () => void
   /** True when desktop `window.shell.previewOpen` exists. */
   previewAvailable: boolean
-  gitStatus: (cwd: string) => Promise<unknown | null>
+  gitStatus: (cwd: string) => Promise<unknown>
 }
 
 export type SurfacesRootProps =
@@ -40,7 +41,7 @@ function renderOccupant(
     case 'file':
       return renderSlot('surfaces.file', { relativePath: surface.relativePath })
     case 'diff':
-      return renderSlot('surfaces.diff', {})
+      return renderSlot('surfaces.diff', { openFile })
     case 'agents':
       return renderSlot('surfaces.agents', {})
     /* v8 ignore start -- Surface is a closed union; the never arm is uninhabited. */
@@ -53,7 +54,7 @@ function renderOccupant(
 }
 
 function currentCwd(useSessions: SurfacesRootProps['useSessions']): string | undefined {
-  return useSessions(s => {
+  return useSessions((s) => {
     const id = s.current
     const next = id === undefined ? undefined : s.byId[id]?.cwd
     return next ? next : undefined
@@ -68,25 +69,12 @@ function currentCwd(useSessions: SurfacesRootProps['useSessions']): string | und
  */
 export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
   const cwd = currentCwd(props.useSessions)
-  const [diffAvailable, setDiffAvailable] = useState(false)
-  useEffect(() => {
-    if (cwd === undefined) {
-      setDiffAvailable(false)
-      return
-    }
-    let cancelled = false
-    void props.gitStatus(cwd).then(status => {
-      if (!cancelled) setDiffAvailable(status !== null)
-    })
-    return () => { cancelled = true }
-  }, [cwd, props.gitStatus])
-
   return (
     <SurfacesBody
       {...props}
       useStore={props.useStore}
       actions={props.actions}
-      diffAvailable={diffAvailable}
+      diffAvailable={cwd !== undefined}
     />
   )
 }
@@ -107,6 +95,14 @@ function SurfacesBody({
 }: SurfacesBodyProps): ReactNode {
   const key = sessionId ?? ''
   const bucket = useStore(state => sessionSurfaces(state, key))
+  useEffect(() => {
+    if (key.length === 0) return
+    persistSession(key, bucket)
+    return () => {
+      cancelPersist(key)
+      writeSession(key, bucket)
+    }
+  }, [key, bucket])
   const open = (kind: OpenableKind): void => {
     actions.open(key, kind)
     openSurfaces()
@@ -116,6 +112,8 @@ function SurfacesBody({
     openSurfaces()
   }
   const active = bucket.surfaces.find(surface => surface.id === bucket.activeId)
+  /* v8 ignore next -- actions keep activeId on an open surface. */
+  const occupant = active === undefined ? null : renderOccupant(active, renderSlot, openFile)
 
   return (
     <div className={css.root} data-surfaces-root>
@@ -131,12 +129,23 @@ function SurfacesBody({
           <SurfaceTabs
             surfaces={bucket.surfaces}
             activeId={bucket.activeId}
-            onActivate={id => { actions.activate(key, id) }}
-            onClose={id => { actions.close(key, id) }}
+            onActivate={(id) => { actions.activate(key, id) }}
+            onClose={(id) => { actions.close(key, id) }}
+            onCloseOthers={(id) => { actions.closeOthers(key, id) }}
+            onCloseToRight={(id) => { actions.closeToRight(key, id) }}
+            onCloseAll={() => { actions.closeAll(key) }}
+            onOpenKind={open}
+            openable={{
+              preview: previewAvailable && !bucket.surfaces.some(surface => surface.kind === 'preview'),
+              terminal: !bucket.surfaces.some(surface => surface.kind === 'terminal'),
+              files: !bucket.surfaces.some(surface => surface.kind === 'files'),
+              diff: diffAvailable && !bucket.surfaces.some(surface => surface.kind === 'diff'),
+              agents: !bucket.surfaces.some(surface => surface.kind === 'agents'),
+            }}
             t={t}
           />
           <div className={css.body} data-surfaces-occupant>
-            {active === undefined ? null : renderOccupant(active, renderSlot, openFile)}
+            {occupant}
           </div>
         </>
       )}

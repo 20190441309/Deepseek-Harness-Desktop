@@ -1,10 +1,14 @@
 /**
  * createSurfacesStore: open files then close returns to the empty session.
  */
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createSurfacesStore, sessionSurfaces } from '../src/client/stores.ts'
 
 const SESSION = 'session-1'
+
+beforeEach(() => {
+  if (typeof localStorage !== 'undefined') localStorage.clear()
+})
 
 describe('createSurfacesStore', () => {
   it('starts with no sessions', () => {
@@ -60,6 +64,12 @@ describe('createSurfacesStore', () => {
     expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces.map(surface => surface.id)).toEqual(['files'])
 
     actions.open(SESSION, 'diff')
+    actions.open(SESSION, 'agents')
+    actions.activate(SESSION, 'agents')
+    actions.closeToRight(SESSION, 'files')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).activeId).toBe('files')
+
+    actions.open(SESSION, 'diff')
     actions.closeOthers(SESSION, 'diff')
     expect(sessionSurfaces(store.getSnapshot(), SESSION)).toEqual({
       activeId: 'diff',
@@ -74,15 +84,49 @@ describe('createSurfacesStore', () => {
     expect(sessionSurfaces(store.getSnapshot(), 'session-2').surfaces).toHaveLength(1)
   })
 
-  it('openFile replaces the files explorer with a file: surface', () => {
+  it('openFile keeps the files explorer and adds a file: surface', () => {
     const { store, actions } = createSurfacesStore().create()
     actions.open(SESSION, 'files')
     actions.openFile(SESSION, 'src/index.ts')
     expect(sessionSurfaces(store.getSnapshot(), SESSION)).toEqual({
       activeId: 'file:src/index.ts',
-      surfaces: [{ id: 'file:src/index.ts', kind: 'file', relativePath: 'src/index.ts' }],
+      surfaces: [
+        { id: 'files', kind: 'files' },
+        { id: 'file:src/index.ts', kind: 'file', relativePath: 'src/index.ts' },
+      ],
     })
     actions.openFile(SESSION, 'src/index.ts')
-    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toHaveLength(1)
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toHaveLength(2)
+  })
+
+  it('openFile inserts the files explorer when it is absent', () => {
+    const { store, actions } = createSurfacesStore().create()
+    actions.openFile(SESSION, 'README.md')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces.map(surface => surface.id)).toEqual([
+      'files',
+      'file:README.md',
+    ])
+  })
+
+  it('no-ops close family actions when the session or id is missing', () => {
+    const { store, actions } = createSurfacesStore().create()
+    actions.activate(SESSION, 'files')
+    actions.close(SESSION, 'files')
+    actions.closeOthers(SESSION, 'files')
+    actions.closeToRight(SESSION, 'files')
+    actions.closeAll(SESSION)
+    actions.open(SESSION, 'files')
+    actions.activate(SESSION, 'missing')
+    actions.close(SESSION, 'missing')
+    actions.closeOthers(SESSION, 'files')
+    actions.closeToRight(SESSION, 'files')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toEqual([
+      { id: 'files', kind: 'files' },
+    ])
+    actions.open(SESSION, 'diff')
+    actions.close(SESSION, 'files')
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toEqual([
+      { id: 'diff', kind: 'diff' },
+    ])
   })
 })

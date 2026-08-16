@@ -15,7 +15,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { PHONE_DRAWER, SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { PHONE_DRAWER, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
@@ -46,6 +46,14 @@ class ResizeObserverStub {
 }
 
 let frameWidth = 1920
+let orientationLandscape = true
+const orientationListeners = new Set<(ev: MediaQueryListEvent) => void>()
+
+/** Physical screen box used by readDeviceLandscape (keyboard-safe). */
+function stubScreenAvail(width: number, height: number): void {
+  Object.defineProperty(window.screen, 'availWidth', { configurable: true, value: width })
+  Object.defineProperty(window.screen, 'availHeight', { configurable: true, value: height })
+}
 
 /** Test-local selector hook over a framework-neutral store instance. */
 function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapshot: () => T }) {
@@ -111,7 +119,7 @@ function surfacesTrack(frame: HTMLElement): number {
 }
 
 function drawerTrack(frame: HTMLElement): number {
-  const m = /^minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateRows)
+  const m = /^auto minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateRows)
   if (m === null) throw new Error(`unexpected rows: ${frame.style.gridTemplateRows}`)
   return Number(m[1])
 }
@@ -127,6 +135,8 @@ function drag(handle: Element, fromX: number, toX: number): void {
 
 beforeEach(() => {
   frameWidth = 1920
+  orientationLandscape = true
+  orientationListeners.clear()
   selectedSession.current = 's-test' as SessionId
   selectedSessionBlank.current = false
   baselinesReady.current = true
@@ -135,6 +145,23 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => { cb(0) }, 16) as unknown as number)
   vi.stubGlobal('cancelAnimationFrame', (h: number) => { clearTimeout(h) })
   window.innerWidth = frameWidth
+  stubScreenAvail(orientationLandscape ? 1920 : 390, orientationLandscape ? 1080 : 844)
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      if (query.includes('landscape')) return orientationLandscape
+      if (query.includes('portrait')) return !orientationLandscape
+      return false
+    },
+    media: query,
+    onchange: null,
+    addEventListener: (_type: string, listener: EventListener) => {
+      if (query.includes('landscape')) orientationListeners.add(listener)
+    },
+    removeEventListener: (_type: string, listener: EventListener) => {
+      orientationListeners.delete(listener)
+    },
+    dispatchEvent: () => true,
+  })) as unknown as typeof window.matchMedia
   Element.prototype.getBoundingClientRect = function () {
     return { width: frameWidth, height: 1080, top: 0, left: 0, right: frameWidth, bottom: 1080, x: 0, y: 0, toJSON: () => ({}) }
   }
@@ -149,6 +176,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  Reflect.deleteProperty(window.screen, 'orientation')
 })
 
 describe('AppFrame', () => {
@@ -309,6 +337,7 @@ describe('AppFrame', () => {
     expect(surfacesTrack(frame)).toBe(0)
     expect(drawerTrack(frame)).toBe(0)
     expect(frame.querySelector('[data-titlebar-trailing]')).toBeTruthy()
+    expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
     expect(frame.querySelector('#dsh-shell-titlebar-trailing')).toBeTruthy()
     expect(slotCalls.find(c => c.key === 'shell.titlebar.trailing')?.props).toEqual({
       surfaces: 0, terminalDrawer: 0,
@@ -320,10 +349,23 @@ describe('AppFrame', () => {
     act(() => { instance.actions.openSurfaces() })
     expect(surfacesTrack(frame)).toBe(400)
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
     act(() => { instance.actions.toggleTerminalDrawer() })
     expect(drawerTrack(frame)).toBe(280)
     expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(false)
+  })
+
+  it('keeps an open surfaces column on the body row under the shared titlebar', () => {
+    const { frame, instance } = mountFrame()
+    expect(frame.style.gridTemplateRows.startsWith('auto minmax(0, 1fr)')).toBe(true)
+    expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
+    expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
+    act(() => { instance.actions.openSurfaces() })
+    expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
+    expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    act(() => { instance.actions.closeSurfaces() })
+    expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)
   })
 
   it('surfaces drag widens leftward (negative dx grows the panel)', () => {
@@ -341,18 +383,35 @@ describe('AppFrame', () => {
     expect(getByTestId('surfaces-content')).toBeTruthy()
     expect(getByTestId('terminal-drawer-content')).toBeTruthy()
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(true)
   })
 })
 
 describe('AppFrame — narrow-viewport auto-collapse', () => {
+  beforeEach(() => {
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+  })
+
   it('mounts collapsed below the breakpoint with no sidebar handle', () => {
     frameWidth = 980
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
     expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+
+  it('keeps the shared titlebar row when a compact header hides the trailing cluster', () => {
+    frameWidth = 980
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.openSurfaces() })
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
+    expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
+    expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
+    expect(frame.style.gridTemplateRows.startsWith('auto minmax(0, 1fr)')).toBe(true)
   })
 
   it('narrow toggle re-expands over the squeezed center and back', () => {
@@ -390,6 +449,11 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
 })
 
 describe('AppFrame — phone overlay shell', () => {
+  beforeEach(() => {
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+  })
+
   it('drops both grid tracks and shows a menu instead of the rail', () => {
     frameWidth = 390
     const { frame, slotCalls, getByRole } = mountFrame()
@@ -400,6 +464,8 @@ describe('AppFrame — phone overlay shell', () => {
     expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: 0 })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
     expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    expect(frame.querySelector('#dsh-shell-titlebar-trailing')).toBeTruthy()
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
   })
 
   it('toggle opens the drawer over the conversation and closes from the backdrop', () => {
@@ -426,6 +492,244 @@ describe('AppFrame — phone overlay shell', () => {
     expect(frame.hasAttribute('data-phone-details')).toBe(true)
     expect(frame.hasAttribute('data-details-collapsed')).toBe(false)
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+
+  it('closes the overlay drawer when the current session changes', () => {
+    frameWidth = 390
+    const { frame, instance, rerenderFrame } = mountFrame()
+    act(() => { instance.actions.toggleSidebar() })
+    expect(frame.hasAttribute('data-phone-sidebar')).toBe(true)
+    selectedSession.current = 's-other' as SessionId
+    act(() => { rerenderFrame() })
+    expect(instance.getSnapshot().narrowExpanded).toBe(false)
+    expect(frame.hasAttribute('data-phone-sidebar')).toBe(false)
+  })
+
+  it('keeps the overlay when matchMedia is landscape but the device is portrait', () => {
+    frameWidth = 390
+    orientationLandscape = true
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true,
+      value: {
+        type: 'portrait-primary',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    })
+    const { frame, getByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    Reflect.deleteProperty(window.screen, 'orientation')
+  })
+
+  it('does not leave the overlay when the frame box is wider than the window', () => {
+    frameWidth = 390
+    const { frame, getByRole } = mountFrame()
+    frameWidth = 1200
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('tracks device rotation through screen.orientation', () => {
+    frameWidth = 390
+    let type = 'portrait-primary'
+    const listeners = new Set<() => void>()
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true,
+      value: {
+        get type() { return type },
+        addEventListener: (_name: string, fn: () => void) => { listeners.add(fn) },
+        removeEventListener: (_name: string, fn: () => void) => { listeners.delete(fn) },
+      },
+    })
+    const { frame, queryByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    type = 'landscape-primary'
+    stubScreenAvail(844, 390)
+    act(() => {
+      for (const listener of listeners) listener()
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    Reflect.deleteProperty(window.screen, 'orientation')
+  })
+
+  it('falls through to matchMedia when the physical screen box is unusable', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(0, 0)
+    const { frame, getByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    stubScreenAvail(400, 400)
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    Object.defineProperty(window.screen, 'availWidth', { configurable: true, value: undefined })
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    stubScreenAvail(400, 400)
+    Object.defineProperty(window.screen, 'availHeight', { configurable: true, value: undefined })
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+  })
+
+  it('does not throw when screen.orientation lacks EventTarget methods', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true,
+      value: { type: 'portrait-primary' },
+    })
+    const { frame, getByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    Reflect.deleteProperty(window.screen, 'orientation')
+  })
+})
+
+describe('AppFrame — landscape sidebar', () => {
+  it('keeps the sidebar in the grid on a phone-width landscape frame', () => {
+    frameWidth = 844
+    orientationLandscape = true
+    const { frame, slotCalls, queryByRole } = mountFrame()
+    expect(tracks(frame)).toEqual([SIDEBAR_DEFAULT, 0])
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(false)
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({
+      collapsed: false, width: SIDEBAR_DEFAULT,
+    })
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
+  })
+
+  it('hides the trailing cluster on a phone-width landscape frame and shows it when wide', () => {
+    frameWidth = 844
+    orientationLandscape = true
+    stubScreenAvail(844, 390)
+    const { frame, rerenderFrame } = mountFrame()
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
+    frameWidth = SIDEBAR_AUTO_COLLAPSE
+    window.innerWidth = frameWidth
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    act(() => { rerenderFrame() })
+    expect(frame.hasAttribute('data-compact-header')).toBe(false)
+  })
+
+  it('rotating from portrait overlay to landscape puts the sidebar in the grid', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    const { frame, getByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    orientationLandscape = true
+    stubScreenAvail(844, 390)
+    frameWidth = 844
+    window.innerWidth = 844
+    act(() => {
+      for (const listener of orientationListeners) {
+        listener({ matches: true } as MediaQueryListEvent)
+      }
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(tracks(frame)).toEqual([SIDEBAR_DEFAULT, 0])
+  })
+
+  it('re-reads rotation from a window resize when orientation.change does not fire', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    let type = 'portrait-primary'
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true,
+      value: {
+        get type() { return type },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    })
+    const { frame, queryByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    type = 'landscape-primary'
+    orientationLandscape = true
+    stubScreenAvail(844, 390)
+    frameWidth = 844
+    window.innerWidth = 844
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    Reflect.deleteProperty(window.screen, 'orientation')
+  })
+
+  it('trusts the physical screen when orientation.type stays portrait after rotate', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    Object.defineProperty(window.screen, 'orientation', {
+      configurable: true,
+      value: {
+        type: 'portrait-primary',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    })
+    const { frame, queryByRole } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    stubScreenAvail(844, 390)
+    orientationLandscape = true
+    frameWidth = 844
+    window.innerWidth = 844
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    Reflect.deleteProperty(window.screen, 'orientation')
+  })
+
+  it('re-reads rotation from visualViewport resize', () => {
+    frameWidth = 390
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    const listeners = new Set<() => void>()
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        addEventListener: (_name: string, fn: () => void) => { listeners.add(fn) },
+        removeEventListener: (_name: string, fn: () => void) => { listeners.delete(fn) },
+      },
+    })
+    const { frame, queryByRole } = mountFrame()
+    expect(listeners.size).toBe(1)
+    orientationLandscape = true
+    stubScreenAvail(844, 390)
+    frameWidth = 844
+    window.innerWidth = 844
+    act(() => {
+      for (const listener of listeners) listener()
+      vi.advanceTimersByTime(20)
+    })
+    expect(frame.hasAttribute('data-phone')).toBe(false)
+    expect(queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    Reflect.deleteProperty(window, 'visualViewport')
   })
 })
 

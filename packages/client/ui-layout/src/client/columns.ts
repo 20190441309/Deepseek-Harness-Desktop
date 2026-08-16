@@ -28,13 +28,16 @@ export const SIDEBAR_MAX = 420
 export const SIDEBAR_DEFAULT = 280
 /** Closed-sidebar rail: a 24px icon column between 16px horizontal paddings. */
 export const SIDEBAR_COLLAPSED = 56
-/** Viewport width below which the sidebar auto-collapses to the rail (deepsuite
- * LG breakpoint); a manual toggle below it re-expands over the squeezed center
- * (stores.ts narrowExpanded). Phone mode (`PHONE_MAX`) is a stricter band
+/** Viewport width below which the sidebar auto-collapses to the rail in
+ * portrait (deepsuite LG breakpoint); a manual toggle below it re-expands
+ * over the squeezed center (stores.ts narrowExpanded). Landscape skips this
+ * band. Phone overlay (`PHONE_MAX`, portrait only) is a stricter band
  * inside this range and takes the sidebar out of the grid entirely. */
 export const SIDEBAR_AUTO_COLLAPSE = 1024
-/** Viewport width below which AppFrame uses the phone overlay shell: no rail,
- * conversation is full width, sidebar and details paint as drawers. */
+/** Viewport width below which AppFrame uses the phone overlay shell when
+ * the device is in portrait: no rail, conversation is full width, sidebar
+ * and details paint as drawers. Landscape (device rotation, not a keyboard-
+ * shrunk viewport) keeps the sidebar in the grid. */
 export const PHONE_MAX = 768
 /** Phone sidebar drawer width; clamped to the frame so a 320px panel still
  * leaves a tap strip of backdrop on the right. */

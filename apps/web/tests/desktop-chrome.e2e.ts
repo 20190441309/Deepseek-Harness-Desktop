@@ -97,6 +97,24 @@ describe('web e2e: titlebar cluster and surfaces empty five cards', () => {
     expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
   })
 
+  it('opens Files from the empty grid and keeps the add-tab control', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-desktop-chrome-files-tabs'))
+    const surfaces = page.getByRole('button', { name: 'Toggle right panel' })
+    if (await surfaces.getAttribute('aria-pressed') !== 'true') {
+      await surfaces.click()
+    }
+    await page.locator('[data-surfaces-empty]').waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+    const filesCard = page.getByRole('button', { name: /^Files/ }).first()
+    if (await page.locator('[data-surfaces-empty]').isVisible()) {
+      await filesCard.click()
+    }
+    const tabs = page.locator('[data-surfaces-tabs]')
+    await tabs.waitFor({ state: 'visible', timeout: 10_000 })
+    expect(await page.getByRole('button', { name: 'Close Files' }).isVisible()).toBe(true)
+    expect(await page.getByRole('button', { name: 'Open a surface' }).isVisible()).toBe(true)
+    expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
+  })
+
   it('commits exactly the fixtures it reads', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, ['titlebar.expected.md', 'empty-five-cards.expected.md'])
   })

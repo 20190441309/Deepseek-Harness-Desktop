@@ -29,6 +29,8 @@ export interface VcsStatus {
   sourceControlProvider?: SourceControlProvider
   isDefaultRef?: boolean
   hasPrimaryRemote?: boolean
+  /** False when the cwd is authorized but is not a git work tree. Absent on older payloads. */
+  isRepo?: boolean
 }
 
 /** Desktop git mutation result. */
@@ -176,20 +178,20 @@ export function buildMenuItems(
     },
     hasOpenPr
       ? {
-          id: 'pr',
-          label: `View ${terminology.shortLabel}`,
-          disabled: !canOpenPr,
-          icon: 'pr',
-          kind: 'open_pr',
-        }
+        id: 'pr',
+        label: `View ${terminology.shortLabel}`,
+        disabled: !canOpenPr,
+        icon: 'pr',
+        kind: 'open_pr',
+      }
       : {
-          id: 'pr',
-          label: `Create ${terminology.shortLabel}`,
-          disabled: !canCreatePr,
-          icon: 'pr',
-          kind: 'open_dialog',
-          dialogAction: 'create_pr',
-        },
+        id: 'pr',
+        label: `Create ${terminology.shortLabel}`,
+        disabled: !canCreatePr,
+        icon: 'pr',
+        kind: 'open_dialog',
+        dialogAction: 'create_pr',
+      },
   ]
 }
 
@@ -228,6 +230,9 @@ export function resolveQuickAction(
   const isBehind = gitStatus.behindCount > 0
   const isDiverged = isAhead && isBehind
   const terminology = resolveChangeRequestTerminology(gitStatus)
+  // Captured before the !hasUpstream early return below, so the type stays
+  // boolean instead of narrowing to literal true by line 330.
+  const canViewPr = hasOpenPr && gitStatus.hasUpstream
 
   if (!hasBranch) {
     return {
@@ -325,7 +330,7 @@ export function resolveQuickAction(
     }
   }
 
-  if (hasOpenPr && gitStatus.hasUpstream) {
+  if (canViewPr) {
     return { label: `View ${terminology.shortLabel}`, disabled: false, kind: 'open_pr' }
   }
 

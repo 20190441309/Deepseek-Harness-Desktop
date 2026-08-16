@@ -3,6 +3,7 @@
  * ctx.layout; this store only owns the ordered surfaces and the active id.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { loadPersistedState } from './persist.ts'
 
 /** Surface kinds the empty-state cards and later occupants can open. */
 export type SurfaceKind = 'preview' | 'terminal' | 'files' | 'diff' | 'agents' | 'file'
@@ -62,9 +63,13 @@ function ensure(draft: SurfacesState, sessionId: string): SessionSurfaces {
 
 function prune(draft: SurfacesState, sessionId: string): void {
   const current = draft.bySession[sessionId]
+  /* v8 ignore next -- close returns before prune when the session is missing. */
   if (current === undefined) return
   if (current.surfaces.length === 0 && current.activeId === null) {
-    delete draft.bySession[sessionId]
+    // Computed-key delete is lint-forbidden; rebuild the record without the key.
+    draft.bySession = Object.fromEntries(
+      Object.entries(draft.bySession).filter(([key]) => key !== sessionId),
+    )
   }
 }
 
@@ -90,6 +95,7 @@ function surfaceFor(kind: OpenableKind, current: SessionSurfaces): Surface {
       const existing = current.surfaces.find(surface => surface.kind === 'terminal')
       return existing ?? { id: 'terminal:new', kind: 'terminal', terminalIds: [], activeTerminalId: '' }
     }
+    /* v8 ignore next -- OpenableKind is a closed union; the never arm is uninhabited. */
     default: {
       const _never: never = kind
       return _never
@@ -104,7 +110,9 @@ function surfaceFor(kind: OpenableKind, current: SessionSurfaces): Surface {
  */
 export function createSurfacesStore(): EngineStoreHandle<SurfacesState, SurfacesActions> {
   return defineStore({
-    init: (): SurfacesState => ({ bySession: {} }),
+    init: (): SurfacesState => loadPersistedState(
+      typeof globalThis.localStorage === 'undefined' ? undefined : localStorage,
+    ),
     actions: {
       open: (draft, sessionId: string, kind: OpenableKind) => {
         const bucket = ensure(draft, sessionId)
@@ -116,7 +124,9 @@ export function createSurfacesStore(): EngineStoreHandle<SurfacesState, Surfaces
       },
       openFile: (draft, sessionId: string, relativePath: string) => {
         const bucket = ensure(draft, sessionId)
-        bucket.surfaces = bucket.surfaces.filter(surface => surface.kind !== 'files')
+        if (!bucket.surfaces.some(surface => surface.kind === 'files')) {
+          bucket.surfaces.push(singleton('files'))
+        }
         const id = `file:${relativePath}`
         if (!bucket.surfaces.some(surface => surface.id === id)) {
           bucket.surfaces.push({ id, kind: 'file', relativePath })
@@ -161,7 +171,10 @@ export function createSurfacesStore(): EngineStoreHandle<SurfacesState, Surfaces
       },
       closeAll: (draft, sessionId: string) => {
         if (draft.bySession[sessionId] === undefined) return
-        delete draft.bySession[sessionId]
+        // Computed-key delete is lint-forbidden; rebuild the record without the key.
+        draft.bySession = Object.fromEntries(
+          Object.entries(draft.bySession).filter(([key]) => key !== sessionId),
+        )
       },
     },
   })

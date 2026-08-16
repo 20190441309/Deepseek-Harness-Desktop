@@ -1,11 +1,13 @@
 /** Registers the Agents occupant into surfaces.agents. */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-surfaces/client'
 import { AgentsPanel } from './AgentsPanel.tsx'
+import type { AgentsPanelInjected } from './AgentsPanel.tsx'
 import { en, NS, zh, type AgentsKey } from './locales.ts'
 
-export type { AgentsPanelProps } from './AgentsPanel.tsx'
+export type { AgentsPanelProps, AgentsPanelInjected } from './AgentsPanel.tsx'
 export type { AgentRow } from './agents.ts'
 export type { AgentsKey } from './locales.ts'
 
@@ -17,7 +19,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services required by the agents-panel plugin. */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'sessions']
 
 /**
  * Register dictionaries and inject the Agents occupant.
@@ -29,5 +31,12 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('surfaces.agents', () => ctx.slots.register({
     name: 'surfaces.agents',
     locale: NS,
+    inject: (): AgentsPanelInjected => ({
+      openAgent: (id: SessionId) => {
+        const address = ctx.sessions.subagentAddress(id)
+        if (address !== undefined) ctx.sessions.openSubagent(address)
+        else ctx.sessions.open(id)
+      },
+    }),
   }, AgentsPanel))
 }

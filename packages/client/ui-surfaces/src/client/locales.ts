@@ -17,6 +17,10 @@ export const zh = {
   'card.agents': '代理',
   'card.agents.description': '查看正在运行的代理。',
   'tab.close': '关闭',
+  'tab.closeOthers': '关闭其他',
+  'tab.closeToRight': '关闭右侧',
+  'tab.closeAll': '全部关闭',
+  'tab.add': '打开面板',
 } satisfies Record<string, string>
 
 /** The surfaces namespace key union. */
@@ -39,6 +43,10 @@ export const en = {
   'card.agents': 'Agents',
   'card.agents.description': 'Inspect running agents.',
   'tab.close': 'Close',
+  'tab.closeOthers': 'Close others',
+  'tab.closeToRight': 'Close to the right',
+  'tab.closeAll': 'Close all',
+  'tab.add': 'Open a surface',
 } satisfies Record<SurfacesKey, string>
 
 /** Dictionary namespace owned by this plugin. */

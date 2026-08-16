@@ -1,16 +1,32 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutline16, IconPlusOutline16, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
-import type { Surface } from './stores.ts'
+import type { OpenableKind, Surface } from './stores.ts'
 import css from './SurfaceTabs.module.css'
+
+const ADD_KINDS: readonly OpenableKind[] = ['preview', 'terminal', 'files', 'diff', 'agents']
+
+const ADD_LABEL: Record<OpenableKind, 'card.browser' | 'card.terminal' | 'card.files' | 'card.diff' | 'card.agents'> = {
+  preview: 'card.browser',
+  terminal: 'card.terminal',
+  files: 'card.files',
+  diff: 'card.diff',
+  agents: 'card.agents',
+}
 
 export type SurfaceTabsProps = PropsLocale<typeof NS> & {
   surfaces: readonly Surface[]
   activeId: string | null
   onActivate: (id: string) => void
   onClose: (id: string) => void
+  onCloseOthers: (id: string) => void
+  onCloseToRight: (id: string) => void
+  onCloseAll: () => void
+  onOpenKind: (kind: OpenableKind) => void
+  openable: Readonly<Record<OpenableKind, boolean>>
 }
 
 /**
@@ -35,6 +51,7 @@ export function surfaceTitle(surface: Surface, t: SurfaceTabsProps['t']): string
       const slash = surface.relativePath.lastIndexOf('/')
       return slash < 0 ? surface.relativePath : surface.relativePath.slice(slash + 1)
     }
+    /* v8 ignore next -- Surface is a closed union; the never arm is uninhabited. */
     default: {
       const _never: never = surface
       return _never
@@ -43,14 +60,64 @@ export function surfaceTitle(surface: Surface, t: SurfaceTabsProps['t']): string
 }
 
 /**
- * Surface tab strip: activate on click, close on the trailing button.
+ * Surface tab strip: activate, close, add-menu, middle-click, context menu,
+ * and non-passive wheel-to-horizontal scroll.
  * @param props - surfaces, the active id, callbacks, and copy.
  * @returns the tab bar.
  */
-export function SurfaceTabs({ surfaces, activeId, onActivate, onClose, t }: SurfaceTabsProps): ReactNode {
+export function SurfaceTabs({
+  surfaces, activeId, onActivate, onClose, onCloseOthers, onCloseToRight, onCloseAll,
+  onOpenKind, openable, t,
+}: SurfaceTabsProps): ReactNode {
+  const barRef = useRef<HTMLDivElement>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    const el = barRef.current
+    /* v8 ignore next -- the tab bar ref is attached on the host the effect reads. */
+    if (el === null) return
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return
+      if (el.scrollWidth <= el.clientWidth) return
+      el.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => { el.removeEventListener('wheel', onWheel) }
+  }, [])
+
+  const addItems: MenuEntry[] = ADD_KINDS.map(kind => ({
+    id: kind,
+    label: t(ADD_LABEL[kind]),
+    disabled: !openable[kind],
+  }))
+
+  const contextItems = (id: string): MenuEntry[] => {
+    const index = surfaces.findIndex(surface => surface.id === id)
+    return [
+      { id: 'close', label: t('tab.close') },
+      { id: 'closeOthers', label: t('tab.closeOthers'), disabled: surfaces.length < 2 },
+      { id: 'closeToRight', label: t('tab.closeToRight'), disabled: index < 0 || index === surfaces.length - 1 },
+      { id: 'closeAll', label: t('tab.closeAll') },
+    ]
+  }
+
+  const onTabMouseDown = (id: string, event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 1) return
+    event.preventDefault()
+    onClose(id)
+  }
+
+  const onTabContext = (id: string, event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setAddOpen(false)
+    setMenu({ id, x: event.clientX, y: event.clientY })
+  }
+
   return (
-    <div className={css.bar} data-surfaces-tabs>
-      {surfaces.map(surface => {
+    <div ref={barRef} className={css.bar} data-surfaces-tabs>
+      {surfaces.map((surface) => {
         const title = surfaceTitle(surface, t)
         const active = surface.id === activeId
         return (
@@ -58,6 +125,8 @@ export function SurfaceTabs({ surfaces, activeId, onActivate, onClose, t }: Surf
             key={surface.id}
             className={clsx(css.tab, active && css.active)}
             data-active-tab={active || undefined}
+            onMouseDown={(event) => { onTabMouseDown(surface.id, event) }}
+            onContextMenu={(event) => { onTabContext(surface.id, event) }}
           >
             <button
               type="button"
@@ -77,6 +146,64 @@ export function SurfaceTabs({ surfaces, activeId, onActivate, onClose, t }: Surf
           </div>
         )
       })}
+      <Menu
+        open={addOpen}
+        portal
+        compact
+        align="end"
+        items={addItems}
+        onSelect={(id) => {
+          setAddOpen(false)
+          onOpenKind(id as OpenableKind)
+        }}
+        onClose={() => { setAddOpen(false) }}
+        anchor={(
+          <button
+            type="button"
+            className={css.add}
+            aria-label={t('tab.add')}
+            data-surfaces-tab-add
+            onClick={() => {
+              setMenu(null)
+              setAddOpen(open => !open)
+            }}
+          >
+            <IconPlusOutline16 size={14} />
+          </button>
+        )}
+      />
+      {menu !== null ? (
+        <Menu
+          open
+          portal
+          compact
+          getAnchorRect={() => new DOMRect(menu.x, menu.y, 0, 0)}
+          items={contextItems(menu.id)}
+          onSelect={(id) => {
+            const target = menu.id
+            setMenu(null)
+            switch (id) {
+              case 'close':
+                onClose(target)
+                break
+              case 'closeOthers':
+                onCloseOthers(target)
+                break
+              case 'closeToRight':
+                onCloseToRight(target)
+                break
+              case 'closeAll':
+                onCloseAll()
+                break
+              /* v8 ignore next -- Menu only emits the declared item ids. */
+              default:
+                break
+            }
+          }}
+          onClose={() => { setMenu(null) }}
+          anchor={<span className={css.contextAnchor} />}
+        />
+      ) : null}
     </div>
   )
 }

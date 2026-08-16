@@ -5,6 +5,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import { isEditableKeyboardTarget, isSurfacesShortcut, isTerminalShortcut } from './keybindings.ts'
 import { NS } from './locales.ts'
 import css from './PanelToggles.module.css'
 
@@ -38,14 +39,21 @@ export function PanelToggles({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return
-      if (event.key !== '\\' && event.code !== 'Backslash') return
-      event.preventDefault()
-      toggleSurfaces()
+      if (isEditableKeyboardTarget(event.target)) return
+      if (isSurfacesShortcut(event)) {
+        event.preventDefault()
+        toggleSurfaces()
+        return
+      }
+      if (isTerminalShortcut(event)) {
+        if (!terminalAvailable) return
+        event.preventDefault()
+        toggleTerminalDrawer()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [toggleSurfaces])
+  }, [terminalAvailable, toggleSurfaces, toggleTerminalDrawer])
 
   return (
     <div className={css.cluster} data-panel-layout-controls>
