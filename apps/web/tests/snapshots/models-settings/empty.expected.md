@@ -4,6 +4,9 @@
     - button "通用设置":
       - img
       - text: 通用设置
+    - button "外观":
+      - img
+      - text: 外观
     - button "模型":
       - img
       - text: 模型
@@ -13,12 +16,20 @@
     - button "Agent 预设":
       - img
       - text: Agent 预设
+    - button "关于":
+      - img
+      - text: 关于
   - button "打开配置文件"
   - button "关闭":
     - img
     - text: 关闭
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+  - text: 识图模型
+  - combobox "识图模型":
+    - option "不启用" [selected]
+    - option "DeepSeek / DeepSeek-V4-Flash"
+  - paragraph: 主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。
   - list
   - text: 提供方
   - combobox "提供方":
@@ -61,6 +72,14 @@
   - text: API 密钥
   - textbox "API 密钥":
     - /placeholder: 输入 API 密钥，或留空使用环境认证
-  - group: 自定义设置
+  - group:
+    - text: 自定义设置 API 地址
+    - textbox "API 地址":
+      - /placeholder: 提供方默认
+    - region "模型目录":
+      - text: 模型目录 正在使用适配器默认模型
+      - button "获取可用模型"
+      - paragraph: 模型选择器中将不显示任何模型；目录外 ID 仍可直接发送。
+      - button "添加模型"
   - button "取消"
   - button "保存"

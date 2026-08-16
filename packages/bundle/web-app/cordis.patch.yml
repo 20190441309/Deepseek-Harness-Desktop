@@ -84,11 +84,12 @@
     - id: session-stats
       name: '@deepseek-ai/dsh-session-stats'
 
-    # Resolve bind host, SSH launch, and display once at boot, then mount the
-    # matching dual-face directory picker. Mount -native or -browse directly in
-    # an overlay to pin the interaction.
+    # Phone remote shares this Host and cannot see a native OS chooser on the
+    # desktop display. Pin the browse pair so every client gets the in-app
+    # directory dialog; compose -native instead only on a display-local-only
+    # deployment.
     - id: directory-picker
-      name: '@deepseek-ai/dsh-host-directory-picker-auto'
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
 
     # Read-only projection of current Loader entries for trusted client RPCs.
     - id: plugin-inventory
@@ -219,11 +220,17 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
-    - id: ui-settings-remote
-      name: '@deepseek-ai/dsh-client-ui-settings-remote'
+    # Phone-remote UI is hidden for this release; re-enable in the next one.
+    # The plugin stays built and tested, only the composition row is gated.
+    # - id: ui-settings-remote
+    #   name: '@deepseek-ai/dsh-client-ui-settings-remote'
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
+
+    # Latest-user-message inline edit: pencil enters the bubble editor; confirm forks.
+    - id: ui-message-edit
+      name: '@deepseek-ai/dsh-client-ui-message-edit'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
@@ -245,6 +252,9 @@
 
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
+
+    - id: ui-directory-picker-browse
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
 
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the two reference sources (ui-skill / ui-subagent).

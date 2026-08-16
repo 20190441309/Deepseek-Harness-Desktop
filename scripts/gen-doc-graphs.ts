@@ -115,6 +115,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'visionFallback',
+    pkg: 'llm-vision-fallback',
+    title: 'Vision-to-text fallback substitution',
+    mode: 'core',
+    consumers: ['apiproxy', 'agent-loop', 'tool-fs'],
+    note: 'A designated vision model describes each image attachment once; text-only main routes receive the logged description text in place of image blocks.',
+  },
+  {
     key: 'tokenMeter',
     pkg: 'token-meter',
     title: 'Replay token measurement',

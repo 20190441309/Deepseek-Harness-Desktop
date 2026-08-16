@@ -1,14 +1,13 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Math rendering" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Render this mathematical proof. {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - heading "Math rendering" [level=2]
 - paragraph:

@@ -1,14 +1,13 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Load the snapshot-skill skill with" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Load the snapshot-skill skill with the skill tool, then reply DONE. {{date}} {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
@@ -25,7 +24,7 @@
 - button "Skill snapshot-skill" [expanded]:
   - img
   - text: Skill snapshot-skill
-- region "Instructions": "Instructions <skill_content name=\"snapshot-skill\"> <skill_resources> Base directory for this skill: {{cwd}}/.dsh/skills/snapshot-skill Resolve relative paths mentioned by this skill against the base directory before using them. Load referenced resources only as needed. </skill_resources> <skill_instructions> Follow these snapshot-only instructions. Resolve referenced resources relative to this skill directory. </skill_instructions> </skill_content>"
+- region "Instructions": "Instructions <skill_content name=\"snapshot-skill\"> <skill_resources> Base directory for this skill: C:\\Users\\48818\\AppData\\Local\\Temp\\dsh-web-e2e-ws-GunxRf/.dsh/skills/snapshot-skill Resolve relative paths mentioned by this skill against the base directory before using them. Load referenced resources only as needed. </skill_resources> <skill_instructions> Follow these snapshot-only instructions. Resolve referenced resources relative to this skill directory. </skill_instructions> </skill_content>"
 - button "Inspect"
 - button "Think The skill is loaded.":
   - img

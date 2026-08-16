@@ -1,20 +1,28 @@
-# The pwsh terminal-card lane swaps the shipped bash stack for the PowerShell
-# twin: the bash executor row is disabled (patches cannot rename a row — `name`
-# is a guard) and the pwsh executor + tool are inserted. The permission service
-# refuses an unconfined executor by design (presets bundle a sandbox mode), so
-# its row is disabled too — this lane renders a seeded session, never a
-# permission decision. The seeded scenario renders the logged pwsh call/result
-# through the real tools on replay; no command executes, but the composition
-# must boot the pwsh executor, so the lane skips on hosts without a usable
-# `pwsh`.
+# The pwsh terminal-card lane: the shipped tree already swaps the bash stack
+# for the PowerShell twin on Windows (the base bundle gates the sandboxes and
+# tools on the platform), so the lane pins its OWN executor pair instead of
+# fighting the roster: both shipped sandboxes are disabled and the lane's
+# `pwsh-local` + the roster `tool-pwsh` row (re-enabled — an insert would
+# duplicate the shipped id) form the deterministic pwsh stack on every host.
+# The permission service refuses an unconfined executor by design (presets
+# bundle a sandbox mode), so its row is disabled too — this lane renders a
+# seeded session, never a permission decision. The seeded scenario renders the
+# logged pwsh call/result through the real tools on replay; no command
+# executes, but the composition must boot the pwsh executor, so the lane skips
+# on hosts without a usable `pwsh`.
 - id: bash-sandbox
   name: '@deepseek-ai/dsh-bash-sandbox'
+  disabled: true
+- id: pwsh-sandbox
+  name: '@deepseek-ai/dsh-pwsh-sandbox'
   disabled: true
 - id: permission
   name: '@deepseek-ai/dsh-permission-presets'
   disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: false
 - insert:
     - id: pwsh-local
       name: '@deepseek-ai/dsh-pwsh-local'
-    - id: tool-pwsh
-      name: '@deepseek-ai/dsh-tool-pwsh'
