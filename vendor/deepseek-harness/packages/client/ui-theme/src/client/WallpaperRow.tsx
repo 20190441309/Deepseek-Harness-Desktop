@@ -5,7 +5,7 @@ import { useRef } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   DEFAULT_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT, MIN_WALLPAPER_EFFECT,
-  WALLPAPER_EFFECT_STEP, encodeWallpaperFile,
+  WALLPAPER_EFFECT_STEP, WALLPAPER_HIGH_GLASS_HINT, encodeWallpaperFile,
 } from '../wallpaper.ts'
 import type { ThemeSettings } from '../theme-settings.ts'
 import type { ThemeKey } from './locales.ts'
@@ -19,19 +19,21 @@ export type SetWallpaper = (
 
 /**
  * Render the wallpaper picker and, once an image is set, the two sliders.
- * @param props - current extras, copy, and the write callback.
+ * @param props - current extras, glass opacity, copy, and the write callback.
  * @returns the wallpaper block.
  */
 export function WallpaperRow({
   wallpaperImage,
   wallpaperBlur,
   wallpaperPixelate,
+  glassOpacity,
   t,
   setWallpaper,
 }: {
   wallpaperImage: string
   wallpaperBlur: number
   wallpaperPixelate: number
+  glassOpacity: number
   t: (key: ThemeKey) => string
   setWallpaper: SetWallpaper
 }) {
@@ -51,6 +53,9 @@ export function WallpaperRow({
         <h2 id="appearance-wallpaper-heading" className={css.heading}>{t('wallpaper.title')}</h2>
       </div>
       <p className={css.hint}>{t('wallpaper.description')}</p>
+      {hasImage && glassOpacity >= WALLPAPER_HIGH_GLASS_HINT ? (
+        <p className={css.hint}>{t('wallpaper.glassHint')}</p>
+      ) : null}
       <div className={css.wallpaperActions}>
         <Button type="button" variant="outline" onClick={() => { fileRef.current?.click() }}>
           {t('wallpaper.choose')}
@@ -65,7 +70,7 @@ export function WallpaperRow({
           type="file"
           accept="image/png,image/jpeg,image/webp,image/gif"
           hidden
-          onChange={event => {
+          onChange={(event) => {
             const file = event.currentTarget.files?.[0]
             event.currentTarget.value = ''
             void pick(file)
@@ -97,7 +102,7 @@ export function WallpaperRow({
               aria-valuemax={MAX_WALLPAPER_EFFECT}
               aria-valuenow={wallpaperBlur}
               aria-label={t('wallpaper.blur')}
-              onChange={event => { setWallpaper({ wallpaperBlur: Number(event.currentTarget.value) }) }}
+              onChange={(event) => { setWallpaper({ wallpaperBlur: Number(event.currentTarget.value) }) }}
             />
           </label>
           <label className={css.field}>
@@ -117,7 +122,7 @@ export function WallpaperRow({
               aria-valuemax={MAX_WALLPAPER_EFFECT}
               aria-valuenow={wallpaperPixelate}
               aria-label={t('wallpaper.pixelate')}
-              onChange={event => { setWallpaper({ wallpaperPixelate: Number(event.currentTarget.value) }) }}
+              onChange={(event) => { setWallpaper({ wallpaperPixelate: Number(event.currentTarget.value) }) }}
             />
           </label>
           <Button

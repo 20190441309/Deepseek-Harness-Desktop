@@ -170,7 +170,7 @@
 }
 
 .navCell.active {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--dsw-specific-sidebar-nav-item-active-accent);
 }
 
 .navIcon {

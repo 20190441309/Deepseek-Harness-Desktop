@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-扫码成功后给这台手机签发独立凭证，由桌面壳保存在凭据文件的 `remoteDevices` 里。HttpOnly Cookie 带的是这台设备的令牌（一年 `Max-Age`），不是二维码里的配对密钥。同一浏览器再次打开会复用这次绑定。远程弹窗显示 **已连接设备** 和已绑定数量；管理对话框列出名称、最近访问、在线（仍开着的 WebSocket）和 **解绑**。解绑删除该设备并断开它的套接字；二维码密钥仍可用于重新扫码。弹窗调用 `window.shell.unbindRemoteDevice`；签发和撤销归桌面网关。
+扫码成功后给这台设备签发独立凭证，由桌面壳保存在凭据文件的 `remoteDevices` 里。HttpOnly Cookie 带的是这台设备的令牌（一年 `Max-Age`），不是二维码里的配对密钥。同一浏览器再次打开会复用这次绑定。远程弹窗把 **已连接设备** 和已绑定数量画成带描边的一行。管理对话框列出名称和在线（仍开着的 WebSocket）、可选的 `detail`（从已存 user-agent 抽出，不是原始 UA），然后是短编号、绑定时间和最近访问，各占一行。Windows、Mac、Linux 显示为 **电脑**，`detail` 写系统、架构和浏览器；手机仍用 iPhone／iPad／Android。`publicDevices` 在有 UA 时按 UA 重算 `name`，带上 `shortId`（`id` 后四位）和解析得到的 `detail`；不返回 `token` 或 `userAgent`。没有 UA 的旧设备沿用已存名称且没有 `detail`。缺名称时回退为 **设备**。解绑删除该设备并断开它的套接字；二维码密钥仍可用于重新扫码。弹窗调用 `window.shell.unbindRemoteDevice`；签发和撤销归桌面网关。
 
 ## 考虑过的替代
 
@@ -20,4 +20,4 @@ Status: implemented
 
 ## 后果
 
-已经持有设备 Cookie 的浏览器再扫一次会刷新这一行，而不是再造一台手机。轮换配对密钥不会解绑已有手机。测试覆盖登录签发、Cookie 复用、解绑后 401，以及数量／管理对话框。
+已经持有设备 Cookie 的浏览器再扫一次会刷新这一行，而不是再造一台设备。轮换配对密钥不会解绑已有设备。测试覆盖登录签发、Cookie 复用、解绑后 401、数量／管理对话框，以及 `publicDevices` 的身份字段。

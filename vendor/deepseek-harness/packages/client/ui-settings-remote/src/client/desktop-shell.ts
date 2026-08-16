@@ -1,5 +1,5 @@
 /**
- * Desktop shell bridge used by the Remote phone popup.
+ * Desktop shell bridge used by the Remote popup.
  * Absent outside the desktop app, so registration branches on it.
  */
 
@@ -10,13 +10,17 @@ export type RemoteUrl = {
   pairingUrl: string
 }
 
-/** A phone bound to this desktop after scanning the pairing QR. */
+/** A device bound to this desktop after scanning the pairing QR. */
 export type RemoteDevice = {
   id: string
   name: string
   createdAt?: string
   lastSeenAt?: string
   online?: boolean
+  /** Last four characters of `id`, for telling two same-named devices apart. */
+  shortId?: string
+  /** OS / model / browser parsed from the stored user-agent; never the raw UA. */
+  detail?: string
 }
 
 /** Snapshot returned by `window.shell.getRemote`. */
@@ -72,8 +76,8 @@ type RemoteDesktopApi = Required<Pick<DesktopShell, 'getRemote' | 'saveRemote' |
 export function hasRemoteApi(shell: DesktopShell | null): shell is RemoteDesktopApi {
   return Boolean(
     shell?.getRemote
-    && shell?.saveRemote
-    && shell?.rotateRemoteToken
-    && shell?.unbindRemoteDevice,
+    && shell.saveRemote
+    && shell.rotateRemoteToken
+    && shell.unbindRemoteDevice,
   )
 }

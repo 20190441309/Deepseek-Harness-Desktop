@@ -18,6 +18,15 @@ const STATUS_PALETTE = {
 } as const
 
 /**
+ * Minimum WCAG contrast of `--dsw-specific-sidebar-nav-item-active` against
+ * `--dsw-alias-bg-layer-2` (settings nav and chat sidebar sit on raised fills).
+ */
+export const NAV_ITEM_ACTIVE_MIN_CONTRAST = 1.25
+
+/** Stronger selected-row wash used by settings nav and accented session rows. */
+export const NAV_ITEM_ACTIVE_ACCENT_MIN_CONTRAST = 1.4
+
+/**
  * Derive alias-layer tokens from three seed colors and contrast.
  * The canvas stays `seeds.background`. Accent paints every colorful chrome
  * token the sheets otherwise pin to DeepSeek blue (send, links, user bubble,
@@ -69,6 +78,16 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
   const border = withAlpha(seeds.foreground, 0.08 + contrastFactor * 0.18)
   const input = withAlpha(seeds.foreground, 0.1 + contrastFactor * 0.2)
   const sidebar = mixColors(seeds.background, seeds.accent, washStrong)
+  const navActive = mixUntilContrast(
+    seeds.background, seeds.accent, wash, layer2, NAV_ITEM_ACTIVE_MIN_CONTRAST,
+  )
+  const navActiveAccent = mixUntilContrast(
+    seeds.background,
+    seeds.accent,
+    Math.max(washStrong, wash + 0.08),
+    layer2,
+    NAV_ITEM_ACTIVE_ACCENT_MIN_CONTRAST,
+  )
   const accentHover = mixColors(seeds.accent, isDark ? '#ffffff' : '#000000', 0.18)
   const onAccent = pickReadableText(seeds.accent, [seeds.foreground, seeds.background, '#ffffff', '#0f1115'])
   const status = isDark ? STATUS_PALETTE.dark : STATUS_PALETTE.light
@@ -98,8 +117,8 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
     '--dsw-specific-bubble': accentWash,
     '--dsw-specific-bubble-highlight': accentWashStrong,
     '--dsw-specific-sidebar-fill': sidebar,
-    '--dsw-specific-sidebar-nav-item-active': accentWash,
-    '--dsw-specific-sidebar-nav-item-active-accent': accentWashStrong,
+    '--dsw-specific-sidebar-nav-item-active': navActive,
+    '--dsw-specific-sidebar-nav-item-active-accent': navActiveAccent,
     '--dsw-alias-interactive-bg-hover-accent': withAlpha(seeds.accent, isDark ? 0.22 : 0.14),
   }
   if (seeds.overrides) {
@@ -111,6 +130,42 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
 }
 
 /**
+ * WCAG contrast ratio of two hex colors (8-digit hex drops alpha).
+ * @param left - one color.
+ * @param right - the other color.
+ * @returns the ratio, 1–21.
+ */
+export function contrastRatio(left: string, right: string): number {
+  return getContrastRatio(left, right)
+}
+
+/**
+ * Mix `tint` into `base` from `startRatio` until contrast against `against`
+ * meets `minContrast`, or the mix is fully `tint`.
+ * @param base - starting fill.
+ * @param tint - accent mixed in.
+ * @param startRatio - initial mix amount, 0–1.
+ * @param against - color the result must contrast with.
+ * @param minContrast - WCAG contrast floor.
+ * @returns the mixed hex color.
+ */
+function mixUntilContrast(
+  base: string,
+  tint: string,
+  startRatio: number,
+  against: string,
+  minContrast: number,
+): string {
+  let amount = clamp(startRatio, 0, 1)
+  let color = mixColors(base, tint, amount)
+  while (getContrastRatio(color, against) < minContrast && amount < 1) {
+    amount = Math.min(1, amount + 0.04)
+    color = mixColors(base, tint, amount)
+  }
+  return color
+}
+
+/**
  * Sort candidates by WCAG contrast against `background` and pick the winner.
  * @param background - surface the text sits on.
  * @param candidates - candidate text colors.
@@ -119,7 +174,7 @@ export function deriveThemeTokens(seeds: ThemeSeeds): ThemeTokens {
 export function pickReadableText(background: string, candidates: readonly string[]): string {
   return candidates.toSorted(
     (left, right) => getContrastRatio(background, right) - getContrastRatio(background, left),
-  )[0] ?? candidates[0]!
+  )[0] ?? candidates[0] as string
 }
 
 function clamp(value: number, min: number, max: number): number {

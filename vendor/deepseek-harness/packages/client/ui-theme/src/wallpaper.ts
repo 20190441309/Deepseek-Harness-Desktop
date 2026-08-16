@@ -26,9 +26,20 @@ export const WALLPAPER_BLEED = 48
 /** Root attribute flipped on while a wallpaper is live. */
 export const WALLPAPER_ATTR = 'data-dsh-wallpaper'
 
+/**
+ * Canvas fill percent never exceeds this while a wallpaper is mixed, so glass
+ * 100% still lets the image show through the main chat. Sidebar and raised
+ * surfaces keep the glass slider, including 100% opaque.
+ */
+export const MAX_WALLPAPER_CANVAS_SOLIDITY = 45
+
+/** Glass opacity at or above which Appearance hints that the wallpaper is covered. */
+export const WALLPAPER_HIGH_GLASS_HINT = 90
+
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'])
 
-const DATA_URL = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i
+// The /i flag makes [A-Z] cover lowercase too, so a-z would be a duplicate.
+const DATA_URL = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Z0-9+/=\s]+$/i
 
 /**
  * Clamp a wallpaper effect percent into the slider range.
@@ -164,25 +175,38 @@ export async function encodeWallpaperFile(file: File): Promise<string | null> {
 }
 
 /**
- * Main-canvas solidity derived from the glass slider. The canvas is the
- * surface the wallpaper mostly shows through, so it sits well below the
- * raised-surface solidity around the default setting, while the slider ends
- * still reach nearly-transparent (40) and fully opaque (100).
- * @param solidity - glass opacity percent.
- * @returns the canvas fill percent, 0–100.
+ * Main-canvas solidity derived from the glass slider, before the wallpaper
+ * canvas cap. Sidebar mixing uses this so glass 100% still fully opaques the
+ * rail.
+ * @param kept - glass opacity percent, already clamped 0–100.
+ * @returns the uncapped canvas fill percent, 0–100.
  */
-export function wallpaperCanvasSolidity(solidity: number): number {
-  const kept = Math.min(100, Math.max(0, Math.round(solidity)))
+function wallpaperCanvasSolidityUncapped(kept: number): number {
   if (kept <= 40) return Math.round(kept * 0.375)
   if (kept <= 80) return Math.round(15 + (kept - 40) * 0.75)
   return Math.round(45 + (kept - 80) * 2.75)
 }
 
 /**
+ * Main-canvas solidity derived from the glass slider. The canvas is the
+ * surface the wallpaper mostly shows through, so it sits well below the
+ * raised-surface solidity around the default setting. The high end of the
+ * slider still fully opaques sidebar and raised surfaces; the canvas itself
+ * never exceeds {@link MAX_WALLPAPER_CANVAS_SOLIDITY}.
+ * @param solidity - glass opacity percent.
+ * @returns the canvas fill percent, 0–{@link MAX_WALLPAPER_CANVAS_SOLIDITY}.
+ */
+export function wallpaperCanvasSolidity(solidity: number): number {
+  const kept = Math.min(100, Math.max(0, Math.round(solidity)))
+  return Math.min(wallpaperCanvasSolidityUncapped(kept), MAX_WALLPAPER_CANVAS_SOLIDITY)
+}
+
+/**
  * Make the main chrome fills translucent so a wallpaper can show through.
- * Solidity is layered: the main canvas is the most see-through, the sidebar
- * sits halfway, and raised surfaces (cards, composer) keep the full glass
- * solidity for readability.
+ * Solidity is layered: the main canvas is the most see-through (capped),
+ * the sidebar sits halfway between the uncapped canvas curve and glass so
+ * glass 100% fully opaques the rail, and raised surfaces keep the full
+ * glass solidity. A 100% mix stores the solid color, not a color-mix.
  * @param tokens - current alias tokens (may be empty for DeepSeek).
  * @param mode - resolved half, picks the sheet fallbacks.
  * @param solidity - percent of the solid fill kept (the user's glass opacity).
@@ -192,7 +216,7 @@ export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark'
   const next: ThemeTokens = { ...tokens }
   const kept = Math.min(100, Math.max(0, Math.round(solidity)))
   const canvas = wallpaperCanvasSolidity(kept)
-  const sidebar = Math.round((canvas + kept) / 2)
+  const sidebar = Math.round((wallpaperCanvasSolidityUncapped(kept) + kept) / 2)
   const base = mode === 'dark'
     ? 'var(--dsw-static-neutral-bluish-950)'
     : 'var(--dsw-static-neutral-bluish-00)'
@@ -208,7 +232,9 @@ export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark'
   for (const [name, { fallback, percent }] of Object.entries(surfaces)) {
     const current = next[name]
     const solid = current !== undefined && !current.includes('color-mix') ? current : fallback
-    next[name] = `color-mix(in srgb, ${solid} ${percent}%, transparent)`
+    next[name] = percent >= 100
+      ? solid
+      : `color-mix(in srgb, ${solid} ${percent}%, transparent)`
   }
   return next
 }

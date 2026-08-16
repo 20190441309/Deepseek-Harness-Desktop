@@ -275,6 +275,40 @@ describe('WorkspaceRuntime', () => {
     await expect(workspaces.connectWorkspace(wid('alpha'))).resolves.toBe('s-fresh-2')
   })
 
+  it('connectNoDirectory reuses a non-member scratch blank and creates otherwise', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [workspace('alpha', [sid('s-member-scratch')])] as never[],
+    }))
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        { sessionId: sid('s-member-scratch'), updatedAt: 1, running: false, blank: true, cwd: '/scratch' },
+        { sessionId: sid('s-task'), updatedAt: 2, running: false, blank: true, cwd: '/scratch' },
+        { sessionId: sid('s-other'), updatedAt: 3, running: false, blank: true, cwd: '/w/alpha' },
+      ] as never[],
+    }))
+    await Promise.all([workspaces.refresh(), sessions.refresh()])
+    await Promise.resolve()
+
+    await expect(workspaces.connectNoDirectory()).resolves.toBe('s-task')
+    expect(api.callsOf('session.create')).toEqual([])
+    expect(api.callsOf('workspace.create')).toEqual([])
+
+    api.onCreate = payload => Promise.resolve(ok({ sessionId: sid('s-fresh'), payload }))
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        { sessionId: sid('s-member-scratch'), updatedAt: 1, running: false, blank: true, cwd: '/scratch' },
+      ] as never[],
+    }))
+    await sessions.refresh()
+    await Promise.resolve()
+    await expect(workspaces.connectNoDirectory()).resolves.toBe('s-fresh')
+    expect(api.callsOf('session.create')).toEqual([{ cwd: '/scratch' }])
+  })
+
   it('a rejected first prompt keeps the blank session eligible for connectWorkspace reuse', async () => {
     const ctx = new Context()
     const api = new FakeApiClient()

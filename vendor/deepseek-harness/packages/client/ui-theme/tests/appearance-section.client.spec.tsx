@@ -228,7 +228,7 @@ describe('AppearanceSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '导出' }))
     await vi.waitFor(() => { expect(writeClipboard).toHaveBeenCalled() })
-    expect(String(vi.mocked(writeClipboard).mock.calls[0]![0])).toContain('Grove')
+    expect(vi.mocked(writeClipboard).mock.calls[0]![0]).toContain('Grove')
 
     fireEvent.click(screen.getByRole('button', { name: '删除' }))
     expect(b.setCustomThemes).toHaveBeenLastCalledWith([])
@@ -275,6 +275,8 @@ describe('AppearanceSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '高级' }))
     expect(localStorage.getItem('dsh:typography-advanced')).toBe('1')
+    expect(screen.getByText(COPY['type.composerHint'])).toBeDefined()
+    expect(screen.getByText(COPY['type.terminalHint'])).toBeDefined()
     const extras = screen.getAllByPlaceholderText('系统默认')
     fireEvent.change(extras[2]!, { target: { value: 'Georgia' } })
     expect(b.setTypography).toHaveBeenCalledWith({ fontFamilyComposer: 'Georgia' })
@@ -296,6 +298,23 @@ describe('AppearanceSection', () => {
       fontFamilyComposer: '',
       fontFamilyTerminal: '',
     })
+  })
+
+  it('names the font inputs as installed CSS family names', () => {
+    mount('system')
+    expect(screen.getByText(COPY['type.interfaceHint'])).toBeDefined()
+    expect(screen.getByText(COPY['type.codeHint'])).toBeDefined()
+    expect(screen.getAllByPlaceholderText('系统默认')).toHaveLength(2)
+  })
+
+  it('hints that high glass opacity covers a set wallpaper', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const b = mount('system', { wallpaperImage: png, glassOpacity: 80 })
+    expect(screen.queryByText(COPY['wallpaper.glassHint'])).toBeNull()
+    act(() => { b.store.actions.sync(snap({ wallpaperImage: png, glassOpacity: 100 }), 1) })
+    expect(screen.getByText(COPY['wallpaper.glassHint'])).toBeDefined()
+    expect(screen.getByText(COPY['wallpaper.description'])).toBeDefined()
+    expect(screen.getByText(COPY['glass.description'])).toBeDefined()
   })
 
   it('hides wallpaper sliders until an image is set, then writes blur and pixelate', async () => {
@@ -334,7 +353,8 @@ describe('AppearanceSection', () => {
       fireEvent.change(input, { target: { files: [file] } })
     })
     await vi.waitFor(() => { expect(b.setWallpaper).toHaveBeenCalled() })
-    expect(b.setWallpaper.mock.calls[0]![0]).toMatchObject({ wallpaperImage: expect.stringMatching(/^data:image\//) })
+    const wallpaperPatch = b.setWallpaper.mock.calls[0]![0] as { wallpaperImage: string }
+    expect(wallpaperPatch.wallpaperImage).toMatch(/^data:image\//)
 
     const bad = new File(['nope'], 'notes.txt', { type: 'text/plain' })
     await act(async () => {

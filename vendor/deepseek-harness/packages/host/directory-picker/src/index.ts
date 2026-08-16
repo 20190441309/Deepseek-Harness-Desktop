@@ -34,15 +34,23 @@ export interface DirectoryEntry {
   hidden: boolean
 }
 
+/**
+ * Win32 `list` path for the volume picker. Entries are accessible drive roots
+ * (`C:\`, `D:\`, …). Not a real filesystem directory; `createDirectory` against
+ * it fails. POSIX `list` of this path is not fully qualified.
+ */
+export const WINDOWS_VOLUME_ROOT = '\\\\.\\dsh-computer'
+
 /** One directory level plus its ancestry, as a browse backend reports it. */
 export interface DirectoryListing {
-  /** Absolute path of the listed directory. */
+  /** Absolute path of the listed directory (`WINDOWS_VOLUME_ROOT` on the Win32 volume picker). */
   path: string
-  /** The host account's home directory (breadcrumb "Home" rooting). */
+  /** The host account's home directory (a jump target, not a crumb ceiling). */
   home: string
   /**
-   * Ancestor chain from the filesystem root to the listed directory
-   * inclusive; every crumb is a jump target (crumb `hidden` is always false).
+   * Ancestor chain from the volume picker (Win32) or filesystem root (POSIX)
+   * to the listed directory inclusive; every crumb is a jump target
+   * (crumb `hidden` is always false).
    */
   crumbs: DirectoryEntry[]
   /** Direct child directories, name-sorted; symlinks to directories included. */
@@ -65,6 +73,7 @@ export interface DirectoryPickerBrowseCapability {
   /**
    * List one directory level.
    * @param path - absolute directory to list; absent lists the home directory.
+   * On Win32, {@link WINDOWS_VOLUME_ROOT} lists accessible drive roots.
    * @param signal - caller lifetime; abort stops the scan (a stalled network
    * directory must not outlive a disconnected caller) and rejects with the
    * abort reason.
@@ -77,7 +86,7 @@ export interface DirectoryPickerBrowseCapability {
   list(path?: string, signal?: AbortSignal): Promise<DirectoryListing>
   /**
    * Create one child directory under an existing parent.
-   * @param path - absolute existing parent directory.
+   * @param path - absolute existing parent directory; not {@link WINDOWS_VOLUME_ROOT}.
    * @param name - single non-blank path segment (no separators, not `.`/`..`).
    * @returns the created directory's absolute path.
    * @throws {DirectoryPickerError} `directory-exists` for an existing child,

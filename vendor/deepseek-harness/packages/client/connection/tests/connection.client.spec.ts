@@ -80,7 +80,7 @@ describe('connection lifecycle', () => {
     try {
       await vi.waitFor(() => { expect(describeCalls).toBe(2) }) // retried after backoff
       expect(connected).toBe(0) // never announced during the failed generation
-      gate.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+      gate.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }))
       await vi.waitFor(() => { expect(connected).toBe(1) })
     } finally {
       controller.stop()
@@ -102,7 +102,7 @@ describe('connection lifecycle', () => {
           },
         })
       }
-      return Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+      return Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }))
     }
     let connected = 0
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -186,7 +186,7 @@ describe('connection lifecycle', () => {
       describeCalls++
       return describeCalls === 1
         ? firstDescribe.promise
-        : Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+        : Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }))
     }
     let connected = 0
     const controller = new ConnectionController(api, { onConnected: () => { connected++ } }, FAST)
@@ -195,7 +195,7 @@ describe('connection lifecycle', () => {
       await vi.waitFor(() => { expect(describeCalls).toBe(1) })
       expect(api.openMuxCount).toBe(0)
       expect(connected).toBe(0)
-      firstDescribe.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+      firstDescribe.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }))
       await vi.waitFor(() => { expect(connected).toBe(1) })
       await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
     } finally {
@@ -204,7 +204,7 @@ describe('connection lifecycle', () => {
   })
 
   it('does not call host.describe until the boot gate resolves', async () => {
-    const gate = deferred<void>()
+    const gate = deferred<undefined>()
     ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = gate.promise
     const api = new FakeApiClient()
     const controller = new ConnectionController(api, {}, FAST)
@@ -212,7 +212,7 @@ describe('connection lifecycle', () => {
     try {
       await new Promise(resolve => setTimeout(resolve, 20))
       expect(api.callsOf('host.describe')).toHaveLength(0)
-      gate.resolve()
+      gate.resolve(undefined)
       await vi.waitFor(() => { expect(api.callsOf('host.describe')).toHaveLength(1) })
     } finally {
       controller.stop()
@@ -222,7 +222,7 @@ describe('connection lifecycle', () => {
 
   it('does not open downlinks until onConnected settles', async () => {
     const api = new FakeApiClient()
-    const hydrate = deferred<void>()
+    const hydrate = deferred<undefined>()
     let connected = 0
     const controller = new ConnectionController(api, {
       onConnected: () => {
@@ -234,7 +234,7 @@ describe('connection lifecycle', () => {
     try {
       await vi.waitFor(() => { expect(connected).toBe(1) })
       expect(api.openMuxCount).toBe(0)
-      hydrate.resolve()
+      hydrate.resolve(undefined)
       await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
     } finally {
       controller.stop()
@@ -330,7 +330,7 @@ describe('connection lifecycle', () => {
     controller.start()
     try {
       await vi.waitFor(() => { expect(describeCalls).toBe(3) })
-      gate.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true }))
+      gate.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }))
       await vi.waitFor(() => { expect(connected).toBe(1) })
       expect(states).toEqual(['reconnecting', 'connected']) // two failures, one reconnecting emission
     } finally {

@@ -207,11 +207,20 @@
   outline-offset: -3px;
 }
 
+.preview .half:first-child {
+  border-radius: 14px 0 0 0;
+}
+
+.preview .half:last-child {
+  border-radius: 0 14px 0 0;
+}
+
 .halfActive::after {
   content: '';
   position: absolute;
   inset: 0;
   border: 2px solid var(--dsw-alias-brand-primary);
+  border-radius: inherit;
   pointer-events: none;
 }
 
@@ -342,7 +351,7 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
-.half {
+.editorHalf {
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -21,7 +21,7 @@ import type {
 import type { WorkspaceBrowserProps } from './contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from './tree.ts'
 import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
+import { ProjectRowItem, SearchResultItem, SessionNodeItem, TasksSectionHeader } from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
 import { WorkspacePickFlow } from './WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -215,7 +215,7 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
-  'useSessions' | 'startSession' | 'open' | 'forkSession'
+  'useSessions' | 'startSession' | 'connectNoDirectory' | 'open' | 'forkSession'
   | 'insertWorkspaceBefore' | 'insertSessionBefore' | 't'
 > & {
   workspaces: readonly WorkspaceView[]
@@ -247,7 +247,7 @@ type SessionTreeProps = Pick<
 
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
 function SessionTree({
-  useSessions, startSession, open, forkSession, workspaces, archivedSessionIds,
+  useSessions, startSession, connectNoDirectory, open, forkSession, workspaces, archivedSessionIds,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
@@ -327,6 +327,8 @@ function SessionTree({
     }),
     [list, orderedWorkspaces, archivedSessionIds, expandedGroups, sessionOrderByAccount],
   )
+  const projectGroups = groups.filter(group => group.workspaceId !== undefined)
+  const taskGroup = groups.find(group => group.workspaceId === undefined)
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
     if (sessionDropCommitted.current) return
@@ -376,8 +378,8 @@ function SessionTree({
       console.warn('workspace reorder rejected:', reason)
     })
   }
-  const workspaceDropAtListStart = groups[0]?.workspaceId !== undefined
-    && workspaceDrag?.over?.id === groups[0].workspaceId
+  const workspaceDropAtListStart = projectGroups[0]?.workspaceId !== undefined
+    && workspaceDrag?.over?.id === projectGroups[0].workspaceId
     && workspaceDrag.over.half === 'before'
 
   return (
@@ -388,10 +390,10 @@ function SessionTree({
         role="tree"
         aria-label={t('section.sessions')}
       >
-        {groups.length === 0 && (
+        {projectGroups.length === 0 && taskGroup === undefined && (
           <div className={css.empty}>{t('empty.none')}</div>
         )}
-        {groups.map((group) => {
+        {projectGroups.map((group) => {
           const workspaceId = group.workspaceId
           const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
             ? workspaceDrag.over.half
@@ -536,6 +538,79 @@ function SessionTree({
             </div>
           )
         })}
+        {taskGroup !== undefined && (
+          <div key={taskGroup.key} className={css.groupSection}>
+            <TasksSectionHeader
+              expanded={taskGroup.expanded}
+              containsCurrent={taskGroup.containsCurrent}
+              t={t}
+              onToggle={() => {
+                if (taskGroup.expanded) {
+                  setExpandedSessionGroups(keys => keys.filter(key => key !== taskGroup.key))
+                }
+                setGroupExpanded(taskGroup.key, !taskGroup.expanded)
+              }}
+              onCreate={() => {
+                setGroupExpanded(taskGroup.key, true)
+                connectNoDirectory()
+              }}
+            />
+            {(expandedSessionGroups.includes(taskGroup.key)
+              ? taskGroup.sessions
+              : taskGroup.sessions.slice(0, COLLAPSED_SESSION_LIMIT)
+            ).map((node) => {
+              const sameGroupDrag = drag !== null && drag.accountKey === taskGroup.key
+              const dragProps = {
+                start: () => {
+                  sessionDropCommitted.current = false
+                  setDrag({ accountKey: taskGroup.key, sessionId: node.id, over: null })
+                },
+                active: sameGroupDrag,
+                marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
+                hover: (half: 'before' | 'after') => {
+                  /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
+                  setDrag(d => (d === null ? d : { ...d, over: { id: node.id, half } }))
+                },
+                drop: (half: 'before' | 'after') => {
+                  /* v8 ignore next -- narrowing guard: Rows gates drop on `active`, which is false while the drag state is null. */
+                  if (drag === null) return
+                  commitSessionDrag(drag, { id: node.id, half })
+                },
+                end: () => {
+                  if (drag?.over !== null && drag?.over !== undefined) commitSessionDrag(drag, drag.over)
+                  else setDrag(null)
+                  sessionDropCommitted.current = false
+                },
+              }
+              return (
+                <SessionNodeItem
+                  key={node.id}
+                  node={node}
+                  currentId={current}
+                  now={now}
+                  onOpen={open}
+                  onRename={onSessionRename}
+                  onFork={forkSession}
+                  onArchive={onSessionArchive}
+                  drag={dragProps}
+                  t={t}
+                />
+              )
+            })}
+            {taskGroup.sessions.length > COLLAPSED_SESSION_LIMIT && (
+              <button
+                type="button"
+                className={css.sessionOverflowButton}
+                aria-expanded={expandedSessionGroups.includes(taskGroup.key)}
+                onClick={() => { setExpandedSessionGroups(keys => toggled(keys, taskGroup.key)) }}
+              >
+                {expandedSessionGroups.includes(taskGroup.key)
+                  ? t('sessions.collapse')
+                  : t('sessions.expand', { n: taskGroup.sessions.length - COLLAPSED_SESSION_LIMIT })}
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <span className={css.fade} />
     </div>
@@ -746,6 +821,7 @@ export function WorkspaceBrowser({
   useStore,
   actions,
   startSession,
+  connectNoDirectory,
   open,
   renameSession,
   forkSession,
@@ -977,7 +1053,7 @@ export function WorkspaceBrowser({
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
-            {groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
+            {groupBy === 'flat' ? t('section.sessions') : t('section.projects')}
           </span>
         )}
         {wide && (
@@ -1148,6 +1224,7 @@ export function WorkspaceBrowser({
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
                 startSession={startSession}
+                connectNoDirectory={connectNoDirectory}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 insertSessionBefore={insertSessionBefore}

@@ -62,6 +62,18 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
+   * Connect a no-directory session (recorded). The default resolves a stable
+   * scratch session id; stub for reuse/create flows.
+   * @returns the connected session id.
+   */
+  async connectNoDirectory(): Promise<SessionId> {
+    this.calls.push({ method: 'connectNoDirectory', args: [] })
+    const stub = this.stubs.get('connectNoDirectory')
+    if (stub !== undefined) return await (stub() as Promise<SessionId>)
+    return 'session-no-directory' as SessionId
+  }
+
+  /**
    * New-session flow (recorded; stubbed behavior runs when installed).
    * @param workspaceId - optional explicit workspace target.
    */

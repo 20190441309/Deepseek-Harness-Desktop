@@ -14,7 +14,7 @@ Removing the weaker entry leaves the sidebar header with exactly one action, whi
 
 Adding a Workspace has one route: pick a host directory through the composed directory flow, new or existing. `menu.addWorkspace` ("添加工作区…" / "Add workspace…") is the entry; the create-by-name dialog and its `create.*` / `menu.createWorkspace` / `workspace.new` strings are gone. The label names the outcome, not the mechanism, because it is now the only door to that outcome — a user looking for "新建" must find it.
 
-**A menu exists to disambiguate between targets.** When the only entry left is the add action — the add-only sidebar surface, or the hero with an empty list — the anchor gesture *is* that action: the flow opens directly and no popover renders. A one-row popover costs a click and offers nothing to choose between. The rule is one predicate (`addIsTheOnlyEntry`) covering both surfaces rather than a per-surface special case.
+**A menu exists to disambiguate between targets.** When the only entry left is the add action — the add-only sidebar surface, which never offers No workspace folder — the anchor gesture *is* that action: the flow opens directly and no popover renders. A one-row popover costs a click and offers nothing to choose between. The hero with an empty list keeps its menu because No workspace folder and Add workspace are two choices ([no-directory sessions](../feature/2026-08-15-no-directory-task-sessions.md)). The rule is one predicate (`addIsTheOnlyEntry`, which is false while a no-directory entry is present) covering both surfaces rather than a per-surface special case.
 
 Two boundaries fall out of that rule and are part of it:
 

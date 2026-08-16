@@ -21,6 +21,13 @@ export interface IWorkspaces {
    */
   connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
   /**
+   * Connect a Session that is not a Workspace member: reuse a blank Session
+   * whose cwd is the Host scratch directory and whose id is in no Workspace
+   * index, else create one with that cwd.
+   * @returns the connected session id.
+   */
+  connectNoDirectory(): Promise<SessionId>
+  /**
    * The New Session flow: connect the explicit, current-Session, or recent
    * Workspace and open the resulting session; failures surface on the session
    * list state.

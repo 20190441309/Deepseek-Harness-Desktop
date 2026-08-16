@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-paired-remote-devices.md
-2026-08-14-paired-remote-devices.md: 2afe5d770a4e224a25d5a6e8cbe57dec375602d1
-2026-08-14-paired-remote-devices.zh.md: 50e1c21b6ac597c027a57c3b4644dc3fc8dc537e
+2026-08-14-paired-remote-devices.md: 914033d52c2ec5693a0ef2ac07098e02920bfc6a
+2026-08-14-paired-remote-devices.zh.md: 86dfaea859e3b5baf6968f1b253c6dbad771233f

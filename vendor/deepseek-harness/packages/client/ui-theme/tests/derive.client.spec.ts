@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveThemeTokens, pickReadableText } from '../src/derive.ts'
+import { deriveThemeTokens, contrastRatio, NAV_ITEM_ACTIVE_ACCENT_MIN_CONTRAST, NAV_ITEM_ACTIVE_MIN_CONTRAST, pickReadableText } from '../src/derive.ts'
 
 const LIGHT = {
   accent: '#4176e6',
@@ -69,6 +69,21 @@ describe('deriveThemeTokens', () => {
     const soft = deriveThemeTokens({ ...LIGHT, contrast: 0 })
     const hard = deriveThemeTokens({ ...LIGHT, contrast: 100 })
     expect(soft['--dsw-alias-bg-layer-1']).not.toBe(hard['--dsw-alias-bg-layer-1'])
+  })
+
+  it('keeps paper nav-item active fills above the layer-2 contrast floor', () => {
+    const tokens = deriveThemeTokens({
+      accent: '#0f766e',
+      background: '#f3efe6',
+      foreground: '#1c1915',
+      contrast: 50,
+    })
+    const layer2 = tokens['--dsw-alias-bg-layer-2']!
+    const active = tokens['--dsw-specific-sidebar-nav-item-active']!
+    const accent = tokens['--dsw-specific-sidebar-nav-item-active-accent']!
+    expect(contrastRatio(active, layer2)).toBeGreaterThanOrEqual(NAV_ITEM_ACTIVE_MIN_CONTRAST)
+    expect(contrastRatio(accent, layer2)).toBeGreaterThanOrEqual(NAV_ITEM_ACTIVE_ACCENT_MIN_CONTRAST)
+    expect(contrastRatio(accent, layer2)).toBeGreaterThan(contrastRatio(active, layer2))
   })
 })
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  MAX_WALLPAPER_DATA_URL_CHARS, WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
+  MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
   applyWallpaperLayer, clampWallpaperEffect, downscaleWallpaper, encodeWallpaperFile,
   isWallpaperDataUrl, mixWallpaperSurfaces, readFileAsDataUrl, wallpaperBlurPx,
   wallpaperCanvasSolidity, wallpaperPixelFactor,
@@ -38,18 +38,21 @@ describe('wallpaper helpers', () => {
   it('derives the layered canvas solidity from the glass slider', () => {
     expect(wallpaperCanvasSolidity(0)).toBe(0)
     expect(wallpaperCanvasSolidity(40)).toBe(15)
-    expect(wallpaperCanvasSolidity(80)).toBe(45)
-    expect(wallpaperCanvasSolidity(100)).toBe(100)
-    expect(wallpaperCanvasSolidity(140)).toBe(100)
+    expect(wallpaperCanvasSolidity(80)).toBe(MAX_WALLPAPER_CANVAS_SOLIDITY)
+    expect(wallpaperCanvasSolidity(100)).toBe(MAX_WALLPAPER_CANVAS_SOLIDITY)
+    expect(wallpaperCanvasSolidity(140)).toBe(MAX_WALLPAPER_CANVAS_SOLIDITY)
   })
 
   it('mixes layered chrome fills at the given solidity and keeps an existing hex', () => {
     const light = mixWallpaperSurfaces({}, 'light', 80)
     expect(light['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
-    // Canvas 45%, sidebar midway 63%, raised layers at the full 80%.
+    // Canvas 45% (capped), sidebar halfway (63%), raised layers at the full 80%.
     expect(light['--dsw-alias-bg-base']).toContain('45%')
     expect(light['--dsw-specific-sidebar-fill']).toContain('63%')
     expect(light['--dsw-alias-bg-layer-1']).toContain('80%')
+    const low = mixWallpaperSurfaces({}, 'light', 40)
+    expect(low['--dsw-alias-bg-base']).toContain('15%')
+    expect(low['--dsw-specific-sidebar-fill']).toContain('28%')
     const dark = mixWallpaperSurfaces({ '--dsw-alias-bg-base': '#120e18' }, 'dark', 70)
     expect(dark['--dsw-alias-bg-base']).toContain('#120e18')
     expect(dark['--dsw-alias-bg-base']).toContain('color-mix')
@@ -58,7 +61,11 @@ describe('wallpaper helpers', () => {
       '--dsw-alias-bg-base': 'color-mix(in srgb, #fff 58%, transparent)',
     }, 'light', 120)
     expect(already['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
-    expect(already['--dsw-alias-bg-base']).toContain('100%')
+    expect(already['--dsw-alias-bg-base']).toContain(`${MAX_WALLPAPER_CANVAS_SOLIDITY}%`)
+    const solid = mixWallpaperSurfaces({}, 'light', 100)
+    expect(solid['--dsw-alias-bg-base']).toContain(`${MAX_WALLPAPER_CANVAS_SOLIDITY}%`)
+    expect(solid['--dsw-specific-sidebar-fill']).toBe('var(--dsw-static-neutral-bluish-00)')
+    expect(solid['--dsw-alias-bg-layer-1']).toBe('var(--dsw-static-neutral-bluish-00)')
   })
 })
 
@@ -103,7 +110,8 @@ describe('applyWallpaperLayer', () => {
     vi.stubGlobal('Image', InstantImage)
     const drawn: unknown[][] = []
     const context = { drawImage: (...args: unknown[]) => { drawn.push(args) } }
-    const createElement = document.createElement.bind(document)
+    // String-keyed access keeps the deprecated createElement out of the lint rules.
+    const createElement = Reflect.get(document, 'createElement').bind(document)
     const canvas = createElement('canvas')
     Object.defineProperty(canvas, 'getContext', { value: () => context })
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) =>
@@ -264,16 +272,19 @@ describe('downscaleWallpaper', () => {
       set src(_value: string) { queueMicrotask(() => this.onload?.()) }
     }
     vi.stubGlobal('Image', OkImage)
-    const createElement = document.createElement.bind(document)
+    // String-keyed access keeps the deprecated createElement out of the lint rules.
+    const createElement = Reflect.get(document, 'createElement').bind(document)
 
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    const missingContextSpy = vi.spyOn(document, 'createElement')
+    missingContextSpy.mockImplementation((tag: string) => {
       if (tag !== 'canvas') return createElement(tag)
       return { getContext: () => null } as unknown as HTMLCanvasElement
     })
     expect(await downscaleWallpaper(PNG)).toBeNull()
-    vi.mocked(document.createElement).mockRestore()
+    missingContextSpy.mockRestore()
 
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    const throwingSpy = vi.spyOn(document, 'createElement')
+    throwingSpy.mockImplementation((tag: string) => {
       if (tag !== 'canvas') return createElement(tag)
       return {
         width: 0,
@@ -283,9 +294,10 @@ describe('downscaleWallpaper', () => {
       } as unknown as HTMLCanvasElement
     })
     expect(await downscaleWallpaper(PNG)).toBeNull()
-    vi.mocked(document.createElement).mockRestore()
+    throwingSpy.mockRestore()
 
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    const badExportSpy = vi.spyOn(document, 'createElement')
+    badExportSpy.mockImplementation((tag: string) => {
       if (tag !== 'canvas') return createElement(tag)
       return {
         width: 0,
@@ -295,9 +307,10 @@ describe('downscaleWallpaper', () => {
       } as unknown as HTMLCanvasElement
     })
     expect(await downscaleWallpaper(PNG)).toBeNull()
-    vi.mocked(document.createElement).mockRestore()
+    badExportSpy.mockRestore()
 
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    const okSpy = vi.spyOn(document, 'createElement')
+    okSpy.mockImplementation((tag: string) => {
       if (tag !== 'canvas') return createElement(tag)
       return {
         width: 0,

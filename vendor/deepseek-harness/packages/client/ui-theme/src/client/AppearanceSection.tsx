@@ -140,6 +140,7 @@ export function AppearanceSection({
         wallpaperImage={wallpaperImage}
         wallpaperBlur={wallpaperBlur}
         wallpaperPixelate={wallpaperPixelate}
+        glassOpacity={glassOpacity}
         t={t}
         setWallpaper={setWallpaper}
       />
@@ -162,7 +163,7 @@ export function AppearanceSection({
           aria-valuemax={MAX_GLASS_OPACITY}
           aria-valuenow={glassOpacity}
           aria-label={t('glass.title')}
-          onChange={event => { setGlassOpacity(Number(event.currentTarget.value)) }}
+          onChange={(event) => { setGlassOpacity(Number(event.currentTarget.value)) }}
         />
         <Button type="button" variant="ghost" onClick={() => { setGlassOpacity(DEFAULT_GLASS_OPACITY) }}>
           {t('reset')}
@@ -195,7 +196,7 @@ export function AppearanceSection({
           <Input
             value={fontFamilySans}
             placeholder={t('type.placeholder')}
-            onChange={event => { setTypography({ fontFamilySans: event.currentTarget.value }) }}
+            onChange={(event) => { setTypography({ fontFamilySans: event.currentTarget.value }) }}
           />
           <span className={css.hint}>{t('type.interfaceHint')}</span>
         </label>
@@ -210,7 +211,7 @@ export function AppearanceSection({
             value={fontSizeInterface}
             style={sliderFillStyle(fontSizeInterface, MIN_INTERFACE_FONT_SIZE, MAX_INTERFACE_FONT_SIZE)}
             aria-label={t('type.size')}
-            onChange={event => { setTypography({ fontSizeInterface: Number(event.currentTarget.value) }) }}
+            onChange={(event) => { setTypography({ fontSizeInterface: Number(event.currentTarget.value) }) }}
           />
           <span className={css.value}>{fontSizeInterface}px</span>
         </label>
@@ -219,7 +220,7 @@ export function AppearanceSection({
           <Input
             value={fontFamilyCode}
             placeholder={t('type.placeholder')}
-            onChange={event => { setTypography({ fontFamilyCode: event.currentTarget.value }) }}
+            onChange={(event) => { setTypography({ fontFamilyCode: event.currentTarget.value }) }}
           />
           <span className={css.hint}>{t('type.codeHint')}</span>
         </label>
@@ -234,7 +235,7 @@ export function AppearanceSection({
             value={fontSizeCode}
             style={sliderFillStyle(fontSizeCode, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE)}
             aria-label={t('type.sizeCode')}
-            onChange={event => { setTypography({ fontSizeCode: Number(event.currentTarget.value) }) }}
+            onChange={(event) => { setTypography({ fontSizeCode: Number(event.currentTarget.value) }) }}
           />
           <span className={css.value}>{fontSizeCode}px</span>
         </label>
@@ -254,16 +255,18 @@ export function AppearanceSection({
               <Input
                 value={fontFamilyComposer}
                 placeholder={t('type.placeholder')}
-                onChange={event => { setTypography({ fontFamilyComposer: event.currentTarget.value }) }}
+                onChange={(event) => { setTypography({ fontFamilyComposer: event.currentTarget.value }) }}
               />
+              <span className={css.hint}>{t('type.composerHint')}</span>
             </label>
             <label className={css.field}>
               <span>{t('type.terminal')}</span>
               <Input
                 value={fontFamilyTerminal}
                 placeholder={t('type.placeholder')}
-                onChange={event => { setTypography({ fontFamilyTerminal: event.currentTarget.value }) }}
+                onChange={(event) => { setTypography({ fontFamilyTerminal: event.currentTarget.value }) }}
               />
+              <span className={css.hint}>{t('type.terminalHint')}</span>
             </label>
           </div>
         ) : null}
