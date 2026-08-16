@@ -9,7 +9,8 @@ export type MarketplaceItem = {
   owner: string
   repo: string
   description: string
-  stars: number
+  /** Star count; the desktop catalog may deliver it as a numeric string. */
+  stars: number | string
   packageName: string
   homepage: string
   installSpec: string
@@ -67,6 +68,8 @@ export type DesktopShell = {
   saveConfig?: (patch: { githubToken?: string }) => Promise<{ hasGithubToken?: boolean }>
   getConfig?: () => Promise<{ hasGithubToken?: boolean }>
   onPluginProgress?: (handler: (payload: MarketplaceProgress) => void) => () => void
+  /** Prefill a composer install draft from the standalone marketplace window. */
+  onSeedInstallDraft?: (handler: (item: { repo: string; installSpec: string }) => void) => () => void
 }
 
 /**

@@ -30,7 +30,7 @@ export type PluginsSettingsSectionProps =
   & InjectFace<PluginsSettingsSectionInjected>
 
 /** Render one Plugins page whose contents arrive from feature-owned tabs. */
-export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettingsSectionProps) {
+export function PluginsSettingsSection({ t, renderSlot, useTabs, close }: PluginsSettingsSectionProps) {
   const tabsId = useId()
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const rows = useTabs(value => value)
@@ -106,7 +106,7 @@ export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettin
                   aria-labelledby={`${tabsId}-tab-${row.id}`}
                   hidden={!selected}
                 >
-                  {renderSlot('settings.plugins.tab', {}, { only: row.id })}
+                  {renderSlot('settings.plugins.tab', { close }, { only: row.id })}
                 </div>
               )
             })}

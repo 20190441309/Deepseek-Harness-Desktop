@@ -8,6 +8,7 @@ import type {
   MarketplaceItem,
   MarketplaceProgress,
 } from './desktop-shell.ts'
+import type { InstallDraftItem } from './seed-install-draft.ts'
 import css from './MarketplaceSettingsTab.module.css'
 
 /** Registration-side desktop callbacks used by the marketplace tab. */
@@ -16,8 +17,8 @@ export interface MarketplaceSettingsTabInjected {
   listMarketplace: (options?: { refresh?: boolean }) => Promise<MarketplaceCatalog>
   /** Read web-profile installed packages. */
   listInstalled: () => Promise<InstalledPlugins>
-  /** Install one git/npm spec into the web profile. */
-  installPlugin: (spec: string, options?: { allowBuilds?: string[] }) => Promise<MarketplaceInstallResult>
+  /** Close Settings, open a blank session, and prefill an install request. Does not send. */
+  seedInstallDraft: (item: InstallDraftItem) => Promise<void>
   /** Remove one installed package from the web profile. */
   uninstallPlugin: (name: string) => Promise<MarketplaceInstallResult>
   /** Open a repository URL in the system browser. */
@@ -99,9 +100,10 @@ function sortItems(items: MarketplaceItem[], sort: SortId): MarketplaceItem[] {
 /** Desktop marketplace catalog inside Settings → Plugins. */
 export function MarketplaceSettingsTab({
   t,
+  close,
   listMarketplace,
   listInstalled,
-  installPlugin,
+  seedInstallDraft,
   uninstallPlugin,
   openExternal,
   saveGithubToken,
@@ -134,7 +136,7 @@ export function MarketplaceSettingsTab({
       if (next.length > 0) {
         setItems(next)
         setCategories(catalog.categories ?? [])
-        setDetail((current) => current ? next.find(item => item.id === current.id) ?? current : null)
+        setDetail(current => current ? next.find(item => item.id === current.id) ?? current : null)
       }
       setWarning(catalog.warning ?? '')
       setInstalled(new Map((profile.plugins ?? []).map(row => [row.name, row.spec])))
@@ -188,24 +190,9 @@ export function MarketplaceSettingsTab({
     current?.resolve(value)
   }
 
-  const runInstall = async (spec: string): Promise<void> => {
-    const confirmed = await ask(t('marketInstallTitle'), t('marketInstallBody').replace('{spec}', spec), t('marketInstallOk'))
-    if (!confirmed) return
-    setBusy(true)
-    setLog('')
-    const result = await installPlugin(spec)
-    if (result.needsAllowBuilds) {
-      const keys = result.allowBuilds ?? []
-      const again = await ask(t('marketAllowTitle'), t('marketAllowBody').replace('{keys}', keys.join('\n') || t('marketAllowUnknown')), t('marketAllowOk'), result.log ?? '')
-      if (again) {
-        const retry = await installPlugin(spec, { allowBuilds: keys })
-        if (!retry.ok) await ask(t('marketFailTitle'), retry.error || t('marketFail'), t('marketOk'), retry.log ?? '')
-      }
-    } else if (!result.ok) {
-      await ask(t('marketFailTitle'), result.error || t('marketFail'), t('marketOk'), result.log ?? '')
-    }
-    setBusy(false)
-    await load(false)
+  const runInstall = (item: MarketplaceItem): void => {
+    close()
+    void seedInstallDraft({ repo: item.repo, installSpec: item.installSpec })
   }
 
   const runUninstall = async (name: string): Promise<void> => {
@@ -307,7 +294,7 @@ export function MarketplaceSettingsTab({
       {!busy && visible.length === 0 && (items.length > 0 || !warning) ? <p className={css.status}>{t('marketEmpty')}</p> : null}
       {visible.length > 0 ? (
         <div className={css.masonry}>
-          {[0, 1].map((column) => (
+          {[0, 1].map(column => (
             <ul key={column} className={css.masonryCol} data-market-col={column}>
               {visible.filter((_, index) => index % 2 === column).map((item) => {
                 const name = installedName(item, installed)
@@ -367,7 +354,7 @@ export function MarketplaceSettingsTab({
             ) : null}
             <div className={css.actions}>
               {detail.isBundle && !detailName ? (
-                <button type="button" disabled={busy} onClick={() => { void runInstall(detail.installSpec) }}>
+                <button type="button" disabled={busy} onClick={() => { runInstall(detail) }}>
                   {t('marketInstall')}
                 </button>
               ) : null}
