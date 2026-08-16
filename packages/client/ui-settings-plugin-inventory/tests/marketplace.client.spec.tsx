@@ -57,8 +57,9 @@ function renderTab(overrides: Partial<MarketplaceSettingsTabProps> = {}) {
       warning: 'stale cache',
     })),
     listInstalled: vi.fn(async () => ({ plugins: [] })),
-    installPlugin: vi.fn(async () => ({ ok: true })),
+    seedInstallDraft: vi.fn(async () => {}),
     uninstallPlugin: vi.fn(async () => ({ ok: true })),
+    close: vi.fn(),
     openExternal: vi.fn(async () => true),
     saveGithubToken: vi.fn(async () => {}),
     hasGithubToken: vi.fn(async () => false),
@@ -103,15 +104,9 @@ describe('MarketplaceSettingsTab', () => {
     expect(within(detail).getByText('MIT')).toBeTruthy()
     expect(within(detail).getByText('2024-01-01')).toBeTruthy()
     fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    fireEvent.keyDown(document, { key: 'Enter' })
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.getByRole('dialog', { name: 'dsh-loop' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: en.marketCancel }))
-    expect(props.installPlugin).not.toHaveBeenCalled()
-
-    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    fireEvent.click(screen.getByRole('button', { name: en.marketInstallOk }))
-    await waitFor(() => { expect(props.installPlugin).toHaveBeenCalledWith('github:owner/dsh-loop#abc') })
+    expect(props.close).toHaveBeenCalledOnce()
+    expect(props.seedInstallDraft).toHaveBeenCalledWith({ repo: 'dsh-loop', installSpec: 'github:owner/dsh-loop#abc' })
+    expect(screen.queryByRole('button', { name: en.marketCancel })).toBeNull()
 
     fireEvent.click(within(detail).getByRole('button', { name: en.marketRepo }))
     expect(props.openExternal).toHaveBeenCalledWith(ITEM.homepage)
@@ -177,12 +172,9 @@ describe('MarketplaceSettingsTab', () => {
     expect(screen.queryByRole('dialog', { name: 'awesome' })).toBeNull()
   })
 
-  it('retries after allowBuilds and uninstalls a matched spec', async () => {
+  it('uninstalls a matched spec and reports a failure', async () => {
     const props = renderTab({
       listInstalled: vi.fn(async () => ({ plugins: [{ name: '@dsh-external/dsh-loop', spec: 'github:owner/dsh-loop#abc' }] })),
-      installPlugin: vi.fn()
-        .mockResolvedValueOnce({ ok: false, needsAllowBuilds: true, allowBuilds: ['@dsh-external/dsh-loop'], log: 'blocked' })
-        .mockResolvedValueOnce({ ok: false, error: 'still blocked', log: 'nope' }),
       uninstallPlugin: vi.fn(async () => ({ ok: false, error: 'busy' })),
       hasGithubToken: vi.fn(async () => true),
     })
@@ -236,52 +228,12 @@ describe('MarketplaceSettingsTab', () => {
     expect(screen.queryByText(en.marketEmpty)).toBeNull()
   })
 
-  it('allows a build script retry and reports a catalog failure', async () => {
+  it('reports a catalog failure', async () => {
     renderTab({
       listMarketplace: vi.fn(async () => { throw new Error('offline') }),
     })
     await waitFor(() => { expect(screen.getByText(en.marketError)).toBeTruthy() })
     expect(screen.queryByText(en.marketEmpty)).toBeNull()
-
-    const install = vi.fn()
-      .mockResolvedValueOnce({ ok: false, needsAllowBuilds: true, allowBuilds: [] })
-      .mockResolvedValueOnce({ ok: true })
-    cleanup()
-    renderTab({
-      installPlugin: install,
-      listMarketplace: vi.fn(async () => ({ items: [ITEM], categories: [{ id: 'all', label: 'All', count: 1 }] })),
-    })
-    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
-    const detail = openCard('dsh-loop')
-    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    fireEvent.click(screen.getByRole('button', { name: en.marketInstallOk }))
-    await waitFor(() => { expect(screen.getByText(en.marketAllowTitle)).toBeTruthy() })
-    fireEvent.click(screen.getByRole('button', { name: en.marketAllowOk }))
-    await waitFor(() => { expect(install).toHaveBeenCalledTimes(2) })
-  })
-
-  it('does not retry when the user declines allowBuilds', async () => {
-    const install = vi.fn(async () => ({ ok: false, needsAllowBuilds: true, allowBuilds: ['@dsh-external/dsh-loop'] }))
-    renderTab({ installPlugin: install })
-    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
-    const detail = openCard('dsh-loop')
-    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    fireEvent.click(screen.getByRole('button', { name: en.marketInstallOk }))
-    await waitFor(() => { expect(screen.getByText(en.marketAllowTitle)).toBeTruthy() })
-    fireEvent.click(screen.getByRole('button', { name: en.marketCancel }))
-    expect(install).toHaveBeenCalledTimes(1)
-    expect(install).toHaveBeenCalledWith('github:owner/dsh-loop#abc')
-  })
-
-  it('reports a failed install that does not need allowBuilds', async () => {
-    const installPlugin = vi.fn(async () => ({ ok: false, error: 'pnpm missing' }))
-    renderTab({ installPlugin })
-    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
-    const detail = openCard('dsh-loop')
-    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    fireEvent.click(screen.getByRole('button', { name: en.marketInstallOk }))
-    await waitFor(() => { expect(screen.getByText('pnpm missing')).toBeTruthy() })
-    fireEvent.click(screen.getByRole('button', { name: en.marketOk }))
   })
 
   it('matches an installed plugin by github spec when the package name is missing', async () => {

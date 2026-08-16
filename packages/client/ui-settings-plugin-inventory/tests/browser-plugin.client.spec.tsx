@@ -33,7 +33,28 @@ async function bench() {
   const list = vi.fn<() => Promise<ListResult>>()
     .mockResolvedValue({ ok: true, value: EMPTY })
   ctx.provide('remote.pluginInventory', { list })
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list }
+  const connectWorkspace = vi.fn(async () => 'sess-new')
+  const open = vi.fn()
+  const setDraft = vi.fn()
+  const scope = { id: 'scope' }
+  ctx.provide('sessions', {
+    open,
+    scope: vi.fn(() => scope),
+    list: {
+      getSnapshot: () => ({ current: 'sess-current' }),
+    },
+  })
+  ctx.provide('workspaces', {
+    connectWorkspace,
+    list: {
+      getSnapshot: () => ({
+        items: [{ workspaceId: 'ws-1', sessionIds: ['sess-current'] }],
+        recentWorkspaceId: 'ws-1',
+      }),
+    },
+  })
+  ctx.provide('conversation', { input: { for: () => ({ setDraft }) } })
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list, connectWorkspace, open, setDraft }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -112,7 +133,7 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     const injected = (market.inject as () => {
       listMarketplace: typeof shell.listMarketplace
       listInstalled: typeof shell.listInstalledPlugins
-      installPlugin: typeof shell.installPlugin
+      seedInstallDraft: (item: { repo: string; installSpec: string }) => Promise<void>
       uninstallPlugin: typeof shell.uninstallPlugin
       openExternal: (url: string) => Promise<boolean>
       saveGithubToken: (token: string) => Promise<void>
@@ -121,7 +142,10 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     })()
     await expect(injected.listMarketplace()).resolves.toEqual({ items: [] })
     await expect(injected.listInstalled()).resolves.toEqual({ plugins: [] })
-    await expect(injected.installPlugin('github:a/b')).resolves.toEqual({ ok: true })
+    await injected.seedInstallDraft({ repo: 'loop', installSpec: 'github:a/b' })
+    expect(b.connectWorkspace).toHaveBeenCalledWith('ws-1')
+    expect(b.open).toHaveBeenCalledWith('sess-new')
+    expect(b.setDraft).toHaveBeenCalledWith('帮我安装 loop\n\n安装规格：github:a/b')
     await expect(injected.uninstallPlugin('pkg')).resolves.toEqual({ ok: true })
     await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
     await injected.saveGithubToken('tok')
@@ -159,6 +183,31 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     expect(shell.saveConfig).toHaveBeenCalledWith({ githubToken: 'tok' })
     await expect(injected.hasGithubToken()).resolves.toBe(true)
     expect(injected.onProgress(() => {})).toBe(off)
+    delete (window as Window & { shell?: unknown }).shell
+    await b.ctx.fiber.dispose()
+  })
+
+  it('seeds an install draft from the standalone marketplace window', async () => {
+    const b = await bench()
+    declare(b.slots)
+    let seed: ((item: { repo: string; installSpec: string }) => Promise<void>) | undefined
+    const shell = {
+      listMarketplace: vi.fn(async () => ({ items: [] })),
+      listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
+      installPlugin: vi.fn(async () => ({ ok: true })),
+      uninstallPlugin: vi.fn(async () => ({ ok: true })),
+      onSeedInstallDraft: vi.fn((handler: (item: { repo: string; installSpec: string }) => Promise<void>) => {
+        seed = handler
+        return () => {}
+      }),
+    }
+    ;(window as Window & { shell?: unknown }).shell = shell
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    expect(shell.onSeedInstallDraft).toHaveBeenCalledOnce()
+    await seed!({ repo: 'loop', installSpec: 'github:a/b' })
+    expect(b.connectWorkspace).toHaveBeenCalledWith('ws-1')
+    expect(b.open).toHaveBeenCalledWith('sess-new')
+    expect(b.setDraft).toHaveBeenCalledWith('帮我安装 loop\n\n安装规格：github:a/b')
     delete (window as Window & { shell?: unknown }).shell
     await b.ctx.fiber.dispose()
   })
