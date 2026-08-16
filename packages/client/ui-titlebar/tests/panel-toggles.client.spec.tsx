@@ -96,7 +96,7 @@ describe('PanelToggles', () => {
     input.remove()
   })
 
-  it('does not toggle the terminal drawer from an xterm target', () => {
+  it('toggles the terminal drawer from an xterm target but not the surfaces column', () => {
     const b = mount()
     const term = document.createElement('div')
     term.className = 'xterm'
@@ -104,7 +104,9 @@ describe('PanelToggles', () => {
     term.append(inner)
     document.body.append(term)
     fireEvent.keyDown(inner, { key: '`', ctrlKey: true })
-    expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+    expect(b.toggleTerminalDrawer).toHaveBeenCalledOnce()
+    fireEvent.keyDown(inner, { key: '\\', ctrlKey: true })
+    expect(b.toggleSurfaces).not.toHaveBeenCalled()
     term.remove()
   })
 
