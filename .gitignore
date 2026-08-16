@@ -7,6 +7,9 @@ vendor/deepseek-harness/**/src/*.js
 vendor/deepseek-harness/**/src/*.js.map
 vendor/deepseek-harness/**/src/*.d.ts
 vendor/deepseek-harness/**/src/*.d.ts.map
+# Hand-written CSS module declarations are source, not tsc droppings; without
+# them a fresh checkout cannot typecheck or build the client packages.
+!vendor/deepseek-harness/**/src/css-modules.d.ts
 dist/
 dist-release/
 out/
