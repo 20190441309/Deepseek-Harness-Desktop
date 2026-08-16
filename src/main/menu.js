@@ -44,6 +44,14 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
           accelerator: 'CmdOrCtrl+Shift+M',
           click: () => { openMarketplace(); },
         },
+        {
+          label: 'MCP…',
+          click: () => { openHarnessSettings('mcp'); },
+        },
+        {
+          label: '技能…',
+          click: () => { openHarnessSettings('skills'); },
+        },
         { type: 'separator' },
         isMac ? { role: 'close', label: '关闭窗口' } : { role: 'quit', label: '退出' },
       ],
