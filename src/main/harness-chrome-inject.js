@@ -8,6 +8,7 @@
   const CONTROL_GAP = 0;
   const EDGE = 8;
   const CLUSTER = 8;
+  const DRAG_GUTTER = 8;
 
   const ICON_MIN = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.4" width="8" height="1.2" rx="0.6" fill="currentColor"/></svg>';
   const ICON_MAX = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
@@ -193,19 +194,19 @@
         position: fixed;
         top: 0;
         z-index: 2147483644;
-        height: 56px;
+        height: ${DRAG_GUTTER}px;
         background: transparent;
         -webkit-app-region: drag;
       }
       [${MARK}] {
         -webkit-app-region: drag;
       }
-      [${MARK}="main"] {
-        padding-right: var(--dsh-wco-pad) !important;
-      }
       [${MARK}] ${INTERACTIVE},
       [${HIT}] {
         -webkit-app-region: no-drag !important;
+        pointer-events: auto;
+      }
+      [data-titlebar-row][${MARK}] {
         pointer-events: auto;
       }
     `;
@@ -236,11 +237,7 @@
     return host;
   }
 
-  function removeDragStrip() {
-    document.getElementById(DRAG_ID)?.remove();
-  }
-
-  function placeDraftDragStrip() {
+  function placeDragGutter() {
     let strip = document.getElementById(DRAG_ID);
     if (!strip) {
       strip = document.createElement('div');
@@ -251,6 +248,7 @@
     const left = center ? Math.max(0, Math.round(center.getBoundingClientRect().left)) : 0;
     strip.style.left = `${left}px`;
     strip.style.right = `${reservedRight()}px`;
+    strip.style.height = `${DRAG_GUTTER}px`;
     return strip;
   }
 
@@ -313,21 +311,16 @@
 
     let bg = opaqueBg(document.body);
     if (bar) {
-      removeDragStrip();
       bg = opaqueBg(bar);
-      bar.setAttribute(MARK, 'main');
       markInteractive(bar);
     } else if (titlebarRow instanceof HTMLElement) {
-      removeDragStrip();
       bg = opaqueBg(titlebarRow);
-    } else {
-      placeDraftDragStrip();
     }
+    placeDragGutter();
     if (titlebarRow instanceof HTMLElement) {
       titlebarRow.setAttribute(MARK, '');
     }
     if (logo) {
-      logo.setAttribute(MARK, '');
       markInteractive(logo);
     }
     if (sessionLog) {

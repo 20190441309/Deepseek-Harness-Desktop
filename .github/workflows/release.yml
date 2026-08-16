@@ -1,4 +1,4 @@
-name: Build Windows Installer
+name: Build installers
 
 on:
   workflow_dispatch: # 手动触发，产出安装包 artifacts
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -44,8 +44,6 @@ jobs:
 
       - name: Build NSIS setup installer
         run: npm run dist
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -56,15 +54,74 @@ jobs:
             dist/Deepseek-Harness-Desktop-Setup-*.exe.blockmap
           if-no-files-found: error
 
-      - name: Publish GitHub Release (tag only)
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Test desktop shell
+        run: npm test
+
+      - name: Download Electron binary
+        run: node node_modules/electron/install.js
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Prepare vendored harness (clone + pnpm install + build)
+        run: node scripts/setup-harness.js
+
+      - name: Vendor GUI gate (client + host suites)
+        working-directory: vendor/deepseek-harness
+        run: pnpm run test:gui
+
+      - name: Build macOS DMG
+        run: npm run dist:mac
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeek-Harness-macos-arm64
+          path: dist/Deepseek-Harness-Desktop-*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: [windows, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/release-notes.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-out
+          merge-multiple: true
+
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/Deepseek-Harness-Desktop-Setup-*.exe \
-            dist/Deepseek-Harness-Desktop-Setup-*.exe.blockmap \
+            dist-out/Deepseek-Harness-Desktop-Setup-*.exe \
+            dist-out/Deepseek-Harness-Desktop-Setup-*.exe.blockmap \
+            dist-out/Deepseek-Harness-Desktop-*.dmg \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Deepseek-Harness-Desktop $GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file .github/release-notes.md \
             --latest

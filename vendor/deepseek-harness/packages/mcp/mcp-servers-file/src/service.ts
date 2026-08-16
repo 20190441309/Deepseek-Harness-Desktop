@@ -84,11 +84,16 @@ const FIBER_PHASE = {
 
 /**
  * Default mounter: load one mcp-client instance as a child plugin.
+ * Activation failures stay on the child fiber and are logged; they must not
+ * reject the parent Host startup.
  * @param ctx - parent context.
  * @param config - mcp-client config.
  */
 export function defaultMounter(ctx: Context, config: McpClientConfig): ChildHandle {
   const fork = ctx.plugin(mcpClient, config)
+  void Promise.resolve(fork.await()).catch((error: unknown) => {
+    ctx.logger.error(error)
+  })
   return {
     dispose: () => fork.dispose(),
     phase: () => {

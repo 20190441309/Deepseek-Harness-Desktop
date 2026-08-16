@@ -37,9 +37,14 @@ test('injected chrome script omits the marketplace window-control', () => {
   assert.doesNotMatch(injectSource, /data-act="marketplace"/);
 });
 
-test('injected chrome script prefers the titlebar row over a draft drag strip', () => {
+test('injected chrome script uses an 8px drag gutter and does not mark the header as drag', () => {
   assert.match(injectSource, /\[data-titlebar-row\]/);
   assert.match(injectSource, /findTitlebarRow/);
+  assert.match(injectSource, /const DRAG_GUTTER = 8/);
+  assert.match(injectSource, /placeDragGutter/);
+  assert.doesNotMatch(injectSource, /height: 56px/);
+  assert.doesNotMatch(injectSource, /setAttribute\(MARK, 'main'\)/);
+  assert.doesNotMatch(injectSource, /logo\.setAttribute\(MARK/);
 });
 
 test('injected chrome script can be evaluated twice in one realm', () => {

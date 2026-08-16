@@ -4,13 +4,13 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已从 Releases 撤回；若已装上，请卸载后改装 0.1.3。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已撤回，不要再装。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-下一版（源码已合入，安装包待修复后发布）将包含：
+0.2.1 相对 0.1.3：
 
 1. 设置 → MCP、设置 → 技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。文件菜单也有入口。
 2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（可搜索）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
@@ -19,6 +19,8 @@
 5. 设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
 6. 插件市场安装改为打开空白会话并预填草稿，由你自己发送；卸载仍是一键。
 7. 手机远程办公本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
+
+0.2.1 还修了撤回的 0.2.0：Web UI 起来后标题栏除最小化 / 最大化 / 关闭外点不了；单个 MCP 子进程失败不再拖垮整个 Host。
 
 一直可用：第三方思考强度、识图模型兜底、自定义主题和背景图。
 
@@ -109,13 +111,15 @@
 
 ## 安装
 
-只想用的话，去 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 下载 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-0.1.3.exe`），装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
+只想用的话，去 [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1) 下载安装包，装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
 
-目前只提供 Windows x64 安装包；macOS / Linux 请从源码运行，官方打包暂未提供。
+- Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.1.exe`
+- macOS Apple Silicon（arm64）：`Deepseek-Harness-Desktop-0.2.1-mac-arm64.dmg`。包未签名，下载后请右键点「打开」，或先执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`。Intel Mac 暂未提供安装包。
+- Linux 请从源码运行。
 
 ## 从源码跑
 
-Windows 10+，Node 22.19+ / 24+，pnpm 11。
+Windows 10+ 或 macOS 14+（Apple Silicon），Node 22.19+ / 24+，pnpm 11。
 
 ```powershell
 git clone https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git
@@ -164,18 +168,19 @@ Harness 源码已随仓库自带（`vendor/deepseek-harness`），第一次 `set
 本地打包：
 
 ```powershell
-npm run dist
+npm run dist      # Windows NSIS
+npm run dist:mac  # macOS Apple Silicon DMG（需在 macOS 上跑）
 ```
 
-产物在 `dist/`：NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`）。打包时会把 `vendor/deepseek-harness` 解引用复制进 `resources/`，并捆绑一个 `node.exe`——装完不依赖本机 Node 环境。安装包里的 Web UI 若想用官方 Web UI，需要 dsh 构建产物齐全（`apps/cli/lib/bin.js` + `apps/web/dist/index.html`）。
+产物在 `dist/`：Windows 是 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-x.y.z.exe`），macOS 是 `npm run dist:mac` 产出的 Apple Silicon DMG。打包时会把 `vendor/deepseek-harness` 解引用复制进 `resources/`，并捆绑一个 Node 可执行文件——装完不依赖本机 Node 环境。安装包里的 Web UI 若想用官方 Web UI，需要 dsh 构建产物齐全（`apps/cli/lib/bin.js` + `apps/web/dist/index.html`）。
 
 ### CI 打包（推荐）
 
 本地打包要把 1.4GB 的官方源码搬进安装包，很慢。用 GitHub Actions（`.github/workflows/release.yml`）在云端构建：
 
 - **PR / 推 main**：`.github/workflows/test.yml` 跑 `npm test`（桌面壳单测，不启动 Electron）
-- **手动构建**：Actions 页 → Build Windows Installer → Run workflow；打包前同样先跑 `npm test`，安装包在 artifacts 里下载
-- **自动发布**：推送 `v*` 标签（如 `v0.2.0`）自动构建并发布 GitHub Release
+- **手动构建**：Actions 页 → Build installers → Run workflow；打包前同样先跑 `npm test`，Windows / macOS 安装包在 artifacts 里下载
+- **自动发布**：推送 `v*` 标签（如 `v0.2.1`）自动构建 Windows NSIS 与 macOS arm64 DMG，并发布 GitHub Release
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
 

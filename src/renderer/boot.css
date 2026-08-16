@@ -29,6 +29,14 @@ body {
   -webkit-app-region: drag;
 }
 
+/* BrowserView sits on top of boot.html; Electron still hit-tests this
+   caption's drag region on the parent window and swallows Web UI clicks
+   except where boot window-controls are no-drag. */
+body[data-harness-covered] .caption {
+  -webkit-app-region: no-drag;
+  pointer-events: none;
+}
+
 .scan {
   pointer-events: none;
   position: fixed;

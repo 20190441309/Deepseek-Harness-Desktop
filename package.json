@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Chisa",
   "license": "MIT",
@@ -13,8 +13,9 @@
     "test": "node --test \"src/**/*.test.js\"",
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder --win"
+    "pack": "electron-builder --dir --publish never",
+    "dist": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -53,6 +54,7 @@
       "zh-CN"
     ],
     "afterPack": "./scripts/after-pack.js",
+    "publish": null,
     "win": {
       "icon": "assets/icon.ico",
       "target": [
@@ -71,6 +73,25 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Deepseek-Harness-Desktop",
       "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "icon": "assets/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Deepseek-Harness-Desktop-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "Deepseek-Harness-Desktop-${version}-mac-${arch}.${ext}"
     }
   }
 }

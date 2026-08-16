@@ -348,6 +348,17 @@ async function assembleFromDeploy(projectDir, deployDir, harnessDest) {
   return total;
 }
 
+function resolveResourcesDir(context) {
+  if (context?.packager && typeof context.packager.getResourcesDir === 'function') {
+    return context.packager.getResourcesDir(context.appOutDir);
+  }
+  if (context?.electronPlatformName === 'darwin') {
+    const product = context.packager?.appInfo?.productFilename || 'Deepseek-Harness-Desktop';
+    return path.join(context.appOutDir, `${product}.app`, 'Contents', 'Resources');
+  }
+  return path.join(context.appOutDir, 'resources');
+}
+
 function copyBundledNode(destDir) {
   const src = [
     process.env.NODE_BINARY,
@@ -356,10 +367,13 @@ function copyBundledNode(destDir) {
     'C:\\Program Files (x86)\\nodejs\\node.exe',
   ].find((candidate) => candidate && fs.existsSync(candidate) && !/electron/i.test(candidate));
   if (!src) {
-    throw new Error('打包时未找到 node.exe，安装包将无法启动官方 Web UI');
+    throw new Error('打包时未找到 Node.js 可执行文件，安装包将无法启动官方 Web UI');
   }
   const dest = path.join(destDir, process.platform === 'win32' ? 'node.exe' : 'node');
   fs.copyFileSync(src, dest);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(dest, 0o755);
+  }
   return dest;
 }
 
@@ -387,6 +401,13 @@ function assertHarnessRuntime(harnessDest) {
     path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
     path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
     path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'),
   ];
   const missing = requiredFiles.filter((relative) => !fs.existsSync(path.join(harnessDest, relative)));
   if (missing.length > 0) {
@@ -434,7 +455,7 @@ function assertHarnessRuntime(harnessDest) {
 
 module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
-  const resources = path.join(context.appOutDir, 'resources');
+  const resources = resolveResourcesDir(context);
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();
@@ -461,6 +482,7 @@ module.exports = async function afterPack(context) {
   execFileSync('tar', ['-cf', path.basename(archive), '-C', path.basename(harnessDest), '.'], {
     cwd: path.dirname(harnessDest),
     stdio: 'inherit',
+    env: { ...process.env, COPYFILE_DISABLE: '1' },
   });
   if (!fs.existsSync(archive) || fs.statSync(archive).size < 1024) {
     throw new Error('运行时 tar 生成失败');
@@ -476,4 +498,5 @@ module.exports.collectFiles = collectFiles;
 module.exports.copyFiles = copyFiles;
 module.exports.deployCliEntries = deployCliEntries;
 module.exports.resolveDeployDir = resolveDeployDir;
+module.exports.resolveResourcesDir = resolveResourcesDir;
 module.exports.assertHarnessRuntime = assertHarnessRuntime;

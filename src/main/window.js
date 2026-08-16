@@ -134,8 +134,25 @@ function sendPluginBoot(payload) {
   sendToBoot('shell:plugin-boot', payload);
 }
 
+function setBootHarnessCovered(win, covered) {
+  if (!win || win.isDestroyed() || !win.webContents || win.webContents.isDestroyed()) {
+    return;
+  }
+  const url = typeof win.webContents.getURL === 'function' ? win.webContents.getURL() : '';
+  if (!url.startsWith('file:') || !url.includes('boot.html')) {
+    return;
+  }
+  const flag = covered ? 'true' : 'false';
+  void win.webContents.executeJavaScript(
+    `document.body && document.body.toggleAttribute('data-harness-covered', ${flag})`,
+  ).catch(() => {
+    // boot document may already be gone
+  });
+}
+
 function hideHarnessView(win) {
   harnessRevealed = false;
+  setBootHarnessCovered(win, false);
   if (pluginWatchTimer) {
     clearTimeout(pluginWatchTimer);
     pluginWatchTimer = null;
@@ -176,6 +193,7 @@ function revealHarnessView(win) {
   if (typeof win.setTopBrowserView === 'function') {
     win.setTopBrowserView(harnessView);
   }
+  setBootHarnessCovered(win, true);
   prepareHarnessChrome(win);
   syncHarnessChrome(win, harnessView.webContents);
 }
@@ -446,6 +464,7 @@ module.exports = {
   openMarketplace,
   openRemote,
   sendToBoot,
+  setBootHarnessCovered,
   isBootLoaded,
   isHarnessLoaded,
   iconImage,

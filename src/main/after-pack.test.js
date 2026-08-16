@@ -11,6 +11,7 @@ const {
   collectFiles,
   deployCliEntries,
   resolveDeployDir,
+  resolveResourcesDir,
 } = require('../../scripts/after-pack');
 
 function makeFixture(t) {
@@ -105,6 +106,13 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
       path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
       'conversation.chat.user-actions\n',
     ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
   ]);
   for (const [relative, content] of files) {
     const file = path.join(root, relative);
@@ -113,6 +121,38 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   }
 
   assert.doesNotThrow(() => assertHarnessRuntime(root));
+});
+
+test('assertHarnessRuntime rejects a host missing MCP settings runtime', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-mcp-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+
+  assert.throws(
+    () => assertHarnessRuntime(root),
+    /dsh-mcp-servers-file/,
+  );
 });
 
 test('assertHarnessRuntime rejects stale deploy output before archiving', (t) => {
@@ -126,5 +166,44 @@ test('assertHarnessRuntime rejects stale deploy output before archiving', (t) =>
   assert.throws(
     () => assertHarnessRuntime(root),
     /dsh-app-boot.*features\.js/,
+  );
+});
+
+test('resolveResourcesDir uses Contents/Resources inside the macOS .app', () => {
+  const darwin = resolveResourcesDir({
+    electronPlatformName: 'darwin',
+    appOutDir: path.join('dist', 'mac-arm64'),
+    packager: { appInfo: { productFilename: 'Deepseek-Harness-Desktop' } },
+  });
+  assert.equal(
+    darwin,
+    path.join('dist', 'mac-arm64', 'Deepseek-Harness-Desktop.app', 'Contents', 'Resources'),
+  );
+});
+
+test('resolveResourcesDir prefers electron-builder getResourcesDir', () => {
+  const expected = path.join('out', 'Resources');
+  assert.equal(
+    resolveResourcesDir({
+      electronPlatformName: 'darwin',
+      appOutDir: path.join('dist', 'mac'),
+      packager: {
+        getResourcesDir: (appOutDir) => {
+          assert.equal(appOutDir, path.join('dist', 'mac'));
+          return expected;
+        },
+      },
+    }),
+    expected,
+  );
+});
+
+test('resolveResourcesDir uses the unpacked resources folder on Windows', () => {
+  assert.equal(
+    resolveResourcesDir({
+      electronPlatformName: 'win32',
+      appOutDir: path.join('dist', 'win-unpacked'),
+    }),
+    path.join('dist', 'win-unpacked', 'resources'),
   );
 });

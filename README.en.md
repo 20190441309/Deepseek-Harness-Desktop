@@ -4,13 +4,13 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled from Releases after a launch failure; if you already installed it, uninstall and install 0.1.3. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled after a launch failure — do not install it. I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-The next release (already in source; installer pending a fix) will add:
+0.2.1 versus 0.1.3:
 
 1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
 2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (searchable), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
@@ -19,6 +19,8 @@ The next release (already in source; installer pending a fix) will add:
 5. Settings → General → When closing the window: minimize to tray or quit. Quit stops the local Harness and shows a theme-following Closing overlay.
 6. Plugin marketplace install opens a blank session and prefills a draft for you to send; uninstall stays one-click.
 7. Phone-remote access: entry point hidden this release, ships in the next one. Capability and docs stay; see Remote access below.
+
+0.2.1 also fixes the yanked 0.2.0: title-bar clicks other than min / max / close did nothing after the Web UI came up; a failing MCP child no longer takes down the Host.
 
 Still available: third-party thinking intensity, vision fallback, custom themes and wallpaper.
 
@@ -117,13 +119,15 @@ A Git workspace gets Commit / Commit & push / Push / pull-request in the title b
 
 ## Install
 
-Just want to use it? Grab the [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) NSIS installer (`Deepseek-Harness-Desktop-Setup-0.1.3.exe`) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
+Just want to use it? Grab [v0.2.1](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.1) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
 
-Only Windows x64 packages are published for now; on macOS / Linux, run from source — official packaging is not provided yet.
+- Windows x64: `Deepseek-Harness-Desktop-Setup-0.2.1.exe`
+- macOS Apple Silicon (arm64): `Deepseek-Harness-Desktop-0.2.1-mac-arm64.dmg`. The build is unsigned — after download, right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`. No Intel Mac installer yet.
+- Linux: run from source.
 
 ## Run from source
 
-Windows 10+, Node 22.19+ / 24+, pnpm 11. Get an API key from [DeepSeek](https://platform.deepseek.com/).
+Windows 10+ or macOS 14+ (Apple Silicon), Node 22.19+ / 24+, pnpm 11. Get an API key from [DeepSeek](https://platform.deepseek.com/).
 
 ```powershell
 git clone https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git
@@ -172,18 +176,19 @@ To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, th
 Build locally:
 
 ```powershell
-npm run dist
+npm run dist      # Windows NSIS
+npm run dist:mac  # macOS Apple Silicon DMG (must run on macOS)
 ```
 
-Output lands in `dist/`: an NSIS installer (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`). Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a `node.exe`, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
+Output lands in `dist/`: Windows NSIS (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`), or `npm run dist:mac` for an Apple Silicon DMG. Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a Node binary, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
 
 ### CI builds (recommended)
 
 Shipping the ~1.4 GB vendored harness into the installer makes local builds slow. Use the GitHub Actions workflow (`.github/workflows/release.yml`) instead:
 
 - **PR / push to main**: `.github/workflows/test.yml` runs `npm test` (desktop unit tests, no Electron)
-- **Manual build**: Actions page → Build Windows Installer → Run workflow; the job runs `npm test` before packaging; grab the installers from the artifacts
-- **Auto release**: pushing a `v*` tag (e.g. `v0.2.0`) builds and publishes a GitHub Release automatically
+- **Manual build**: Actions page → Build installers → Run workflow; the job runs `npm test` before packaging; grab Windows / macOS installers from the artifacts
+- **Auto release**: pushing a `v*` tag (e.g. `v0.2.1`) builds the Windows NSIS installer and the macOS arm64 DMG, then publishes a GitHub Release automatically
 
 Once a version is on GitHub Releases, the in-app update check picks it up.
 
