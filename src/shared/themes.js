@@ -8,7 +8,7 @@ const FAMILY_SEEDS = {
   deepseek: {
     name: 'DeepSeek',
     light: { accent: '#4176e6', background: '#ffffff', foreground: '#0f1115' },
-    dark: { accent: '#6ea8ff', background: '#151517', foreground: '#f5f5f5' },
+    dark: { accent: '#679efe', background: '#151517', foreground: '#f5f5f5' },
   },
   midnight: {
     name: '午夜',

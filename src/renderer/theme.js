@@ -1,17 +1,34 @@
+function applyDarkAttribute(dark) {
+  document.documentElement.toggleAttribute('data-ds-dark-theme', dark);
+  document.body?.toggleAttribute('data-ds-dark-theme', dark);
+}
+
 function applyTheme(theme) {
   if (!theme) {
     return;
   }
+  const dark = theme.scheme === 'dark';
+  applyDarkAttribute(dark);
   const root = document.documentElement;
-  root.style.setProperty('--bg', theme.bg);
-  root.style.setProperty('--fg', theme.fg);
-  root.style.setProperty('--muted', theme.muted);
-  root.style.setProperty('--accent', theme.accent);
-  root.style.setProperty('--field', theme.field);
-  root.style.setProperty('--line', theme.line);
-  root.style.setProperty('--button-fg', theme.buttonFg);
   root.style.colorScheme = theme.scheme || 'dark';
-  document.body?.style.setProperty('background', theme.bg);
+  if (theme.bg) {
+    root.style.setProperty('--dsw-alias-bg-base', theme.bg);
+  }
+  if (theme.fg) {
+    root.style.setProperty('--dsw-alias-label-primary', theme.fg);
+  }
+  if (theme.muted) {
+    root.style.setProperty('--dsw-alias-label-tertiary', theme.muted);
+    root.style.setProperty('--dsw-alias-label-secondary', theme.muted);
+  }
+  if (theme.accent) {
+    root.style.setProperty('--dsw-alias-state-business-primary', theme.accent);
+    root.style.setProperty('--dsw-alias-button-info-fill', theme.accent);
+  }
+  if (theme.line) {
+    root.style.setProperty('--dsw-alias-border-l2', theme.line);
+  }
+  document.body?.style.setProperty('background', theme.bg || '');
 }
 
 function watchTheme() {

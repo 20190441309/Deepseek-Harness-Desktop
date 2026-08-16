@@ -28,3 +28,10 @@ release*/
 .worktrees/
 apps/mobile/.expo/
 apps/mobile/dist/
+
+# Local agent/QA artifacts
+gui-test-screenshots/
+.cursor/
+.zcode/
+plugins/
+.final-gates/

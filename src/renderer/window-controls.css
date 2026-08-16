@@ -22,7 +22,7 @@
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--fg);
+  color: var(--dsw-alias-label-primary);
   cursor: pointer;
 }
 
@@ -33,7 +33,7 @@
 }
 
 .window-controls button:hover {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .window-controls button[data-act="close"]:hover {

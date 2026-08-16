@@ -22,7 +22,7 @@
     "pnpm": "11.8.0"
   },
   "optionalDependencies": {
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
@@ -40,18 +40,11 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "phone-web/dist/**/*",
       "package.json"
     ],
     "extraMetadata": {
       "main": "src/main/index.js"
     },
-    "extraResources": [
-      {
-        "from": "phone-web/dist",
-        "to": "phone-web/dist"
-      }
-    ],
     "electronDist": "node_modules/electron/dist",
     "compression": "maximum",
     "electronLanguages": [

@@ -127,7 +127,7 @@ function renderGrid() {
           ${installed ? '<span class="tag ok">已安装</span>' : ''}
         </div>
         <div class="card-actions">
-          ${canInstall ? `<button type="button" class="primary" data-act="install" data-spec="${escapeAttr(item.installSpec)}">安装</button>` : ''}
+          ${canInstall ? `<button type="button" class="primary" data-act="install" data-spec="${escapeAttr(item.installSpec)}" data-repo="${escapeAttr(item.repo)}">安装</button>` : ''}
           ${canRemove ? `<button type="button" data-act="remove" data-name="${escapeAttr(installed)}">卸载</button>` : ''}
           <button type="button" data-act="open" data-url="${escapeAttr(item.homepage)}">仓库</button>
         </div>
@@ -210,51 +210,25 @@ async function loadCatalog(refresh = false) {
   }
 }
 
-async function install(spec) {
-  const confirmed = await showDialog({
-    title: '安装插件',
-    body: `将从 GitHub 拉取源码并安装到 web profile：\n${spec}\n\nprepare 构建脚本会在本机、沙箱外执行。只安装你信任的仓库。默认锁定当前默认分支。`,
-    ok: '安装并重启',
-  });
-  if (!confirmed) {
+async function install(spec, repo) {
+  if (typeof api().seedInstallDraft !== 'function') {
+    await showDialog({
+      title: '请在主窗口安装',
+      body: '请打开设置 → 插件 → 插件市场，从那里安装。安装会预填一条会话草稿，由你自己发送。',
+      ok: '知道了',
+      cancel: '关闭',
+    });
     return;
   }
-  state.busy = true;
-  render();
-  els.dialog.hidden = false;
-  els.dialogTitle.textContent = '正在安装';
-  els.dialogBody.textContent = spec;
-  els.dialogLog.hidden = false;
-  els.dialogLog.textContent = '';
-  els.dialogOk.disabled = true;
-  els.dialogCancel.disabled = true;
-  const result = await api().installPlugin(spec);
-  els.dialogOk.disabled = false;
-  els.dialogCancel.disabled = false;
-  els.dialog.hidden = true;
-  if (result?.needsAllowBuilds) {
-    const keys = result.allowBuilds || [];
-    const again = await showDialog({
-      title: '允许构建脚本？',
-      body: `pnpm 拦截了该仓库的 prepare 脚本。同意后会把以下 key 写入 ~/.dsh/profiles/web/pnpm-workspace.yaml 并重试：\n${keys.join('\n') || '（未能解析 key，将按日志重试）'}`,
-      ok: '允许并重试',
-      log: result.log || '',
-    });
-    if (again) {
-      const retry = await api().installPlugin(spec, { allowBuilds: keys });
-      state.busy = false;
-      if (!retry?.ok) {
-        await showDialog({ title: '安装失败', body: retry?.error || '安装失败', ok: '知道了', cancel: '关闭', log: retry?.log || '' });
-      }
-      await loadCatalog(false);
-      return;
-    }
-  }
-  state.busy = false;
+  const result = await api().seedInstallDraft({ repo, installSpec: spec });
   if (!result?.ok) {
-    await showDialog({ title: '安装失败', body: result?.error || '安装失败', ok: '知道了', cancel: '关闭', log: result?.log || '' });
+    await showDialog({
+      title: '无法预填安装请求',
+      body: '请先打开主窗口的 Harness 界面，再从设置 → 插件 → 插件市场安装。',
+      ok: '知道了',
+      cancel: '关闭',
+    });
   }
-  await loadCatalog(false);
 }
 
 async function uninstall(name) {
@@ -320,7 +294,7 @@ els.grid.addEventListener('click', (event) => {
     return;
   }
   if (button.dataset.act === 'install') {
-    install(button.dataset.spec);
+    install(button.dataset.spec, button.dataset.repo);
     return;
   }
   if (button.dataset.act === 'remove') {

@@ -1,11 +1,6 @@
+@import '../shared/dsh-webui-tokens.css';
+
 :root {
-  --bg: #0b0d12;
-  --fg: #e8eef9;
-  --muted: #8b93a7;
-  --accent: #6ea8ff;
-  --line: rgba(232, 238, 249, 0.08);
-  --danger: #ff7b72;
-  --button-fg: #081018;
   --caption-h: 48px;
 }
 
@@ -17,9 +12,11 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .caption {
@@ -44,10 +41,10 @@ body {
 
 .mark {
   position: relative;
-  width: 88px;
-  height: 88px;
-  color: var(--fg);
-  animation: rise 700ms ease both;
+  width: 64px;
+  height: 64px;
+  color: var(--dsw-alias-label-primary);
+  animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) both;
 }
 
 .mark svg {
@@ -60,7 +57,7 @@ body {
   position: absolute;
   inset: -12px;
   border: 1.5px solid transparent;
-  border-top-color: var(--accent);
+  border-top-color: var(--dsw-alias-state-business-primary);
   border-radius: 50%;
   opacity: 0;
 }
@@ -73,40 +70,43 @@ body[data-state="stopping"] .ring {
 }
 
 body[data-state="error"] .mark {
-  color: var(--danger);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .brand {
-  margin: 28px 0 0;
-  font-size: 22px;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-  animation: rise 700ms ease 80ms both;
+  margin: 24px 0 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 80ms both;
 }
 
 .status {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   max-width: 36rem;
   text-align: center;
-  color: var(--muted);
-  animation: rise 700ms ease 140ms both;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+  animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 120ms both;
 }
 
 .status.ready {
-  color: var(--accent);
+  color: var(--dsw-alias-state-business-primary);
 }
 
 .status.error {
-  color: var(--danger);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .hint {
   margin: 8px 0 0;
   max-width: 36rem;
   text-align: center;
-  color: #6f778b;
-  font-size: 13px;
-  animation: rise 700ms ease 180ms both;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  animation: rise var(--ds-transition-duration) var(--ds-ease-in-out) 160ms both;
 }
 
 .failure,
@@ -114,15 +114,16 @@ body[data-state="error"] .mark {
   margin: 8px 0 0;
   max-width: 42rem;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .failure {
-  color: var(--danger);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .recovery {
-  color: var(--accent);
+  color: var(--dsw-alias-state-business-primary);
 }
 
 .failure[hidden],
@@ -132,8 +133,8 @@ body[data-state="error"] .mark {
 
 .actions {
   display: flex;
-  gap: 10px;
-  margin-top: 28px;
+  gap: 8px;
+  margin-top: 24px;
   -webkit-app-region: no-drag;
 }
 
@@ -141,42 +142,49 @@ body[data-state="error"] .mark {
   display: none;
 }
 
-button {
+.actions button {
   appearance: none;
-  border: 0;
-  background: var(--accent);
-  color: var(--button-fg);
-  font: inherit;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 82%, white);
+.actions .primary {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
 }
 
-button:disabled {
-  cursor: default;
-  opacity: 0.55;
+.actions .primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
 }
 
-button.ghost {
+.actions .ghost {
   background: transparent;
-  color: var(--fg);
-  font-weight: 500;
-  border: 1px solid var(--line);
+  color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--dsw-alias-border-l2);
 }
 
-button.ghost:hover {
-  background: rgba(232, 238, 249, 0.04);
-  border-color: rgba(232, 238, 249, 0.16);
+.actions .ghost:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
-button:focus-visible {
-  outline: 2px solid var(--accent);
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
 
@@ -190,9 +198,11 @@ button:focus-visible {
   list-style: none;
   max-height: 7.5rem;
   overflow: hidden;
-  border-top: 1px solid var(--line);
-  font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
-  color: #6f778b;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .log li {
@@ -200,13 +210,13 @@ button:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  animation: fade 280ms ease forwards;
+  animation: fade var(--ds-transition-duration) var(--ds-ease-in-out) forwards;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
