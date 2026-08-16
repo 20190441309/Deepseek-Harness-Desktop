@@ -37,6 +37,12 @@
       "path": "../../host/plugin-inventory"
     },
     {
+      "path": "../../host/mcp-servers"
+    },
+    {
+      "path": "../../host/skill-inventory/tsconfig.types.json"
+    },
+    {
       "path": "../../interaction/commands"
     },
     {

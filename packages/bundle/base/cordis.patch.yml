@@ -243,6 +243,9 @@
       config:
         maxBytes: 65536
 
+    - id: mcp-servers-file
+      name: '@deepseek-ai/dsh-mcp-servers-file'
+
     - id: skill
       name: '@deepseek-ai/dsh-skill'
 
