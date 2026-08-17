@@ -30,6 +30,7 @@ function mount(opts: {
   const onCloseToRight = vi.fn()
   const onCloseAll = vi.fn()
   const onOpenKind = vi.fn()
+  const onMenuOpenChange = vi.fn()
   render(
     <SurfaceTabs
       surfaces={opts.surfaces ?? [FILES, FILE]}
@@ -40,11 +41,12 @@ function mount(opts: {
       onCloseToRight={onCloseToRight}
       onCloseAll={onCloseAll}
       onOpenKind={onOpenKind}
+      onMenuOpenChange={onMenuOpenChange}
       openable={opts.openable ?? OPENABLE}
       t={t}
     />,
   )
-  return { onActivate, onClose, onCloseOthers, onCloseToRight, onCloseAll, onOpenKind }
+  return { onActivate, onClose, onCloseOthers, onCloseToRight, onCloseAll, onOpenKind, onMenuOpenChange }
 }
 
 afterEach(cleanup)
@@ -53,9 +55,11 @@ describe('SurfaceTabs', () => {
   it('opens a kind from the add menu and disables kinds that are already open', () => {
     const b = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Open a surface' }))
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(true)
     const filesItem = screen.getByRole('menuitem', { name: 'Files' })
     expect(filesItem).toHaveProperty('disabled', true)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }))
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(false)
     expect(b.onOpenKind).toHaveBeenCalledWith('terminal')
   })
 
@@ -69,7 +73,9 @@ describe('SurfaceTabs', () => {
   it('offers close actions from the tab context menu', () => {
     const b = mount({ surfaces: [FILES, DIFF, FILE] })
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Files' }).parentElement!)
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(true)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Close others' }))
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(false)
     expect(b.onCloseOthers).toHaveBeenCalledWith('files')
   })
 
@@ -126,8 +132,10 @@ describe('SurfaceTabs', () => {
     expect(b.onClose).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Open a surface' }))
     fireEvent.keyDown(document, { key: 'Escape' })
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(false)
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Files' }).parentElement!)
     fireEvent.keyDown(document, { key: 'Escape' })
+    expect(b.onMenuOpenChange).toHaveBeenLastCalledWith(false)
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
@@ -138,15 +146,8 @@ describe('SurfaceTabs', () => {
     expect(document.querySelector('[data-surfaces-tab]')).toBeNull()
   })
 
-  it('shows a kind icon that morphs to close on hover and closes from the right control', () => {
+  it('closes from a trailing control to the right of the label', () => {
     const b = mount()
-    const tab = screen.getByRole('button', { name: 'Files' }).closest('[data-surfaces-tab]')
-    expect(tab?.querySelector('[data-surfaces-tab-icon]')).toBeTruthy()
-    expect(tab?.querySelector('[data-surfaces-tab-close-glyph]')).toBeTruthy()
-    fireEvent.mouseEnter(tab!)
-    expect(tab?.getAttribute('data-hover')).toBe('true')
-    fireEvent.mouseLeave(tab!)
-    expect(tab?.getAttribute('data-hover')).toBeNull()
     const close = screen.getByRole('button', { name: 'Close Files' })
     const label = screen.getByRole('button', { name: 'Files' })
     expect(label.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

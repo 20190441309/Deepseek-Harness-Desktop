@@ -26,7 +26,7 @@ Web UI 只提供浅色／深色／跟随系统。这三个方块放在「通用�
 
 ## 曾考虑的替代方案
 
-**把 T3 的 `--background`／`--primary` 搬过来。** 否决：现网每张表和呈现器都只认 `--dsw-alias-*`。推导写我们的名字。
+**搬一套平行的 `--background`／`--primary` 表。** 否决：现网每张表和呈现器都只认 `--dsw-alias-*`。推导写我们的名字。
 
 **用新 store 换掉 ThemeRuntime。** 否决：register／overrideTokens／`theme/change` 已经存在；缺的是家族与两半持久化。
 

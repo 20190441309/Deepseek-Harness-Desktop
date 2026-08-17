@@ -1,6 +1,10 @@
 - button "Session log":
   - text: Session log
   - img
+- button "Switch branch":
+  - img
+  - text: Select branch
+  - img
 - button "Commit" [disabled]:
   - img
   - text: Commit

@@ -56,7 +56,7 @@ export const zh = {
   'progress.upToDate': '已是最新',
   'progress.pulledFrom': '已从 {upstream} 更新 {branch}',
   'progress.synced': '{branch} 已同步。',
-  // Titlebar action labels stay T3code English in both locales.
+  // Titlebar action labels stay English in both locales.
   'action.commit': 'Commit',
   'action.commitPush': 'Commit & push',
   'action.push': 'Push',

@@ -18,5 +18,5 @@
 
 ## 已知限制与暂缓事项
 
-- **没有 turn diff、左右分栏、忽略空白或折行**：分支范围只做 `baseRef...HEAD`；没有 checkpoint 回合范围。不移植 T3 的分栏／折行／忽略空白开关。
+- **没有 turn diff、左右分栏、忽略空白或折行**：分支范围只做 `baseRef...HEAD`；没有 checkpoint 回合范围。不分栏／折行／忽略空白开关。
 - **标题栏 Commit 不变**：Diff 上的暂存／取消暂存／还原不替代 `git add -A`。

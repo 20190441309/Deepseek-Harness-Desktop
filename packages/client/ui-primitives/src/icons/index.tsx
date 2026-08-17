@@ -910,7 +910,7 @@ export const IconCommitOutline16 = ({ size = 16, className }: IconProps) => (
   </svg>
 )
 
-/** Cloud with an upload arrow — same silhouette as T3code's lucide CloudUpload. */
+/** Cloud with an upload arrow. */
 export const IconCloudUploadOutline16 = ({ size = 16, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M12 13v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

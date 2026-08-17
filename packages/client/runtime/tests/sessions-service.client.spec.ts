@@ -594,6 +594,35 @@ describe('fork', () => {
     })
   })
 
+  it('does not pin a blank fork child when increaseTitle is set', async () => {
+    const b = bench()
+    b.svc.handleMuxEnvelope({
+      rpcId: 'source-title' as never,
+      payload: { type: 'session/projection', sessionId: sid('source'), key: 'title', value: 'Pelican bicycle SVG', seq: 2 } as never,
+    })
+    await feedList(b, [{ id: 'source', cwd: '/work' }])
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child'), blank: true }))
+    b.api.onRename = (payload) => {
+      const { title } = payload as { title: string }
+      return Promise.resolve(ok({ title, seq: 3 }))
+    }
+
+    await expect(b.svc.fork({
+      sessionId: sid('source'), beforeSeq: 0, increaseTitle: true,
+    })).resolves.toBe('child')
+
+    expect(b.api.callsOf('session.fork')).toEqual([{ sessionId: 'source', beforeSeq: 0 }])
+    expect(b.api.callsOf('session.rename')).toEqual([])
+    await Promise.resolve()
+    expect(b.svc.list.getSnapshot().byId[sid('child')]).toMatchObject({
+      id: 'child',
+      parentId: 'source',
+      blank: true,
+      cwd: '/work',
+    })
+    expect(b.svc.list.getSnapshot().byId[sid('child')]?.title).toBeUndefined()
+  })
+
   it('does not rename without the title policy or a durable source title', async () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])

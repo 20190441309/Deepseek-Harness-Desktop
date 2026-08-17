@@ -9,6 +9,7 @@ import {
   MAX_TERMINAL_BUFFER,
   MAX_TERMINALS_PER_GROUP,
   releaseCreate,
+  sessionBuffer,
 } from '../src/client/stores.ts'
 
 function sameHandleShells() {
@@ -146,5 +147,12 @@ describe('createTerminalSessionStore', () => {
     expect(instance.getSnapshot().sessions[0]?.buffer).toBe('hello!')
     handle.dispatchExit('pty-1')
     expect(instance.getSnapshot().sessions).toHaveLength(0)
+  })
+})
+
+describe('sessionBuffer', () => {
+  it('returns the record buffer and empty string when the row is missing', () => {
+    expect(sessionBuffer(undefined)).toBe('')
+    expect(sessionBuffer({ id: 'pty-1', cwd: '/work', cols: 80, rows: 24, buffer: 'hello' })).toBe('hello')
   })
 })

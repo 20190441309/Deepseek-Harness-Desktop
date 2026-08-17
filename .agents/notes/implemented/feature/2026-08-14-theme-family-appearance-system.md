@@ -26,7 +26,7 @@ The Web UI exposed only Light / Dark / System. Those three cubes lived in Genera
 
 ## Alternatives considered
 
-**Port T3's `--background` / `--primary` names.** Rejected because every shipped sheet and presenter already speak `--dsw-alias-*`. Derivation writes our names.
+**Import a parallel `--background` / `--primary` sheet.** Rejected because every shipped sheet and presenter already speak `--dsw-alias-*`. Derivation writes our names.
 
 **Replace ThemeRuntime with a new store.** Rejected because register / overrideTokens / `theme/change` already exist; the missing piece was family + half persistence.
 

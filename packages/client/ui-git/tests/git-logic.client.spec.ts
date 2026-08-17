@@ -1,4 +1,4 @@
-/** Key T3code GitActionsControl.logic vectors against this package's VcsStatus JSON. */
+/** Git action vectors against this package's VcsStatus JSON. */
 import { describe, expect, it } from 'vitest'
 import type { VcsStatus } from '../src/client/git-logic.ts'
 import {
@@ -272,7 +272,7 @@ describe('git progress helpers', () => {
     )).toBe('husky - pre-commit script failed (code 1)')
   })
 
-  it('summarizeGitActionResult matches T3code titles', () => {
+  it('summarizeGitActionResult matches stacked-action titles', () => {
     expect(summarizeGitActionResult({
       action: 'commit_push_pr',
       pr: { status: 'created', number: 12, title: 'Add files' },

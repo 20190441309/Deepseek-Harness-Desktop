@@ -26,6 +26,12 @@
   cursor: wait;
 }
 
+.iconOnly {
+  min-width: 32px;
+  width: 32px;
+  padding: 0;
+}
+
 .sessionLogButton span,
 .sessionLogButton svg {
   flex: none;

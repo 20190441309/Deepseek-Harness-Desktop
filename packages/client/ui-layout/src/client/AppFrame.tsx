@@ -15,10 +15,11 @@
  * zero cordis or framework imports, zero self-made hooks.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, PHONE_DRAWER, PHONE_MAX, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MIN } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
+import { resolveTitlebarDensity, titlebarConversationReserve } from './titlebar-density.ts'
 import css from './AppFrame.module.css'
 
 /** Full composed props: runtime share + child-slot render share + store share. */
@@ -167,8 +168,10 @@ export function AppFrame({
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
+  const trailingRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState(() => window.innerWidth)
   const [landscape, setLandscape] = useState(() => readDeviceLandscape())
+  const [trailingWidth, setTrailingWidth] = useState(0)
 
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
@@ -195,11 +198,19 @@ export function AppFrame({
         setLandscape(readDeviceLandscape())
         const width = Math.min(el.getBoundingClientRect().width, window.innerWidth)
         if (width > 0) setViewport(width)
+        const trailing = trailingRef.current
+        /* v8 ignore next -- the trailing cluster mounts unconditionally with the frame. */
+        if (trailing !== null) {
+          setTrailingWidth(Math.max(0, Math.round(trailing.getBoundingClientRect().width)))
+        }
       })
     }
     apply()
     const observer = new ResizeObserver(apply)
     observer.observe(el)
+    const trailing = trailingRef.current
+    /* v8 ignore next -- the trailing cluster mounts unconditionally with the frame. */
+    if (trailing !== null) observer.observe(trailing)
     window.addEventListener('resize', apply)
     const stopMedia = subscribe(window.matchMedia('(orientation: landscape)'), 'change', apply)
     const stopOrientation = subscribe(window.screen.orientation, 'change', apply)
@@ -214,6 +225,13 @@ export function AppFrame({
     }
   }, [])
 
+  useLayoutEffect(() => {
+    const trailing = trailingRef.current
+    /* v8 ignore next -- the trailing cluster mounts unconditionally with the frame. */
+    if (trailing === null) return
+    setTrailingWidth(Math.max(0, Math.round(trailing.getBoundingClientRect().width)))
+  })
+
   // Narrow viewports auto-collapse the sidebar; the store mirror keeps
   // toggleSidebar's semantics right (narrow toggles flip the manual
   // re-expand override, stores.ts). Collapsed is decided here, so the
@@ -227,6 +245,7 @@ export function AppFrame({
   // Hide the titlebar trailing cluster on any phone-width frame, including
   // landscape: rotation must not re-show Session log / Git over the title.
   const compactHeader = viewport < SIDEBAR_AUTO_COLLAPSE
+  const clusterVisible = !phone && !compactHeader
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
@@ -243,6 +262,9 @@ export function AppFrame({
   const drawerWidth = Math.min(PHONE_DRAWER, Math.max(SIDEBAR_MIN, viewport - 48))
   const sidebarWidth = phone ? (sidebarCollapsed ? 0 : drawerWidth) : cols.sidebar
   const detailsOpen = detailsSession !== undefined && (phone ? panels.details > 0 : cols.details > 0)
+  const clusterOverConversation = clusterVisible && cols.details === 0
+  const titlebarDensity = resolveTitlebarDensity(cols.center, clusterOverConversation)
+  const conversationReserve = titlebarConversationReserve(clusterVisible, trailingWidth, cols.details)
 
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
@@ -276,7 +298,8 @@ export function AppFrame({
           ? `0px minmax(0, 1fr) 0px ${cols.surfaces}px`
           : `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${cols.surfaces}px`,
         gridTemplateRows: `auto minmax(0, 1fr) ${panels.terminalDrawer}px`,
-      }}
+        '--dshd-titlebar-conversation-reserve': `${conversationReserve}px`,
+      } as CSSProperties}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={detailsOpen ? undefined : true}
       data-surfaces-collapsed={cols.surfaces === 0 || undefined}
@@ -285,6 +308,8 @@ export function AppFrame({
       data-phone-sidebar={phone && !sidebarCollapsed || undefined}
       data-phone-details={phone && detailsOpen || undefined}
       data-compact-header={compactHeader || undefined}
+      data-titlebar-density={titlebarDensity}
+      data-titlebar-over-conversation={clusterOverConversation || undefined}
       data-dragging={dragging || undefined}
     >
       {phone && sidebarCollapsed && (
@@ -335,14 +360,16 @@ export function AppFrame({
       </div>
       <div className={css.titlebarBand} data-titlebar-row />
       <div
+        ref={trailingRef}
         className={css.titlebarTrailing}
         data-titlebar-trailing
         data-titlebar-trailing-over-surfaces={cols.surfaces === 0 || undefined}
-        id="dsh-shell-titlebar-trailing"
+        id="dshd-shell-titlebar-trailing"
       >
         {renderSlot('shell.titlebar.trailing', {
           surfaces: panels.surfaces,
           terminalDrawer: panels.terminalDrawer,
+          density: titlebarDensity,
         })}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed.

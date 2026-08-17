@@ -1,8 +1,7 @@
 /**
- * Branch picker pure logic. `deriveLocalBranchNameFromRemoteRef`,
- * `dedupeRemoteBranchesWithLocalMatches`, and `shouldIncludeBranchPickerItem`
- * are adapted from T3 Tools Inc.'s T3code (MIT) BranchToolbar logic; behavior
- * is preserved, Effect/t3 imports are rewritten as plain TypeScript.
+ * Branch picker pure logic: local names from remote refs, hide origin
+ * rows that already have a local match, and keep the create-branch row
+ * visible while filtering.
  * @module @deepseek-ai/dsh-client-ui-git/client/branches
  */
 
@@ -81,7 +80,6 @@ const AUTO_FEATURE_BRANCH_FALLBACK = 'update'
 
 /**
  * Sanitize an arbitrary string into a valid, lowercase git ref fragment.
- * Ported from T3code `sanitizeBranchFragment` (MIT).
  * @param raw - commit subject or typed name.
  * @returns a non-empty fragment, or `update`.
  */
@@ -103,7 +101,6 @@ export function sanitizeBranchFragment(raw: string): string {
 
 /**
  * Sanitize a string into a `feature/…` ref name.
- * Ported from T3code `sanitizeFeatureBranchName` (MIT).
  * @param raw - commit subject or typed name.
  * @returns a feature ref name.
  */
@@ -117,7 +114,6 @@ export function sanitizeFeatureBranchName(raw: string): string {
 
 /**
  * Pick a unique `feature/…` name that does not collide with existing refs.
- * Ported from T3code `resolveAutoFeatureBranchName` (MIT).
  * @param existingBranchNames - current local and remote short names.
  * @param preferredBranch - optional preferred fragment or subject.
  * @returns a unique feature ref name.

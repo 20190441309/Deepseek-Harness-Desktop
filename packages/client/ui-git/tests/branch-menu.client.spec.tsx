@@ -22,7 +22,7 @@ const t: BranchMenuProps['t'] = (key, params) => {
 
 afterEach(cleanup)
 
-describe('branches pure logic (ported from T3code, MIT)', () => {
+describe('branches pure logic', () => {
   it('derives the local name from a remote ref', () => {
     expect(deriveLocalBranchNameFromRemoteRef('origin/feature/demo')).toBe('feature/demo')
     expect(deriveLocalBranchNameFromRemoteRef('noslash')).toBe('noslash')
@@ -182,5 +182,12 @@ describe('BranchMenu', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
     expect(screen.queryByRole('menuitem')).toBeNull()
+  })
+
+  it('hides the ref name on the compact trigger and keeps the accessible name', () => {
+    mountMenu({ compact: true, currentRef: 'master' })
+    const trigger = screen.getByRole('button', { name: 'Switch branch' })
+    expect(trigger.textContent).not.toContain('master')
+    fireEvent.click(trigger)
   })
 })

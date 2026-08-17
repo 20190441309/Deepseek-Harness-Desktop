@@ -1,5 +1,5 @@
 /**
- * T3code-style git progress toast: top-right card with spinner, title,
+ * Git progress toast: top-right card with spinner, title,
  * elapsed subtitle, and dismiss. Stays up through hooks; success/error
  * replace the same card.
  * @module @deepseek-ai/dsh-client-ui-git/client/GitProgressToast
@@ -35,6 +35,19 @@ export interface GitProgressToastProps {
 }
 
 /**
+ * Extra dump for Show details: omitted when it would repeat the headline.
+ * @param details - full git/hook dump, if any.
+ * @param headline - short subtitle already on the card.
+ * @returns the dump when it differs from the headline.
+ */
+function extraGitDump(details: string | undefined, headline: string | undefined): string | undefined {
+  const dump = details?.trim()
+  if (!dump) return undefined
+  const lead = headline?.trim() ?? ''
+  return dump !== lead ? dump : undefined
+}
+
+/**
  * Render the top-right git progress card.
  * @param props - live state, dismiss copy, and close handler.
  * @returns the portaled-looking fixed card (owner already sits in the page).
@@ -48,11 +61,13 @@ export function GitProgressToast({ state, dismissLabel, onClose }: GitProgressTo
     return () => { window.clearInterval(timer) }
   }, [state.tone, state.startedAt])
 
-  const subtitle = expanded && state.details
-    ? state.details
-    : state.description
-      ?? (state.tone === 'loading' ? formatElapsedDescription(state.startedAt, now) : undefined)
+  const subtitle = state.description
+    ?? (state.tone === 'loading' ? formatElapsedDescription(state.startedAt, now) : undefined)
   const copyText = state.details ?? state.description
+  const extra = extraGitDump(state.details, subtitle)
+  const showAction = Boolean(state.actionLabel && state.onAction)
+  const showCopy = state.tone === 'error' && Boolean(copyText && state.copyLabel)
+  const showDetails = state.tone === 'error' && extra !== undefined && Boolean(state.detailsLabel)
 
   return (
     <div className={css.card} role="status" aria-live="polite" aria-label={state.title}>
@@ -62,30 +77,38 @@ export function GitProgressToast({ state, dismissLabel, onClose }: GitProgressTo
       <div className={css.copy}>
         <p className={css.title}>{state.title}</p>
         {subtitle !== undefined && (
-          <p className={expanded ? css.subFull : css.sub}>{subtitle}</p>
+          <p className={css.sub}>{subtitle}</p>
         )}
-        {state.actionLabel && state.onAction && (
-          <button type="button" className={css.action} onClick={state.onAction}>
-            {state.actionLabel}
-          </button>
+        {expanded && extra !== undefined && (
+          <pre className={css.subFull}>{extra}</pre>
         )}
-        {state.tone === 'error' && copyText && state.copyLabel && (
-          <button
-            type="button"
-            className={css.action}
-            onClick={() => { void navigator.clipboard.writeText(copyText) }}
-          >
-            {state.copyLabel}
-          </button>
-        )}
-        {state.tone === 'error' && state.details && state.detailsLabel && (
-          <button
-            type="button"
-            className={css.action}
-            onClick={() => { setExpanded(next => !next) }}
-          >
-            {expanded ? (state.hideDetailsLabel ?? state.detailsLabel) : state.detailsLabel}
-          </button>
+        {(showAction || showCopy || showDetails) && (
+          <div className={css.actions}>
+            {showAction && state.onAction && (
+              <button type="button" className={css.action} onClick={state.onAction}>
+                {state.actionLabel}
+              </button>
+            )}
+            {showCopy && copyText && (
+              <button
+                type="button"
+                className={css.action}
+                onClick={() => { void navigator.clipboard.writeText(copyText) }}
+              >
+                {state.copyLabel}
+              </button>
+            )}
+            {showDetails && (
+              <button
+                type="button"
+                className={css.action}
+                aria-expanded={expanded}
+                onClick={() => { setExpanded(next => !next) }}
+              >
+                {expanded ? (state.hideDetailsLabel ?? state.detailsLabel) : state.detailsLabel}
+              </button>
+            )}
+          </div>
         )}
       </div>
       <button type="button" className={css.close} aria-label={dismissLabel} onClick={onClose}>

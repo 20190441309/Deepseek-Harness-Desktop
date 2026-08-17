@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import clsx from 'clsx'
 import {
   Button,
   IconBranchOutline16,
@@ -186,10 +187,11 @@ function foldPr(result: GitResult): NonNullable<StackedActionResult['pr']> {
 
 /**
  * Render the titlebar Git split button, dropdown, commit dialog, and default-ref confirm.
- * @param props - titlebar owner widths, current-session seats, git IPC, and copy.
+ * @param props - titlebar owner widths and density, current-session seats, git IPC, and copy.
  * @returns the split button and any open dialogs.
  */
 export function GitActionsControl({
+  density = 'full',
   useSessions,
   gitStatus,
   gitFetchForStatus,
@@ -280,7 +282,7 @@ export function GitActionsControl({
     refreshSeq.current = token
     const next = await gitStatus(target)
     if (token !== refreshSeq.current) return next
-    // Only keep a prior PR badge when still on the same ref (T3code keys lastKnown by branch).
+    // Only keep a prior PR badge when still on the same ref.
     setStatus(prev => (
       next && prev?.refName && next.refName === prev.refName
         ? { ...next, pr: next.pr ?? prev.pr ?? null }
@@ -470,10 +472,10 @@ export function GitActionsControl({
     options: { commitMessage?: string; skipConfirm?: boolean; filePaths?: readonly string[]; featureBranch?: boolean } = {},
   ): Promise<void> => {
     if (cwd === undefined) return
-    // T3code: featureBranch forces a commit step even when the working tree looks clean.
+    // A feature ref forces a commit step even when the working tree looks clean.
     const includesCommitPreview = (action === 'commit' || action === 'commit_push' || action === 'commit_push_pr')
       && (action === 'commit' || Boolean(status?.hasWorkingTreeChanges) || Boolean(options.featureBranch))
-    // T3code `actionIsDefaultBranch`: leaving via a feature ref skips the default-branch prompt.
+    // Leaving via a feature ref skips the default-branch prompt.
     const actionIsDefaultBranch = options.featureBranch ? false : isDefaultRef
     if (
       !options.skipConfirm
@@ -495,7 +497,7 @@ export function GitActionsControl({
     let settled = false
     let actionId = 0
     try {
-      // T3code opens the progress card before any IPC. Stages use the last-known
+      // Open the progress card before any IPC. Stages use the last-known
       // status snapshot; gates re-read after a refresh below.
       const previewStatus = status
       const previewTerms = getChangeRequestTerminology(previewStatus?.sourceControlProvider)
@@ -509,7 +511,7 @@ export function GitActionsControl({
         terminology: previewTerms,
       })[0] ?? 'Running git action...')
 
-      // T3code statusDetails refreshes upstream before push/PR gates. Commit-only
+      // Refresh upstream before push/PR gates. Commit-only
       // stays on local porcelain so success is not blocked on fetch (Desktop contract).
       const live = (action === 'create_pr' || action === 'push')
         ? await gitFetchForStatus(cwd)
@@ -522,7 +524,7 @@ export function GitActionsControl({
         ))
       }
       const actionStatus = live ?? previewStatus
-      // T3code GitManager always runs the commit step for commit_* actions.
+      // Always run the commit step for commit_* actions.
       // A clean tree is skipped_no_changes on the desktop, not a skipped IPC call.
       const wantsCommit = action === 'commit' || action === 'commit_push' || action === 'commit_push_pr'
       if (options.featureBranch && !wantsCommit) {
@@ -723,13 +725,13 @@ export function GitActionsControl({
   const initButton = (
     <button
       type="button"
-      className={css.init}
+      className={clsx(css.init, density === 'compact' && css.initCompact)}
       disabled={busy}
       aria-label={t('action.init')}
       onClick={runInit}
     >
       <IconBranchOutline16 size={14} />
-      <span>{busy ? t('action.init.busy') : t('action.init')}</span>
+      {density === 'compact' ? null : <span>{busy ? t('action.init.busy') : t('action.init')}</span>}
     </button>
   )
 
@@ -742,6 +744,7 @@ export function GitActionsControl({
             currentRef={status?.refName ?? null}
             t={t}
             disabled={busy}
+            compact={density === 'compact'}
             gitBranchList={gitBranchList}
             gitSwitchBranch={gitSwitchBranch}
             gitCreateBranch={gitCreateBranch}
@@ -881,6 +884,7 @@ export function GitActionsControl({
         onSubmit={() => {
           if (cwd === undefined) return
           const actionId = beginProgress('Publishing repository...')
+          setPublishOpen(false)
           setBusy(true)
           void gitPublishRepository(cwd, {
             name: publishName.trim(),
@@ -890,9 +894,9 @@ export function GitActionsControl({
             const failed = failureMessage(result, t('error.fallback'))
             if (failed !== undefined) {
               failProgress(failed)
+              setPublishOpen(true)
               return
             }
-            setPublishOpen(false)
             const url = result.url
             succeedProgress(
               t('action.publish'),

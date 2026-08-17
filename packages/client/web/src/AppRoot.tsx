@@ -42,15 +42,15 @@ export function AppRoot(props: AppRootProps) {
     .join('\n')
     .slice(0, 400)
 
-  // data-dsh-boot-* is the desktop shell's boot probe surface (it must not scrape
+  // data-dshd-boot-* is the desktop shell's boot probe surface (it must not scrape
   // rendered copy to decide when the harness view may be revealed).
   return (
     <div
       className={css.boot}
-      data-dsh-boot-status={loud ? 'failed' : 'loading'}
-      data-dsh-boot-ready={String(ready)}
-      data-dsh-boot-total={String(total)}
-      data-dsh-boot-error={loud ? bootReport : ''}
+      data-dshd-boot-status={loud ? 'failed' : 'loading'}
+      data-dshd-boot-ready={String(ready)}
+      data-dshd-boot-total={String(total)}
+      data-dshd-boot-error={loud ? bootReport : ''}
     >
       <div className={css.card}>
         <div className={css.wordmark}>HARNESS</div>

@@ -363,6 +363,8 @@ describe('ConversationRoot resident composer', () => {
     expect(host).not.toBeNull()
     expect(seat).not.toBeNull()
     expect(header).not.toBeNull()
+    expect(header?.querySelector('[data-dshd-caption="title"]')).not.toBeNull()
+    expect(header?.querySelector('[data-dshd-caption="blank"]')).toBeNull()
     // Header is column chrome above the scrollport; the seat sticks inside it.
     expect(host?.contains(header)).toBe(false)
     expect(host?.contains(seat)).toBe(true)
@@ -394,12 +396,14 @@ describe('ConversationRoot resident composer', () => {
     const header = b.view.container.querySelector('header')
     expect(host).not.toBeNull()
     expect(header?.getAttribute('aria-hidden')).toBe('true')
+    expect(header?.querySelector('[data-dshd-caption="blank"]')).not.toBeNull()
+    expect(header?.querySelector('[data-dshd-caption="title"]')).toBeNull()
     expect(b.view.getByText('探索未至之境')).toBeTruthy()
     expect(b.view.getByText('预览版')).toBeTruthy()
     expect(b.view.queryByTestId('view-chat')).toBeNull()
     // The same machine-backed textarea is live in the hero, and the
-    // persistence mirror stays bound (ConversationSession mounts chrome-hidden
-    // for blank sessions): hero typing reaches the chat store.
+    // persistence mirror stays bound (ConversationSession still mounts for
+    // blank sessions): hero typing reaches the chat store.
     const box = b.view.getByRole('textbox')
     expect(host?.contains(box)).toBe(true)
     fireEvent.change(box, { target: { value: 'draft in hero' } })

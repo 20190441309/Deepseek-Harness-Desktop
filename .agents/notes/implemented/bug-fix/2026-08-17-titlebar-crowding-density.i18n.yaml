@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-17-titlebar-crowding-density.md
+2026-08-17-titlebar-crowding-density.md: 5b6fe65b60e5e3286f3b7a06e3cab59afce79bf6
+2026-08-17-titlebar-crowding-density.zh.md: de1c28d5f9547e76dca52a1b924cd1da11eb4e6a

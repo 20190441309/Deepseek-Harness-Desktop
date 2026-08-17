@@ -4,7 +4,7 @@ Status: implemented
 
 [中文](2026-08-15-desktop-surfaces-integration-hardening.zh.md)
 
-> Scope: production hardening applied while integrating the T3code-style titlebar / Git / terminal / right-panel surfaces branch into the desktop shell. The branch laid out the composition ([surfaces note](2026-08-14-desktop-surfaces-and-titlebar.md)); this note records the defects that only a real desktop run exposed, and the trust / lifecycle / packaging decisions that make the feature safe to ship.
+> Scope: production hardening applied while integrating the titlebar / Git / terminal / right-panel surfaces into the desktop shell. The composition lives in the [surfaces note](2026-08-14-desktop-surfaces-and-titlebar.md); this note records the defects that only a real desktop run exposed, and the trust / lifecycle / packaging decisions that make the feature safe to ship.
 
 ## Problem
 

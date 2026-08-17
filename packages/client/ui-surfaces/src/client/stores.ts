@@ -26,7 +26,7 @@ export type SessionSurfaces = {
   surfaces: Surface[]
 }
 
-/** Surfaces store state: session id is the key (T3code thread scope). */
+/** Surfaces store state: session id is the key. */
 export type SurfacesState = {
   bySession: Record<string, SessionSurfaces>
 }

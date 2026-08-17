@@ -64,6 +64,7 @@ describe('Session export titlebar action', () => {
     const b = bench(SID)
     const button = b.view.getByRole('button', { name: 'Session log' })
     expect(button.querySelector('svg')).not.toBeNull()
+    expect(button.textContent).toContain('Session log')
     fireEvent.click(button)
     await waitFor(() => { expect(b.request).toHaveBeenCalledWith(SID) })
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
@@ -128,5 +129,16 @@ describe('Session export titlebar action', () => {
     release(new Response('zip'))
     await download
     await waitFor(() => { expect(button.getAttribute('aria-busy')).toBe('false') })
+  })
+
+  it('keeps the accessible name and drops the visible label when density is cozy', () => {
+    const b = bench(SID)
+    b.view.rerender(<SessionLogDownloadHeaderAction {...({
+      ...b.props,
+      density: 'cozy',
+    } as unknown as SessionLogDownloadDialogProps)} />)
+    const button = b.view.getByRole('button', { name: 'Session log' })
+    expect(button.textContent).not.toContain('Session log')
+    expect(button.querySelector('svg')).not.toBeNull()
   })
 })

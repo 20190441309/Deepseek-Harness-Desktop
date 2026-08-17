@@ -1,5 +1,5 @@
 /**
- * T3code-style commit review dialog: branch, file list with +/- stats,
+ * Commit review dialog: branch, file list with +/- stats,
  * optional message, and Commit / Commit on new refName.
  * @module @deepseek-ai/dsh-client-ui-git/client/CommitDialog
  */

@@ -13,7 +13,7 @@ import { SurfaceTabs } from './SurfaceTabs.tsx'
 import css from './SurfacesRoot.module.css'
 
 /** Must match ui-user-terminal; client packages cannot share a value export. */
-const OPEN_SURFACE_EVENT = 'dsh-open-surface'
+const OPEN_SURFACE_EVENT = 'dshd-open-surface'
 
 /** Layout write and probes injected so cards can open the column and disable Browser. */
 export interface SurfacesRootInjected {
@@ -35,6 +35,7 @@ function renderOccupant(
   renderSlot: SurfacesRootProps['renderSlot'],
   openFile: (relativePath: string) => void,
   active: boolean,
+  occluded: boolean,
   onDirtyChange: (dirty: boolean) => void,
   readBuffer: () => { text: string; draft: string } | undefined,
   writeBuffer: (buffer: { text: string; draft: string } | null) => void,
@@ -42,7 +43,7 @@ function renderOccupant(
 ): ReactNode {
   switch (surface.kind) {
     case 'preview':
-      return renderSlot('surfaces.browser', { active })
+      return renderSlot('surfaces.browser', occluded ? { active, occluded: true } : { active })
     case 'terminal':
       return renderSlot('surfaces.terminal', {})
     case 'files':
@@ -174,7 +175,7 @@ function SurfacesBody({
   }, [key])
   useEffect(() => {
     const onOpen = (event: Event): void => {
-      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      const kind = (event as CustomEvent<{ kind?: string } | undefined>).detail?.kind
       if (kind !== 'preview' && kind !== 'terminal' && kind !== 'files' && kind !== 'diff' && kind !== 'agents') {
         return
       }
@@ -200,6 +201,7 @@ function SurfacesBody({
     | { kind: 'all' }
     | null
   >(null)
+  const [tabsMenuOpen, setTabsMenuOpen] = useState(false)
 
   const setDirty = useCallback((sessionKey: string, id: string, dirty: boolean): void => {
     if (sessionKey !== keyRef.current) return
@@ -310,7 +312,7 @@ function SurfacesBody({
       saveById.current.delete(bufferKey)
       saveRegisterById.current.delete(bufferKey)
     }
-    setDirtyIds((current) => new Set([...current].filter(id => !closed.has(id))))
+    setDirtyIds(current => new Set([...current].filter(id => !closed.has(id))))
     setPendingClose(null)
     flushDrafts()
   }
@@ -337,6 +339,7 @@ function SurfacesBody({
         onCloseToRight={(id) => { requestClose({ kind: 'toRight', id }) }}
         onCloseAll={() => { requestClose({ kind: 'all' }) }}
         onOpenKind={open}
+        onMenuOpenChange={setTabsMenuOpen}
         openable={{
           preview: previewAvailable && !bucket.surfaces.some(surface => surface.kind === 'preview'),
           terminal: !bucket.surfaces.some(surface => surface.kind === 'terminal'),
@@ -371,6 +374,7 @@ function SurfacesBody({
                   renderSlot,
                   openFile,
                   isActive,
+                  tabsMenuOpen || pendingClose !== null,
                   dirtyChangeFor(surface.id),
                   buffers.read,
                   buffers.write,
