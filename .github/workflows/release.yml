@@ -28,10 +28,6 @@ jobs:
       - name: Download Electron binary
         run: node node_modules/electron/install.js
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.8.0
-
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js
 
@@ -65,10 +61,6 @@ jobs:
 
       - name: Download Electron binary
         run: node node_modules/electron/install.js
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.8.0
 
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js

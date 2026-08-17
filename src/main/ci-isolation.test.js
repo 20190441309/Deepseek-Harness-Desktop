@@ -58,6 +58,7 @@ test('release workflow builds artifacts without repeating quality or viewport-de
   assert.doesNotMatch(yml, /\bnpm test\b/);
   assert.doesNotMatch(yml, /\bpnpm run test:gui\b/);
   assert.doesNotMatch(yml, /\bsmoke:packaged\b/);
+  assert.doesNotMatch(yml, /pnpm\/action-setup/);
   assert.match(yml, /node scripts\/setup-harness\.js/);
   assert.match(yml, /npm run dist\b/);
   assert.match(yml, /npm run dist:mac\b/);
@@ -71,9 +72,20 @@ test('release.yml still publishes when Windows succeeds and macOS fails', () => 
 
 test('test workflow keeps portable quality gates without the viewport-dependent smoke', () => {
   const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'test.yml'), 'utf8');
+  const desktop = yml.slice(0, yml.indexOf('\n  vendor-gui:'));
+  const electronAt = desktop.indexOf('node node_modules/electron/install.js');
+  const testAt = desktop.indexOf('npm test');
   assert.match(yml, /macos-latest/);
   assert.match(yml, /\bnpm test\b/);
-  assert.match(yml, /\bpnpm run test:gui\b/);
+  assert.match(yml, /node node_modules\/pnpm\/bin\/pnpm\.cjs --dir vendor\/deepseek-harness run test:gui/);
+  assert.doesNotMatch(yml, /pnpm\/action-setup/);
+  assert.ok(electronAt >= 0);
+  assert.ok(testAt > electronAt);
   assert.doesNotMatch(yml, /\bsmoke:source\b/);
   assert.doesNotMatch(yml, /\bsource-electron-smoke\b/);
+});
+
+test('setup-harness uses the lockfile-installed pnpm executable', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'scripts', 'setup-harness.js'), 'utf8');
+  assert.match(source, /node_modules['"], ['"]pnpm['"], ['"]bin['"], ['"]pnpm\.cjs/);
 });

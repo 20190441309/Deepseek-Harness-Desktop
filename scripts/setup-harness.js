@@ -5,13 +5,13 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const vendor = path.join(root, 'vendor', 'deepseek-harness');
 const repo = 'https://github.com/deepseek-ai/deepseek-harness.git';
+const pnpm = path.join(root, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs');
 
 function run(command, args, cwd) {
   console.log(`> ${command} ${args.join(' ')}`);
   const result = spawnSync(command, args, {
     cwd,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
     env: process.env,
   });
   if (result.status !== 0) {
@@ -24,6 +24,6 @@ if (!fs.existsSync(path.join(vendor, 'package.json'))) {
   run('git', ['clone', '--depth', '1', '--branch', 'master', repo, vendor], root);
 }
 
-run('pnpm', ['install'], vendor);
-run('pnpm', ['run', 'build'], vendor);
+run(process.execPath, [pnpm, 'install', '--frozen-lockfile'], vendor);
+run(process.execPath, [pnpm, 'run', 'build'], vendor);
 console.log(`官方源码已就绪：${vendor}`);

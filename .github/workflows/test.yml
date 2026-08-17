@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm ci
+      - name: Download Electron binary
+        run: node node_modules/electron/install.js
       - name: Run desktop unit tests
         run: npm test
 
@@ -34,20 +36,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.8.0
+      - name: Install app dependencies
+        run: npm ci
       - name: Install vendor dependencies
-        working-directory: vendor/deepseek-harness
-        run: pnpm install --frozen-lockfile
+        run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness install --frozen-lockfile
       - name: Build vendor client + host libs
-        working-directory: vendor/deepseek-harness
-        run: pnpm run build:lib
+        run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run build:lib
       - name: GUI component suites
-        working-directory: vendor/deepseek-harness
-        run: pnpm run test:gui
+        run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run test:gui
       - name: Client catalog and notices up to date
-        working-directory: vendor/deepseek-harness
         run: |
-          pnpm run gen-client-catalog --check
-          pnpm run gen-third-party-notices --check
+          node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run gen-client-catalog --check
+          node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run gen-third-party-notices --check
