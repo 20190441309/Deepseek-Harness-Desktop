@@ -25,6 +25,7 @@ require.cache[electronPath] = {
 const {
   DEFAULTS,
   loadConfig,
+  publicConfig,
   saveConfig,
   normalizeHarnessRecovery,
 } = require('./config');
@@ -84,4 +85,19 @@ test('saveConfig rejects out-of-range recovery values before writing', () => {
   const loaded = loadConfig();
   assert.equal(loaded.harnessRestartMaxAttempts, DEFAULTS.harnessRestartMaxAttempts);
   assert.equal(loaded.harnessRestartBaseDelayMs, DEFAULTS.harnessRestartBaseDelayMs);
+});
+
+test('publicConfig masks credentials and only reports presence flags', () => {
+  const before = loadConfig();
+  saveConfig({ apiKey: 'sk-test-secret', githubToken: 'ghp_test_secret', remoteToken: 'rt-test-secret' });
+  try {
+    const view = publicConfig(loadConfig());
+    assert.equal(view.apiKey, '********');
+    assert.equal(view.githubToken, '********');
+    assert.equal(view.remoteToken, '');
+    assert.equal(view.hasApiKey, true);
+    assert.equal(view.hasGithubToken, true);
+  } finally {
+    saveConfig({ apiKey: before.apiKey, githubToken: before.githubToken, remoteToken: before.remoteToken });
+  }
 });

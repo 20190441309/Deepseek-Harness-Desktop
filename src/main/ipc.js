@@ -20,7 +20,6 @@ function configLocale(config = loadConfig()) {
 function configPayload(config) {
   return {
     ...publicConfig(config),
-    apiKey: config.apiKey,
     locale: configLocale(config),
     theme: config.theme || 'midnight',
     themes: listThemes(),
