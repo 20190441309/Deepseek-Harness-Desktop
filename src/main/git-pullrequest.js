@@ -111,6 +111,11 @@ async function resolveBranchHeadContext(cwd, refName) {
 }
 
 function parseRepositoryNameWithOwnerFromNormalized(url) {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return null;
+  // Local paths have enough slashes on POSIX (`/var/folders/.../bare`) to look
+  // like host/owner/repo. Only URL-shaped remotes get the last-two-segment parse.
+  if (!/^(?:git@|(?:ssh|https?|git):\/\/)/i.test(trimmed)) return null;
   const key = normalizeGitRemoteUrl(url);
   const parts = key.split('/').filter(Boolean);
   if (parts.length < 3) return null;

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createWorkspaceAuthority } = require('./workspace-authority');
 const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranchList, gitChangedFiles, gitChildEnv, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFailureMessage, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, inferHookName, isGitAdviceLine, matchesBranchHeadContext, normalizeGitRemoteUrl, parseCustomCommitMessage, parseGhPullRequestRow, parseGitHubRepositoryNameWithOwner, parsePorcelainZ, parseStatusHeader, parseUnifiedDiff, providerFromRemoteUrl, readPrTemplate, readRangeContext, rememberLastKnownPr, resetFetchCooldowns, resetLastKnownPrCache, resolveBaseBranchForNoUpstream, resolveBranchHeadContext, resolveLastKnownPr, resolvePrBaseBranch, resolvePreferredHeadSelector, run, sanitizeProgressText, setGhDefaultBranchResolver, setLookupOpenPullRequest, setWorkspaceAuthority, summarizeCommitMessage } = require('./git.js');
+const { parseRepositoryNameWithOwnerFromNormalized } = require('./git-pullrequest');
 const { setTextGenerator } = require('./git-generate.js');
 
 function makeTempDir() {
@@ -1058,6 +1059,21 @@ test('parseGitHubRepositoryNameWithOwner and preferred head for forks', () => {
   assert.equal(
     parseGitHubRepositoryNameWithOwner('https://github.com/acme/demo.git'),
     'acme/demo',
+  );
+});
+
+test('parseRepositoryNameWithOwnerFromNormalized ignores filesystem remotes', () => {
+  assert.equal(
+    parseRepositoryNameWithOwnerFromNormalized('/var/folders/df/tmp/T/dsh-git-bare-x'),
+    null,
+  );
+  assert.equal(
+    parseRepositoryNameWithOwnerFromNormalized('C:\\Users\\me\\AppData\\Local\\Temp\\dsh-git-bare-x'),
+    null,
+  );
+  assert.equal(
+    parseRepositoryNameWithOwnerFromNormalized('https://github.com/upstream/app.git'),
+    'upstream/app',
   );
 });
 

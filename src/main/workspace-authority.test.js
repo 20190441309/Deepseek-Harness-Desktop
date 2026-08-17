@@ -12,13 +12,18 @@ function makeRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-auth-'));
 }
 
+/** Production authority returns realpath, so macOS `/var` fixtures must compare against `/private/var`. */
+function canonical(p) {
+  return fs.realpathSync(path.resolve(p));
+}
+
 test('resolveAuthorizedCwd accepts the root and its subdirectories', () => {
   const root = makeRoot();
   try {
     fs.mkdirSync(path.join(root, 'sub'));
     const authority = createWorkspaceAuthority({ workspace: root });
-    assert.equal(authority.resolveAuthorizedCwd(root), path.resolve(root));
-    assert.equal(authority.resolveAuthorizedCwd(path.join(root, 'sub')), path.join(path.resolve(root), 'sub'));
+    assert.equal(authority.resolveAuthorizedCwd(root), canonical(root));
+    assert.equal(authority.resolveAuthorizedCwd(path.join(root, 'sub')), path.join(canonical(root), 'sub'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -48,11 +53,11 @@ test('resolveInside refuses traversal and absolute targets', () => {
     fs.mkdirSync(path.join(root, 'src'));
     fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'x');
     const authority = createWorkspaceAuthority({ workspace: root });
-    assert.equal(authority.resolveInside(root, 'src/a.ts'), path.join(path.resolve(root), 'src', 'a.ts'));
+    assert.equal(authority.resolveInside(root, 'src/a.ts'), path.join(canonical(root), 'src', 'a.ts'));
     assert.equal(authority.resolveInside(root, '..'), null);
     assert.equal(authority.resolveInside(root, path.join('..', 'outside.txt')), null);
     assert.equal(authority.resolveInside(root, path.resolve(os.tmpdir(), 'absolute.txt')), null);
-    assert.equal(authority.resolveInside(root, ''), path.resolve(root));
+    assert.equal(authority.resolveInside(root, ''), canonical(root));
     assert.equal(authority.resolveInside(path.join(root, '..'), 'x'), null);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -119,7 +124,7 @@ test('resolveInside keeps directory links that stay inside the workspace', (t) =
     const authority = createWorkspaceAuthority({ workspace: root });
     assert.equal(
       authority.resolveInside(root, path.join('link', 'a.ts')),
-      path.join(path.resolve(root), 'link', 'a.ts'),
+      path.join(canonical(root), 'link', 'a.ts'),
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -169,17 +174,17 @@ test('resolveAuthorizedCwd accepts a second authorized root and rejects an outsi
       workspace: boot,
       extraWorkspaces: [extra],
     });
-    assert.equal(authority.resolveAuthorizedCwd(boot), path.resolve(boot));
-    assert.equal(authority.resolveAuthorizedCwd(extra), path.resolve(extra));
+    assert.equal(authority.resolveAuthorizedCwd(boot), canonical(boot));
+    assert.equal(authority.resolveAuthorizedCwd(extra), canonical(extra));
     assert.equal(
       authority.resolveAuthorizedCwd(path.join(extra, 'src')),
-      path.join(path.resolve(extra), 'src'),
+      path.join(canonical(extra), 'src'),
     );
     assert.equal(authority.resolveAuthorizedCwd(outsider), null);
-    assert.equal(authority.resolveInside(extra, 'src'), path.join(path.resolve(extra), 'src'));
+    assert.equal(authority.resolveInside(extra, 'src'), path.join(canonical(extra), 'src'));
     assert.equal(authority.resolveInside(extra, '..'), null);
     assert.equal(authority.resolveInside(outsider, 'src'), null);
-    assert.deepEqual(authority.authorizedRoots(), [path.resolve(boot), path.resolve(extra)]);
+    assert.deepEqual(authority.authorizedRoots(), [canonical(boot), canonical(extra)]);
   } finally {
     fs.rmSync(boot, { recursive: true, force: true });
     fs.rmSync(extra, { recursive: true, force: true });
@@ -198,7 +203,7 @@ test('listRegisteredWorkspaces is consulted on every resolve', () => {
     });
     assert.equal(authority.resolveAuthorizedCwd(extra), null);
     listed.push(extra);
-    assert.equal(authority.resolveAuthorizedCwd(extra), path.resolve(extra));
+    assert.equal(authority.resolveAuthorizedCwd(extra), canonical(extra));
   } finally {
     fs.rmSync(boot, { recursive: true, force: true });
     fs.rmSync(extra, { recursive: true, force: true });
@@ -210,7 +215,7 @@ test('resolveAuthorizedCwd accepts trailing separators and Windows drive-letter 
   try {
     const authority = createWorkspaceAuthority({ workspace: root });
     const withSep = `${root}${path.sep}`;
-    assert.equal(authority.resolveAuthorizedCwd(withSep), path.resolve(withSep));
+    assert.equal(authority.resolveAuthorizedCwd(withSep), canonical(withSep));
     if (process.platform === 'win32' && /^[A-Za-z]:/.test(root)) {
       const flipped = root[0] === root[0].toUpperCase()
         ? root[0].toLowerCase() + root.slice(1)
@@ -248,7 +253,7 @@ test('readHarnessRegisteredWorkspacePaths reads workspace.json and ignores junk'
       workspace: boot,
       listRegisteredWorkspaces: () => readHarnessRegisteredWorkspacePaths(home),
     });
-    assert.equal(authority.resolveAuthorizedCwd(registered), path.resolve(registered));
+    assert.equal(authority.resolveAuthorizedCwd(registered), canonical(registered));
     assert.equal(authority.resolveAuthorizedCwd(outsider), null);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });

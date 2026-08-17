@@ -845,13 +845,17 @@ class DshManager extends EventEmitter {
     this.generation += 1; // 使 in-flight start 与旧 child 事件全部失效
     this.inFlight = null; // 下一次 start 从全新代开始
     this.attached = false;
-    const pid = this.child?.pid || this._readPidFile();
+    const child = this.child;
+    const pid = child?.pid || this._readPidFile();
+    // Drop the live child before SIGTERM/killTree so a cancelled start catch
+    // cannot also killTree the same pid during the non-Windows grace sleep.
+    this.child = null;
     if (pid) {
       this.setState('stopping');
       this.log(`停止 dsh（pid ${pid}）`);
-      if (this.child && process.platform !== 'win32') {
+      if (child && process.platform !== 'win32') {
         try {
-          this.child.kill('SIGTERM');
+          child.kill('SIGTERM');
         } catch {
           // ignore
         }
@@ -859,7 +863,6 @@ class DshManager extends EventEmitter {
       }
       this._killTree(pid);
     }
-    this.child = null;
     this._clearPidFile();
     const leftover = this._killOwnedListeners(this.port);
     if (leftover) {

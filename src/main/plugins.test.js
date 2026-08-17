@@ -135,6 +135,23 @@ function copyRealPlugin(dir) {
   return pathToFileURL(path.join(dir, 'install-dsh-plugin.mjs')).href;
 }
 
+/** A harness tree whose `@deepseek-ai/dsh-tools` resolves without `pnpm install`. */
+function makeFakeHarnessRoot(dir) {
+  const toolsDir = path.join(dir, 'node_modules', '@deepseek-ai', 'dsh-tools');
+  fs.mkdirSync(path.join(dir, 'apps', 'cli'), { recursive: true });
+  fs.mkdirSync(toolsDir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), '{}\n', 'utf8');
+  fs.writeFileSync(path.join(dir, 'apps', 'cli', 'package.json'), '{}\n', 'utf8');
+  fs.writeFileSync(path.join(toolsDir, 'package.json'), JSON.stringify({
+    name: '@deepseek-ai/dsh-tools',
+    version: '0.0.0',
+    type: 'module',
+    exports: { '.': './index.js' },
+  }), 'utf8');
+  fs.writeFileSync(path.join(toolsDir, 'index.js'), 'export function defineTool(tool) { return tool }\n', 'utf8');
+  return dir;
+}
+
 describe('desktop install plugin module', { concurrency: false }, () => {
   test('a $DSH_HOME copy of the desktop plugin loads without a static dsh-tools import', async (t) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-plugin-iso-'));
@@ -189,7 +206,9 @@ describe('desktop install plugin module', { concurrency: false }, () => {
     });
     process.env.DSH_DESKTOP_INSTALL_URL = 'http://127.0.0.1:1';
     process.env.DSH_DESKTOP_INSTALL_TOKEN = 'token';
-    process.env.DSH_HARNESS_ROOT = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
+    const harness = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-harness-root-'));
+    t.after(() => fs.rmSync(harness, { recursive: true, force: true }));
+    process.env.DSH_HARNESS_ROOT = makeFakeHarnessRoot(harness);
     const mod = await import(copyRealPlugin(dir));
     const tools = [];
     await mod.apply({ tools: { register(tool) { tools.push(tool); } } });
