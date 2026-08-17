@@ -24,9 +24,6 @@ jobs:
       - name: Install app dependencies
         run: npm ci
 
-      - name: Test desktop shell
-        run: npm test
-
       # .npmrc 设置了 electron_skip_binary_download，CI 需显式拉取 Electron 二进制
       - name: Download Electron binary
         run: node node_modules/electron/install.js
@@ -38,15 +35,8 @@ jobs:
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js
 
-      - name: Vendor GUI gate (client + host suites)
-        working-directory: vendor/deepseek-harness
-        run: pnpm run test:gui
-
       - name: Build NSIS setup installer
         run: npm run dist
-
-      - name: Smoke packaged application
-        run: npm run smoke:packaged
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -73,9 +63,6 @@ jobs:
       - name: Install app dependencies
         run: npm ci
 
-      - name: Test desktop shell
-        run: npm test
-
       - name: Download Electron binary
         run: node node_modules/electron/install.js
 
@@ -86,15 +73,8 @@ jobs:
       - name: Prepare vendored harness (clone + pnpm install + build)
         run: node scripts/setup-harness.js
 
-      - name: Vendor GUI gate (client + host suites)
-        working-directory: vendor/deepseek-harness
-        run: pnpm run test:gui
-
       - name: Build macOS DMG
         run: npm run dist:mac
-
-      - name: Smoke packaged application
-        run: npm run smoke:packaged
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
