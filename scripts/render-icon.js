@@ -6,6 +6,7 @@ const root = path.join(__dirname, '..');
 const svgPath = path.join(root, 'assets', 'icon.svg');
 const pngPath = path.join(root, 'assets', 'icon.png');
 const icoPath = path.join(root, 'assets', 'icon.ico');
+const PNG_SIZE = 1024;
 const SIZES = [16, 24, 32, 48, 64, 256];
 
 function icoFromPngs(entries) {
@@ -33,12 +34,12 @@ function icoFromPngs(entries) {
 app.whenReady().then(async () => {
   const svg = fs.readFileSync(svgPath, 'utf8');
   const html = `<!DOCTYPE html><html><head><style>
-    html,body{margin:0;width:256px;height:256px;background:transparent;overflow:hidden}
-    svg{display:block;width:256px;height:256px}
+    html,body{margin:0;width:${PNG_SIZE}px;height:${PNG_SIZE}px;background:transparent;overflow:hidden}
+    svg{display:block;width:${PNG_SIZE}px;height:${PNG_SIZE}px}
   </style></head><body>${svg}</body></html>`;
   const win = new BrowserWindow({
-    width: 256,
-    height: 256,
+    width: PNG_SIZE,
+    height: PNG_SIZE,
     useContentSize: true,
     show: false,
     frame: false,

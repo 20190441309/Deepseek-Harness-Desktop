@@ -32,6 +32,13 @@ function walkTestFiles(dir, out = []) {
   return out;
 }
 
+test('macOS release icon meets electron-builder minimum dimensions', () => {
+  const png = fs.readFileSync(path.join(ROOT, 'assets', 'icon.png'));
+  assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.ok(png.readUInt32BE(16) >= 512);
+  assert.ok(png.readUInt32BE(20) >= 512);
+});
+
 test('a vendor DSH_HARNESS_ROOT pin is visible to the isolation scan', () => {
   const tagged = `process.env.${'DSH_HARNESS' + '_ROOT'} = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');\n`;
   assert.equal(listVendorHarnessRootPins(tagged).length, 1);
