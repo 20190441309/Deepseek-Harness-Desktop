@@ -7,7 +7,12 @@ on:
 
 jobs:
   desktop:
-    runs-on: windows-latest
+    name: Desktop unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +36,7 @@ jobs:
           cache: npm
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.7.0
+          version: 11.8.0
       - name: Install vendor dependencies
         working-directory: vendor/deepseek-harness
         run: pnpm install --frozen-lockfile
@@ -46,3 +51,25 @@ jobs:
         run: |
           pnpm run gen-client-catalog --check
           pnpm run gen-third-party-notices --check
+
+  source-electron-smoke:
+    name: Windows source Electron smoke
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install app dependencies
+        run: npm ci
+      - name: Download Electron binary
+        run: node node_modules/electron/install.js
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+      - name: Prepare vendored harness
+        run: node scripts/setup-harness.js
+      - name: Smoke source Electron
+        run: npm run smoke:source

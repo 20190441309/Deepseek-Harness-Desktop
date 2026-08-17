@@ -14,22 +14,23 @@
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "electron-builder --dir --publish never",
+    "smoke:source": "node scripts/run-source-smoke.mjs",
+    "smoke:packaged": "node scripts/run-packaged-smoke.mjs",
+    "check:release-version": "node scripts/check-release-version.mjs",
     "dist": "electron-builder --win --publish never",
     "dist:mac": "electron-builder --mac --publish never"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
-  "dependencies": {
-    "pnpm": "11.8.0"
-  },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "pnpm": "11.8.0"
   },
   "build": {
     "appId": "ai.deepseek.harness.gui",
@@ -41,6 +42,7 @@
     },
     "files": [
       "src/**/*",
+      "!**/*.test.js",
       "assets/**/*",
       "package.json"
     ],
