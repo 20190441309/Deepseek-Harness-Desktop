@@ -61,6 +61,83 @@ test('collectFiles deduplicates a linked package flattened to the same destinati
   );
 });
 
+test('collectFiles keeps shipped preset SKILL.md while stripping other markdown', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-skills-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const source = path.join(workspace, 'source');
+  const destination = path.join(workspace, 'destination');
+  const skill = path.join(
+    source,
+    'apps',
+    'cli',
+    'config',
+    'agent-presets',
+    'cordis',
+    'skills',
+    'editing-cordis-compositions',
+    'SKILL.md',
+  );
+  const readme = path.join(source, 'apps', 'cli', 'README.md');
+  const preset = path.join(source, 'apps', 'cli', 'config', 'agent-presets', 'cordis', 'preset.yml');
+  fs.mkdirSync(path.dirname(skill), { recursive: true });
+  fs.mkdirSync(path.dirname(readme), { recursive: true });
+  fs.writeFileSync(skill, '# editing cordis compositions\n');
+  fs.writeFileSync(readme, '# cli docs\n');
+  fs.writeFileSync(preset, 'id: cordis\n');
+
+  const files = collectFiles(source, destination, false, true);
+  const destinations = files.map(({ dest }) => path.relative(destination, dest)).sort();
+
+  assert.deepEqual(
+    destinations,
+    [
+      path.join('apps', 'cli', 'config', 'agent-presets', 'cordis', 'preset.yml'),
+      path.join(
+        'apps',
+        'cli',
+        'config',
+        'agent-presets',
+        'cordis',
+        'skills',
+        'editing-cordis-compositions',
+        'SKILL.md',
+      ),
+    ],
+  );
+});
+
+test('collectFiles keeps preset SKILL.md when rooted at the deploy config directory', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-deploy-skills-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const source = path.join(workspace, 'config');
+  const destination = path.join(workspace, 'destination');
+  const skill = path.join(
+    source,
+    'agent-presets',
+    'cordis',
+    'skills',
+    'cordis-plugin-development',
+    'SKILL.md',
+  );
+  const readme = path.join(source, 'README.md');
+  const preset = path.join(source, 'agent-presets', 'cordis', 'preset.yml');
+  fs.mkdirSync(path.dirname(skill), { recursive: true });
+  fs.writeFileSync(skill, '# cordis plugin development\n');
+  fs.writeFileSync(readme, '# config docs\n');
+  fs.writeFileSync(preset, 'id: cordis\n');
+
+  const files = collectFiles(source, destination, true, false);
+  const destinations = files.map(({ dest }) => path.relative(destination, dest)).sort();
+
+  assert.deepEqual(
+    destinations,
+    [
+      path.join('agent-presets', 'cordis', 'preset.yml'),
+      path.join('agent-presets', 'cordis', 'skills', 'cordis-plugin-development', 'SKILL.md'),
+    ],
+  );
+});
+
 test('collectFiles preserves a linked package copied to distinct destinations', (t) => {
   const fixture = makeFixture(t);
   linkPackage(fixture.source, fixture.shared, 'a');

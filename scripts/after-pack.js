@@ -129,6 +129,15 @@ function realOf(target) {
   }
 }
 
+/** Runtime skill files under shipped agent presets are Markdown (`SKILL.md`). */
+function isShippedPresetMarkdown(src, root, base) {
+  if (!/\.md$/i.test(base)) {
+    return false;
+  }
+  const rel = path.relative(path.resolve(root), path.resolve(src)).split(path.sep);
+  return rel.includes('agent-presets');
+}
+
 /**
  * 收集需要复制的文件：
  * - 递归 + 回溯维护祖先链（防符号链接环），复用同一个 Set，避免 O(n²) 内存
@@ -195,7 +204,7 @@ function collectFiles(root, destRoot, expandNested = false, flat = false) {
 
     if (lstat.isFile()) {
       const base = path.basename(src);
-      if (/\.(map|tsbuildinfo|md|d\.ts)$/i.test(base)) {
+      if (/\.(map|tsbuildinfo|md|d\.ts)$/i.test(base) && !isShippedPresetMarkdown(src, root, base)) {
         return;
       }
       if (/^(license|licence|changelog|changes|authors|contributing)(\.|$)/i.test(base)) {
