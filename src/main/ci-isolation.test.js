@@ -32,11 +32,44 @@ function walkTestFiles(dir, out = []) {
   return out;
 }
 
+function fakePng(width, height) {
+  const buf = Buffer.alloc(24);
+  buf[0] = 0x89;
+  buf.write('PNG', 1, 'ascii');
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return buf;
+}
+
+test('macOS icon check rejects the 386px capture that failed v0.2.3 packing', () => {
+  const { assertMacReleaseIcon } = require('../../scripts/check-mac-icon');
+  assert.throws(
+    () => assertMacReleaseIcon(fakePng(386, 386), 'assets/icon.png'),
+    /386x386/,
+  );
+});
+
 test('macOS release icon meets electron-builder minimum dimensions', () => {
+  const { assertMacReleaseIcon, MIN_MAC_ICON_PX } = require('../../scripts/check-mac-icon');
   const png = fs.readFileSync(path.join(ROOT, 'assets', 'icon.png'));
-  assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG');
-  assert.ok(png.readUInt32BE(16) >= 512);
-  assert.ok(png.readUInt32BE(20) >= 512);
+  const size = assertMacReleaseIcon(png, 'assets/icon.png');
+  assert.ok(size.width >= MIN_MAC_ICON_PX);
+  assert.ok(size.height >= MIN_MAC_ICON_PX);
+});
+
+test('icon renderer writes a display-independent PNG size', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'scripts', 'render-icon.js'), 'utf8');
+  assert.match(source, /PNG_SIZE = 1024/);
+  assert.match(source, /resize\(\{[\s\S]*width:\s*PNG_SIZE[\s\S]*height:\s*PNG_SIZE/);
+  assert.match(source, /assertMacReleaseIcon/);
+});
+
+test('macOS pack job rejects a too-small icon before electron-builder', () => {
+  const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+  const checkAt = yml.indexOf('node scripts/check-mac-icon.js');
+  const distAt = yml.indexOf('npm run dist:mac');
+  assert.ok(checkAt >= 0);
+  assert.ok(distAt > checkAt);
 });
 
 test('a vendor DSH_HARNESS_ROOT pin is visible to the isolation scan', () => {

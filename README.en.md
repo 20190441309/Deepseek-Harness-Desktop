@@ -4,69 +4,38 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled after a launch failure — do not install it. v0.2.1 never shipped (the release pipeline died). I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few desktop additions around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.2.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.3). I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
-  <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
+  <img src="assets/screenshot-home.jpg" alt="Deepseek-Harness-Desktop home" width="920" />
 </p>
 
-0.2.2 relative to 0.1.3:
+## Install
 
-1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
-2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (searchable), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
-3. Edit-and-resend on the latest user message: the pencil edits that bubble; confirming sends from a child session, the parent stays put. Editing the first message, or an empty fork, titles the child from the new prompt instead of pinning `Parent (1)`.
-4. If Harness exits after the UI is up, the window returns to a failure page and retries a limited number of times; Settings → General owns the policy. A transcript that recorded tool calls without results is completed on the next send.
-5. Settings → General → When closing the window: minimize to tray or quit. Quit stops the local Harness and shows a theme-following Closing overlay.
-6. Plugin marketplace install opens a blank session and prefills a draft for you to send; uninstall stays one-click.
-7. Phone-remote access: entry point hidden this release, ships in the next one. Capability and docs stay; see Remote access below.
+Grab a [v0.2.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.3) installer — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases). Do not install the yanked v0.2.0.
 
-0.2.2 also fixes the yanked 0.2.0: title-bar clicks other than min / max / close did nothing after the Web UI came up; a failing MCP child no longer takes down the Host. A crowded title bar collapses Git / session labels; the terminal drawer fits and focuses on first open.
+- Windows x64: `Deepseek-Harness-Desktop-Setup-0.2.3.exe`
+- macOS Apple Silicon (arm64): `Deepseek-Harness-Desktop-0.2.3-mac-arm64.dmg` (unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`)
+- Intel Mac and Linux: run from source
 
-Still available: third-party thinking intensity, vision fallback, custom themes and wallpaper.
+## Interface
 
-## WeChat group
+The title bar speaks Git: switch branches, Commit / Push / open a pull request when the workspace is a repo. `Ctrl+\` opens the right column (Files / Diff / Browser / Agents); Ctrl+` opens the bottom terminal. Files, Git, and commands stay inside the current workspace.
 
-<div align="center">
-
-![Deepseek-Harness-Desktop WeChat group](assets/wechat-group.png)
-
-Scan to join: tips, troubleshooting, and feature requests.
-
-</div>
-
-## Features
-
-- **Frameless window with a custom title bar**: draggable, double-click to maximize, working minimize / maximize / close buttons, background follows the theme
-- **Automatic Harness launch**: probes `127.0.0.1:3080` on startup — kills leftover dsh processes from a previous run, or hops to a free port if something else is bound there
-- **Three-stage launch chain**: bundled build in `vendor/deepseek-harness` → local `dsh` → `npx @deepseek-ai/dsh`; one of them will come up
-- **Auto workspace registration**: registers the workspace directory into Harness over RPC at boot, no manual setup
-- **Settings are Harness settings** (`Ctrl+,`): models, plugins, MCP, Skills, About, update check, and online install all live in the official settings panel
-- **System tray**: show window, settings, restart Harness, quit. Settings → General → When closing the window can minimize to tray (default) or quit; quit stops the local Harness service and shows a fullscreen Closing overlay that follows the current light/dark theme
-- **Auto-update**: a green "Update available" button appears beside Settings when a newer release exists — one click updates online; Settings → About still offers a manual check
-- **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected into the dsh process via `DEEPSEEK_API_KEY`
-- **Third-party thinking intensity**: custom / third-party models can enable Low / Medium / High / Very High / Extreme; the composer then lets you pick a reasoning level
-- **Vision fallback model**: when the main model (DeepSeek included) cannot see images, a dedicated vision model describes the picture first, then the main model works from that description
-- **Themes and wallpaper**: Settings → Appearance — pick a built-in family or author your own; drop a wallpaper behind the UI and tune frost, pixelation, and glass opacity. Dialogs, menus, and model-name swaps share one enter/leave motion set; “Reduce motion” turns it off.
-- **Plugin marketplace**: Settings → Plugins → Marketplace, beside Plugin configuration and Plugin list. Menu / tray / title-bar / `Ctrl+Shift+M` open that tab. Catalog is only the GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, grouped into UI, workflow, tools, notifications, development, and learning. Install closes Settings, opens a blank session, and prefills “Help me install …”; you send it. The agent calls `install_dsh_plugin`, which runs official `dsh plugin --profile web add github:owner/repo` and restarts Harness on success. Uninstall stays one-click in Settings. Git installs run the repo's prepare script on this machine — only install plugins you trust. If GitHub rate-limits you, save a token on that tab.
-- **MCP and Skills settings**: Settings has MCP and Skills pages for add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… and File → Skills… open those pages.
-- **Remote office (next release)**: the entry point is hidden in this release; the capability ships in the next one. Once enabled, the desktop dials out to the relay and shows a pairing QR. The phone opens the official `dsh web` page — overlay sidebar in portrait, persistent workspace list in landscape. Bound devices can be unbound one by one. Notes: [`mobile/README.md`](mobile/README.md).
-- **Edit and resend**: a pencil on the latest user message turns that bubble into an inline editor; confirming forks a child session *before* that message and sends the edited text. The parent session stays untouched.
-- **Harness auto-recovery**: if `dsh` dies after the UI is up, the window returns to a failure page and retries up to 3 times (1 / 2 / 4 s). Cancel or restart immediately; Settings → General owns the policy. Remote access stops proxying a dead port.
-- **Tool-result pairing recovery**: a transcript that recorded tool calls without results is completed on the next send, so the provider no longer rejects the session forever.
-- **Title-bar Git**: in a Git workspace the title bar shows Commit / Commit & push / Push / pull-request actions; disabled when there is no repo. Status refreshes on focus and after an operation.
-- **Full VT terminal**: the bottom drawer and the Terminal surface each own a PTY table (Windows ConPTY), rendered with xterm. A selection can Copy, Add to chat (disabled without a session), or Open a URL / workspace path; ⌘/Ctrl-click does the same. Maximize restores the **drawer** height only; `surfaces.terminal` has no separate maximize. Shells start only inside the current workspace.
-- **Right-hand surfaces**: a title-bar toggle opens the column. Files search and edit/save (dirty drafts survive reload; closing a dirty tab confirms); Browser back/forward/reload/DevTools/system browser/discovered ports, with the guest kept alive across tab switches; Diff Working tree vs Branch; Agents lists child sessions and background jobs. File, Git, and command access stay inside the workspace root; preview is loopback-only in an isolated session and never carries your API key.
+<p align="center">
+  <img src="assets/screenshot-surfaces.jpg" alt="Title-bar Git, Files, and terminal" width="920" />
+</p>
 
 ### Third-party thinking intensity
 
 Settings → Model → edit a custom provider, then tick thinking intensity on the model. After save, the composer model menu shows Reasoning level.
 
 <p align="center">
-  <img src="assets/screenshot-thinking-settings.png" alt="Enable thinking intensity on a third-party model" width="920" />
+  <img src="assets/screenshot-thinking-settings.jpg" alt="Enable thinking intensity on a third-party model" width="920" />
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-thinking-chat.png" alt="Pick a reasoning level in the composer" width="920" />
+  <img src="assets/screenshot-thinking-chat.jpg" alt="Pick a reasoning level in the composer" width="920" />
 </p>
 
 ### Vision fallback model
@@ -74,60 +43,77 @@ Settings → Model → edit a custom provider, then tick thinking intensity on t
 Settings → Model → Vision model. Pick a model that accepts images. When the main model cannot see pictures, that model describes the image first, then the main model works from the description.
 
 <p align="center">
-  <img src="assets/screenshot-vision-settings.png" alt="Configure a dedicated vision model" width="920" />
+  <img src="assets/screenshot-vision-settings.jpg" alt="Configure a dedicated vision model" width="920" />
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-vision-chat.png" alt="Vision model describes the image for a text-only main model" width="920" />
+  <img src="assets/screenshot-vision-chat.jpg" alt="Vision model describes the image for a text-only main model" width="920" />
 </p>
 
 ### Themes and wallpaper
 
-Settings → Appearance. Light / Dark / System stay separate from the theme family; each card has a light half and a dark half — click the half you want. Create, duplicate, edit, import, and export custom families. The accent paints the send button, user bubbles, and the selected sidebar item.
+Settings → Appearance. Light / Dark / System stay separate from the theme family; each card has a light half and a dark half — click the half you want. Create, duplicate, edit, import, and export custom families.
 
 A wallpaper sits behind the whole UI. Once set, frost, pixelation, and glass opacity sliders appear: lower opacity makes the sidebar, dialogs, and composer more see-through.
 
 <p align="center">
-  <img src="assets/screenshot-theme-library.png" alt="Appearance theme library: built-in and custom families" width="920" />
+  <img src="assets/screenshot-theme-library.jpg" alt="Appearance theme library" width="920" />
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-theme-wallpaper-settings.png" alt="Wallpaper, frost, pixelation, and glass opacity" width="920" />
+  <img src="assets/screenshot-theme-wallpaper-settings.jpg" alt="Wallpaper, frost, pixelation, and glass opacity" width="920" />
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-theme-wallpaper-chat.png" alt="Conversation with a wallpaper behind the glass UI" width="920" />
+  <img src="assets/screenshot-theme-wallpaper-chat.jpg" alt="Conversation with a wallpaper behind the glass UI" width="920" />
 </p>
 
-### Remote access (next release)
+### MCP and Skills
 
-The entry point is hidden in this release; the following ships with it in the next one.
+Settings → MCP and Settings → Skills; File → MCP… / Skills… open the same pages. Add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. Changes apply immediately.
 
-Settings → General → Remote access. The desktop dials out to the relay and shows a pairing QR. Scan it with the phone camera to open the official Web UI: portrait uses an overlay workspace drawer; landscape keeps the sidebar. The pairing secret lives only in `#offer=`; the page never asks you to type a token. Unbind one device without rotating the QR for the others. Model keys, the plugin marketplace, and pairing stay on the desktop. `dsh web` still binds to `127.0.0.1`; privileged APIs (settings, credentials) are blocked on the remote path.
+<p align="center">
+  <img src="assets/screenshot-mcp.jpg" alt="MCP servers in Settings" width="920" />
+</p>
 
-### Edit and resend
+<p align="center">
+  <img src="assets/screenshot-skills.jpg" alt="Skills page in Settings" width="920" />
+</p>
 
-A pencil appears on the latest sent user message. Clicking turns that bubble into an editor; Cancel restores it, Send forks a child session *before* that message and submits the edited text. The parent session and old reply stay put. The control is disabled while a turn is running, or when the message contains images.
+## Features
 
-### Harness auto-recovery
+- **Frameless window with a custom title bar**: draggable, double-click to maximize; background follows the theme
+- **Automatic Harness launch**: probes `127.0.0.1:3080`, kills leftover dsh processes, or hops to a free port
+- **Three-stage launch chain**: bundled `vendor/deepseek-harness` build → local `dsh` → `npx @deepseek-ai/dsh`
+- **Auto workspace registration**: registers the workspace directory into Harness over RPC at boot
+- **Settings are Harness settings** (`Ctrl+,`): models, plugins, MCP, Skills, About, and update check live in the official panel
+- **System tray**: show window, settings, restart Harness, quit. Settings → General chooses minimize-to-tray or quit
+- **Auto-update**: an “Update available” button appears beside Settings; Settings → About still offers a manual check
+- **API key stored separately**: `config.json` and `credentials.json` are split; the key is injected via `DEEPSEEK_API_KEY`
+- **Plugin marketplace**: Settings → Plugins → Marketplace. Catalog is the GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic. Install opens a blank session with a prefilled draft; uninstall stays one-click
+- **Edit and resend**: a pencil on the latest user message; confirming sends from a child session, the parent stays put
+- **Harness auto-recovery**: if `dsh` dies after the UI is up, the window returns to a failure page and retries a limited number of times
+- **Full VT terminal**: the bottom drawer and the Terminal surface each own a PTY (Windows ConPTY); a selection can join chat
 
-If `dsh` exits after the main UI is up, the window returns to a failure page with the exit reason and a retry countdown. Default: at most 3 automatic restarts (1 / 2 / 4 s). Cancel the round or restart immediately. Cold-start misconfiguration does not loop. Settings → General → Harness auto-recovery owns the switch, attempt count, and base delay. Remote access stops proxying while the process is down.
+The phone-remote entry point is hidden in this release; capability and docs remain in [`mobile/README.md`](mobile/README.md).
 
-### Title-bar Git, terminal, and surfaces
+## Shortcuts
 
-A Git workspace gets Commit / Commit & push / Push / pull-request in the title bar. The bottom terminal drawer and the Terminal surface each own a PTY with full ANSI/VT; a selection can Add to chat (disabled without a session). Opening the right column gives Files search and save, Browser navigation that keeps the guest, Diff worktree vs branch, and Agents job status.
-
-## Install
-
-Just want to use it? Grab a [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2) installer — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
-
-- Windows x64: `Deepseek-Harness-Desktop-Setup-0.2.2.exe`
-- macOS Apple Silicon (arm64): `Deepseek-Harness-Desktop-0.2.2-mac-arm64.dmg` (unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`)
-- Intel Mac and Linux: run from source
+| Action | How |
+| --- | --- |
+| Settings | `Ctrl+,` or tray menu |
+| MCP | File → MCP…, or Settings → MCP |
+| Skills | File → Skills…, or Settings → Skills |
+| Plugin marketplace | Settings → Plugins → Marketplace; `Ctrl+Shift+M` |
+| Terminal drawer | Ctrl+` or the title-bar terminal button |
+| Right column | `Ctrl+\` or the title-bar surfaces button |
+| Restart Harness | `Ctrl+Shift+R` |
+| Reload UI | `Ctrl+R` |
+| DevTools | `Ctrl+Shift+I` |
 
 ## Run from source
 
-Windows 10+ or macOS 14+ (Apple Silicon), Node 22.19+ / 24+, pnpm 11. Get an API key from [DeepSeek](https://platform.deepseek.com/).
+Windows 10+ or macOS 14+ (Apple Silicon), Node 22.19+ / 24+, pnpm 11.
 
 ```powershell
 git clone https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git
@@ -137,28 +123,15 @@ npm run setup:harness
 npm start
 ```
 
-The Harness source ships with the repo (`vendor/deepseek-harness`); the first `setup:harness` installs dependencies and runs a full build — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`. The desktop unit-test gate is `npm test` (no Electron); run it after changing close behavior, the tray, or the themed overlay. The installed NSIS app and `npm start` share one `appId` and a single-instance lock: quit the installed app before a source launch. After editing `packages/client/*/src`, run `pnpm run build:lib:client` in `vendor/deepseek-harness` (or at least rebuild that package's `lib/client.js`); rebuilding only `apps/web/dist` will not show layout or Settings changes.
+The Harness source ships with the repo (`vendor/deepseek-harness`); the first `setup:harness` installs dependencies and runs a full build — slow. After that, `npm start`. If Electron isn't found, point `ELECTRON_PATH` at `electron.exe`. The installed app and `npm start` share one `appId` and a single-instance lock: quit the installed app before a source launch.
 
-### Everyday usage
-
-| Action | How |
-| --- | --- |
-| Settings | `Ctrl+,` or tray menu |
-| MCP | File → MCP…, or Settings → MCP |
-| Skills | File → Skills…, or Settings → Skills |
-| Plugin marketplace | Settings → Plugins → Marketplace; `Ctrl+Shift+M`, tray, or the title-bar button open the same tab |
-| Terminal drawer | Ctrl+` or the title-bar terminal button |
-| Right column | `Ctrl+\` or the title-bar surfaces button |
-| Restart Harness | `Ctrl+Shift+R` |
-| Reload UI | `Ctrl+R` |
-| DevTools | `Ctrl+Shift+I` |
-| Close window | Settings → General → When closing the window: minimize to tray by default; Quit stops the local service and shows a theme-following Closing overlay |
+After editing `packages/client/*/src`, run `pnpm run build:lib:client` in `vendor/deepseek-harness` (or at least rebuild that package's `lib/client.js`); rebuilding only `apps/web/dist` will not show layout or Settings changes. The desktop unit-test gate is `npm test`.
 
 ## How it's wired
 
-Upstream lives in `vendor/deepseek-harness`; we boot the built `dsh web` (default `127.0.0.1:3080`). Launch order: integrated source build → local `dsh` → `npx`. Once the service is reachable, the window loads the Web UI and registers the workspace.
+Upstream lives in `vendor/deepseek-harness`; we boot the built `dsh web` (default `127.0.0.1:3080`). Once the service is reachable, the window loads the Web UI and registers the workspace.
 
-Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model (low / medium / high / xhigh / max); that lands in `reasoningEfforts` and shows up in the composer. When the main model cannot see images, a dedicated vision model can describe the picture first. Theme families, wallpaper, and glass opacity live in the `ui-theme` section of `$DSH_HOME/settings.yaml`. Official DeepSeek defaults are left alone.
+Custom / third-party providers go through the pi-ai adapter. You can tick thinking intensity on a model and pick it in the composer. When the main model cannot see images, a dedicated vision model can describe the picture first. Appearance lives in the `ui-theme` section of `$DSH_HOME/settings.yaml`.
 
 To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, then restart the desktop app. Harness is still a developer preview — expect it to move.
 
@@ -166,31 +139,28 @@ To change the UI, edit `vendor/deepseek-harness`, run `pnpm run build` there, th
 
 `vendor/deepseek-harness` is a [git subtree](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge):
 
-- **Design language**: every UI / layout / frontend change must follow official `dsh web`. Spec: [docs/design-language.en.md](docs/design-language.en.md). Do not ship a second skin for the desktop chrome. The boot-page instrument look is documented under [Desktop boot page](docs/design-language.en.md#desktop-boot-page); do not spread it. Button, dialog, and menu motion: [docs/motion.en.md](docs/motion.en.md).
-- **Local changes**: edit files under `vendor/deepseek-harness` and commit them like any other code in this repo — no patch files to maintain.
-- **Pulling upstream updates**: `npm run sync:harness` (a `git subtree pull --squash` under the hood). Git performs a three-way merge, so upstream changes and local customizations combine automatically; you only resolve conflicts where both sides touched the same lines, then `git add` + `git commit`. Rebuild with `npm run setup:harness` afterwards.
-- **Inspecting local customizations**: commits in `git log --oneline -- vendor/deepseek-harness` other than `Sync/Squashed` ones are the local development history; every upstream snapshot commit carries a `git-subtree-split` footer with the upstream commit SHA for comparison.
+- **Design language**: every UI / layout / frontend change must follow official `dsh web`. Spec: [docs/design-language.en.md](docs/design-language.en.md). Do not ship a second skin. The boot-page instrument look is documented under [Desktop boot page](docs/design-language.en.md#desktop-boot-page); do not spread it. Motion: [docs/motion.en.md](docs/motion.en.md).
+- **Local changes**: edit files under `vendor/deepseek-harness` and commit them like any other code in this repo.
+- **Pulling upstream updates**: `npm run sync:harness`. You only resolve conflicts where both sides touched the same lines. Rebuild with `npm run setup:harness` afterwards.
 
 ## Packaging & releases
-
-Build locally:
 
 ```powershell
 npm run dist      # Windows NSIS
 npm run dist:mac  # macOS Apple Silicon DMG (must run on macOS)
 ```
 
-Output lands in `dist/`: Windows NSIS (`Deepseek-Harness-Desktop-Setup-x.y.z.exe`), or `npm run dist:mac` for an Apple Silicon DMG. Packaging dereferences `vendor/deepseek-harness` into `resources/` and bundles a Node binary, so the installed app doesn't need a local Node. A full build requires the dsh artifacts (`apps/cli/lib/bin.js` + `apps/web/dist/index.html`).
+Output lands in `dist/`. Shipping the vendored harness into the installer makes local builds slow; use GitHub Actions (`.github/workflows/release.yml`) instead. Pushing a `v*` tag (must match `package.json`) builds the Windows NSIS installer and the macOS arm64 DMG. A successful Windows build is enough to publish.
 
-### CI builds (recommended)
+## WeChat group
 
-Shipping the ~1.4 GB vendored harness into the installer makes local builds slow. Use the GitHub Actions workflow (`.github/workflows/release.yml`) instead:
+<div>
 
-- **PR / push to main**: `.github/workflows/test.yml` runs Windows / macOS desktop tests, the vendor GUI gate, and a Windows source Electron smoke
-- **Manual build**: Actions page → Build installers → Run workflow; the job runs `npm test` before packaging; grab Windows / macOS installers from the artifacts
-- **Auto release**: pushing a `v*` tag (e.g. `v0.2.2`) builds the Windows NSIS installer and the macOS arm64 DMG. A successful Windows build is enough to publish; a macOS failure no longer swallows the Windows installer. The tag must match `package.json`.
+![Deepseek-Harness-Desktop WeChat group](assets/wechat-group.png)
 
-Once a version is on GitHub Releases, the in-app update check picks it up.
+Scan to join: tips, troubleshooting, and feature requests.
+
+</div>
 
 ## Community acknowledgments
 
