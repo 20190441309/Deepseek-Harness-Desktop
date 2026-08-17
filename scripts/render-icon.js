@@ -1,6 +1,7 @@
 const { app, BrowserWindow, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { assertMacReleaseIcon } = require('./check-mac-icon');
 
 const root = path.join(__dirname, '..');
 const svgPath = path.join(root, 'assets', 'icon.svg');
@@ -50,9 +51,13 @@ app.whenReady().then(async () => {
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   await new Promise((resolve) => setTimeout(resolve, 300));
   const image = await win.webContents.capturePage();
-  const png = image.toPNG();
+  const source = nativeImage.createFromBuffer(image.toPNG()).resize({
+    width: PNG_SIZE,
+    height: PNG_SIZE,
+  });
+  const png = source.toPNG();
+  assertMacReleaseIcon(png, pngPath);
   fs.writeFileSync(pngPath, png);
-  const source = nativeImage.createFromBuffer(png);
   const entries = SIZES.map((size) => ({
     width: size,
     height: size,
