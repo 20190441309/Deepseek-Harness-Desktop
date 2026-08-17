@@ -4,23 +4,23 @@
 
 An Electron desktop shell on top of the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
-No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled after a launch failure — do not install it. I just really like GUIs — issues, suggestions, and PRs are all welcome.
+No custom chat UI: Electron owns the window, tray, workspace, API key, and launch orchestration. Chat, tool calls, and approvals stay the official `dsh web`. A few small tweaks around third-party thinking intensity, a vision fallback model, themes, Git / terminal / surfaces, and MCP / Skills. Please use [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2). [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) was pulled after a launch failure — do not install it. v0.2.1 never shipped (the release pipeline died). I just really like GUIs — issues, suggestions, and PRs are all welcome.
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-The next release (already in source; installer not published yet) will add:
+0.2.2 relative to 0.1.3:
 
 1. Settings → MCP and Settings → Skills: add / edit / delete / enable. MCP writes `~/.dsh/mcp-servers.yaml`; skills write `~/.dsh/skills`. File → MCP… / Skills… open the same pages.
 2. Title-bar Git, a full VT terminal, and the right-hand surfaces: Commit / Commit & push / Push / pull request, branch switch and create (searchable), ANSI terminal (xterm; selection can join chat), Files (search and save) / Diff / Browser / Agents. Files and commands stay inside the current workspace. Toggle the terminal drawer with Ctrl+`, the right column with `Ctrl+\`.
-3. Edit-and-resend on the latest user message: the pencil edits that bubble; confirming sends from a child session, the parent stays put.
+3. Edit-and-resend on the latest user message: the pencil edits that bubble; confirming sends from a child session, the parent stays put. Editing the first message, or an empty fork, titles the child from the new prompt instead of pinning `Parent (1)`.
 4. If Harness exits after the UI is up, the window returns to a failure page and retries a limited number of times; Settings → General owns the policy. A transcript that recorded tool calls without results is completed on the next send.
 5. Settings → General → When closing the window: minimize to tray or quit. Quit stops the local Harness and shows a theme-following Closing overlay.
 6. Plugin marketplace install opens a blank session and prefills a draft for you to send; uninstall stays one-click.
 7. Phone-remote access: entry point hidden this release, ships in the next one. Capability and docs stay; see Remote access below.
 
-0.2.1 also fixes the yanked 0.2.0: title-bar clicks other than min / max / close did nothing after the Web UI came up; a failing MCP child no longer takes down the Host.
+0.2.2 also fixes the yanked 0.2.0: title-bar clicks other than min / max / close did nothing after the Web UI came up; a failing MCP child no longer takes down the Host. A crowded title bar collapses Git / session labels; the terminal drawer fits and focuses on first open.
 
 Still available: third-party thinking intensity, vision fallback, custom themes and wallpaper.
 
@@ -119,9 +119,11 @@ A Git workspace gets Commit / Commit & push / Push / pull-request in the title b
 
 ## Install
 
-Just want to use it? Grab the [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) NSIS installer (`Deepseek-Harness-Desktop-Setup-0.1.3.exe`) — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
+Just want to use it? Grab a [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2) installer — no local Node required. Older builds: [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases).
 
-Only Windows x64 packages are published for now; on macOS / Linux, run from source.
+- Windows x64: `Deepseek-Harness-Desktop-Setup-0.2.2.exe`
+- macOS Apple Silicon (arm64): `Deepseek-Harness-Desktop-0.2.2-mac-arm64.dmg` (unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`)
+- Intel Mac and Linux: run from source
 
 ## Run from source
 
@@ -184,9 +186,9 @@ Output lands in `dist/`: Windows NSIS (`Deepseek-Harness-Desktop-Setup-x.y.z.exe
 
 Shipping the ~1.4 GB vendored harness into the installer makes local builds slow. Use the GitHub Actions workflow (`.github/workflows/release.yml`) instead:
 
-- **PR / push to main**: `.github/workflows/test.yml` runs `npm test` (desktop unit tests, no Electron)
+- **PR / push to main**: `.github/workflows/test.yml` runs Windows / macOS desktop tests, the vendor GUI gate, and a Windows source Electron smoke
 - **Manual build**: Actions page → Build installers → Run workflow; the job runs `npm test` before packaging; grab Windows / macOS installers from the artifacts
-- **Auto release**: pushing a `v*` tag (e.g. `v0.2.1`) builds the Windows NSIS installer and the macOS arm64 DMG, then publishes a GitHub Release automatically
+- **Auto release**: pushing a `v*` tag (e.g. `v0.2.2`) builds the Windows NSIS installer and the macOS arm64 DMG. A successful Windows build is enough to publish; a macOS failure no longer swallows the Windows installer. The tag must match `package.json`.
 
 Once a version is on GitHub Releases, the in-app update check picks it up.
 

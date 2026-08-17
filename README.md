@@ -4,23 +4,23 @@
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 官方 Web UI 的 Electron 桌面壳。
 
-不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已撤回，不要再装。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
+不重做聊天界面：Electron 只负责窗口、托盘、工作区、API Key 和启动编排，对话、工具调用、审批还是官方 `dsh web`。思考强度、识图兜底、主题、Git / 终端 / 右栏、MCP 与技能这类地方补了一点。当前请用 [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2)。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动错误已撤回，不要再装。v0.2.1 因发布流水线失败从未上线。深度 GUI 爱好者，欢迎各种需求、建议和 PR。
 
 <p align="center">
   <img src="assets/screenshot-home.png" alt="Deepseek-Harness-Desktop" width="920" />
 </p>
 
-下一版（源码已合入，安装包尚未发布）将包含：
+0.2.2 相对 0.1.3：
 
 1. 设置 → MCP、设置 → 技能：增删改、启停；MCP 写入 `~/.dsh/mcp-servers.yaml`，技能写入 `~/.dsh/skills`。文件菜单也有入口。
 2. 标题栏 Git、完整 VT 终端、纯右边栏：提交 / 推送 / 变更请求、分支切换与新建（可搜索）、ANSI 终端（xterm；选区可加入对话）、Files（搜索与保存）/ Diff / Browser / Agents。文件与命令都锁在当前工作区内。标题栏按钮或快捷键切换：终端抽屉是 Ctrl+`，右栏是 `Ctrl+\`。
-3. 最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。
+3. 最新一条用户消息可就地编辑后重新发送：点铅笔改那条气泡，确认后才在子会话里发出，原会话不动。编辑第一条消息或空白 fork 时，子会话标题跟新提示走，不会钉成「父标题 (1)」。
 4. Harness 运行中意外退出后自动回到故障页并有限次重启；设置 → 通用可开关自动恢复、次数和间隔。工具调度失败留下的残缺会话，下次发送时也会自动补齐，不再永久卡死。
 5. 设置 → 通用可选择关闭窗口时最小化到托盘还是直接退出；退出会停掉本机 Harness，并显示跟随当前主题的「关闭中」遮罩。
 6. 插件市场安装改为打开空白会话并预填草稿，由你自己发送；卸载仍是一键。
 7. 手机远程办公本版隐藏入口，将在下一版本发布；底层能力与文档保留，见下文「远程访问」。
 
-0.2.1 还修了撤回的 0.2.0：Web UI 起来后标题栏除最小化 / 最大化 / 关闭外点不了；单个 MCP 子进程失败不再拖垮整个 Host。
+0.2.2 还修了撤回的 0.2.0：Web UI 起来后标题栏除最小化 / 最大化 / 关闭外点不了；单个 MCP 子进程失败不再拖垮整个 Host。标题栏变窄时 Git / 会话标题会折叠；终端抽屉首次打开能正确适应尺寸并聚焦。
 
 一直可用：第三方思考强度、识图模型兜底、自定义主题和背景图。
 
@@ -111,9 +111,11 @@
 
 ## 安装
 
-只想用的话，去 [v0.1.3](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.1.3) 下载 NSIS 安装包（`Deepseek-Harness-Desktop-Setup-0.1.3.exe`），装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
+只想用的话，去 [v0.2.2](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.2) 下载安装包，装完不需要本机 Node 环境。历史版本见 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases)。
 
-目前对外仍只提供 Windows x64 安装包；macOS / Linux 请从源码运行。
+- Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.2.exe`
+- macOS Apple Silicon（arm64）：`Deepseek-Harness-Desktop-0.2.2-mac-arm64.dmg`（未签名：下载后右键 → 打开；或执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`）
+- Intel Mac 与 Linux 请从源码运行
 
 ## 从源码跑
 
@@ -176,9 +178,9 @@ npm run dist:mac  # macOS Apple Silicon DMG（需在 macOS 上跑）
 
 本地打包要把 1.4GB 的官方源码搬进安装包，很慢。用 GitHub Actions（`.github/workflows/release.yml`）在云端构建：
 
-- **PR / 推 main**：`.github/workflows/test.yml` 跑 `npm test`（桌面壳单测，不启动 Electron）
+- **PR / 推 main**：`.github/workflows/test.yml` 跑 Windows / macOS 桌面单测、vendor GUI 门禁，以及 Windows 源码 Electron 冒烟
 - **手动构建**：Actions 页 → Build installers → Run workflow；打包前同样先跑 `npm test`，Windows / macOS 安装包在 artifacts 里下载
-- **自动发布**：推送 `v*` 标签（如 `v0.2.1`）自动构建 Windows NSIS 与 macOS arm64 DMG，并发布 GitHub Release
+- **自动发布**：推送 `v*` 标签（如 `v0.2.2`）自动构建 Windows NSIS 与 macOS arm64 DMG。Windows 构建成功即可发版；macOS 失败不再吞掉 Windows 安装包。tag 必须与 `package.json` 版本一致。
 
 发布到 GitHub Releases 后，应用内「检查更新」就能发现并下载新版本。
 
