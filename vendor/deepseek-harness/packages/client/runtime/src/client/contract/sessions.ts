@@ -88,7 +88,9 @@ export interface ISessions {
    * Fork a session from a prefix of the source; on resolution the child is in
    * the list store and `open()` can target it.
    * @param opts - source session id, an optional cut anchor, and whether to
-   *   increment an inherited durable title before resolving. `atSeq` anchors
+   *   increment an inherited durable title on a non-blank child before resolving.
+   *   A blank child (no `turn/start` in the seed) skips that rename so the
+   *   first new human message can receive an automatic title. `atSeq` anchors
    *   a completed-turn cut (the boundary is the first turn/end at or after
    *   it; an in-log anchor in an open turn is unavailable rather than
    *   clipped backward). `beforeSeq` is the mutually exclusive complement:

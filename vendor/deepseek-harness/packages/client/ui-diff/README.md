@@ -18,5 +18,5 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **No turn-diff, split view, ignore-whitespace, or word-wrap** — branch scope is `baseRef...HEAD` only; there is no checkpoint turn range. T3's split / wrap / ignore-whitespace toggles are not ported.
+- **No turn-diff, split view, ignore-whitespace, or word-wrap** — branch scope is `baseRef...HEAD` only; there is no checkpoint turn range. Split / wrap / ignore-whitespace toggles are not shipped.
 - **Titlebar Commit is unchanged** — Diff stage/unstage/discard does not replace `git add -A`.

@@ -35,17 +35,27 @@ const SessionProviderStub: AppFrameProps['SessionProvider'] = ({ children, empty
   selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children(selectedSession.current)}</>
 
 
-/** Observer stub: captures the callback so tests can fire resizes manually. */
+/** Observer stub: captures every instance so tests can fire resizes manually. */
+const observerInstances = new Set<ResizeObserverStub>()
 let fireResize: (() => void) | null = null
 class ResizeObserverStub {
   #cb: ResizeObserverCallback
   constructor(cb: ResizeObserverCallback) { this.#cb = cb }
-  observe(): void { fireResize = () => { this.#cb([], this) } }
+  observe(): void {
+    observerInstances.add(this)
+    fireResize = () => {
+      for (const observer of observerInstances) observer.#cb([], observer)
+    }
+  }
   unobserve(): void {}
-  disconnect(): void { fireResize = null }
+  disconnect(): void {
+    observerInstances.delete(this)
+    if (observerInstances.size === 0) fireResize = null
+  }
 }
 
 let frameWidth = 1920
+let trailingClusterWidth = 0
 let orientationLandscape = true
 const orientationListeners = new Set<(ev: MediaQueryListEvent) => void>()
 
@@ -136,6 +146,9 @@ function drag(handle: Element, fromX: number, toX: number): void {
 beforeEach(() => {
   localStorage.clear()
   frameWidth = 1920
+  trailingClusterWidth = 0
+  observerInstances.clear()
+  fireResize = null
   orientationLandscape = true
   orientationListeners.clear()
   selectedSession.current = 's-test' as SessionId
@@ -164,6 +177,12 @@ beforeEach(() => {
     dispatchEvent: () => true,
   })) as unknown as typeof window.matchMedia
   Element.prototype.getBoundingClientRect = function () {
+    if (this instanceof HTMLElement && this.id === 'dshd-shell-titlebar-trailing') {
+      return {
+        width: trailingClusterWidth, height: 32, top: 12, left: 0,
+        right: trailingClusterWidth, bottom: 44, x: 0, y: 12, toJSON: () => ({}),
+      }
+    }
     return { width: frameWidth, height: 1080, top: 0, left: 0, right: frameWidth, bottom: 1080, x: 0, y: 0, toJSON: () => ({}) }
   }
   // jsdom lacks pointer capture: emulate per-element so hasPointerCapture gates pass.
@@ -339,9 +358,9 @@ describe('AppFrame', () => {
     expect(drawerTrack(frame)).toBe(0)
     expect(frame.querySelector('[data-titlebar-trailing]')).toBeTruthy()
     expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
-    expect(frame.querySelector('#dsh-shell-titlebar-trailing')).toBeTruthy()
+    expect(frame.querySelector('#dshd-shell-titlebar-trailing')).toBeTruthy()
     expect(slotCalls.find(c => c.key === 'shell.titlebar.trailing')?.props).toEqual({
-      surfaces: 0, terminalDrawer: 0,
+      surfaces: 0, terminalDrawer: 0, density: 'full',
     })
   })
 
@@ -390,6 +409,48 @@ describe('AppFrame', () => {
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.hasAttribute('data-terminal-drawer-collapsed')).toBe(true)
+  })
+})
+
+describe('AppFrame — titlebar density and conversation reserve', () => {
+  it('reserves the measured trailing width in the conversation column when details is closed', () => {
+    trailingClusterWidth = 400
+    const { frame } = mountFrame()
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(frame.getAttribute('data-titlebar-density')).toBe('full')
+    expect(frame.hasAttribute('data-titlebar-over-conversation')).toBe(true)
+    expect(frame.style.getPropertyValue('--dshd-titlebar-conversation-reserve')).toBe('400px')
+  })
+
+  it('drops the conversation reserve when details is at least as wide as the cluster', () => {
+    trailingClusterWidth = 300
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.openDetails() })
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(frame.hasAttribute('data-titlebar-over-conversation')).toBe(false)
+    expect(frame.getAttribute('data-titlebar-density')).toBe('full')
+    expect(frame.style.getPropertyValue('--dshd-titlebar-conversation-reserve')).toBe('0px')
+  })
+
+  it('collapses to cozy when an open surfaces column pins the center below 720', () => {
+    frameWidth = 1280
+    const { frame, instance, slotCalls } = mountFrame()
+    act(() => { instance.actions.openSurfaces() })
+    expect(frame.getAttribute('data-titlebar-density')).toBe('cozy')
+    expect(slotCalls.filter(c => c.key === 'shell.titlebar.trailing').at(-1)?.props).toEqual({
+      surfaces: 540, terminalDrawer: 0, density: 'cozy',
+    })
+  })
+
+  it('hides the cluster on a compact header and does not mark over-conversation', () => {
+    frameWidth = 980
+    orientationLandscape = false
+    stubScreenAvail(390, 844)
+    const { frame } = mountFrame()
+    expect(frame.hasAttribute('data-compact-header')).toBe(true)
+    expect(frame.hasAttribute('data-titlebar-over-conversation')).toBe(false)
+    expect(frame.getAttribute('data-titlebar-density')).toBe('full')
+    expect(frame.style.getPropertyValue('--dshd-titlebar-conversation-reserve')).toBe('0px')
   })
 })
 
@@ -469,7 +530,7 @@ describe('AppFrame — phone overlay shell', () => {
     expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: 0 })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
     expect(getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
-    expect(frame.querySelector('#dsh-shell-titlebar-trailing')).toBeTruthy()
+    expect(frame.querySelector('#dshd-shell-titlebar-trailing')).toBeTruthy()
     expect(frame.hasAttribute('data-compact-header')).toBe(true)
   })
 

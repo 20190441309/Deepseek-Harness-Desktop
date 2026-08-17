@@ -81,6 +81,14 @@ function mount(opts: {
   }
 }
 
+function submitBar(): void {
+  fireEvent.submit(document.querySelector('[data-preview-toolbar]') as HTMLFormElement)
+}
+
+function typeUrl(value: string): void {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Browser' }), { target: { value } })
+}
+
 function stubHostRect(rect: { x: number; y: number; width: number; height: number }): HTMLElement {
   const host = document.querySelector('[data-preview-host]') as HTMLElement
   host.getBoundingClientRect = () => ({
@@ -99,7 +107,8 @@ function stubHostRect(rect: { x: number; y: number; width: number; height: numbe
 
 async function openGuest(b: ReturnType<typeof mount>): Promise<void> {
   stubHostRect({ x: 800, y: 40, width: 400, height: 600 })
-  fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+  typeUrl('http://127.0.0.1:3000')
+  submitBar()
   await waitFor(() => {
     expect(b.previewOpen).toHaveBeenCalled()
   })
@@ -150,25 +159,25 @@ describe('PreviewPanel', () => {
     expect(screen.getByText('\u6d4f\u89c8\u5668\u9884\u89c8\u4ec5\u5728\u684c\u9762\u5e94\u7528\u4e2d\u53ef\u7528\u3002')).toBeTruthy()
   })
 
-  it('shows the T3code reason when preview IPC is unavailable', () => {
+  it('shows the disabled reason when preview IPC is unavailable', () => {
     mount({ available: false })
     expect(screen.getByText('Browser previews are only available in the desktop app.')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Browser' })).toBeNull()
   })
 
   it('catches a thrown previewOpen and shows the rejected copy', async () => {
     mount({
       open: async () => { throw new Error('unknown preview id') },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    typeUrl('http://127.0.0.1:3000')
+    submitBar()
     expect(await screen.findByText('Preview only opens local URLs.')).toBeTruthy()
   })
 
   it('opens http://127.0.0.1 through previewOpen', async () => {
     const b = mount()
-    const input = screen.getByRole('textbox', { name: 'Browser' })
-    fireEvent.change(input, { target: { value: 'http://127.0.0.1:4173' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    typeUrl('http://127.0.0.1:4173')
+    submitBar()
     await waitFor(() => {
       expect(b.previewOpen).toHaveBeenCalledWith(expect.objectContaining({
         url: 'http://127.0.0.1:4173',
@@ -209,10 +218,8 @@ describe('PreviewPanel', () => {
     mount({
       open: async () => ({ ok: false, message: 'Preview only opens local URLs.' }),
     })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Browser' }), {
-      target: { value: 'https://example.com' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    typeUrl('https://example.com')
+    submitBar()
     await waitFor(() => {
       expect(screen.getByText('Preview only opens local URLs.')).toBeTruthy()
     })
@@ -251,8 +258,8 @@ describe('PreviewPanel', () => {
     })
   })
 
-  it('opens a pending URL from sessionStorage and a later dsh-open-surface event', async () => {
-    sessionStorage.setItem('dsh-pending-preview-url', 'http://127.0.0.1:4173')
+  it('opens a pending URL from sessionStorage and a later dshd-open-surface event', async () => {
+    sessionStorage.setItem('dshd-pending-preview-url', 'http://127.0.0.1:4173')
     const b = mount()
     stubHostRect({ x: 800, y: 40, width: 400, height: 600 })
     await waitFor(() => {
@@ -260,9 +267,9 @@ describe('PreviewPanel', () => {
         url: 'http://127.0.0.1:4173',
       }))
     })
-    expect(sessionStorage.getItem('dsh-pending-preview-url')).toBeNull()
-    window.dispatchEvent(new CustomEvent('dsh-open-surface', { detail: { kind: 'preview' } }))
-    window.dispatchEvent(new CustomEvent('dsh-open-surface', { detail: { url: 'http://127.0.0.1:3000' } }))
+    expect(sessionStorage.getItem('dshd-pending-preview-url')).toBeNull()
+    window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { kind: 'preview' } }))
+    window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { url: 'http://127.0.0.1:3000' } }))
     await waitFor(() => {
       expect(b.previewNavigate).toHaveBeenCalledWith('pv-1', 'http://127.0.0.1:3000')
     })
@@ -298,11 +305,13 @@ describe('PreviewPanel', () => {
 
   it('opens the typed URL in the system browser before a guest exists', () => {
     const b = mount()
+    expect((screen.getByRole('button', { name: 'Open in system browser' }) as HTMLButtonElement).disabled).toBe(true)
+    typeUrl('http://127.0.0.1:3000')
     fireEvent.click(screen.getByRole('button', { name: 'Open in system browser' }))
     expect(b.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3000')
-    fireEvent.change(screen.getByRole('textbox', { name: 'Browser' }), { target: { value: '   ' } })
+    typeUrl('   ')
     expect((screen.getByRole('button', { name: 'Open in system browser' }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    submitBar()
     expect(b.previewOpen).not.toHaveBeenCalled()
   })
 
@@ -342,7 +351,8 @@ describe('PreviewPanel', () => {
     await waitFor(() => {
       expect(b.previewReload).toHaveBeenCalledWith('pv-1')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Developer tools' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Developer tools' }))
     await waitFor(() => {
       expect(b.previewOpenDevTools).toHaveBeenCalledWith('pv-1')
     })
@@ -381,7 +391,8 @@ describe('PreviewPanel', () => {
       <PreviewPanel {...({ ...base, active: true } as unknown as PreviewPanelProps)} />,
     )
     stubHostRect({ x: 800, y: 40, width: 400, height: 600 })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    typeUrl('http://127.0.0.1:3000')
+    submitBar()
     await waitFor(() => {
       expect(previewShow).toHaveBeenCalled()
     })
@@ -395,5 +406,63 @@ describe('PreviewPanel', () => {
     await waitFor(() => {
       expect(previewClose).toHaveBeenCalledWith('pv-1')
     })
+  })
+
+  it('uses icon chrome, a search-or-URL placeholder, and Enter instead of an Open button', () => {
+    mount()
+    const input = screen.getByRole('textbox', { name: 'Browser' }) as HTMLInputElement
+    expect(input.placeholder).toBe('Search or enter URL')
+    expect(input.value).toBe('')
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Forward' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'More' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect((screen.getByRole('menuitem', { name: 'Developer tools' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('restores the committed URL on Escape and hides the guest while More is open', async () => {
+    const b = mount()
+    await openGuest(b)
+    const input = screen.getByRole('textbox', { name: 'Browser' }) as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'a' })
+    typeUrl('http://127.0.0.1:9')
+    expect(input.value).toBe('http://127.0.0.1:9')
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(input.value).toBe('http://127.0.0.1:3000')
+    fireEvent.blur(input)
+    const hideCalls = b.previewHide.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    await waitFor(() => {
+      expect(b.previewHide.mock.calls.length).toBeGreaterThan(hideCalls)
+    })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menuitem', { name: 'Developer tools' })).toBeNull()
+  })
+
+  it('keeps a focused draft when the guest navigates', async () => {
+    let send: (state: PreviewNavState) => void = () => {}
+    const b = mount({
+      onPreviewStateChange: (handler) => {
+        send = handler
+        return () => {}
+      },
+    })
+    await openGuest(b)
+    const input = screen.getByRole('textbox', { name: 'Browser' }) as HTMLInputElement
+    fireEvent.focus(input)
+    typeUrl('http://127.0.0.1:9')
+    act(() => {
+      send({
+        ok: true,
+        id: 'pv-1',
+        url: 'http://127.0.0.1:3000/app',
+        canGoBack: true,
+        canGoForward: false,
+      })
+    })
+    expect(input.value).toBe('http://127.0.0.1:9')
   })
 })

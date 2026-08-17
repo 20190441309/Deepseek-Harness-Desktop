@@ -6,7 +6,8 @@
   min-width: 0;
   height: 48px;
   padding: 0 8px;
-  padding-right: var(--dsh-wco-controls, 8px);
+  /* Margin, not padding: drag includes padding and would steal window-control clicks. */
+  margin-right: var(--dshd-wco-controls, 8px);
   box-sizing: border-box;
   overflow-x: auto;
   -webkit-app-region: drag;
@@ -35,8 +36,7 @@
   cursor: pointer;
 }
 
-.tab:hover:not(.active),
-.tab[data-hover]:not(.active) {
+.tab:hover:not(.active) {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
@@ -76,31 +76,6 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-}
-
-.kindIcon,
-.closeGlyph {
-  grid-area: 1 / 1;
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-}
-
-.closeGlyph {
-  display: none;
-}
-
-.tab:hover .kindIcon,
-.tab[data-hover] .kindIcon,
-.close:focus-visible .kindIcon {
-  display: none;
-}
-
-.tab:hover .closeGlyph,
-.tab[data-hover] .closeGlyph,
-.close:focus-visible .closeGlyph {
-  display: grid;
 }
 
 .add {

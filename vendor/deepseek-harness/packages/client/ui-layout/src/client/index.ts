@@ -14,6 +14,9 @@ import { AppFrame } from './AppFrame.tsx'
 import { createLayoutStore } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
+import type { TitlebarDensity } from './titlebar-density.ts'
+
+export type { TitlebarDensity }
 
 // Contract exports only (export-convergence rule: cross-package consumers
 // keep a symbol exported; test-only/package-internal symbols live off /src).
@@ -93,11 +96,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'shell.overlay': { kind: 'list'; scope: 'root' }
     /**
      * Titlebar trailing cluster in the shared titlebar grid row, inset from
-     * the window controls (`margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad))`).
+     * the window controls (`margin-right: var(--dshd-wco-controls, 8px)`).
      * List slot: entries order among themselves. The cluster is
-     * `-webkit-app-region: no-drag` so its controls stay clickable on the
-     * desktop chrome drag strip. Owner props are the live layout widths so
-     * toggles can derive pressed state.
+     * `-webkit-app-region: no-drag` so Session log, Git, and panel toggles
+     * stay clickable beside the conversation caption drag regions. Owner props
+     * are the live layout widths so toggles can derive pressed state.
      */
     'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: TitlebarTrailingOwnerProps }
     /**
@@ -136,15 +139,20 @@ export interface SurfacesOwnerProps {}
 export interface TerminalDrawerOwnerProps {}
 
 /**
- * Titlebar trailing owner share: live layout widths (0 = closed). This is the
- * SlotMap home; session-log-export copies the owner fields because it does
- * not depend on this package.
+ * Titlebar trailing owner share: live layout widths (0 = closed) and the
+ * label-density AppFrame derived from the conversation column. This is the
+ * SlotMap home; session-log-export type-imports this package for the merge.
  */
 export interface TitlebarTrailingOwnerProps {
   /** Surfaces column width in px (0 when closed). */
   surfaces: number
   /** Terminal drawer height in px (0 when closed). */
   terminalDrawer: number
+  /**
+   * Label collapse while the cluster shares the conversation column.
+   * Omitted means full labels; AppFrame always writes it.
+   */
+  density?: TitlebarDensity
 }
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */

@@ -8,10 +8,41 @@
 
 .toolbar {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
   padding: 8px 12px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.icon:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .url {

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import clsx from 'clsx'
 import {
   IconBranchOutline16,
   IconChevronDownOutline14,
@@ -42,8 +43,10 @@ export interface BranchMenuProps extends BranchMenuOps {
   onChanged: () => void
   /** Surface switch/create/list failures on the Git progress toast. */
   onError: (message: string, title: string) => void
-  /** True while a stacked Git action holds the titlebar, matching T3code. */
+  /** True while a stacked Git action holds the titlebar. */
   disabled?: boolean
+  /** Hide the ref name; keep the branch icon and chevron. */
+  compact?: boolean
 }
 
 const CREATE_ID = '__create__'
@@ -53,7 +56,7 @@ const CREATE_ID = '__create__'
  * @param props - shell ops, cwd, current ref, copy, and change callback.
  * @returns the picker, or nothing outside a repository.
  */
-export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = false, gitBranchList, gitSwitchBranch, gitCreateBranch }: BranchMenuProps) {
+export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = false, compact = false, gitBranchList, gitSwitchBranch, gitCreateBranch }: BranchMenuProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [refs, setRefs] = useState<BranchRef[] | null>(null)
@@ -171,14 +174,14 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
         anchor={(
           <button
             type="button"
-            className={css.trigger}
+            className={clsx(css.trigger, compact && css.triggerCompact)}
             aria-label={t('branch.open')}
             aria-expanded={open}
             disabled={disabled || busy || cwd === undefined}
             onClick={() => { setOpen(next => !next) }}
           >
             <IconBranchOutline16 size={14} />
-            <span className={css.name}>{label}</span>
+            {compact ? null : <span className={css.name}>{label}</span>}
             <IconChevronDownOutline14 size={14} />
           </button>
         )}

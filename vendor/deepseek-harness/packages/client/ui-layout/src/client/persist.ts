@@ -6,7 +6,7 @@ import {
 } from './columns.ts'
 
 /** localStorage key for surfaces / drawer geometry. */
-export const LAYOUT_PERSIST_KEY = 'dsh.layout.panels'
+export const LAYOUT_PERSIST_KEY = 'dshd.layout.panels'
 
 /** Last-open sizes plus whether those panels are currently open. */
 export interface LayoutPersist {

@@ -1,13 +1,7 @@
-import { useEffect, useRef, useState, type ComponentType, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconAgentPresetOutline16,
   IconCloseOutline16,
-  IconCodeOutline16,
-  IconCommitOutline16,
-  IconFolderOpenOutline16,
-  IconGlobeOutline14,
-  IconPanelBottomOutline16,
   IconPlusOutline16,
   Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -27,15 +21,6 @@ const ADD_LABEL: Record<OpenableKind, 'card.browser' | 'card.terminal' | 'card.f
   agents: 'card.agents',
 }
 
-const KIND_ICON: Record<Surface['kind'], ComponentType<{ size?: number; className?: string }>> = {
-  preview: IconGlobeOutline14,
-  terminal: IconPanelBottomOutline16,
-  files: IconFolderOpenOutline16,
-  diff: IconCommitOutline16,
-  agents: IconAgentPresetOutline16,
-  file: IconCodeOutline16,
-}
-
 export type SurfaceTabsProps = PropsLocale<typeof NS> & {
   surfaces: readonly Surface[]
   activeId: string | null
@@ -45,6 +30,7 @@ export type SurfaceTabsProps = PropsLocale<typeof NS> & {
   onCloseToRight: (id: string) => void
   onCloseAll: () => void
   onOpenKind: (kind: OpenableKind) => void
+  onMenuOpenChange: (open: boolean) => void
   openable: Readonly<Record<OpenableKind, boolean>>
 }
 
@@ -78,26 +64,21 @@ export function surfaceTitle(surface: Surface, t: SurfaceTabsProps['t']): string
   }
 }
 
-function SurfaceKindIcon({ kind }: { kind: Surface['kind'] }): ReactNode {
-  const Icon = KIND_ICON[kind]
-  return <Icon size={12} />
-}
-
 /**
- * Surface tab strip: activate, close, add-menu, middle-click, context menu,
- * and non-passive wheel-to-horizontal scroll. Mounted even with zero surfaces
- * so the titlebar drag region and window-control pad remain.
+ * Surface tab strip: activate, trailing close (right of the label; do not
+ * move it without an explicit product request), add-menu, middle-click,
+ * context menu, and non-passive wheel-to-horizontal scroll. Mounted even
+ * with zero surfaces so the titlebar drag region and window-control pad remain.
  * @param props - surfaces, the active id, callbacks, and copy.
  * @returns the tab bar.
  */
 export function SurfaceTabs({
   surfaces, activeId, onActivate, onClose, onCloseOthers, onCloseToRight, onCloseAll,
-  onOpenKind, openable, t,
+  onOpenKind, onMenuOpenChange, openable, t,
 }: SurfaceTabsProps): ReactNode {
   const barRef = useRef<HTMLDivElement>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
-  const [hoverId, setHoverId] = useState<string | null>(null)
 
   useEffect(() => {
     const el = barRef.current
@@ -139,6 +120,7 @@ export function SurfaceTabs({
     event.preventDefault()
     setAddOpen(false)
     setMenu({ id, x: event.clientX, y: event.clientY })
+    onMenuOpenChange(true)
   }
 
   return (
@@ -152,9 +134,6 @@ export function SurfaceTabs({
             className={clsx(css.tab, active && css.active)}
             data-surfaces-tab
             data-active-tab={active || undefined}
-            data-hover={hoverId === surface.id || undefined}
-            onMouseEnter={() => { setHoverId(surface.id) }}
-            onMouseLeave={() => { setHoverId(null) }}
             onMouseDown={(event) => { onTabMouseDown(surface.id, event) }}
             onContextMenu={(event) => { onTabContext(surface.id, event) }}
           >
@@ -171,12 +150,7 @@ export function SurfaceTabs({
               aria-label={`${t('tab.close')} ${title}`}
               onClick={() => { onClose(surface.id) }}
             >
-              <span className={css.kindIcon} data-surfaces-tab-icon>
-                <SurfaceKindIcon kind={surface.kind} />
-              </span>
-              <span className={css.closeGlyph} data-surfaces-tab-close-glyph>
-                <IconCloseOutline16 size={12} />
-              </span>
+              <IconCloseOutline16 size={12} />
             </button>
           </div>
         )
@@ -191,9 +165,13 @@ export function SurfaceTabs({
           items={addItems}
           onSelect={(id) => {
             setAddOpen(false)
+            onMenuOpenChange(false)
             onOpenKind(id as OpenableKind)
           }}
-          onClose={() => { setAddOpen(false) }}
+          onClose={() => {
+            setAddOpen(false)
+            onMenuOpenChange(false)
+          }}
           anchor={(
             <button
               type="button"
@@ -202,7 +180,9 @@ export function SurfaceTabs({
               data-surfaces-tab-add
               onClick={() => {
                 setMenu(null)
-                setAddOpen(open => !open)
+                const next = !addOpen
+                setAddOpen(next)
+                onMenuOpenChange(next)
               }}
             >
               <IconPlusOutline16 size={14} />
@@ -221,6 +201,7 @@ export function SurfaceTabs({
           onSelect={(id) => {
             const target = menu.id
             setMenu(null)
+            onMenuOpenChange(false)
             switch (id) {
               case 'close':
                 onClose(target)
@@ -239,7 +220,10 @@ export function SurfaceTabs({
                 break
             }
           }}
-          onClose={() => { setMenu(null) }}
+          onClose={() => {
+            setMenu(null)
+            onMenuOpenChange(false)
+          }}
           anchor={<span className={css.contextAnchor} />}
         />
       ) : null}

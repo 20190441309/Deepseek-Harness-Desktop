@@ -109,6 +109,7 @@ function ActionBar({
       ) : null}
       <Tooltip label={t('action.new')} side="bottom">
         <button
+          key={hasSessions ? 'new-terminal' : 'ensure-terminal'}
           type="button"
           className={css.action}
           aria-label={t('action.new')}
@@ -175,15 +176,14 @@ export function TerminalWorkspace({
   const available = Boolean(cwd)
   const hasTerminalSidebar = sessions.length > 1
 
-  const create = useCallback(async (kind: 'new' | TerminalSplitDirection) => {
+  const create = useCallback(async (kind: 'ensure' | 'new' | TerminalSplitDirection) => {
     if (!cwd || !acquireCreate(actions)) return
-    if (kind !== 'new' && atLimit) {
-      releaseCreate(actions)
-      return
-    }
     try {
+      const snap = snapshotOf(actions)
+      if (kind === 'ensure' && snap && snap.sessions.length > 0) return
+      if (kind !== 'ensure' && kind !== 'new' && atLimit) return
       const created = await ptyCreate({ cwd })
-      if (kind === 'new') actions.newTerminal(created.id, cwd)
+      if (kind === 'ensure' || kind === 'new') actions.newTerminal(created.id, cwd)
       else actions.split(created.id, cwd, kind)
     } catch {
       actions.failCreate()
@@ -213,7 +213,7 @@ export function TerminalWorkspace({
       if (!justOpened) return
       const snap = snapshotOf(actions)
       if (!cwd || !snap || snap.sessions.length > 0 || snap.createFailed) return
-      void create('new')
+      void create('ensure')
     })
     observer.observe(el)
     return () => { observer.disconnect() }
@@ -275,7 +275,7 @@ export function TerminalWorkspace({
         setTerminalDrawer(max)
         setMaximized(true)
       }}
-      onNew={() => { void create('new') }}
+      onNew={() => { void create(sessions.length === 0 ? 'ensure' : 'new') }}
       onClose={closeActive}
     />
   )
@@ -327,11 +327,14 @@ export function TerminalWorkspace({
                   className={clsx(css.pane)}
                   data-active={id === activeId || undefined}
                   aria-label={`${t('session.label')} ${id}`}
+                  onPointerDown={() => { actions.activate(id) }}
                   onClick={() => { actions.activate(id) }}
                 >
                   <TerminalPane
                     id={id}
                     session={session}
+                    active={id === activeId}
+                    onActivate={() => { actions.activate(id) }}
                     sessionId={sessionId}
                     cwd={cwd}
                     mentionTerminal={mentionTerminal}

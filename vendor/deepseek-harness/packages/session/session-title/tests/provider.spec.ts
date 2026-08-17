@@ -112,6 +112,69 @@ describe('SessionTitleService Provider lifecycle', () => {
     expect(ctx.sessionTitle.get(parent)?.title).toBe('Inherited title prompt')
   })
 
+  it('runs first-prompt on a parented child whose seed has no eligible human message', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const generate = vi.fn(async (request: SessionTitleProviderRequest) => ({
+      title: 'Catgirl roleplay',
+      messageSeqs: [request.messages[0]!.seq],
+    }))
+    ctx.sessionTitle.register({
+      id: SessionTitleProviderId('empty-fork-first'),
+      automatic: 'first-prompt',
+      generate,
+    })
+    const parent = ctx.sessions.create(SessionId('empty-fork-parent'))
+    const child = ctx.sessions.fork(parent, undefined, SessionId('empty-fork-child'))
+    expect(child.header.parentSession).toBe(parent.id)
+    expect(ctx.sessionTitle.get(child)).toBeUndefined()
+
+    child.append('turn/start', { turn: 1 })
+    const first = appendHumanPrompt(child, 'You are a catgirl')
+    await settle()
+    appendRoute(child)
+    await settle()
+
+    expect(generate).toHaveBeenCalledOnce()
+    expect(ctx.sessionTitle.get(child)).toMatchObject({
+      title: 'Catgirl roleplay',
+      messageSeqs: [first.seq],
+      source: { kind: 'provider', provider: SessionTitleProviderId('empty-fork-first') },
+    })
+  })
+
+  it('keeps a user rename pin on a parented child so first-prompt does not run', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const generate = vi.fn(async (request: SessionTitleProviderRequest) => ({
+      title: 'Should not run',
+      messageSeqs: [request.messages[0]!.seq],
+    }))
+    ctx.sessionTitle.register({
+      id: SessionTitleProviderId('pinned-fork-first'),
+      automatic: 'first-prompt',
+      generate,
+    })
+    const parent = ctx.sessions.create(SessionId('pinned-fork-parent'))
+    const child = ctx.sessions.fork(parent, undefined, SessionId('pinned-fork-child'))
+    ctx.sessionTitle.rename(child, 'Pelican bicycle SVG (1)')
+
+    child.append('turn/start', { turn: 1 })
+    appendHumanPrompt(child, 'You are a catgirl')
+    await settle()
+    appendRoute(child)
+    await settle()
+
+    expect(generate).not.toHaveBeenCalled()
+    expect(ctx.sessionTitle.get(child)).toMatchObject({
+      title: 'Pelican bicycle SVG (1)',
+      messageSeqs: [],
+      source: { kind: 'user' },
+    })
+  })
+
   it('runs a first-prompt provider once after the routed request and retries only through refresh', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

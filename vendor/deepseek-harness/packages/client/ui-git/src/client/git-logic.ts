@@ -1,4 +1,4 @@
-/** T3code Git action state machine over this desktop's VcsStatus JSON. */
+/** Git action state machine over this desktop's VcsStatus JSON. */
 
 /** Provider that owns change-request wording. */
 export interface SourceControlProvider {
@@ -228,7 +228,7 @@ export function buildMenuItems(
 }
 
 /**
- * Hover copy for a disabled Git menu row. Ported from T3code `getMenuActionDisabledReason`.
+ * Hover copy for a disabled Git menu row.
  * @param input - the row, live status, busy flag, and whether origin exists.
  * @returns the reason, or null when the row is enabled.
  */
@@ -445,7 +445,7 @@ export function resolveQuickAction(
 }
 
 /**
- * Format the T3code progress subtitle from a start timestamp.
+ * Format the progress subtitle from a start timestamp.
  * @param startedAtMs - epoch ms when the current phase or hook began.
  * @param nowMs - clock sample; tests pass an explicit value.
  * @returns `Running for Ns` / `Running for Nm Ns`, or undefined before start.
@@ -461,7 +461,6 @@ export function formatElapsedDescription(startedAtMs: number | null, nowMs = Dat
 
 /**
  * Predict the first toast titles for a stacked action before server events arrive.
- * Ported from T3code `buildGitActionProgressStages` (MIT).
  * @param input - action, whether a custom message exists, and whether a feature ref is created first.
  * @returns ordered phase titles.
  */
@@ -577,7 +576,7 @@ export interface StackedActionResult {
   pr?: { status: 'created' | 'opened_existing' | 'none'; url?: string; number?: number; title?: string }
 }
 
-/** T3code window-focus VCS refresh debounce. */
+/** Window-focus VCS refresh debounce. */
 export const GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS = 250
 
 /**
@@ -608,7 +607,7 @@ export type GitCompletionCta =
   | { kind: 'run_action'; label: string; action: GitStackedAction }
 
 /**
- * Shorten a commit SHA the way T3code titles do.
+ * Shorten a commit SHA for toast titles.
  * @param sha - full or abbreviated SHA.
  * @returns the first 7 characters, or null when absent.
  */
@@ -630,7 +629,7 @@ export function truncateText(value: string | undefined, maxLength = TOAST_DESCRI
 }
 
 /**
- * Build the T3code success title/description from a stacked result.
+ * Build the success title/description from a stacked result.
  * @param result - commit/push/PR outcomes.
  * @param terms - provider wording.
  * @returns toast title and optional description.
@@ -662,7 +661,7 @@ export function summarizeGitActionResult(
 }
 
 /**
- * Pick the T3code completion CTA for a stacked result.
+ * Pick the completion CTA for a stacked result.
  * @param result - commit/push/PR outcomes.
  * @param terms - provider wording.
  * @param isDefaultRef - whether the current ref is the default branch.

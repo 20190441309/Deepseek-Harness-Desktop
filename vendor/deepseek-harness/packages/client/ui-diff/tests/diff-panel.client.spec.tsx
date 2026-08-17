@@ -102,7 +102,7 @@ describe('porcelain helpers', () => {
 })
 
 describe('DiffPanel', () => {
-  it('shows the T3code reason when the workspace is not a git repository', async () => {
+  it('shows the disabled reason when the workspace is not a git repository', async () => {
     mount({ cwd: '/tmp/plain', status: null, diff: null })
     await waitFor(() => {
       expect(screen.getByText('Diff is only available in Git repositories.')).toBeTruthy()

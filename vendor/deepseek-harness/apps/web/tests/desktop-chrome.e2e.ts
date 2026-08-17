@@ -45,35 +45,68 @@ describe('web e2e: titlebar cluster and surfaces empty five cards', () => {
 
   it('shows Session log, Git, and two panel toggles left of the frame edge', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-desktop-chrome-titlebar'))
-    const cluster = page.locator('#dsh-shell-titlebar-trailing')
+    const cluster = page.locator('#dshd-shell-titlebar-trailing')
     await cluster.waitFor({ timeout: 15_000 })
     const sessionLog = cluster.getByRole('button', { name: 'Session log' })
+    const branch = cluster.getByRole('button', { name: 'Switch branch' })
     const git = cluster.getByRole('button', { name: 'Commit' })
     const gitMenu = cluster.getByRole('button', { name: 'Git actions' })
     const terminal = cluster.getByRole('button', { name: 'Toggle terminal drawer' })
     const surfaces = cluster.getByRole('button', { name: 'Toggle right panel' })
     expect(await sessionLog.isVisible()).toBe(true)
+    expect(await branch.isVisible()).toBe(true)
     expect(await git.isVisible()).toBe(true)
     expect(await gitMenu.isVisible()).toBe(true)
     expect(await terminal.isVisible()).toBe(true)
     expect(await surfaces.isVisible()).toBe(true)
     const boxes = await Promise.all([
       sessionLog.boundingBox(),
+      branch.boundingBox(),
       git.boundingBox(),
       terminal.boundingBox(),
       surfaces.boundingBox(),
     ])
     for (const box of boxes) expect(box).not.toBeNull()
-    expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x)
-    expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x)
-    expect(boxes[2]!.x).toBeLessThan(boxes[3]!.x)
-    const snapshot = await captureStableAria(page, '#dsh-shell-titlebar-trailing', scaffold.workspaceCwd)
+    for (let index = 1; index < boxes.length; index += 1) {
+      const previous = boxes[index - 1]!
+      const current = boxes[index]!
+      expect(current.x + 1).toBeGreaterThanOrEqual(previous.x + previous.width)
+    }
+    const snapshot = await captureStableAria(page, '#dshd-shell-titlebar-trailing', scaffold.workspaceCwd)
     await compareOrRefreshGolden(TITLEBAR_EXPECTED, snapshot, MODE)
     expect(snapshot).toContain('Session log')
+    expect(snapshot).toContain('Switch branch')
     expect(snapshot).toContain('Commit')
     expect(snapshot).toContain('Git actions')
     expect(snapshot).toContain('Toggle terminal drawer')
     expect(snapshot).toContain('Toggle right panel')
+    expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
+  })
+
+  it('publishes complete platform UI exports to runtime-loaded plugins', async () => {
+    const exportTypes = await page.evaluate(async () => {
+      const modules = (window as Window & {
+        __DSH_MODULES__?: {
+          import: (specifier: string, parentURL: string, attrs: Record<string, never>) => Promise<unknown>
+        }
+      }).__DSH_MODULES__
+      if (modules === undefined) throw new Error('client module system missing')
+      const primitives = await modules.import(
+        '@deepseek-ai/dsh-client-ui-primitives',
+        '',
+        {},
+      ) as Record<string, unknown>
+      return {
+        cloudUpload: typeof primitives.IconCloudUploadOutline16,
+        commit: typeof primitives.IconCommitOutline16,
+        pullRequest: typeof primitives.IconPullRequestOutline16,
+      }
+    })
+    expect(exportTypes).toEqual({
+      cloudUpload: 'function',
+      commit: 'function',
+      pullRequest: 'function',
+    })
     expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
   })
 
@@ -112,6 +145,33 @@ describe('web e2e: titlebar cluster and surfaces empty five cards', () => {
     await tabs.waitFor({ state: 'visible', timeout: 10_000 })
     expect(await page.getByRole('button', { name: 'Close Files' }).isVisible()).toBe(true)
     expect(await page.getByRole('button', { name: 'Open a surface' }).isVisible()).toBe(true)
+    expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
+  })
+
+  it('keeps trailing controls apart and opens the branch menu while surfaces is open', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-desktop-chrome-surfaces-titlebar'))
+    const surfaces = page.getByRole('button', { name: 'Toggle right panel' })
+    if (await surfaces.getAttribute('aria-pressed') !== 'true') {
+      await surfaces.click()
+    }
+    await expect.poll(() => surfaces.getAttribute('aria-pressed'), { timeout: 10_000 }).toBe('true')
+    const cluster = page.locator('#dshd-shell-titlebar-trailing')
+    const sessionLog = cluster.getByRole('button', { name: 'Session log' })
+    const branch = cluster.getByRole('button', { name: 'Switch branch' })
+    const git = cluster.getByRole('button', { name: 'Commit' })
+    const boxes = await Promise.all([
+      sessionLog.boundingBox(),
+      branch.boundingBox(),
+      git.boundingBox(),
+    ])
+    for (const box of boxes) expect(box).not.toBeNull()
+    for (let index = 1; index < boxes.length; index += 1) {
+      const previous = boxes[index - 1]!
+      const current = boxes[index]!
+      expect(current.x + 1).toBeGreaterThanOrEqual(previous.x + previous.width)
+    }
+    await branch.click()
+    await expect.poll(() => branch.getAttribute('aria-expanded'), { timeout: 5_000 }).toBe('true')
     expect(tripwire.pageErrors, tripwire.pageErrors.join('\n')).toEqual([])
   })
 

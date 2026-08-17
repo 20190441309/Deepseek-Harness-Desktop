@@ -36,7 +36,7 @@
 12. **阴影只用 lv1 / lv2 / lv3。** 菜单和对话框用 `lv3`；输入条、悬浮卡片用 `lv2`。禁止 `0 18px 40px` 这类重阴影。
 13. **毛玻璃止于官方配方。** 遮罩 `blur(2px)` + `--dsw-alias-bg-mask-*`；抬起面用 `color-mix(..., var(--dsw-alias-glass-opacity), transparent)`。不要加更重的 blur，也不要每层都铺投影。
 14. **滚动条用共享样式。** 禁止组件内 `::-webkit-scrollbar`。
-15. **产品文案中文，代码注释英文。** 不要把 VS Code / Material / iOS / T3code 的密度和装饰搬进来压过官方页。
+15. **产品文案中文，代码注释英文。** 不要把 VS Code / Material / iOS 的密度和装饰搬进来压过官方页。
 
 ## 视觉锚点
 
@@ -52,7 +52,7 @@
 | 选中行 | `--dsw-specific-sidebar-nav-item-active`（强调用 `*-accent`） |
 | 字体栈 | `--dsw-font-family`（系统 UI + 苹方 / 雅黑）；代码 `--ds-font-family-code` |
 
-布局：`AppFrame` 是栏，不是卡片网格。关着的栏宽度为 0 且不画分隔线。标题栏尾簇是 28×28 图标按钮，给窗口控件留出实测避让，不要自绘一套窗口皮肤。
+布局：`AppFrame` 是栏，不是卡片网格。关着的栏宽度为 0 且不画分隔线。标题栏尾簇是 28×28 图标按钮，给窗口控件留出实测避让，不要自绘一套窗口皮肤。右边栏 surface Tab 的关闭控件在标题**右侧**；未经用户明确要求，不要把它挪到左侧。
 
 ## 允许的例外
 
@@ -65,7 +65,7 @@
 
 启动页是整窗一张仪器画布，不是中间再套卡片，也不是把日志关进带边框的盒子。源文件是 [`boot.html`](../src/renderer/boot.html)、[`boot.css`](../src/renderer/boot.css)、[`boot-tokens.css`](../src/renderer/boot-tokens.css)、[`boot.js`](../src/renderer/boot.js)。
 
-构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22，距底边 52px，避免被角轨裁切。运行时就绪后，官方客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到官方那张「正在加载插件」页。
+构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，官方客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到官方那张「正在加载插件」页。
 
 色与主题：[`boot-tokens.css`](../src/renderer/boot-tokens.css) 是唯一色表。浅色是纸面近黑，深色是 CRT 近白；`--boot-accent` 与正文同色，失败用 `--boot-alert`。`html[data-boot-theme]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把用户主题的 `bg` / `accent` 写进启动页。[`boot.css`](../src/renderer/boot.css) 只引用 `--boot-*` 与官方字体、动效 token，不写 `[data-ds-dark-theme]` 分支，也不写颜色字面量。
 

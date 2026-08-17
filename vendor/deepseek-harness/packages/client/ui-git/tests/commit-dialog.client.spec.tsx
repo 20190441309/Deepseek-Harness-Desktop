@@ -38,7 +38,7 @@ function mount(overrides: Partial<CommitDialogProps> = {}) {
 }
 
 describe('CommitDialog', () => {
-  it('shows branch, files, stats, and the three T3code actions', () => {
+  it('shows branch, files, stats, and the three commit actions', () => {
     mount()
     expect(screen.getByRole('dialog', { name: 'Commit changes' })).toBeTruthy()
     expect(screen.getByText('large-bird')).toBeTruthy()

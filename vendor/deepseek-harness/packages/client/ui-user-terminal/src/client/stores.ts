@@ -5,7 +5,7 @@
  */
 import { defineStore, type EngineStoreHandle, type EngineStoreInstance } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** T3code per-group split ceiling. */
+/** Per-group split ceiling. */
 export const MAX_TERMINALS_PER_GROUP = 4
 /** Default PTY columns before the viewport reports a fit. */
 export const DEFAULT_TERMINAL_COLS = 80
@@ -112,6 +112,15 @@ function activeGroupIndex(state: TerminalSessionState): number {
 
 function hasSession(state: TerminalSessionState, id: string): boolean {
   return state.sessions.some(session => session.id === id)
+}
+
+/**
+ * Replay bytes for a pane. Empty when the store row has already closed.
+ * @param session - the live record, or undefined while visible ids lag a close.
+ * @returns the retained PTY buffer, or an empty string.
+ */
+export function sessionBuffer(session: TerminalSessionRecord | undefined): string {
+  return session === undefined ? '' : session.buffer
 }
 
 /**

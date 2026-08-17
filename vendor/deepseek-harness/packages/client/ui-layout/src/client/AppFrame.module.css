@@ -196,7 +196,7 @@
   gap: 8px;
   height: 32px;
   margin-top: 12px;
-  margin-right: var(--dsh-wco-controls, var(--dsh-wco-pad, 8px));
+  margin-right: var(--dshd-wco-controls, 8px);
   -webkit-app-region: no-drag;
 }
 
@@ -234,6 +234,7 @@
   color: var(--dsw-alias-label-primary);
   box-shadow: var(--dsw-shadow-lv2);
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .phoneMenu:hover {

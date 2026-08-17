@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-git-action-progress-toast.md
-2026-08-16-git-action-progress-toast.md: 5fa7e83a4e6d5f40f7b046e209ad456b4a3345eb
-2026-08-16-git-action-progress-toast.zh.md: 4cd9da96ef4c97844c5975096c2f338cc2b9d130
+2026-08-16-git-action-progress-toast.md: 15a8564582933a5bd57522b1bb83b6c4ec8f69fc
+2026-08-16-git-action-progress-toast.zh.md: 8d315c90f4651fc1734bf5c6b93da98196bf359c

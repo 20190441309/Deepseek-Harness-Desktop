@@ -67,7 +67,7 @@ describe('GitProgressToast', () => {
     expect(screen.queryByText(/Running for/)).toBeNull()
   })
 
-  it('copies the error dump and expands details', () => {
+  it('copies the error dump and expands details below the headline', () => {
     const writeText = vi.fn()
     Object.assign(navigator, { clipboard: { writeText } })
     render(
@@ -86,9 +86,34 @@ describe('GitProgressToast', () => {
         onClose={() => {}}
       />,
     )
+    expect(screen.getByText('lefthook failed')).toBeTruthy()
+    expect(screen.queryByText(/oxfmt --check/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Copy error' }))
     expect(writeText).toHaveBeenCalledWith('lefthook failed\noxfmt --check')
     fireEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(screen.getByText('lefthook failed')).toBeTruthy()
     expect(screen.getByText(/oxfmt --check/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Hide details' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('omits Show details when the dump is only the headline', () => {
+    render(
+      <GitProgressToast
+        state={{
+          tone: 'error',
+          title: 'Action failed',
+          description: 'error: failed to push some refs',
+          details: 'error: failed to push some refs',
+          startedAt: null,
+          copyLabel: 'Copy error',
+          detailsLabel: 'Show details',
+          hideDetailsLabel: 'Hide details',
+        }}
+        dismissLabel="Dismiss notification"
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Copy error' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show details' })).toBeNull()
   })
 })

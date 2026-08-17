@@ -39,6 +39,10 @@
   cursor: not-allowed;
 }
 
+.initCompact {
+  padding: 6px 8px;
+}
+
 .primary,
 .chevron {
   display: inline-flex;

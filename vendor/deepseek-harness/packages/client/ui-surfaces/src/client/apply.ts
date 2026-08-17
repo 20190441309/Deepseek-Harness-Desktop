@@ -34,10 +34,12 @@ export interface FileOwnerProps {
   registerSave: (save: (() => Promise<boolean>) | null) => void
 }
 
-/** Owner props the Browser occupant receives so tab switches hide the guest. */
+/** Owner props the Browser occupant receives so renderer chrome can hide the guest. */
 export interface BrowserOwnerProps {
   /** True while this preview surface is the active tab. */
   active: boolean
+  /** True while renderer-owned chrome overlaps the native guest hit-test area. */
+  occluded?: boolean
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

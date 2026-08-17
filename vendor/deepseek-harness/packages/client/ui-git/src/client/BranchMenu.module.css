@@ -29,6 +29,11 @@
   opacity: 0.5;
 }
 
+.triggerCompact {
+  padding: 0 8px;
+  max-width: none;
+}
+
 .name {
   min-width: 0;
   overflow: hidden;

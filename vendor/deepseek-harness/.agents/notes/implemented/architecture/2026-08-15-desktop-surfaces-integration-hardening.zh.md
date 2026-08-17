@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-08-15-desktop-surfaces-integration-hardening.md)
 
-> 范围：把 T3code 风格标题栏 / Git / 终端 / 右边栏 surfaces 分支整合进桌面壳时做的生产加固。分支负责组合结构（见 [surfaces note](2026-08-14-desktop-surfaces-and-titlebar.md)）；本 note 记录只有真实桌面运行才暴露的缺陷，以及让该功能可以安全交付的信任、生命周期与打包决策。
+> 范围：把标题栏 / Git / 终端 / 右边栏 surfaces 整合进桌面壳时做的生产加固。组合结构见 [surfaces note](2026-08-14-desktop-surfaces-and-titlebar.md)；本 note 记录只有真实桌面运行才暴露的缺陷，以及让该功能可以安全交付的信任、生命周期与打包决策。
 
 ## 问题
 

@@ -1,5 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import {
+  Button,
+  IconChevronLeftOutline14,
+  IconChevronRightOutline14,
+  IconEllipsisOutline16,
+  IconRefreshOutline14,
+  IconRightUpOutline16,
+  Input,
+  Menu,
+  Tooltip,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
 import type { DiscoveredServer, PreviewBounds, PreviewNavState, PreviewShellInjected } from './shell.ts'
@@ -7,9 +17,9 @@ import { normalizeLocalPreviewUrl } from './url.ts'
 import css from './PreviewPanel.module.css'
 
 /** Must match ui-user-terminal; client packages cannot share a value export. */
-const OPEN_SURFACE_EVENT = 'dsh-open-surface'
+const OPEN_SURFACE_EVENT = 'dshd-open-surface'
 /** Must match ui-user-terminal; client packages cannot share a value export. */
-const PENDING_PREVIEW_URL_KEY = 'dsh-pending-preview-url'
+const PENDING_PREVIEW_URL_KEY = 'dshd-pending-preview-url'
 const DISCOVER_INTERVAL_MS = 8_000
 
 export type PreviewPanelProps =
@@ -33,21 +43,51 @@ function visibleBounds(bounds: PreviewBounds | undefined): PreviewBounds | undef
   return bounds
 }
 
+function ChromeButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}): ReactElement {
+  return (
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        className={css.icon}
+        disabled={disabled}
+        aria-label={label}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  )
+}
+
 /**
  * Desktop-only local URL occupant of `surfaces.browser`. The guest paints in
  * a main-process BrowserView over `host`; the renderer never loads Node.
  * Inactive tabs keep the guest alive (`previewHide`); only unmount closes it.
- * @param props - session-maybe seats, preview IPC, active tab flag, and copy.
+ * Chrome is icon Back/Forward/Reload, an Input that submits on Enter, a
+ * system-browser icon, and a More menu for DevTools.
+ * @param props - session-maybe seats, preview IPC, guest visibility flags, and copy.
  * @returns the browser surface.
  */
 export function PreviewPanel({
   active,
+  occluded,
   previewAvailable,
   previewOpen,
   previewNavigate,
   previewBack,
   previewForward,
   previewReload,
+  // oxlint-disable-next-line typescript/no-useless-default-assignment -- browser-only callers may omit the optional shell callback.
   onPreviewStateChange = () => () => {},
   previewOpenDevTools,
   previewDiscover,
@@ -59,12 +99,15 @@ export function PreviewPanel({
   t,
 }: PreviewPanelProps): ReactNode {
   const hostRef = useRef<HTMLDivElement>(null)
-  const [draft, setDraft] = useState('http://127.0.0.1:3000')
+  const [url, setUrl] = useState('')
+  const [draft, setDraft] = useState('')
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
   const [servers, setServers] = useState<DiscoveredServer[]>([])
+  const [moreOpen, setMoreOpen] = useState(false)
+  const focusedRef = useRef(false)
 
   useEffect(() => {
     if (!previewAvailable) return
@@ -86,7 +129,7 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (previewId === null) return
-    if (!active) {
+    if (!active || occluded || moreOpen) {
       void previewHide(previewId).catch(() => {})
       return
     }
@@ -119,7 +162,7 @@ export function PreviewPanel({
       window.removeEventListener('resize', sync)
       void previewHide(previewId).catch(() => {})
     }
-  }, [previewId, active, previewHide, previewResize, previewShow])
+  }, [previewId, active, occluded, moreOpen, previewHide, previewResize, previewShow])
 
   useEffect(() => () => {
     if (previewId !== null) void previewClose(previewId).catch(() => {})
@@ -132,7 +175,10 @@ export function PreviewPanel({
     }
     setMessage(null)
     if (result.id !== undefined) setPreviewId(result.id)
-    if (result.url !== undefined) setDraft(result.url)
+    if (result.url !== undefined) {
+      setUrl(result.url)
+      if (!focusedRef.current) setDraft(result.url)
+    }
     setCanGoBack(result.canGoBack === true)
     setCanGoForward(result.canGoForward === true)
   }
@@ -150,15 +196,15 @@ export function PreviewPanel({
     })
   }, [onPreviewStateChange])
 
-  const launch = (url: string): void => {
-    const trimmed = normalizeLocalPreviewUrl(url)
+  const launch = (next: string): void => {
+    const trimmed = normalizeLocalPreviewUrl(next)
     if (trimmed.length === 0) return
     const bounds = readBounds(hostRef.current)
     const currentId = previewIdRef.current
     void (currentId === null
       ? previewOpen({ url: trimmed, ...(bounds !== undefined ? { bounds } : {}) })
       : previewNavigate(currentId, trimmed)
-    ).then(result => { applyNavRef.current(result) }).catch(() => { setMessage(t('rejected')) })
+    ).then((result) => { applyNavRef.current(result) }).catch(() => { setMessage(t('rejected')) })
   }
 
   useEffect(() => {
@@ -172,14 +218,14 @@ export function PreviewPanel({
       // sessionStorage can throw in a locked browser profile.
     }
     const onOpen = (event: Event): void => {
-      const url = (event as CustomEvent<{ url?: string }>).detail?.url
-      if (typeof url !== 'string' || url.length === 0) return
+      const next = (event as CustomEvent<{ url?: string } | undefined>).detail?.url
+      if (typeof next !== 'string' || next.length === 0) return
       try {
         sessionStorage.removeItem(PENDING_PREVIEW_URL_KEY)
       } catch {
         // sessionStorage can throw in a locked browser profile.
       }
-      launch(url)
+      launch(next)
     }
     window.addEventListener(OPEN_SURFACE_EVENT, onOpen)
     return () => { window.removeEventListener(OPEN_SURFACE_EVENT, onOpen) }
@@ -190,68 +236,101 @@ export function PreviewPanel({
     launch(draft)
   }
 
+  const onUrlKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    setDraft(url)
+    event.currentTarget.blur()
+  }
+
+  const barUrl = normalizeLocalPreviewUrl(draft)
+
   return (
     <div className={css.root} data-preview-panel>
       {!previewAvailable ? (
         <p className={css.message} data-preview-unavailable>{t('unavailable')}</p>
       ) : (
         <>
-          <form className={css.toolbar} onSubmit={submit}>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={previewId === null || !canGoBack}
-              aria-label={t('back')}
-              onClick={() => { if (previewId !== null) void previewBack(previewId).then(applyNav) }}
-            >
-              {t('back')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={previewId === null || !canGoForward}
-              aria-label={t('forward')}
-              onClick={() => { if (previewId !== null) void previewForward(previewId).then(applyNav) }}
-            >
-              {t('forward')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={previewId === null}
-              aria-label={t('reload')}
-              onClick={() => { if (previewId !== null) void previewReload(previewId).then(applyNav) }}
-            >
-              {t('reload')}
-            </Button>
+          <form className={css.toolbar} data-preview-toolbar onSubmit={submit}>
+            <div className={css.nav} role="group" aria-label={t('navigation')}>
+              <ChromeButton
+                label={t('back')}
+                disabled={previewId === null || !canGoBack}
+                onClick={() => { if (previewId !== null) void previewBack(previewId).then(applyNav) }}
+              >
+                <IconChevronLeftOutline14 size={14} />
+              </ChromeButton>
+              <ChromeButton
+                label={t('forward')}
+                disabled={previewId === null || !canGoForward}
+                onClick={() => { if (previewId !== null) void previewForward(previewId).then(applyNav) }}
+              >
+                <IconChevronRightOutline14 size={14} />
+              </ChromeButton>
+              <ChromeButton
+                label={t('reload')}
+                disabled={previewId === null}
+                onClick={() => { if (previewId !== null) void previewReload(previewId).then(applyNav) }}
+              >
+                <IconRefreshOutline14 size={14} />
+              </ChromeButton>
+            </div>
             <Input
               className={css.url}
               value={draft}
               placeholder={t('placeholder')}
               aria-label={t('title')}
-              onChange={event => { setDraft(event.target.value) }}
+              spellCheck={false}
+              data-preview-url-input
+              onChange={(event) => { setDraft(event.target.value) }}
+              onFocus={(event) => {
+                focusedRef.current = true
+                const node = event.currentTarget
+                queueMicrotask(() => { node.select() })
+              }}
+              onBlur={() => { focusedRef.current = false }}
+              onKeyDown={onUrlKeyDown}
             />
-            <Button variant="primary" size="sm" type="submit">{t('open')}</Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={normalizeLocalPreviewUrl(draft).length === 0}
-              aria-label={t('external')}
-              onClick={() => { void openExternal(normalizeLocalPreviewUrl(draft)) }}
+            <ChromeButton
+              label={t('external')}
+              disabled={barUrl.length === 0}
+              onClick={() => { void openExternal(barUrl) }}
             >
-              {t('external')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={previewId === null}
-              aria-label={t('devtools')}
-              onClick={() => { if (previewId !== null) void previewOpenDevTools(previewId) }}
-            >
-              {t('devtools')}
-            </Button>
+              <IconRightUpOutline16 size={14} />
+            </ChromeButton>
+            <Menu
+              compact
+              portal
+              align="end"
+              open={moreOpen}
+              items={[{
+                id: 'devtools',
+                label: t('devtools'),
+                disabled: previewId === null,
+              }]}
+              onSelect={(id) => {
+                setMoreOpen(false)
+                if (id === 'devtools' && previewId !== null) void previewOpenDevTools(previewId)
+              }}
+              onClose={() => { setMoreOpen(false) }}
+              anchor={(
+                <Tooltip label={t('more')} side="bottom">
+                  <button
+                    type="button"
+                    className={css.icon}
+                    aria-label={t('more')}
+                    aria-expanded={moreOpen}
+                    onClick={() => { setMoreOpen(open => !open) }}
+                  >
+                    <IconEllipsisOutline16 size={14} />
+                  </button>
+                </Tooltip>
+              )}
+            />
           </form>
-          <p className={css.message}>{message ?? t('empty')}</p>
+          {message !== null || previewId === null ? (
+            <p className={css.message}>{message ?? t('empty')}</p>
+          ) : null}
           {servers.length > 0 ? (
             <div className={css.discovered}>
               <p className={css.discoveredTitle}>{t('discovered')}</p>

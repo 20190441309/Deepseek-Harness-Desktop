@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-15-desktop-surfaces-integration-hardening.md
-2026-08-15-desktop-surfaces-integration-hardening.md: 5d42985f6cd6100e70d4f111e153d45b2de6110e
-2026-08-15-desktop-surfaces-integration-hardening.zh.md: a0a3ef5baeab99077ff427077035bc03b61862f6
+2026-08-15-desktop-surfaces-integration-hardening.md: e1f0d6b7629e294e07e9e1f4e11c8564a3df60db
+2026-08-15-desktop-surfaces-integration-hardening.zh.md: 61ec55cedb8693cbbf1ae1a92d7f3bdebdf68494

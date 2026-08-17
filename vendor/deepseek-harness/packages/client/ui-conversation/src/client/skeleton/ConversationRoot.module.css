@@ -31,6 +31,9 @@
   flex: none;
   min-width: 0;
   padding: 12px 28px 0 20px;
+  /* Trailing cluster (Session log / Git / panel toggles) shares this row when
+     details is closed; AppFrame writes the overlap as --dshd-titlebar-conversation-reserve. */
+  padding-right: max(28px, calc(var(--dshd-titlebar-conversation-reserve, 0px) + 8px));
   border-bottom: 1px solid transparent;
 }
 
@@ -69,17 +72,30 @@
   pointer-events: none;
 }
 
-/* Blank hero/settling: keep the strict Session header mounted without taking
-   column space; the root-owned scrollport and composer remain below it. */
-.headerHidden {
+/* Blank/draft keeps row 1 so the caption remains a layout drag region. The
+   header box itself is not drag: its border box overlaps the trailing cluster. */
+.headerBlank::after {
   display: none;
+}
+
+.titleRow,
+.blankCaption {
+  min-width: 0;
+  min-height: 32px;
+  -webkit-app-region: drag;
 }
 
 .titleRow {
   display: flex;
   align-items: center;
   gap: 0;
-  min-height: 32px;
+}
+
+.crumb:not(:disabled),
+.headerActions,
+.headerUtilities,
+.tabs {
+  -webkit-app-region: no-drag;
 }
 
 .titleCluster {
@@ -143,6 +159,11 @@
   flex: none;
   align-items: center;
   gap: 8px;
+}
+
+:global([data-titlebar-density='cozy']) .headerActions,
+:global([data-titlebar-density='compact']) .headerActions {
+  display: none;
 }
 
 .headerUtilities {

@@ -541,7 +541,7 @@ describe('SurfacesRoot', () => {
     expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeTruthy()
   })
 
-  it('opens a preview surface from dsh-open-surface without a session id', async () => {
+  it('opens a preview surface from dshd-open-surface without a session id', async () => {
     const instance = createSurfacesStore().create()
     const openSurfaces = vi.fn()
     const renderSlot = vi.fn(() => <div data-occupant="stub" />)
@@ -563,7 +563,7 @@ describe('SurfacesRoot', () => {
       />,
     )
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('dsh-open-surface', { detail: { kind: 'preview' } }))
+      window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { kind: 'preview' } }))
     })
     expect(openSurfaces).toHaveBeenCalled()
     expect(instance.getSnapshot().bySession['']?.surfaces.some(s => s.kind === 'preview')).toBe(true)
@@ -673,11 +673,11 @@ describe('SurfacesRoot', () => {
     expect(instance.getSnapshot().bySession['session-1']?.surfaces.map(surface => surface.id)).toEqual(['files'])
   })
 
-  it('opens the preview surface from dsh-open-surface', () => {
+  it('opens the preview surface from dshd-open-surface', () => {
     const b = mount()
     act(() => {
-      window.dispatchEvent(new CustomEvent('dsh-open-surface', { detail: { kind: 'nope' } }))
-      window.dispatchEvent(new CustomEvent('dsh-open-surface', { detail: { kind: 'preview' } }))
+      window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { kind: 'nope' } }))
+      window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { kind: 'preview' } }))
     })
     expect(b.openSurfaces).toHaveBeenCalledOnce()
     expect(b.instance.getSnapshot().bySession['session-1']?.surfaces.some(surface => surface.kind === 'preview')).toBe(true)

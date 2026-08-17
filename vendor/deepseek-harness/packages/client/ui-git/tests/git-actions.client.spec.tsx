@@ -84,6 +84,7 @@ function mount(opts: {
   gitCreateBranch?: GitActionsProps['gitCreateBranch']
   openWorkspacePath?: GitActionsProps['openWorkspacePath']
   onGitProgress?: GitActionsProps['onGitProgress']
+  density?: GitActionsProps['density']
 } = {}) {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => opts.git ?? null)
   const gitFetchForStatus = opts.gitFetchForStatus ?? vi.fn(async () => opts.git ?? null)
@@ -108,6 +109,7 @@ function mount(opts: {
     <GitActionsControl
       surfaces={0}
       terminalDrawer={0}
+      {...(opts.density === undefined ? {} : { density: opts.density })}
       useSessions={useSessionsStub(sessionList(opts.cwd))}
       useWorkspaces={neverWorkspaces}
       gitStatus={gitStatus}
@@ -309,6 +311,7 @@ describe('GitActionsControl', () => {
     fireEvent.click(main)
     expect(await screen.findByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+    expect(screen.queryByRole('dialog', { name: 'Publish repository' })).toBeNull()
     await waitFor(() => {
       expect(gitPublishRepository).toHaveBeenCalledWith('/work', {
         name: 'work',
@@ -317,8 +320,11 @@ describe('GitActionsControl', () => {
     })
   })
 
-  it('keeps the publish dialog open when publish fails', async () => {
-    const gitPublishRepository = vi.fn(async () => ({ ok: false, message: 'gh is unavailable.' }))
+  it('closes the publish dialog while publishing and reopens it on failure', async () => {
+    let finish = (value: { ok: boolean; message?: string }) => { void value }
+    const gitPublishRepository = vi.fn(() => new Promise<{ ok: boolean; message?: string }>((resolve) => {
+      finish = resolve
+    }))
     mount({
       cwd: '/work',
       git: status({
@@ -329,8 +335,11 @@ describe('GitActionsControl', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Publish repository' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Publish' }))
+    expect(screen.queryByRole('dialog', { name: 'Publish repository' })).toBeNull()
+    expect(screen.getByRole('status', { name: 'Publishing repository...' })).toBeTruthy()
+    finish({ ok: false, message: 'gh is unavailable.' })
     expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
-    expect(screen.getByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
+    expect(await screen.findByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
   })
 
   it('offers Publish repository in the menu when there is no origin', async () => {
@@ -375,6 +384,23 @@ describe('GitActionsControl', () => {
     })
     expect(await screen.findByRole('button', { name: 'Initialize Git' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Git actions' })).toBeNull()
+  })
+
+  it('hides the branch ref name at compact density', async () => {
+    mount({ cwd: '/work', git: status({ refName: 'master' }), density: 'compact' })
+    const trigger = await screen.findByRole('button', { name: 'Switch branch' })
+    expect(trigger.textContent).not.toContain('master')
+    expect(screen.getByRole('button', { name: 'Commit' }).textContent).toContain('Commit')
+  })
+
+  it('hides Initialize Git text at compact density', async () => {
+    mount({
+      cwd: '/work',
+      git: status({ isRepo: false, refName: null, hasPrimaryRemote: false }),
+      density: 'compact',
+    })
+    const init = await screen.findByRole('button', { name: 'Initialize Git' })
+    expect(init.textContent).not.toContain('Initialize Git')
   })
 
   it('runs gitInit when Initialize Git is clicked', async () => {
@@ -474,7 +500,7 @@ describe('GitActionsControl', () => {
     expect(gitCreateChangeRequest).toHaveBeenCalled()
   })
 
-  it('opens the T3code commit review dialog from the menu', async () => {
+  it('opens the commit review dialog from the menu', async () => {
     const gitChangedFiles = vi.fn(async () => ({
       ok: true,
       files: [{ path: 'src/demo.ts', insertions: 2, deletions: 1 }],

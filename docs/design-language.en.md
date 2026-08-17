@@ -36,7 +36,7 @@ Terminal, diff, and code blocks keep official monospace / no-wrap rules. That is
 12. **Shadows are lv1 / lv2 / lv3 only.** Menus and dialogs use `lv3`; composer and floating cards use `lv2`. No `0 18px 40px` slabs.
 13. **Glass stops at the official recipe.** Mask `blur(2px)` + `--dsw-alias-bg-mask-*`; raised surfaces `color-mix(..., var(--dsw-alias-glass-opacity), transparent)`. No heavier blur, no shadow on every layer.
 14. **Scrollbars are the shared sheet.** No component-local `::-webkit-scrollbar`.
-15. **Product copy is Chinese; code comments are English.** Do not import VS Code / Material / iOS / T3code density or decoration over the official page.
+15. **Product copy is Chinese; code comments are English.** Do not import VS Code / Material / iOS density or decoration over the official page.
 
 ## Visual anchors
 
@@ -52,7 +52,7 @@ Check against the official page: bluish-neutral sidebar, clean conversation canv
 | Selected row | `--dsw-specific-sidebar-nav-item-active` (accent variant `*-accent`) |
 | Font stack | `--dsw-font-family` (system UI + PingFang / YaHei); code `--ds-font-family-code` |
 
-Layout: `AppFrame` is columns, not a card grid. A closed column is width 0 and paints no divider. The title-bar trailing cluster is 28×28 icon buttons with measured window-control inset — do not draw a second window skin.
+Layout: `AppFrame` is columns, not a card grid. A closed column is width 0 and paints no divider. The title-bar trailing cluster is 28×28 icon buttons with measured window-control inset — do not draw a second window skin. A surfaces tab keeps its close control **to the right of the title**; do not move it unless the user explicitly asks.
 
 ## Allowed exceptions
 
@@ -65,7 +65,7 @@ Layout: `AppFrame` is columns, not a card grid. A closed column is width 0 and p
 
 The boot page is one instrument canvas for the whole window. It is not a centered card, and the log is not locked in a bordered box. Sources: [`boot.html`](../src/renderer/boot.html), [`boot.css`](../src/renderer/boot.css), [`boot-tokens.css`](../src/renderer/boot-tokens.css), [`boot.js`](../src/renderer/boot.js).
 
-Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the DeepSeek mark, the brand `Deepseek-Harness-Desktop`, status and hint, and square retry buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. The block sits 52px above the bottom edge so the corner rails do not clip the last line. After the runtime is ready, official client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the official “正在加载插件” page is not shown.
+Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the DeepSeek mark, the brand `Deepseek-Harness-Desktop`, status and hint, and square retry buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. Lines stack upward from the bottom; `--boot-log-inset` clears the corner rails on the bottom and left. Overflow clips older lines at the top so the newest line stays fully visible. After the runtime is ready, official client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the official “正在加载插件” page is not shown.
 
 Color and theme: [`boot-tokens.css`](../src/renderer/boot-tokens.css) is the only color table. Light is paper near-black; dark is CRT near-white. `--boot-accent` matches body ink; failure uses `--boot-alert`. `html[data-boot-theme]` makes [`theme.js`](../src/renderer/theme.js) apply only the light/dark half of `theme.scheme` and skip the user’s `bg` / `accent`. [`boot.css`](../src/renderer/boot.css) consumes `--boot-*` plus official font and motion tokens; it does not branch on `[data-ds-dark-theme]` and does not contain color literals.
 

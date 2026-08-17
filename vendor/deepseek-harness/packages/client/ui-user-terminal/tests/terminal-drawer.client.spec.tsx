@@ -18,14 +18,17 @@ const xtermState = vi.hoisted(() => ({ instances: [] as Array<{
   fontFamily: string
   fontSize: number
   lineHeight: number
+  focusCalls: number
   getSelection: () => string
   hasSelection: () => boolean
   clearSelection: () => void
+  focus: () => void
+  scrollToBottom: () => void
   onSelectionChange: (handler: () => void) => { dispose: () => void }
   registerLinkProvider: (provider: { provideLinks: (y: number, cb: (links: unknown) => void) => void }) => { dispose: () => void }
   linkProvider?: { provideLinks: (y: number, cb: (links: unknown) => void) => void }
   buffer: { active: { getLine: (index: number) => { translateToString: (trim?: boolean) => string } | undefined } }
-}> }))
+}> , throwFit: false, cols: 80, rows: 24 }))
 
 vi.mock('@xterm/xterm', () => {
   class FakeTerminal {
@@ -39,14 +42,19 @@ vi.mock('@xterm/xterm', () => {
     fontFamily = ''
     fontSize = 0
     lineHeight = 0
+    focusCalls = 0
     constructor(options: { fontFamily?: string; fontSize?: number; lineHeight?: number } = {}) {
       this.fontFamily = options.fontFamily ?? ''
       this.fontSize = options.fontSize ?? 0
       this.lineHeight = options.lineHeight ?? 0
+      this.cols = xtermState.cols
+      this.rows = xtermState.rows
     }
     loadAddon(): void {}
     open(): void { xtermState.instances.push(this as never) }
     write(data: string): void { this.writes.push(data) }
+    focus(): void { this.focusCalls += 1 }
+    scrollToBottom(): void {}
     onData(handler: (data: string) => void): { dispose: () => void } {
       this.dataHandlers.push(handler)
       return { dispose: () => {} }
@@ -78,7 +86,11 @@ vi.mock('@xterm/xterm', () => {
 })
 
 vi.mock('@xterm/addon-fit', () => ({
-  FitAddon: class { fit(): void {} },
+  FitAddon: class {
+    fit(): void {
+      if (xtermState.throwFit) throw new Error('hidden')
+    }
+  },
 }))
 
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
@@ -88,6 +100,7 @@ import type { TerminalSurfaceProps } from '../src/client/TerminalSurface.tsx'
 import { TerminalSurface } from '../src/client/TerminalSurface.tsx'
 import { createTerminalSessionStore, MAX_TERMINALS_PER_GROUP } from '../src/client/stores.ts'
 import { clampDrawerHeight, maxDrawerHeight, TERMINAL_DRAWER_MIN } from '../src/client/height.ts'
+import { FIT_SETTLE_MS, PTY_RESIZE_DEBOUNCE_MS } from '../src/client/fit.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { bindPtyListeners } from '../src/client/pty-bridge.ts'
 
@@ -204,7 +217,7 @@ function mount(opts: {
     </>,
   )
   return {
-    ptyCreate, ptyWrite, ptyKill, toggleTerminalDrawer, setTerminalDrawer,
+    ptyCreate, ptyWrite, ptyResize, ptyKill, toggleTerminalDrawer, setTerminalDrawer,
     mentionTerminal, writeClipboard, openWorkspacePath, openLocalUrl, openExternal,
     instance, handle,
     surfaceHandle, surfaceInstance,
@@ -217,6 +230,9 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   xtermState.instances.length = 0
+  xtermState.throwFit = false
+  xtermState.cols = 80
+  xtermState.rows = 24
 })
 
 describe('clampDrawerHeight', () => {
@@ -416,6 +432,31 @@ describe('TerminalDrawer', () => {
     expect(b.surfaceInstance.getSnapshot().sessions).toHaveLength(1)
   })
 
+  it('keeps a stale empty-state New click idempotent after auto-create settles', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) { this.cb = cb }
+      observe(el: Element) {
+        Object.defineProperty(el, 'clientHeight', { configurable: true, value: 200 })
+        this.cb([] as never, this as never)
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+    const b = mount({ cwd: '/work' })
+    const emptyStateNew = screen.getByRole('button', { name: 'New terminal' })
+    await screen.findByRole('log', { name: 'pty-1' })
+
+    expect(emptyStateNew.isConnected).toBe(false)
+    fireEvent.click(emptyStateNew)
+    expect(b.ptyCreate).toHaveBeenCalledTimes(1)
+    expect(b.instance.getSnapshot().sessions.map(session => session.id)).toEqual(['pty-1'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-2' })
+    expect(b.ptyCreate).toHaveBeenCalledTimes(2)
+  })
+
   it('closes the session when onPtyExit fires', async () => {
     const handle = createTerminalSessionStore()
     const instance = handle.create('session-1')
@@ -529,6 +570,132 @@ describe('TerminalDrawer', () => {
     expect(b.instance.getSnapshot().sessions[0]?.rows).toBe(24)
   })
 
+  it('does not resize the PTY while the xterm host has no used box', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    expect(b.ptyResize).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('log', { name: 'pty-1' }))
+  })
+
+  it('debounces PTY resize until after the host has a used box', async () => {
+    const observers: Array<() => void> = []
+    vi.stubGlobal('ResizeObserver', class {
+      cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) { this.cb = cb }
+      observe(el: Element) {
+        Object.defineProperty(el, 'clientHeight', { configurable: true, value: 200 })
+        Object.defineProperty(el, 'clientWidth', { configurable: true, value: 800 })
+        const run = () => { this.cb([] as never, this as never) }
+        observers.push(run)
+        run()
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+    const fonts = new EventTarget()
+    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts })
+    const b = mount({ cwd: '/work' })
+    await waitFor(() => expect(b.ptyCreate).toHaveBeenCalledTimes(1))
+    await screen.findByRole('log', { name: 'pty-1' })
+    await waitFor(() => {
+      expect(b.ptyResize).toHaveBeenCalledWith('pty-1', 80, 24)
+    }, { timeout: FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 250 })
+    const resizes = b.ptyResize.mock.calls.length
+    fonts.dispatchEvent(new Event('loadingdone'))
+    for (const run of observers) run()
+    await new Promise(resolve => {
+      window.setTimeout(resolve, FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 50)
+    })
+    expect(b.ptyResize.mock.calls.length).toBe(resizes)
+  })
+
+  it('replays the PTY buffer when a pane remounts', async () => {
+    const handle = createTerminalSessionStore()
+    const instance = handle.create('session-1')
+    const b = mount({ cwd: '/work', handle, instance })
+    bindPtyListeners([handle], { onPtyData: b.onPtyData, onPtyExit: b.onPtyExit })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    for (const handler of b.dataHandlers) handler({ id: 'pty-1', data: 'hello-seed' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-2' })
+    fireEvent.click(screen.getByRole('button', { name: /^Group 1$/ }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    await waitFor(() => {
+      expect(xtermState.instances.some(term => term.writes.join('').includes('hello-seed'))).toBe(true)
+    })
+  })
+
+  it('opens xterm when ResizeObserver is missing', async () => {
+    vi.stubGlobal('ResizeObserver', undefined)
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    expect(b.ptyResize).not.toHaveBeenCalled()
+  })
+
+  it('focuses the active pane and follows sidebar activation', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    fireEvent.click(screen.getByRole('button', { name: 'Split top/bottom' }))
+    await screen.findByRole('log', { name: 'pty-2' })
+    await waitFor(() => {
+      expect(xtermState.instances[1]?.focusCalls).toBeGreaterThan(0)
+    })
+    const firstFocus = xtermState.instances[0]!.focusCalls
+    fireEvent.click(screen.getByRole('button', { name: /^Terminal 1$/ }))
+    expect(b.instance.getSnapshot().activeId).toBe('pty-1')
+    await waitFor(() => {
+      expect(xtermState.instances[0]!.focusCalls).toBeGreaterThan(firstFocus)
+    })
+  })
+
+  it('activates a pane from pointerdown on its host without waiting for click', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    fireEvent.click(screen.getByRole('button', { name: 'Split top/bottom' }))
+    await screen.findByRole('log', { name: 'pty-2' })
+    expect(b.instance.getSnapshot().activeId).toBe('pty-2')
+    fireEvent.pointerDown(screen.getByRole('log', { name: 'pty-1' }))
+    expect(b.instance.getSnapshot().activeId).toBe('pty-1')
+  })
+
+  it('skips PTY resize when FitAddon throws or the grid is empty', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) { this.cb = cb }
+      observe(el: Element) {
+        Object.defineProperty(el, 'clientHeight', { configurable: true, value: 200 })
+        Object.defineProperty(el, 'clientWidth', { configurable: true, value: 800 })
+        this.cb([] as never, this as never)
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+    xtermState.throwFit = true
+    const throwing = mount({ cwd: '/work' })
+    await waitFor(() => expect(throwing.ptyCreate).toHaveBeenCalledTimes(1))
+    await screen.findByRole('log', { name: 'pty-1' })
+    await new Promise(resolve => {
+      window.setTimeout(resolve, FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 50)
+    })
+    expect(throwing.ptyResize).not.toHaveBeenCalled()
+    cleanup()
+    xtermState.throwFit = false
+    xtermState.cols = 0
+    xtermState.rows = 0
+    const empty = mount({ cwd: '/work' })
+    await waitFor(() => expect(empty.ptyCreate).toHaveBeenCalledTimes(1))
+    await screen.findByRole('log', { name: 'pty-1' })
+    await new Promise(resolve => {
+      window.setTimeout(resolve, FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 50)
+    })
+    expect(empty.ptyResize).not.toHaveBeenCalled()
+  })
+
   it('shows Chinese copy on ptyCreate rejection and does not auto-retry', async () => {
     const observers: Array<() => void> = []
     vi.stubGlobal('ResizeObserver', class {
@@ -566,5 +733,14 @@ describe('ui-user-terminal production imports', () => {
       const text = readFileSync(join(dir, name), 'utf8')
       expect(text.includes('@deepseek-ai/dsh-client-ui-layout/src/'), name).toBe(false)
     }
+  })
+
+  it('does not stretch the xterm screen to 100% independently of FitAddon', () => {
+    const css = readFileSync(
+      join(process.cwd(), 'packages/client/ui-user-terminal/src/client/TerminalWorkspace.module.css'),
+      'utf8',
+    )
+    expect(css).not.toMatch(/xterm-screen[\s\S]{0,80}width:\s*100%/)
+    expect(css).not.toMatch(/xterm-viewport[\s\S]{0,80}width:\s*100%/)
   })
 })

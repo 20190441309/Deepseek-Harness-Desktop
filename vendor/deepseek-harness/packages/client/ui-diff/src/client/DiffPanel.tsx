@@ -46,7 +46,7 @@ export function pickBranchBase(branches: readonly DiffBranchRef[], defaultRef: s
 
 /**
  * Workspace diff occupant of `surfaces.diff`. Not a git repository shows the
- * T3code Diff disabled reason.
+ * Diff disabled reason.
  * @param props - session-maybe seats, git IPC, openFile, and copy.
  * @returns the diff panel.
  */

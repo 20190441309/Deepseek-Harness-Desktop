@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-theme-family-appearance-system.md
-2026-08-14-theme-family-appearance-system.md: 9319a17febe25500a98e6aab806f3f577eb96b83
-2026-08-14-theme-family-appearance-system.zh.md: 6b54927870f506e7b9d556220c2ffd42a245cdc9
+2026-08-14-theme-family-appearance-system.md: 653f81fbfb396e8d8ddcd790fa7a65754f532e8f
+2026-08-14-theme-family-appearance-system.zh.md: 49a3ad298ec567ead088d3f76080d68f2d1a38bb
