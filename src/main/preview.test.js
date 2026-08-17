@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPreviewController, discoverLocalServers, isAllowedPreviewUrl, previewRequestFilter } = require('./preview.js');
+const {
+  createPreviewController,
+  discoverLocalServers,
+  isAllowedPreviewUrl,
+  previewRequestFilter,
+  registerPreviewIpc,
+} = require('./preview.js');
 
 function fakeAttach() {
   const navigations = [];
@@ -158,7 +164,7 @@ test('previewOpen succeeds for http://127.0.0.1 and attaches an isolated view', 
   assert.equal(typeof result.id, 'string');
   assert.equal(result.url, 'http://127.0.0.1:4173');
   assert.equal(fake.views.length, 1);
-  assert.equal(fake.views[0].partition, 'dsh-preview');
+  assert.equal(fake.views[0].partition, 'dshd-preview');
   assert.equal(fake.views[0].extraHeaders, null);
   assert.deepEqual(fake.loads, [{ id: result.id, url: 'http://127.0.0.1:4173', options: null }]);
 });
@@ -264,4 +270,24 @@ test('closeAll destroys every live view', async () => {
   assert.deepEqual(fake.destroyed.sort(), [first.id, second.id].sort());
   assert.equal(fake.views.length, 2); // destroy() marks the fake, the table is what cleared
   await assert.rejects(() => preview.navigate(first.id, 'http://127.0.0.1:3000'), /unknown preview id/);
+});
+
+test('registerPreviewIpc authorizes state-only requests before dispatch', async () => {
+  const handlers = new Map();
+  const ipcMain = { handle(channel, fn) { handlers.set(channel, fn); } };
+  let authorized = 0;
+  const controller = {
+    state(id) { return { ok: true, id }; },
+  };
+  registerPreviewIpc(ipcMain, controller, {
+    authorize(event) {
+      assert.equal(event.sender.id, 9);
+      authorized += 1;
+    },
+  });
+  assert.deepEqual(
+    await handlers.get('shell:preview-state')({ sender: { id: 9 } }, 'preview-1'),
+    { ok: true, id: 'preview-1' },
+  );
+  assert.equal(authorized, 1);
 });

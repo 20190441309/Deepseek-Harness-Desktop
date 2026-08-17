@@ -2,6 +2,10 @@
 
 :root {
   --caption-h: 48px;
+  --boot-rail-inset: 16px;
+  --boot-rail-size: 28px;
+  --boot-log-inset: 64px;
+  --boot-log-max: 12rem;
 }
 
 * {
@@ -59,7 +63,7 @@ body[data-harness-covered] .caption {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: calc(48px + var(--caption-h)) 32px 112px;
+  padding: calc(48px + var(--caption-h)) 32px calc(var(--boot-log-inset) + var(--boot-log-max) + 16px);
   background-image:
     linear-gradient(var(--boot-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--boot-grid) 1px, transparent 1px);
@@ -68,35 +72,35 @@ body[data-harness-covered] .caption {
 
 .rail {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: var(--boot-rail-size);
+  height: var(--boot-rail-size);
   pointer-events: none;
 }
 
 .rail-tl {
   top: calc(var(--caption-h) + 12px);
-  left: 16px;
+  left: var(--boot-rail-inset);
   border-top: 2px solid var(--boot-accent);
   border-left: 2px solid var(--boot-accent);
 }
 
 .rail-tr {
   top: calc(var(--caption-h) + 12px);
-  right: 16px;
+  right: var(--boot-rail-inset);
   border-top: 2px solid var(--boot-accent);
   border-right: 2px solid var(--boot-accent);
 }
 
 .rail-bl {
-  bottom: 16px;
-  left: 16px;
+  bottom: var(--boot-rail-inset);
+  left: var(--boot-rail-inset);
   border-bottom: 2px solid var(--boot-accent);
   border-left: 2px solid var(--boot-accent);
 }
 
 .rail-br {
-  bottom: 16px;
-  right: 16px;
+  bottom: var(--boot-rail-inset);
+  right: var(--boot-rail-inset);
   border-bottom: 2px solid var(--boot-accent);
   border-right: 2px solid var(--boot-accent);
 }
@@ -308,16 +312,23 @@ body[data-state="error"] .status {
   outline-offset: 2px;
 }
 
-.log {
+.log-dock {
   position: absolute;
-  left: 48px;
-  right: 48px;
-  bottom: 52px;
+  z-index: 1;
+  left: var(--boot-log-inset);
+  right: var(--boot-log-inset);
+  bottom: var(--boot-log-inset);
+  max-height: var(--boot-log-max);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.log {
   margin: 0;
-  padding: 0 0 4px;
+  padding: 0;
   list-style: none;
-  max-height: 12rem;
-  overflow: auto;
   text-align: left;
   font-family: var(--ds-font-family-code);
   font-size: 14px;

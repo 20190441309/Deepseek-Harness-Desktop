@@ -535,7 +535,7 @@ test('sanitizeProgressText strips ANSI and inferHookName maps hook lines', () =>
   assert.equal(inferHookName('oxfmt --check'), null);
 });
 
-test('commitArgs splits subject and body the way T3code does', () => {
+test('commitArgs splits subject and body', () => {
   assert.deepEqual(commitArgs('Fix toast'), ['commit', '-m', 'Fix toast']);
   assert.deepEqual(commitArgs('Fix toast\nMore detail'), ['commit', '-m', 'Fix toast', '-m', 'More detail']);
   assert.deepEqual(commitArgs('Fix toast\n\nMore detail'), ['commit', '-m', 'Fix toast', '-m', 'More detail']);
@@ -589,7 +589,7 @@ test('gitCommit featureBranch fails closed when there is nothing to commit', asy
   }
 });
 
-test('commit timeout and git child env match T3code', () => {
+test('commit timeout and git child env', () => {
   assert.equal(COMMIT_TIMEOUT_MS, 10 * 60_000);
   assert.equal(GH_TIMEOUT_MS, 30_000);
   const previousNpm = process.env.npm_config_electron_skip_binary_download;
@@ -618,6 +618,21 @@ test('CRLF autocrlf warnings are not treated as the git failure', () => {
     stderr: `${warning}\nhusky - pre-commit script failed (code 1)`,
     stdout: '',
   }, 'git commit failed.'), 'husky - pre-commit script failed (code 1)');
+});
+
+test('gitFailureMessage keeps the full dump including hint lines', () => {
+  const dump = gitFailureMessage({
+    stderr: [
+      'To https://github.com/example/repo.git',
+      ' ! [rejected]        main -> main (non-fast-forward)',
+      "error: failed to push some refs to 'https://github.com/example/repo.git'",
+      'hint: Updates were rejected because the tip of your current branch is behind',
+    ].join('\n'),
+    stdout: '',
+  }, 'git push failed.');
+  assert.match(dump, /non-fast-forward/);
+  assert.match(dump, /failed to push some refs/);
+  assert.match(dump, /hint: Updates were rejected/);
 });
 
 test('readPrTemplate prefers .github/PULL_REQUEST_TEMPLATE.md from the committed tree', async () => {
@@ -1037,12 +1052,12 @@ test('resolvePrBaseBranch falls back to git default when gh is unavailable', asy
 
 test('parseGitHubRepositoryNameWithOwner and preferred head for forks', () => {
   assert.equal(
-    parseGitHubRepositoryNameWithOwner('git@github.com:T3Tools/T3Code.git'),
-    'T3Tools/T3Code',
+    parseGitHubRepositoryNameWithOwner('git@github.com:acme/demo.git'),
+    'acme/demo',
   );
   assert.equal(
-    parseGitHubRepositoryNameWithOwner('https://github.com/T3Tools/T3Code.git'),
-    'T3Tools/T3Code',
+    parseGitHubRepositoryNameWithOwner('https://github.com/acme/demo.git'),
+    'acme/demo',
   );
 });
 
@@ -1126,7 +1141,7 @@ test('resolveBranchHeadContext keeps branch.*.remote after upstream is unset', a
     git(cwd, ['push', '-u', 'fork', 'HEAD']);
     git(cwd, ['remote', 'set-url', 'fork', 'https://github.com/me/app.git']);
     git(cwd, ['branch', '--unset-upstream']);
-    // Remote can remain configured before the next `push -u` (T3code reads branch.*.remote).
+    // Remote can remain configured before the next `push -u` (reads branch.*.remote).
     git(cwd, ['config', 'branch.feature.remote', 'fork']);
     const ctx = await resolveBranchHeadContext(cwd, 'feature');
     assert.equal(ctx.remoteName, 'fork');
@@ -1198,8 +1213,8 @@ test('providerFromRemoteUrl recognizes GitHub self-hosted hosts', () => {
 
 test('normalizeGitRemoteUrl matches scp and https forms', () => {
   assert.equal(
-    normalizeGitRemoteUrl('git@github.com:T3Tools/T3Code.git'),
-    normalizeGitRemoteUrl('https://github.com/T3Tools/T3Code.git'),
+    normalizeGitRemoteUrl('git@github.com:acme/demo.git'),
+    normalizeGitRemoteUrl('https://github.com/acme/demo.git'),
   );
 });
 
@@ -1291,7 +1306,7 @@ test('gitPush does not skip when no-upstream aheadCount is unreliable', async ()
   }
 });
 
-test('FETCH_TIMEOUT_MS matches T3code status-fetch timeout', () => {
+test('FETCH_TIMEOUT_MS is the status-fetch timeout', () => {
   assert.equal(FETCH_TIMEOUT_MS, 5_000);
 });
 

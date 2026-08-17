@@ -47,7 +47,7 @@ function appendUnique(values, next) {
 }
 
 /**
- * T3code BranchHeadContext selectors for `gh pr list --head` probing.
+ * Head selectors for `gh pr list --head` probing.
  * @param {string} cwd
  * @param {string} refName
  * @returns {Promise<object>}
@@ -118,7 +118,7 @@ function parseRepositoryNameWithOwnerFromNormalized(url) {
 }
 
 /**
- * T3code `matchesBranchHeadContext`: reject PR rows that share a branch name but not the head repo.
+ * Reject PR rows that share a branch name but not the head repo.
  * @param {object} pr
  * @param {object} headContext
  * @returns {boolean}
@@ -148,7 +148,7 @@ function matchesBranchHeadContext(pr, headContext) {
 }
 
 /**
- * T3code parseRepositoryNameFromPullRequestUrl — repo leaf from a PR HTML URL.
+ * Repo leaf from a PR HTML URL.
  * @param {string} url
  * @returns {string | null}
  */
@@ -170,7 +170,7 @@ function parseGhPullRequestRow(parsed) {
     : (ownerLogin && parsed.headRepository?.name
       ? `${ownerLogin}/${String(parsed.headRepository.name).trim()}`
       : '');
-  // T3code resolvePullRequestHeadRepositoryNameWithOwner: synthesize from URL when
+  // Synthesize head repo from the PR URL when
   // cross-repo JSON omits headRepository but includes owner login.
   if (!repoNameWithOwner && parsed.isCrossRepository && ownerLogin) {
     const leaf = parseRepositoryNameFromPullRequestUrl(parsed.url);
@@ -190,7 +190,7 @@ function parseGhPullRequestRow(parsed) {
 }
 
 /**
- * Probe open PRs across T3code headSelectors. Distinguishes lookup failure from empty.
+ * Probe open PRs across head selectors. Distinguishes lookup failure from empty.
  * @param {string} cwd
  * @returns {Promise<{ pr: object | null, failed: boolean, headContext?: object }>}
  */
@@ -223,7 +223,7 @@ async function lookupOpenPullRequest(cwd) {
       jsonFields,
     ], root, { timeoutMs: GH_TIMEOUT_MS });
     if (listed.missing || listed.code !== 0) {
-      // T3code fail-closes on any listChangeRequests error (do not treat as empty).
+      // Fail closed on any list error (do not treat as empty).
       sawFailure = true;
       continue;
     }

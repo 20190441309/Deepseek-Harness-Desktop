@@ -16,6 +16,7 @@ const {
   desktopInstallReady,
 } = require('./desktop-install-control');
 const { installPlugin } = require('./marketplace-install');
+const { downloadSavePath } = require('./download-path');
 const {
   createMainWindow,
   getMainWindow,
@@ -108,68 +109,290 @@ function reloadWithCleanup() {
   return harness.reload();
 }
 
+const SMOKE_SURFACES = 'right panel|surfaces|\u53f3\u4fa7\u680f';
+const SMOKE_BRANCH = 'switch branch|\u5207\u6362\u5206\u652f';
+const SMOKE_GIT = 'git actions|git \u64cd\u4f5c';
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntil(probe, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await probe();
+    if (value) {
+      return value;
+    }
+    await sleep(200);
+  }
+  return null;
+}
+
+async function clickClientCenter(wc, x, y) {
+  const point = { x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 };
+  await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
+  await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...point });
+  await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point });
+}
+
+async function titlebarButtonRect(wc, pattern) {
+  return wc.executeJavaScript(`(() => {
+    const match = new RegExp(${JSON.stringify(pattern)}, 'i');
+    const titlebar = document.querySelector('#dshd-shell-titlebar-trailing');
+    if (!titlebar) return null;
+    const button = Array.from(titlebar.querySelectorAll('button')).find((el) =>
+      match.test((el.getAttribute('aria-label') || el.textContent || '').trim()));
+    if (!button) return null;
+    const box = button.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) return null;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  })()`);
+}
+
+async function titlebarMenuOpen(wc, pattern) {
+  return wc.executeJavaScript(`(() => {
+    const match = new RegExp(${JSON.stringify(pattern)}, 'i');
+    const titlebar = document.querySelector('#dshd-shell-titlebar-trailing');
+    const button = titlebar && Array.from(titlebar.querySelectorAll('button')).find((el) =>
+      match.test((el.getAttribute('aria-label') || el.textContent || '').trim()));
+    return Boolean(button && button.getAttribute('aria-expanded') === 'true')
+      || Boolean(document.querySelector('[role="menu"]'));
+  })()`);
+}
+
+async function pressEscape(wc) {
+  const key = { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 };
+  await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', ...key });
+  await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+}
+
+/** Real-coordinate clicks after surfaces opens. Zero hits fail the smoke. */
+async function probeTitlebarHits(wc) {
+  const hits = { surfaces: 0, branch: 0, git: 0 };
+  const wasAttached = wc.debugger.isAttached();
+  if (!wasAttached) {
+    await wc.debugger.attach('1.3');
+  }
+  try {
+    const surfaces = await waitUntil(() => titlebarButtonRect(wc, SMOKE_SURFACES), 30_000);
+    if (!surfaces) {
+      return { hits, error: 'surfaces toggle missing' };
+    }
+    await clickClientCenter(wc, surfaces.x, surfaces.y);
+    hits.surfaces += 1;
+    const opened = await waitUntil(() => wc.executeJavaScript(
+      `Boolean(document.querySelector('[class*="frame"]') && !document.querySelector('[class*="frame"][data-surfaces-collapsed]'))`,
+    ), 10_000);
+    if (!opened) {
+      return { hits, error: 'surfaces did not open' };
+    }
+
+    const branch = await waitUntil(() => titlebarButtonRect(wc, SMOKE_BRANCH), 20_000);
+    if (!branch) {
+      return { hits, error: 'branch trigger missing' };
+    }
+    await clickClientCenter(wc, branch.x, branch.y);
+    hits.branch += 1;
+    if (!await waitUntil(() => titlebarMenuOpen(wc, SMOKE_BRANCH), 5_000)) {
+      return { hits, error: 'branch menu did not open' };
+    }
+    await pressEscape(wc);
+    await waitUntil(async () => !(await titlebarMenuOpen(wc, SMOKE_BRANCH)), 3_000);
+    await sleep(200);
+
+    const git = await waitUntil(() => titlebarButtonRect(wc, SMOKE_GIT), 10_000);
+    if (!git) {
+      return { hits, error: 'git actions missing' };
+    }
+    await clickClientCenter(wc, git.x, git.y);
+    hits.git += 1;
+    if (!await waitUntil(() => titlebarMenuOpen(wc, SMOKE_GIT), 5_000)) {
+      return { hits, error: 'git menu did not open' };
+    }
+    return { hits, error: null };
+  } finally {
+    if (!wasAttached && wc.debugger.isAttached()) {
+      try {
+        wc.debugger.detach();
+      } catch {
+        // Detach is best-effort before process exit.
+      }
+    }
+  }
+}
+
 /** One-shot launch smoke: report the assembled chrome and exit with its status. */
 async function runSmoke(win) {
   const pageErrors = [];
+  const exitSmoke = async (code) => {
+    await Promise.allSettled([
+      Promise.resolve(desktopResources?.pty?.killAll()),
+      Promise.resolve(desktopResources?.preview?.closeAll()),
+    ]);
+    await Promise.resolve(harness.shutdown()).catch(() => {});
+    app.exit(code);
+  };
   const wc = getHarnessWebContents(win) || win.webContents;
   const onError = (_event, error) => { pageErrors.push(String(error).slice(0, 500)); };
   wc.on('render-process-gone', (_event, details) => {
     pageErrors.push(`render-process-gone: ${details.reason}`);
   });
-  wc.on('console-message', (_event, _level, message) => {
+  wc.on('console-message', (details) => {
+    const message = details?.message;
     if (String(message).includes('Uncaught')) pageErrors.push(String(message).slice(0, 500));
   });
   wc.on('did-fail-load', onError);
   try {
+    const bootShellApi = await win.webContents.executeJavaScript(`(() => {
+      const api = window.shell;
+      return {
+        hasBootShellApi: Boolean(
+          api
+          && typeof api.getState === 'function'
+          && typeof api.restart === 'function'
+          && typeof api.windowAction === 'function'
+        ),
+        bootShellApiIsScoped: Boolean(
+          api
+          && typeof api.writeFile === 'undefined'
+          && typeof api.saveConfig === 'undefined'
+          && typeof api.ptyCreate === 'undefined'
+        ),
+      };
+    })()`);
     const result = await wc.executeJavaScript(`(async () => {
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       for (let i = 0; i < 60 && !document.querySelector('[class*="frame"]'); i += 1) await sleep(250);
       await sleep(2500);
       const frame = document.querySelector('[class*="frame"]');
-      const titlebar = document.querySelector('#dsh-shell-titlebar-trailing');
+      const titlebar = document.querySelector('#dshd-shell-titlebar-trailing');
       const buttons = titlebar ? Array.from(titlebar.querySelectorAll('button')).map(b => (b.getAttribute('aria-label') || b.textContent || '').trim()) : [];
+      const api = window.shell;
       return {
         hasFrame: Boolean(frame),
         gridColumns: frame ? getComputedStyle(frame).gridTemplateColumns : null,
         hasTitlebar: Boolean(titlebar),
         titlebarButtons: buttons,
-        hasSessionLog: buttons.some(t => t.includes('Session log')),
+        hasTerminalToggle: buttons.some(t => /terminal|\u7ec8\u7aef/i.test(t)),
+        hasSurfacesToggle: buttons.some(t => /right panel|surfaces|\u53f3\u4fa7\u680f/i.test(t)),
+        hasDragStrip: Boolean(document.getElementById('dshd-shell-drag-strip')),
+        hasDragMark: Boolean(document.querySelector('[data-dshd-shell-drag]')),
+        hasHitMark: Boolean(document.querySelector('[data-dshd-shell-hit]')),
+        captionRegion: (() => {
+          const caption = document.querySelector('[data-dshd-caption]');
+          return caption ? getComputedStyle(caption).webkitAppRegion : null;
+        })(),
+        hasHarnessShellApi: Boolean(
+          api
+          && typeof api.getConfig === 'function'
+          && typeof api.listDir === 'function'
+          && typeof api.ptyCreate === 'function'
+          && typeof api.previewOpen === 'function'
+        ),
+        harnessShellApiIsScoped: Boolean(
+          api
+          && typeof api.restart === 'undefined'
+          && typeof api.cancelRestart === 'undefined'
+        ),
       };
     })()`);
+    Object.assign(result, bootShellApi);
     console.log('[DSH_SMOKE]', JSON.stringify({ ...result, pageErrors }));
     // Real PTY probe: node-pty is the one native dependency; prove it can
     // spawn a shell inside Electron (or report the exact failure) so the
     // smoke distinguishes "UI renders" from "terminal backend actually works".
     let ptyStatus = 'skipped';
+    let created = null;
+    let unsubscribePty = () => {};
+    let cancelPtyMarker = () => {};
     try {
-      const created = await Promise.race([
+      created = await Promise.race([
         desktopResources.pty.create({ cwd: loadConfig().workspace, cols: 80, rows: 24 }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('pty-create timed out')), 15000)),
       ]);
       ptyStatus = `created:${created.id}`;
-      await Promise.race([
-        (async () => {
-          await desktopResources.pty.write(created.id, 'echo dsh-smoke-ok\r');
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          await desktopResources.pty.kill(created.id);
-        })(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('pty-roundtrip timed out')), 20000)),
-      ]);
+      const marker = `dshd-smoke-ok-${process.pid}-${Date.now()}`;
+      let output = '';
+      let markerSeen;
+      const markerOutput = new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          settled = true;
+          reject(new Error('pty marker timed out'));
+        }, 10_000);
+        cancelPtyMarker = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+          }
+        };
+        markerSeen = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      unsubscribePty = desktopResources.pty.onEvent((channel, payload) => {
+        if (channel !== 'shell:pty-data' || payload.id !== created.id) {
+          return;
+        }
+        output = `${output}${String(payload.data || '')}`.slice(-8_192);
+        if (output.includes(marker)) {
+          markerSeen();
+        }
+      });
+      await desktopResources.pty.write(created.id, `echo ${marker}\r`);
+      await markerOutput;
       ptyStatus = 'echoed:ok';
     } catch (error) {
       ptyStatus = `unavailable:${error.message}`;
+    } finally {
+      cancelPtyMarker();
+      unsubscribePty();
+      if (created) {
+        await desktopResources.pty.kill(created.id).catch(() => {});
+      }
     }
     console.log('[DSH_SMOKE_PTY]', ptyStatus);
-    const ok = result.hasFrame && result.hasTitlebar && result.hasSessionLog && pageErrors.length === 0;
+    let titlebarHits = { hits: { surfaces: 0, branch: 0, git: 0 }, error: 'not-run' };
     try {
-      fs.writeFileSync(path.join(app.getPath('userData'), 'dsh-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));
+      titlebarHits = await probeTitlebarHits(wc);
+    } catch (error) {
+      titlebarHits = { hits: { surfaces: 0, branch: 0, git: 0 }, error: String(error) };
+    }
+    result.titlebarHits = titlebarHits;
+    console.log('[DSH_SMOKE_HITS]', JSON.stringify(titlebarHits));
+    const hitCount = titlebarHits.hits.surfaces + titlebarHits.hits.branch + titlebarHits.hits.git;
+    const ok = result.hasFrame
+      && result.hasTitlebar
+      && result.hasTerminalToggle
+      && result.hasSurfacesToggle
+      && result.hasDragStrip !== true
+      && result.hasDragMark !== true
+      && result.hasHitMark !== true
+      && result.captionRegion === 'drag'
+      && result.hasBootShellApi
+      && result.bootShellApiIsScoped
+      && result.hasHarnessShellApi
+      && result.harnessShellApiIsScoped
+      && hitCount > 0
+      && titlebarHits.hits.surfaces > 0
+      && titlebarHits.hits.branch > 0
+      && titlebarHits.hits.git > 0
+      && titlebarHits.error == null
+      && ptyStatus === 'echoed:ok'
+      && pageErrors.length === 0;
+    try {
+      fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));
     } catch {
       // Best-effort: the exit code still carries the verdict.
     }
-    app.exit(ok ? 0 : 1);
+    await exitSmoke(ok ? 0 : 1);
   } catch (error) {
     console.log('[DSH_SMOKE] failed', String(error));
-    app.exit(1);
+    await exitSmoke(1);
   }
 }
 
@@ -242,8 +465,7 @@ if (!gotLock) {
     });
 
     session.defaultSession.on('will-download', (event, item) => {
-      const fileName = item.getFilename();
-      const dest = path.join(app.getPath('downloads'), fileName);
+      const dest = downloadSavePath(app.getPath('downloads'), item.getFilename());
       item.setSavePath(dest);
     });
 

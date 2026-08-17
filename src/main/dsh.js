@@ -186,7 +186,7 @@ function killTree(pid) {
 
 function pidFilePath() {
   try {
-    return path.join(path.dirname(configPath()), 'dsh-web.pid');
+    return path.join(path.dirname(configPath()), 'dshd-web.pid');
   } catch {
     return null;
   }
@@ -602,7 +602,9 @@ class DshManager extends EventEmitter {
       extras.push(path.dirname(nodeBin));
     }
     try {
-      extras.push(path.join(harnessRoot(), 'node_modules', '.bin'));
+      const root = harnessRoot();
+      extras.push(path.join(root, 'node_modules', '.bin'));
+      env.DSH_HARNESS_ROOT = root;
     } catch {
       // app not ready
     }

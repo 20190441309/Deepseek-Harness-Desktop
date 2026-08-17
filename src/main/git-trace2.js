@@ -1,5 +1,5 @@
 /**
- * T3code-style GIT_TRACE2_EVENT tail: emit hook start/finish from git's
+ * GIT_TRACE2_EVENT tail: emit hook start/finish from git's
  * JSON event stream instead of guessing leftover/husky from stdout.
  */
 
@@ -33,7 +33,7 @@ function createTrace2Monitor(onHook) {
   const emit = typeof onHook === 'function' ? onHook : () => {};
   const traceFilePath = path.join(
     os.tmpdir(),
-    `dsh-git-trace2-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,
+    `dshd-git-trace2-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,
   );
   fs.writeFileSync(traceFilePath, '');
   let processedChars = 0;

@@ -1,21 +1,17 @@
 (() => {
-  const STYLE_ID = 'dsh-shell-integrated-chrome';
-  const CONTROLS_ID = 'dsh-shell-controls';
-  const DRAG_ID = 'dsh-shell-drag-strip';
-  const MARK = 'data-dsh-shell-drag';
-  const HIT = 'data-dsh-shell-hit';
+  const STYLE_ID = 'dshd-shell-integrated-chrome';
+  const CONTROLS_ID = 'dshd-shell-controls';
   const CONTROL_SIZE = 32;
   const CONTROL_GAP = 0;
   const EDGE = 8;
   const CLUSTER = 8;
-  const DRAG_GUTTER = 8;
+  /** Full titlebar height so the no-drag plate covers drag padding around the 32px buttons. */
+  const CAPTION_HEIGHT = 48;
 
   const ICON_MIN = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.4" width="8" height="1.2" rx="0.6" fill="currentColor"/></svg>';
   const ICON_MAX = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
   const ICON_RESTORE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="3.4" y="2.2" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/><rect x="2.2" y="3.6" width="6.2" height="6.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3L3 9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>';
-
-  const INTERACTIVE = 'a, button, input, textarea, select, summary, label, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [contenteditable]';
 
   function toHex(input) {
     if (!input || input === 'transparent') {
@@ -34,7 +30,7 @@
       }
       return painted.slice(0, 7);
     }
-    const match = painted.match(/rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)/i);
+    const match = painted.match(/rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*([\d.]+)/i);
     if (!match) {
       return '';
     }
@@ -57,87 +53,8 @@
       || '#ffffff';
   }
 
-  function findSessionLog() {
-    const buttons = document.querySelectorAll('button');
-    for (const el of buttons) {
-      const label = `${el.getAttribute('aria-label') || ''} ${el.textContent || ''}`;
-      if (/session\s*log/i.test(label)) {
-        return el;
-      }
-    }
-    return null;
-  }
-
-  function findTopBar() {
-    const sessionLog = findSessionLog();
-    if (sessionLog) {
-      const header = sessionLog.closest('header');
-      if (header instanceof HTMLElement) {
-        return header;
-      }
-    }
-    const nodes = document.querySelectorAll('header, [role="banner"], nav, body > *, body > * > *');
-    let best = null;
-    let bestWidth = 0;
-    for (const el of nodes) {
-      if (!(el instanceof HTMLElement) || el.id === STYLE_ID || el.id === CONTROLS_ID || el.id === DRAG_ID) {
-        continue;
-      }
-      const r = el.getBoundingClientRect();
-      if (r.top > 8 || r.height < 32 || r.height > 160) {
-        continue;
-      }
-      if (r.width < window.innerWidth * 0.35) {
-        continue;
-      }
-      if (r.width > bestWidth) {
-        best = el;
-        bestWidth = r.width;
-      }
-    }
-    return best;
-  }
-
-  function findLogoRow() {
-    return document.querySelector('[class*="logoRow"]');
-  }
-
-  function findCenterCol() {
-    return document.querySelector('[class*="centerCol"]');
-  }
-
-  function findTitlebarRow() {
-    return document.querySelector('[data-titlebar-row]');
-  }
-
-  function isVisibleChrome(el) {
-    if (!(el instanceof HTMLElement)) {
-      return false;
-    }
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden') {
-      return false;
-    }
-    const r = el.getBoundingClientRect();
-    return r.top <= 8 && r.height >= 24 && r.width >= 24;
-  }
-
   function windowControlsRight() {
     return EDGE + CONTROL_SIZE * 3 + CONTROL_GAP * 2 + CLUSTER;
-  }
-
-  function trailingClusterWidth() {
-    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
-    if (trailing == null || typeof trailing.getBoundingClientRect !== 'function') {
-      return 0;
-    }
-    return Math.max(0, Math.round(trailing.getBoundingClientRect().width));
-  }
-
-  function reservedRight() {
-    const controls = windowControlsRight();
-    const width = trailingClusterWidth();
-    return width > 0 ? controls + width + CLUSTER : controls;
   }
 
   function ensureStyle() {
@@ -147,20 +64,24 @@
       style.id = STYLE_ID;
       document.documentElement.appendChild(style);
     }
-    style.textContent = `
-      :root { --dsh-wco-pad: ${reservedRight()}px; --dsh-wco-controls: ${windowControlsRight()}px; }
+    const css = `
+      :root { --dshd-wco-controls: ${windowControlsRight()}px; }
       #${CONTROLS_ID} {
         position: fixed;
-        top: 12px;
-        right: ${EDGE}px;
+        top: 0;
+        right: 0;
         z-index: 2147483647;
+        box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: flex-end;
         gap: ${CONTROL_GAP}px;
-        height: ${CONTROL_SIZE}px;
-        padding: 0;
+        width: ${windowControlsRight()}px;
+        height: ${CAPTION_HEIGHT}px;
+        padding: 12px ${EDGE}px 4px;
         background: transparent;
+        pointer-events: auto;
+        user-select: none;
         -webkit-app-region: no-drag;
       }
       #${CONTROLS_ID} button {
@@ -176,12 +97,14 @@
         background: transparent;
         color: var(--dsw-alias-label-primary);
         cursor: pointer;
+        pointer-events: auto;
         -webkit-app-region: no-drag;
       }
       #${CONTROLS_ID} button svg {
         width: 12px;
         height: 12px;
         display: block;
+        pointer-events: none;
       }
       #${CONTROLS_ID} button:hover {
         background: var(--dsw-alias-interactive-bg-hover);
@@ -190,26 +113,10 @@
         background: #e81123;
         color: #fff;
       }
-      #${DRAG_ID} {
-        position: fixed;
-        top: 0;
-        z-index: 2147483644;
-        height: ${DRAG_GUTTER}px;
-        background: transparent;
-        -webkit-app-region: drag;
-      }
-      [${MARK}] {
-        -webkit-app-region: drag;
-      }
-      [${MARK}] ${INTERACTIVE},
-      [${HIT}] {
-        -webkit-app-region: no-drag !important;
-        pointer-events: auto;
-      }
-      [data-titlebar-row][${MARK}] {
-        pointer-events: auto;
-      }
     `;
+    if (style.textContent !== css) {
+      style.textContent = css;
+    }
   }
 
   function ensureControls() {
@@ -224,119 +131,65 @@
       `<button type="button" data-act="maximize" aria-label="最大化">${ICON_MAX}</button>`,
       `<button type="button" data-act="close" aria-label="关闭">${ICON_CLOSE}</button>`,
     ].join('');
-    host.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-act]');
-      if (!button || !window.shell) {
+    const dispatch = (event) => {
+      if (event.type === 'pointerdown' && event.button !== 0) {
         return;
       }
-      if (typeof window.shell.windowAction === 'function') {
-        window.shell.windowAction(button.dataset.act);
+      const button = event.target.closest('[data-act]');
+      if (!button || !window.shell || typeof window.shell.windowAction !== 'function') {
+        return;
       }
-    });
+      if (event.type === 'pointerdown') {
+        event.preventDefault();
+        event.stopPropagation();
+        host.dataset.pointerAct = '1';
+        window.shell.windowAction(button.dataset.act);
+        window.setTimeout(() => {
+          delete host.dataset.pointerAct;
+        }, 0);
+        return;
+      }
+      if (host.dataset.pointerAct === '1') {
+        return;
+      }
+      window.shell.windowAction(button.dataset.act);
+    };
+    host.addEventListener('pointerdown', dispatch);
+    host.addEventListener('click', dispatch);
     (document.body || document.documentElement).appendChild(host);
     return host;
   }
 
-  function placeDragGutter() {
-    let strip = document.getElementById(DRAG_ID);
-    if (!strip) {
-      strip = document.createElement('div');
-      strip.id = DRAG_ID;
-      (document.body || document.documentElement).appendChild(strip);
-    }
-    const center = findCenterCol();
-    const left = center ? Math.max(0, Math.round(center.getBoundingClientRect().left)) : 0;
-    strip.style.left = `${left}px`;
-    strip.style.right = `${reservedRight()}px`;
-    strip.style.height = `${DRAG_GUTTER}px`;
-    return strip;
-  }
-
-  function clearMarks() {
-    document.querySelectorAll(`[${MARK}]`).forEach((el) => el.removeAttribute(MARK));
-    document.querySelectorAll(`[${HIT}]`).forEach((el) => el.removeAttribute(HIT));
-  }
-
-  function markInteractive(root) {
-    if (!(root instanceof HTMLElement)) {
-      return;
-    }
-    if (root.matches(INTERACTIVE)) {
-      root.setAttribute(HIT, '');
-    }
-    root.querySelectorAll(INTERACTIVE).forEach((el) => {
-      if (el.closest(`#${CONTROLS_ID}`)) {
-        return;
-      }
-      el.setAttribute(HIT, '');
-    });
-  }
-
-  function placeControls(host, sessionLog) {
-    host.style.right = `${EDGE}px`;
+  function placeControls(host) {
+    host.style.top = '0px';
+    host.style.right = '0px';
+    host.style.width = `${windowControlsRight()}px`;
+    host.style.height = `${CAPTION_HEIGHT}px`;
     host.style.gap = `${CONTROL_GAP}px`;
-    host.style.height = `${CONTROL_SIZE}px`;
-    host.style.padding = '0';
-    if (sessionLog) {
-      const r = sessionLog.getBoundingClientRect();
-      const top = Math.round(r.top + (r.height - CONTROL_SIZE) / 2);
-      host.style.top = `${Math.max(0, top)}px`;
-    } else {
-      host.style.top = '12px';
-    }
-    return reservedRight();
+    host.style.padding = `12px ${EDGE}px 4px`;
   }
 
   function applyControlTheme(host, maximized) {
     const maxBtn = host.querySelector('[data-act="maximize"]');
-    if (maxBtn) {
-      maxBtn.innerHTML = maximized ? ICON_RESTORE : ICON_MAX;
-      maxBtn.setAttribute('aria-label', maximized ? '还原' : '最大化');
+    if (!maxBtn) {
+      return;
     }
+    const mode = maximized ? 'restore' : 'maximize';
+    if (maxBtn.dataset.mode === mode) {
+      return;
+    }
+    maxBtn.dataset.mode = mode;
+    maxBtn.innerHTML = maximized ? ICON_RESTORE : ICON_MAX;
+    maxBtn.setAttribute('aria-label', maximized ? '还原' : '最大化');
   }
 
   function measure() {
     ensureStyle();
     const host = ensureControls();
-    clearMarks();
-
-    const sessionLog = findSessionLog();
-    const foundBar = findTopBar();
-    const bar = isVisibleChrome(foundBar) ? foundBar : null;
-    const titlebarRow = findTitlebarRow();
-    const logo = findLogoRow();
-    const inset = placeControls(host, sessionLog);
-    document.documentElement.style.setProperty('--dsh-wco-pad', `${inset}px`);
-    document.documentElement.style.setProperty('--dsh-wco-controls', `${windowControlsRight()}px`);
-
-    let bg = opaqueBg(document.body);
-    if (bar) {
-      bg = opaqueBg(bar);
-      markInteractive(bar);
-    } else if (titlebarRow instanceof HTMLElement) {
-      bg = opaqueBg(titlebarRow);
-    }
-    placeDragGutter();
-    if (titlebarRow instanceof HTMLElement) {
-      titlebarRow.setAttribute(MARK, '');
-    }
-    if (logo) {
-      markInteractive(logo);
-    }
-    if (sessionLog) {
-      sessionLog.style.marginRight = '';
-      sessionLog.setAttribute(HIT, '');
-    }
-    const trailing = document.getElementById('dsh-shell-titlebar-trailing');
-    if (trailing instanceof HTMLElement) {
-      trailing.setAttribute(HIT, '');
-      markInteractive(trailing);
-    }
-
-    const maximized = Boolean(window.__dshShellMaximized);
-    applyControlTheme(host, maximized);
-
-    const sample = { bg, height: CONTROL_SIZE, insetRight: inset };
+    placeControls(host);
+    document.documentElement.style.setProperty('--dshd-wco-controls', `${windowControlsRight()}px`);
+    applyControlTheme(host, Boolean(window.__dshShellMaximized));
+    const sample = { bg: opaqueBg(document.body) };
     if (window.shell && typeof window.shell.reportChrome === 'function') {
       window.shell.reportChrome(sample);
     }
@@ -356,16 +209,6 @@
         window.__dshShellMaximized = Boolean(state && state.maximized);
         measure();
       });
-    }
-    if (window.MutationObserver) {
-      const obs = new MutationObserver(schedule);
-      obs.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class', 'style', 'data-theme', 'data-appearance', 'data-ds-dark-theme'],
-      });
-      if (document.body) {
-        obs.observe(document.body, { childList: true, subtree: true });
-      }
     }
     window.setTimeout(measure, 200);
     window.setTimeout(measure, 800);

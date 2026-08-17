@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 const net = require('node:net');
 const { isLoopbackHttpUrl, rewriteLoopbackLoadUrl } = require('./local-url');
 
-const PREVIEW_PARTITION = 'dsh-preview';
+const PREVIEW_PARTITION = 'dshd-preview';
 const DISCOVER_PORTS = [3000, 5173, 4173, 8080, 4321, 8000, 5000];
 const DISCOVER_TIMEOUT_MS = 200;
 /** Document navigations that must stay on loopback. */
@@ -288,9 +288,11 @@ function createPreviewController(options = {}) {
  * @param {import('electron').IpcMain} ipcMain
  * @param {ReturnType<typeof createPreviewController>} [controller]
  */
-function registerPreviewIpc(ipcMain, controller) {
+function registerPreviewIpc(ipcMain, controller, options = {}) {
+  const authorize = typeof options.authorize === 'function' ? options.authorize : () => {};
   let host = null;
   const remember = (event) => {
+    authorize(event);
     host = event && event.sender ? event.sender : host;
   };
   const live = controller ?? createPreviewController({
@@ -319,13 +321,34 @@ function registerPreviewIpc(ipcMain, controller) {
     remember(event);
     return live.reload(id);
   });
-  ipcMain.handle('shell:preview-state', (_event, id) => live.state(id));
-  ipcMain.handle('shell:preview-devtools', (_event, id) => live.openDevTools(id));
-  ipcMain.handle('shell:preview-discover', () => discoverLocalServers());
-  ipcMain.handle('shell:preview-resize', (_event, id, bounds) => live.resize(id, bounds));
-  ipcMain.handle('shell:preview-hide', (_event, id) => live.hide(id));
-  ipcMain.handle('shell:preview-show', (_event, id, bounds) => live.show(id, bounds));
-  ipcMain.handle('shell:preview-close', (_event, id) => live.close(id));
+  ipcMain.handle('shell:preview-state', (event, id) => {
+    remember(event);
+    return live.state(id);
+  });
+  ipcMain.handle('shell:preview-devtools', (event, id) => {
+    remember(event);
+    return live.openDevTools(id);
+  });
+  ipcMain.handle('shell:preview-discover', (event) => {
+    remember(event);
+    return discoverLocalServers();
+  });
+  ipcMain.handle('shell:preview-resize', (event, id, bounds) => {
+    remember(event);
+    return live.resize(id, bounds);
+  });
+  ipcMain.handle('shell:preview-hide', (event, id) => {
+    remember(event);
+    return live.hide(id);
+  });
+  ipcMain.handle('shell:preview-show', (event, id, bounds) => {
+    remember(event);
+    return live.show(id, bounds);
+  });
+  ipcMain.handle('shell:preview-close', (event, id) => {
+    remember(event);
+    return live.close(id);
+  });
   return live;
 }
 

@@ -31,17 +31,17 @@ function resolveInsideWorkspace(cwd, relativePath) {
 
 /** Wall-clock limit for status/list/read git children. */
 const GIT_TIMEOUT_MS = 60_000;
-/** T3code `COMMIT_TIMEOUT_MS`: leftover / husky / pre-push may run for minutes. */
+/** Commit timeout: leftover / husky / pre-push may run for minutes. */
 const COMMIT_TIMEOUT_MS = 10 * 60_000;
-/** T3code `STATUS_UPSTREAM_REFRESH_TIMEOUT`: background fetch must not stall the titlebar. */
+/** Background fetch must not stall the titlebar. */
 const FETCH_TIMEOUT_MS = 5_000;
-/** T3code GitHubCli `DEFAULT_TIMEOUT_MS` for `gh repo view` / `gh pr list`. */
+/** Timeout for `gh repo view` / `gh pr list`. */
 const GH_TIMEOUT_MS = 30_000;
 /** Retained stdout cap; overflow kills the child and sets truncated. */
 const GIT_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-/** T3code prepared-commit patch cap. */
+/** Prepared-commit patch cap. */
 const PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES = 49_000;
-/** T3code range-diff patch cap. */
+/** Range-diff patch cap. */
 const RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES = 59_000;
 const OUTPUT_TRUNCATED_MARKER = '\n\n[truncated]';
 
@@ -52,7 +52,7 @@ function withTruncationMarker(text, truncated) {
 }
 
 /**
- * Env for a git child. Matches T3code's spawn (full `process.env`, no
+ * Env for a git child. Uses the full `process.env` (no
  * `GIT_CEILING_DIRECTORIES`) and strips Electron npm_config_* so leftover
  * / npx do not inherit `electron-skip-binary-download`.
  * @returns {NodeJS.ProcessEnv}
@@ -139,7 +139,7 @@ function run(command, args, cwd, limits = {}) {
       pushLines(chunk);
     });
     child.stderr.on('data', (chunk) => {
-      // T3code caps combined output; bound stderr the same way as stdout.
+      // Bound stderr the same way as stdout.
       const next = stderrBytes + chunk.length;
       if (next > maxBytes) {
         const remain = Math.max(0, maxBytes - stderrBytes);
@@ -187,18 +187,29 @@ function runGit(cwd, args, limits) {
   return run('git', args, cwd, limits);
 }
 
-function isGitAdviceLine(line) {
-  return /LF will be replaced by CRLF|CRLF will be replaced by LF|warning: in the working copy of |^hint:/i.test(line);
+function isCrlfAdviceLine(line) {
+  return /LF will be replaced by CRLF|CRLF will be replaced by LF|warning: in the working copy of /i.test(line);
 }
 
+function isGitAdviceLine(line) {
+  return isCrlfAdviceLine(line) || /^hint:/i.test(line);
+}
+
+/**
+ * Build the IPC failure dump from a git child.
+ * Drops autocrlf warnings. Keeps `hint:` and every other retained line so the
+ * titlebar error card can headline one line and expand the rest.
+ * @param {{ stderr?: string, stdout?: string }} result
+ * @param {string} fallback
+ * @returns {string}
+ */
 function gitFailureMessage(result, fallback) {
   const lines = `${result.stderr || ''}\n${result.stdout || ''}`
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean)
-    .filter((line) => !isGitAdviceLine(line));
-  const marked = lines.find((line) => /fatal:|error:|hook|failed|Format issues/i.test(line));
-  return marked || lines[0] || fallback;
+    .filter((line) => !isCrlfAdviceLine(line));
+  return lines.length > 0 ? lines.join('\n') : fallback;
 }
 
 function sanitizeProgressText(line) {

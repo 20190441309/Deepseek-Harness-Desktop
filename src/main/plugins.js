@@ -8,10 +8,12 @@ const DROPPED = [
   '@dsh-external/dsh-genui',
   '@huanlin/dsh-plugin-yet-another-subagent',
 ];
-const PATCH_BEGIN = '# --- dsh-gui-plugin-toggles ---';
-const PATCH_END = '# --- end dsh-gui-plugin-toggles ---';
-const DESKTOP_INSTALL_BEGIN = '# --- dsh-gui-desktop-install ---';
-const DESKTOP_INSTALL_END = '# --- end dsh-gui-desktop-install ---';
+const PATCH_BEGIN = '# --- dshd-gui-plugin-toggles ---';
+const PATCH_END = '# --- end dshd-gui-plugin-toggles ---';
+const DESKTOP_INSTALL_BEGIN = '# --- dshd-gui-desktop-install ---';
+const DESKTOP_INSTALL_END = '# --- end dshd-gui-desktop-install ---';
+const LEGACY_DESKTOP_INSTALL_BEGIN = '# --- dsh-gui-desktop-install ---';
+const LEGACY_DESKTOP_INSTALL_END = '# --- end dsh-gui-desktop-install ---';
 const DESKTOP_INSTALL_FILES = [
   'install-dsh-plugin.mjs',
   'install-dsh-plugin-client.js',
@@ -68,23 +70,30 @@ function upsertManagedBlock(file, begin, end, body) {
   return true;
 }
 
-function stripManagedPatch() {
-  const file = patchPath();
+function stripNamedBlock(text, begin, end) {
+  const start = text.indexOf(begin);
+  const stop = text.indexOf(end);
+  if (start === -1 || stop === -1 || stop < start) {
+    return text;
+  }
+  return `${text.slice(0, start)}${text.slice(stop + end.length)}`.replace(/\n{3,}/g, '\n\n');
+}
+
+function stripBlockFromFile(file, begin, end) {
   if (!fs.existsSync(file)) {
     return false;
   }
   const text = fs.readFileSync(file, 'utf8');
-  const begin = text.indexOf(PATCH_BEGIN);
-  const end = text.indexOf(PATCH_END);
-  if (begin === -1 || end === -1 || end < begin) {
-    return false;
-  }
-  const next = `${text.slice(0, begin)}${text.slice(end + PATCH_END.length)}`.replace(/\n{3,}/g, '\n\n');
+  const next = stripNamedBlock(text, begin, end);
   if (next === text) {
     return false;
   }
   writeAtomic(file, next);
   return true;
+}
+
+function stripManagedPatch() {
+  return stripBlockFromFile(patchPath(), PATCH_BEGIN, PATCH_END);
 }
 
 function hostPluginDir() {
@@ -110,18 +119,24 @@ function ensureDesktopInstallPlugin(options = {}) {
   }
   const entry = path.join(destDir, 'install-dsh-plugin.mjs');
   const href = pathToFileURL(entry).href;
+  const patchFile = path.join(profileDir, 'cordis.patch.yml');
+  const strippedLegacy = stripBlockFromFile(
+    patchFile,
+    LEGACY_DESKTOP_INSTALL_BEGIN,
+    LEGACY_DESKTOP_INSTALL_END,
+  );
   const body = [
     '- insert:',
-    '    - id: dsh-desktop-plugin-install',
+    '    - id: dshd-desktop-plugin-install',
     `      name: ${JSON.stringify(href)}`,
   ].join('\n');
   const patchChanged = upsertManagedBlock(
-    path.join(profileDir, 'cordis.patch.yml'),
+    patchFile,
     DESKTOP_INSTALL_BEGIN,
     DESKTOP_INSTALL_END,
     body,
   );
-  return { ok: true, destDir, href, patchChanged };
+  return { ok: true, destDir, href, patchChanged: patchChanged || strippedLegacy };
 }
 
 /** Drop retired community plugins from the live web profile so they cannot boot. */
@@ -198,4 +213,6 @@ module.exports = {
   ensureDesktopInstallPlugin,
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
+  LEGACY_DESKTOP_INSTALL_BEGIN,
+  LEGACY_DESKTOP_INSTALL_END,
 };

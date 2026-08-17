@@ -24,6 +24,17 @@ function defaultShellArgs() {
   return process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
 }
 
+function ptySpawnOptions({ cwd, cols, rows }, platform = process.platform) {
+  return {
+    cwd,
+    cols: cols ?? 80,
+    rows: rows ?? 24,
+    name: 'xterm-256color',
+    env: { ...process.env, TERM: 'xterm-256color' },
+    ...(platform === 'win32' ? { useConpty: true, useConptyDll: true } : {}),
+  };
+}
+
 function defaultSpawn() {
   let pty;
   try {
@@ -32,16 +43,19 @@ function defaultSpawn() {
     throw new Error('node-pty is not available');
   }
   return ({ cwd, cols, rows, onData, onExit }) => {
-    const term = pty.spawn(defaultShell(), defaultShellArgs(), {
-      cwd,
-      cols: cols ?? 80,
-      rows: rows ?? 24,
-      name: 'xterm-256color',
-      env: { ...process.env, TERM: 'xterm-256color' },
+    const term = pty.spawn(
+      defaultShell(),
+      defaultShellArgs(),
+      ptySpawnOptions({ cwd, cols, rows }),
+    );
+    let resolveExit;
+    const exited = new Promise((resolve) => {
+      resolveExit = resolve;
     });
     term.onData(onData);
     term.onExit(({ exitCode }) => {
       onExit(exitCode ?? 0);
+      resolveExit();
     });
     return {
       write(data) {
@@ -52,6 +66,13 @@ function defaultSpawn() {
       },
       kill() {
         term.kill();
+        return new Promise((resolve) => {
+          const timer = setTimeout(resolve, 2_000);
+          exited.then(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
       },
     };
   };
@@ -69,6 +90,18 @@ function createPtyController(options = {}) {
   let spawn = options.spawn;
   const emit = options.emit ?? (() => {});
   const sessions = new Map();
+  const eventListeners = new Set();
+
+  function publish(channel, payload) {
+    emit(channel, payload);
+    for (const listener of eventListeners) {
+      try {
+        listener(channel, payload);
+      } catch {
+        // Observers must not interrupt terminal I/O.
+      }
+    }
+  }
 
   function resolveSpawn() {
     if (spawn === null) {
@@ -108,11 +141,11 @@ function createPtyController(options = {}) {
           cols: input.cols,
           rows: input.rows,
           onData(data) {
-            emit('shell:pty-data', { id, data: String(data) });
+            publish('shell:pty-data', { id, data: String(data) });
           },
           onExit(code) {
             sessions.delete(id);
-            emit('shell:pty-exit', { id, code: Number(code) || 0 });
+            publish('shell:pty-exit', { id, code: Number(code) || 0 });
           },
         });
       } catch (error) {
@@ -134,20 +167,30 @@ function createPtyController(options = {}) {
     async kill(id) {
       const session = sessions.get(id);
       if (!session) return;
-      session.kill();
+      await session.kill();
       sessions.delete(id);
+    },
+
+    onEvent(listener) {
+      if (typeof listener !== 'function') {
+        throw new TypeError('PTY event listener must be a function');
+      }
+      eventListeners.add(listener);
+      return () => eventListeners.delete(listener);
     },
 
     /** Kill every live PTY (app quit, harness restart, renderer teardown). */
     killAll() {
+      const cleanup = [];
       for (const session of sessions.values()) {
         try {
-          session.kill();
+          cleanup.push(Promise.resolve(session.kill()).catch(() => {}));
         } catch {
           // A backend that already exited must not block the sweep.
         }
       }
       sessions.clear();
+      return Promise.all(cleanup);
     },
   };
 }
@@ -157,7 +200,8 @@ function createPtyController(options = {}) {
  * @param {import('electron').IpcMain} ipcMain
  * @param {ReturnType<typeof createPtyController>} [controller]
  */
-function registerPtyIpc(ipcMain, controller) {
+function registerPtyIpc(ipcMain, controller, options = {}) {
+  const authorize = typeof options.authorize === 'function' ? options.authorize : () => {};
   const senders = new Set();
   const live = controller ?? createPtyController({
     emit(channel, payload) {
@@ -168,6 +212,7 @@ function registerPtyIpc(ipcMain, controller) {
   });
 
   function track(event) {
+    authorize(event);
     const sender = event.sender;
     if (sender && !senders.has(sender)) {
       senders.add(sender);
@@ -185,4 +230,12 @@ function registerPtyIpc(ipcMain, controller) {
   return live;
 }
 
-module.exports = { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority, defaultShell, defaultShellArgs };
+module.exports = {
+  BACKEND_UNAVAILABLE,
+  createPtyController,
+  registerPtyIpc,
+  setWorkspaceAuthority,
+  defaultShell,
+  defaultShellArgs,
+  ptySpawnOptions,
+};

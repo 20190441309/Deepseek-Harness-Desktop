@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('./config');
 const { resolveTheme } = require('../shared/themes');
+const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
 
 const TITLEBAR_HEIGHT = 48;
 const injectScript = fs.readFileSync(path.join(__dirname, 'harness-chrome-inject.js'), 'utf8');
@@ -45,7 +46,21 @@ function paintBackground(win, color) {
   win.setBackgroundColor(color);
 }
 
-function windowFromEvent(event) {
+const WINDOW_ROLES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
+
+function authorizedRole(event, roles) {
+  try {
+    return assertIpcSender(event, roles);
+  } catch {
+    return null;
+  }
+}
+
+function windowFromEvent(event, role) {
+  if (role === IPC_ROLES.HARNESS) {
+    const { getMainWindow } = require('./window');
+    return getMainWindow();
+  }
   return BrowserWindow.fromWebContents(event.sender);
 }
 
@@ -77,25 +92,39 @@ function bindChromeIpc() {
   ipcBound = true;
 
   ipcMain.on('shell:window', (event, action) => {
-    const win = windowFromEvent(event);
+    const role = authorizedRole(event, WINDOW_ROLES);
+    if (!role) return;
+    const win = windowFromEvent(event, role);
     if (!win || win.isDestroyed()) {
       return;
     }
     if (action === 'minimize' && win.minimizable) {
-      win.minimize();
+      // After a caption-classified mousedown, Windows ignores minimize/maximize
+      // in the same turn; run on the next tick.
+      setImmediate(() => {
+        if (!win.isDestroyed() && win.minimizable) {
+          win.minimize();
+        }
+      });
     } else if (action === 'maximize' && win.maximizable) {
-      if (win.isMaximized()) {
-        win.unmaximize();
-      } else {
-        win.maximize();
-      }
+      setImmediate(() => {
+        if (win.isDestroyed() || !win.maximizable) {
+          return;
+        }
+        if (win.isMaximized()) {
+          win.unmaximize();
+        } else {
+          win.maximize();
+        }
+      });
     } else if (action === 'close') {
       win.close();
     }
   });
 
   ipcMain.handle('shell:window-state', (event) => {
-    const win = windowFromEvent(event);
+    const role = assertIpcSender(event, WINDOW_ROLES);
+    const win = windowFromEvent(event, role);
     if (!win || win.isDestroyed()) {
       return { maximized: false, minimizable: true, maximizable: true };
     }
@@ -107,7 +136,9 @@ function bindChromeIpc() {
   });
 
   ipcMain.on('shell:chrome-metrics', (event, metrics) => {
-    const win = windowFromEvent(event);
+    const role = authorizedRole(event, [IPC_ROLES.HARNESS]);
+    if (!role) return;
+    const win = windowFromEvent(event, role);
     if (win && metrics?.bg) {
       paintBackground(win, metrics.bg);
     }

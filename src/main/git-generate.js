@@ -1,6 +1,6 @@
 /**
  * Commit / PR text: DeepSeek chat when an API key is configured, otherwise a
- * staged name-status heuristic. T3code shows "Generating…" only while this
+ * staged name-status heuristic. "Generating…" shows only while this
  * step runs against staged summary + patch.
  */
 

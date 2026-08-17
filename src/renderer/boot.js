@@ -175,7 +175,7 @@ function renderState(snapshot) {
 
   if (Array.isArray(snapshot?.logs)) {
     logEl.replaceChildren();
-    snapshot.logs.slice(-8).forEach(appendLog);
+    visibleLogs(snapshot.logs, state).forEach(appendLog);
   }
 
   if (state === 'ready' && pluginBoot && !pluginBoot.settled && !pluginBoot.failed) {
@@ -183,11 +183,31 @@ function renderState(snapshot) {
   }
 }
 
+const LOG_ERROR_PATTERN = /ERR_[A-Z0-9_]+|Cannot find (?:package|module)|Error \[/;
+
+function visibleLogs(logs, state) {
+  const lines = Array.isArray(logs) ? logs.map((line) => String(line ?? '')) : [];
+  const tail = lines.slice(-8);
+  if (state !== 'error') {
+    return tail;
+  }
+  const important = lines.filter((line) => LOG_ERROR_PATTERN.test(line));
+  const merged = [];
+  const seen = new Set();
+  for (const line of [...important, ...tail]) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    merged.push(line);
+  }
+  return merged.slice(-16);
+}
+
 function appendLog(line) {
   const item = document.createElement('li');
   item.textContent = typeof line === 'string' ? line : String(line ?? '');
   logEl.appendChild(item);
-  while (logEl.children.length > 8) {
+  const limit = document.body.dataset.state === 'error' ? 16 : 8;
+  while (logEl.children.length > limit) {
     logEl.removeChild(logEl.firstChild);
   }
 }

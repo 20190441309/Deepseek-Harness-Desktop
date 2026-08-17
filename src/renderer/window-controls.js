@@ -26,12 +26,28 @@ function mountWindowControls(host) {
     `<button type="button" data-act="close" aria-label="关闭">${iconClose()}</button>`,
   ].join('');
 
-  host.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-act]');
-    if (!button || !window.shell) {
+  host.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) {
       return;
     }
-    if (typeof window.shell.windowAction !== 'function') {
+    const button = event.target.closest('[data-act]');
+    if (!button || !window.shell || typeof window.shell.windowAction !== 'function') {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    host.dataset.pointerAct = '1';
+    window.shell.windowAction(button.dataset.act);
+    window.setTimeout(() => {
+      delete host.dataset.pointerAct;
+    }, 0);
+  });
+  host.addEventListener('click', (event) => {
+    if (host.dataset.pointerAct === '1') {
+      return;
+    }
+    const button = event.target.closest('[data-act]');
+    if (!button || !window.shell || typeof window.shell.windowAction !== 'function') {
       return;
     }
     window.shell.windowAction(button.dataset.act);

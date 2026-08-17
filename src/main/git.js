@@ -92,7 +92,7 @@ async function gitStatus(cwd) {
   const hasPrimaryRemote = remoteNames.includes('origin');
   const defaultRef = await defaultRefName(root, hasPrimaryRemote);
   const isDefaultRef = header.refName !== null && header.refName === defaultRef;
-  // T3code `statusDetails`: no-upstream ahead is vs the default/base ref, not porcelain 0.
+  // No-upstream ahead is vs the default/base ref, not porcelain 0.
   const vsDefault = header.refName && (!isDefaultRef || !header.hasUpstream)
     ? await computeAheadCountAgainstBase(root, header.refName)
     : { count: 0, unreliable: false };
@@ -254,7 +254,7 @@ async function readHeadSha(cwd) {
 }
 
 /**
- * T3code `parseCustomCommitMessage`: first line is the subject; remaining lines are the body.
+ * First line is the subject; remaining lines are the body.
  * @param {unknown} raw
  * @returns {{ subject: string, body: string } | null}
  */
@@ -267,7 +267,7 @@ function parseCustomCommitMessage(raw) {
   return { subject, body: rest.join('\n').trim() };
 }
 
-/** T3code `git commit -m subject` plus optional `-m body`. */
+/** `git commit -m subject` plus optional `-m body`. */
 function commitArgs(message) {
   const parsed = parseCustomCommitMessage(message);
   if (!parsed) return ['commit', '-m', 'Update'];
@@ -290,7 +290,7 @@ async function gitCommit(cwd, message, filePaths, onProgress, options = {}) {
 
   const custom = parseCustomCommitMessage(message);
   const hasCustom = custom !== null;
-  // T3code keeps custom messages verbatim; sanitize only model/heuristic output.
+  // Keep custom messages verbatim; sanitize only model/heuristic output.
   let suggestion = hasCustom
     ? {
       subject: custom.subject,
@@ -362,7 +362,7 @@ async function gitFetchForStatus(cwd) {
 
 /**
  * Look up the open GitHub PR for HEAD. Kept off the status poll so focus refresh stays local.
- * Transient `gh` failures keep the last successful badge for this branch (T3code last-known PR).
+ * Transient `gh` failures keep the last successful badge for this branch.
  * @param {unknown} cwd
  * @returns {Promise<{ ok: boolean, pr?: object | null, message?: string }>}
  */
@@ -401,7 +401,7 @@ async function gitPush(cwd, onProgress) {
     if (status.hasUpstream) {
       return ok({ skipped: true, status: 'skipped', branch: status.refName });
     }
-    // T3code gates no-upstream skip on resolveBaseBranchForNoUpstream (gh-merge-base included).
+    // No-upstream skip uses resolveBaseBranchForNoUpstream (gh-merge-base included).
     const comparableBase = await resolveBaseBranchForNoUpstream(root, status.refName);
     if (comparableBase) {
       const remote = await resolvePushRemoteName(root, status.refName);
@@ -475,7 +475,7 @@ async function gitPull(cwd, onProgress) {
 }
 
 /**
- * T3code preferred `--head` for `gh pr create` (fork → `owner:branch`).
+ * Preferred `--head` for `gh pr create` (fork → `owner:branch`).
  * @param {string} cwd
  * @param {string} refName
  * @returns {Promise<string>}
@@ -559,7 +559,7 @@ async function gitCreateChangeRequest(cwd, input, onProgress) {
   const headContext = existingLookup.headContext
     || await resolveBranchHeadContext(root, status.refName);
   const branchKey = `${root}\u0000${status.refName}`;
-  // T3code: last-known is status-badge only. Do not remember null (poisons the badge
+  // Last-known is status-badge only. Do not remember null (poisons the badge
   // after a successful create when a later list flakes).
   if (existingLookup.failed) {
     return fail('Could not look up existing pull requests (gh failed). Try again.');
@@ -589,7 +589,7 @@ async function gitCreateChangeRequest(cwd, input, onProgress) {
   const providedBody = typeof input?.body === 'string' ? input.body : '';
   let title = '';
   let body = '';
-  // Resolve once and reuse for range copy + `gh pr create --base` (T3code).
+  // Resolve once and reuse for range copy + `gh pr create --base`.
   const baseBranch = await resolvePrBaseBranch(root, status.refName, Boolean(status.hasPrimaryRemote));
   if (preserveProvided && providedTitle) {
     title = providedTitle;
@@ -615,13 +615,13 @@ async function gitCreateChangeRequest(cwd, input, onProgress) {
   if (!title) return fail('Change request title is required.');
 
   emit({ kind: 'phase', title: `Creating ${terms.singular}...` });
-  const bodyFile = path.join(os.tmpdir(), `dsh-pr-body-${process.pid}-${Date.now()}.md`);
+  const bodyFile = path.join(os.tmpdir(), `dshd-pr-body-${process.pid}-${Date.now()}.md`);
   fs.writeFileSync(bodyFile, body);
   let created;
   try {
     const headSelector = await resolvePreferredHeadSelector(root, status.refName);
     const prArgs = ['pr', 'create', '--title', title, '--body-file', bodyFile, '--head', headSelector];
-    // T3code always passes --base when resolved (never omit when base === head name).
+    // Always pass --base when resolved (never omit when base === head name).
     if (baseBranch) prArgs.push('--base', baseBranch);
     created = await run('gh', prArgs, root, {
       timeoutMs: COMMIT_TIMEOUT_MS,
@@ -673,7 +673,7 @@ async function gitPublishRepository(cwd, input, onProgress) {
   if (remoteUrl) {
     const added = await runGit(root, ['remote', 'add', 'origin', remoteUrl]);
     if (added.code !== 0) return fail(gitFailureMessage(added, 'git remote add failed.'));
-    // T3code: empty repo → remote_added without push (avoids opaque HEAD refspec failure).
+    // Empty repo → remote_added without push (avoids opaque HEAD refspec failure).
     if (!hasCommits) return ok({ status: 'remote_added', remoteName: 'origin', url: remoteUrl });
     const pushed = await gitPush(root, onProgress);
     if (!pushed.ok) return pushed;
@@ -684,6 +684,8 @@ async function gitPublishRepository(cwd, input, onProgress) {
     visibility === 'private' ? '--private' : '--public',
     '--source=.',
     '--remote=origin',
+    // Non-TTY Electron cannot answer gh's confirm prompt; --yes skips it.
+    '--yes',
   ];
   if (hasCommits) createArgs.push('--push');
   const created = await run('gh', createArgs, root, { timeoutMs: COMMIT_TIMEOUT_MS });

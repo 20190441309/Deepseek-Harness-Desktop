@@ -2,11 +2,11 @@ const path = require('node:path');
 const { runGit, FETCH_TIMEOUT_MS } = require('./git-exec');
 const { resolveCurrentUpstream, resolvePrimaryRemoteName } = require('./git-remotes');
 
-/** T3code status-fetch TTL: success is reused briefly; failures back off. */
+/** Status-fetch TTL: success is reused briefly; failures back off. */
 const FETCH_OK_TTL_MS = 15_000;
-/** T3code `STATUS_UPSTREAM_REFRESH_FAILURE_BASE_COOLDOWN`. */
+/** First failure cooldown for status-fetch. */
 const FETCH_FAIL_BASE_MS = 30_000;
-/** T3code `STATUS_UPSTREAM_REFRESH_FAILURE_MAX_COOLDOWN`. */
+/** Ceiling for status-fetch failure cooldown. */
 const FETCH_FAIL_MAX_MS = 15 * 60_000;
 const fetchCooldownByRoot = new Map();
 
@@ -15,7 +15,7 @@ function resetFetchCooldowns() {
 }
 
 /**
- * T3code background `git fetch --quiet --no-tags`. A failure must not hide local status.
+ * Background `git fetch --quiet --no-tags`. A failure must not hide local status.
  * @param {string} cwd
  * @returns {Promise<void>}
  */
@@ -28,7 +28,7 @@ async function fetchCooldownKey(cwd, remote) {
 }
 
 async function fetchForStatus(cwd) {
-  // T3code refreshStatusUpstreamIfStale: fetch the tracking remote, else primary.
+  // Fetch the tracking remote, else the primary remote.
   const upstream = await resolveCurrentUpstream(cwd);
   const remote = upstream?.remoteName || await resolvePrimaryRemoteName(cwd);
   if (!remote) return;

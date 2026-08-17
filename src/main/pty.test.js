@@ -4,7 +4,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { BACKEND_UNAVAILABLE, createPtyController, registerPtyIpc, setWorkspaceAuthority, defaultShell, defaultShellArgs } = require('./pty.js');
+const {
+  BACKEND_UNAVAILABLE,
+  createPtyController,
+  registerPtyIpc,
+  setWorkspaceAuthority,
+  defaultShell,
+  defaultShellArgs,
+  ptySpawnOptions,
+} = require('./pty.js');
 
 // One shared workspace root for the whole suite; cwd checks resolve inside it.
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pty-ws-'));
@@ -130,4 +138,50 @@ test('registerPtyIpc returns the live controller for lifecycle wiring', () => {
   const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
   const returned = registerPtyIpc(ipcMain, pty);
   assert.equal(returned, pty);
+});
+
+test('PTY event observers receive output and can unsubscribe', async () => {
+  const observed = [];
+  const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
+  const unsubscribe = pty.onEvent((channel, payload) => {
+    observed.push({ channel, payload });
+  });
+  const created = await pty.create({ cwd: ws });
+  await pty.write(created.id, 'marker');
+  unsubscribe();
+  await pty.write(created.id, 'ignored');
+  await pty.kill(created.id);
+
+  assert.deepEqual(observed, [
+    { channel: 'shell:pty-data', payload: { id: created.id, data: 'marker' } },
+  ]);
+});
+
+test('Windows PTY spawn uses the bundled ConPTY DLL cleanup path', () => {
+  const options = ptySpawnOptions({ cwd: ws, cols: 100, rows: 30 }, 'win32');
+  assert.equal(options.useConpty, true);
+  assert.equal(options.useConptyDll, true);
+  assert.equal(options.cols, 100);
+  assert.equal(options.rows, 30);
+});
+
+test('registerPtyIpc authorizes every renderer request before dispatch', async () => {
+  const handlers = new Map();
+  const ipcMain = { handle(channel, fn) { handlers.set(channel, fn); } };
+  let authorized = 0;
+  const controller = {
+    create() {},
+    write() {},
+    resize() {},
+    kill() { return 'killed'; },
+  };
+  registerPtyIpc(ipcMain, controller, {
+    authorize(event) {
+      assert.equal(event.sender.id, 7);
+      authorized += 1;
+    },
+  });
+  const sender = { id: 7, once() {}, isDestroyed: () => false };
+  assert.equal(await handlers.get('shell:pty-kill')({ sender }, 'missing'), 'killed');
+  assert.equal(authorized, 1);
 });

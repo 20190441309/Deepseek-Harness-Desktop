@@ -4,6 +4,7 @@ const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChro
 const { normalizeSettingsSection, buildSettingsSectionScript } = require('./settings-jump');
 const {
   isLoopbackHttpUrl,
+  isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
   isMarketplaceNavigationUrl,
   isHttpOrHttpsUrl,
@@ -14,16 +15,16 @@ const {
 
 const PLUGIN_BOOT_TIMEOUT_MS = 90_000;
 const PLUGIN_BOOT_PROBE = `(() => {
-  const boot = document.querySelector('[data-dsh-boot-status]');
-  const status = boot ? boot.getAttribute('data-dsh-boot-status') : null;
+  const boot = document.querySelector('[data-dshd-boot-status]');
+  const status = boot ? boot.getAttribute('data-dshd-boot-status') : null;
   const hasApp = Boolean(document.querySelector('[data-dsh-settings-trigger], [class*="frame"]'));
   return {
-    ready: boot ? Number(boot.getAttribute('data-dsh-boot-ready')) || 0 : 0,
-    total: boot ? Number(boot.getAttribute('data-dsh-boot-total')) || 0 : 0,
+    ready: boot ? Number(boot.getAttribute('data-dshd-boot-ready')) || 0 : 0,
+    total: boot ? Number(boot.getAttribute('data-dshd-boot-total')) || 0 : 0,
     pending: !hasApp,
     failed: status === 'failed',
     hasApp,
-    error: boot ? String(boot.getAttribute('data-dsh-boot-error') || '') : '',
+    error: boot ? String(boot.getAttribute('data-dshd-boot-error') || '') : '',
   };
 })()`;
 
@@ -31,7 +32,18 @@ let mainWindow = null;
 let marketplaceWindow = null;
 let harnessView = null;
 let harnessRevealed = false;
-let pluginWatchTimer = null;
+let harnessOrigin = '';
+let pluginBootWatch = null;
+
+function pluginBootCancelled(message = 'Web UI 插件加载已取消') {
+  const error = new Error(message);
+  error.code = 'HARNESS_OPERATION_CANCELLED';
+  return error;
+}
+
+function cancelPluginBootWatch() {
+  pluginBootWatch?.cancel();
+}
 
 function iconImage() {
   const png = nativeImage.createFromPath(assetFile('icon.png'));
@@ -58,6 +70,7 @@ function createMainWindow() {
     }),
     webPreferences: {
       preload: preloadFile(),
+      additionalArguments: ['--dshd-shell-role=boot'],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -126,6 +139,21 @@ function getHarnessWebContents(win) {
   return harnessView.webContents;
 }
 
+function getHarnessOrigin() {
+  return getHarnessWebContents() ? harnessOrigin : '';
+}
+
+function getMarketplaceWebContents() {
+  if (!marketplaceWindow || marketplaceWindow.isDestroyed()) {
+    return null;
+  }
+  return marketplaceWindow.webContents;
+}
+
+function isHarnessNavigationUrl(url) {
+  return Boolean(harnessOrigin && isSameOriginLoopbackUrl(url, harnessOrigin));
+}
+
 function harnessPageContents(win) {
   return getHarnessWebContents(win) || win?.webContents;
 }
@@ -139,7 +167,7 @@ function setBootHarnessCovered(win, covered) {
     return;
   }
   const url = typeof win.webContents.getURL === 'function' ? win.webContents.getURL() : '';
-  if (!url.startsWith('file:') || !url.includes('boot.html')) {
+  if (!isLocalAppNavigationUrl(url)) {
     return;
   }
   const flag = covered ? 'true' : 'false';
@@ -152,11 +180,9 @@ function setBootHarnessCovered(win, covered) {
 
 function hideHarnessView(win) {
   harnessRevealed = false;
+  harnessOrigin = '';
   setBootHarnessCovered(win, false);
-  if (pluginWatchTimer) {
-    clearTimeout(pluginWatchTimer);
-    pluginWatchTimer = null;
-  }
+  cancelPluginBootWatch();
   if (!harnessView) {
     return;
   }
@@ -201,11 +227,37 @@ function revealHarnessView(win) {
 function watchPluginBoot(view, win) {
   const deadline = Date.now() + PLUGIN_BOOT_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
+    const watch = {
+      timer: null,
+      settled: false,
+      cancel: null,
+    };
+    const finish = (callback, value) => {
+      if (watch.settled) {
+        return;
+      }
+      watch.settled = true;
+      if (watch.timer) {
+        clearTimeout(watch.timer);
+        watch.timer = null;
+      }
+      if (pluginBootWatch === watch) {
+        pluginBootWatch = null;
+      }
+      callback(value);
+    };
+    const isCurrent = () => pluginBootWatch === watch && !watch.settled;
+    watch.cancel = () => finish(reject, pluginBootCancelled());
+    cancelPluginBootWatch();
+    pluginBootWatch = watch;
+
     const tick = async () => {
+      watch.timer = null;
+      if (!isCurrent()) {
+        return;
+      }
       if (!view || view.webContents.isDestroyed()) {
-        const error = new Error('Web UI 在插件加载期间已关闭');
-        error.code = 'HARNESS_OPERATION_CANCELLED';
-        reject(error);
+        finish(reject, pluginBootCancelled('Web UI 在插件加载期间已关闭'));
         return;
       }
       let status;
@@ -213,6 +265,9 @@ function watchPluginBoot(view, win) {
         status = await view.webContents.executeJavaScript(PLUGIN_BOOT_PROBE);
       } catch {
         status = { pending: true, ready: 0, total: 0, failed: false, hasApp: false, error: '' };
+      }
+      if (!isCurrent()) {
+        return;
       }
       const settled = Boolean(status.hasApp);
       sendPluginBoot({
@@ -224,17 +279,17 @@ function watchPluginBoot(view, win) {
         error: status.error || '',
       });
       if (status.failed) {
-        reject(new Error(status.error || '插件加载失败'));
+        finish(reject, new Error(status.error || '插件加载失败'));
         return;
       }
       if (settled || Date.now() > deadline) {
         revealHarnessView(win);
-        resolve(status);
+        finish(resolve, status);
         return;
       }
-      pluginWatchTimer = setTimeout(tick, 150);
+      watch.timer = setTimeout(tick, 150);
     };
-    pluginWatchTimer = setTimeout(tick, 80);
+    watch.timer = setTimeout(tick, 80);
   });
 }
 
@@ -246,6 +301,7 @@ function ensureHarnessView(win) {
   harnessView = new BrowserView({
     webPreferences: {
       preload: preloadFile(),
+      additionalArguments: ['--dshd-shell-role=harness'],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -255,7 +311,7 @@ function ensureHarnessView(win) {
   win.addBrowserView(harnessView);
   harnessView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
   attachPrivilegedNavigationGuards(harnessView.webContents, {
-    allowUrl: isLoopbackHttpUrl,
+    allowUrl: isHarnessNavigationUrl,
     openDeniedExternal: true,
   });
   const applyChrome = () => {
@@ -270,7 +326,10 @@ function ensureHarnessView(win) {
   harnessView.webContents.on('did-navigate-in-page', applyChrome);
   if (!win._dshHarnessResizeBound) {
     win._dshHarnessResizeBound = true;
-    win.on('resize', () => layoutHarnessView(win));
+    const relayout = () => layoutHarnessView(win);
+    win.on('resize', relayout);
+    win.on('maximize', relayout);
+    win.on('unmaximize', relayout);
   }
   return harnessView;
 }
@@ -297,6 +356,7 @@ function showHarness(baseUrl) {
     : win.loadFile(rendererFile('boot.html'));
   return bootReady.then(() => {
     const view = ensureHarnessView(win);
+    harnessOrigin = new URL(loadUrl).origin;
     sendPluginBoot({
       ready: 0,
       total: 0,
@@ -327,7 +387,7 @@ function isHarnessLoaded(win) {
     return false;
   }
   const wc = getHarnessWebContents(win);
-  return Boolean(wc && isLoopbackHttpUrl(wc.getURL() || ''));
+  return Boolean(wc && isHarnessNavigationUrl(wc.getURL() || ''));
 }
 
 function isBootLoaded(win) {
@@ -370,6 +430,7 @@ function openMarketplaceWindow() {
     }),
     webPreferences: {
       preload: preloadFile(),
+      additionalArguments: ['--dshd-shell-role=marketplace'],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -447,7 +508,7 @@ function sendToBoot(channel, payload) {
     return;
   }
   const url = win.webContents.getURL();
-  if (url.startsWith('file:') && url.includes('boot.html')) {
+  if (isLocalAppNavigationUrl(url)) {
     win.webContents.send(channel, payload);
   }
 }
@@ -456,6 +517,9 @@ module.exports = {
   createMainWindow,
   getMainWindow,
   getHarnessWebContents,
+  getHarnessOrigin,
+  getMarketplaceWebContents,
+  isHarnessNavigationUrl,
   hideHarnessView,
   showBoot,
   showHarness,

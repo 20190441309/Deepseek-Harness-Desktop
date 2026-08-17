@@ -1,4 +1,4 @@
-const OVERLAY_ID = 'dsh-shell-closing';
+const OVERLAY_ID = 'dshd-shell-closing';
 
 function overlayCss(theme) {
   return `
@@ -18,7 +18,7 @@ function overlayCss(theme) {
   pointer-events: all;
   user-select: none;
 }
-#${OVERLAY_ID} .dsh-shell-closing-card {
+#${OVERLAY_ID} .dshd-shell-closing-card {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -30,27 +30,27 @@ function overlayCss(theme) {
   background: ${theme.field};
   box-shadow: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 }
-#${OVERLAY_ID} .dsh-shell-closing-spinner {
+#${OVERLAY_ID} .dshd-shell-closing-spinner {
   width: 36px;
   height: 36px;
   border: 2px solid ${theme.line};
   border-top-color: ${theme.accent};
   border-radius: 50%;
-  animation: dsh-shell-closing-spin 0.85s linear infinite;
+  animation: dshd-shell-closing-spin 0.85s linear infinite;
 }
-#${OVERLAY_ID} .dsh-shell-closing-title {
+#${OVERLAY_ID} .dshd-shell-closing-title {
   margin: 8px 0 0;
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
 }
-#${OVERLAY_ID} .dsh-shell-closing-detail {
+#${OVERLAY_ID} .dshd-shell-closing-detail {
   margin: 0;
   font-size: 12px;
   line-height: 18px;
   color: ${theme.muted};
 }
-@keyframes dsh-shell-closing-spin {
+@keyframes dshd-shell-closing-spin {
   to { transform: rotate(360deg); }
 }
 `;
@@ -88,16 +88,16 @@ function overlayScript(copy) {
       root.setAttribute('aria-live', 'assertive');
       root.setAttribute('aria-labelledby', id + '-title');
       const card = document.createElement('div');
-      card.className = 'dsh-shell-closing-card';
+      card.className = 'dshd-shell-closing-card';
       const spinner = document.createElement('div');
-      spinner.className = 'dsh-shell-closing-spinner';
+      spinner.className = 'dshd-shell-closing-spinner';
       spinner.setAttribute('aria-hidden', 'true');
       const title = document.createElement('p');
       title.id = id + '-title';
-      title.className = 'dsh-shell-closing-title';
+      title.className = 'dshd-shell-closing-title';
       title.textContent = ${JSON.stringify(copy.title)};
       const detail = document.createElement('p');
-      detail.className = 'dsh-shell-closing-detail';
+      detail.className = 'dshd-shell-closing-detail';
       detail.textContent = ${JSON.stringify(copy.detail)};
       card.append(spinner, title, detail);
       root.append(card);
@@ -113,8 +113,8 @@ function overlayScript(copy) {
     if (fg) root.style.color = fg;
     if (field) root.firstElementChild.style.background = field;
     if (line) root.firstElementChild.style.borderColor = line;
-    if (muted) root.querySelector('.dsh-shell-closing-detail').style.color = muted;
-    const spinner = root.querySelector('.dsh-shell-closing-spinner');
+    if (muted) root.querySelector('.dshd-shell-closing-detail').style.color = muted;
+    const spinner = root.querySelector('.dshd-shell-closing-spinner');
     if (line) spinner.style.borderColor = line;
     if (accent) spinner.style.borderTopColor = accent;
     return new Promise((resolve) => {

@@ -45,7 +45,7 @@ async function readTemplateBlob(cwd, objectId) {
 }
 
 /**
- * T3code `detectPrTemplate`: read the template blob from the committed base tree,
+ * Read the PR template blob from the committed base tree,
  * never the working tree, so uncommitted or symlink paths cannot reach the host FS.
  * @param {string} cwd
  * @param {string} [treeish]
@@ -91,7 +91,7 @@ async function resolvePrBaseBranch(cwd, refName, hasPrimaryRemote) {
       return value.startsWith('origin/') ? value.slice('origin/'.length) : value;
     }
   }
-  // T3code: when upstream tracks a different branch name (same repo), use that as base.
+  // When upstream tracks a different branch name (same repo), use that as base.
   const upstream = await resolveCurrentUpstream(cwd);
   if (upstream?.branchName && upstream.branchName !== refName) {
     const headRemote = await runGit(cwd, ['remote', 'get-url', upstream.remoteName]);
@@ -107,7 +107,7 @@ async function resolvePrBaseBranch(cwd, refName, hasPrimaryRemote) {
       : Boolean(upstream.remoteName && upstream.remoteName !== 'origin' && headRepo);
     if (!isCrossRepository) return upstream.branchName;
   }
-  // T3code resolveBaseBranch: provider.getDefaultBranch before hardcoding main.
+  // Prefer the GitHub default branch before hardcoding main.
   // Prefer gh over origin/HEAD / local main|master so rename or missing remote HEAD
   // cannot pin Create PR --base to a stale git heuristic.
   const fromGh = await resolveGhDefaultBranch(cwd);
@@ -125,7 +125,7 @@ function setGhDefaultBranchResolver(resolver) {
 }
 
 /**
- * T3code GitHub CLI default branch for the current repository.
+ * GitHub CLI default branch for the current repository.
  * @param {string} cwd
  * @returns {Promise<string | null>}
  */

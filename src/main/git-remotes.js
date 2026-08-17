@@ -25,7 +25,7 @@ function parseHostName(host) {
 }
 
 /**
- * T3code `normalizeGitRemoteUrl`: stable remote comparison key.
+ * Stable remote comparison key.
  * @param {string} value
  * @returns {string}
  */
@@ -55,7 +55,7 @@ function normalizeGitRemoteUrl(value) {
 }
 
 /**
- * T3code GitHub `owner/repo` from common remote URL shapes.
+ * GitHub `owner/repo` from common remote URL shapes.
  * @param {string} url
  * @returns {string | null}
  */
@@ -120,7 +120,7 @@ async function resolvePrimaryRemoteName(cwd) {
 }
 
 /**
- * T3code `selectProviderContext`: prefer origin, else first non-unknown remote.
+ * Prefer origin, else the first non-unknown remote.
  * @param {string} cwd
  * @returns {Promise<{ provider: object, remoteName: string, remoteUrl: string } | null>}
  */
@@ -140,7 +140,7 @@ async function selectProviderContext(cwd) {
     || null;
 }
 
-/** T3code change-request wording for progress phases. */
+/** Change-request wording for progress phases. */
 function changeRequestTerms(provider) {
   if (provider?.kind === 'gitlab') return { shortLabel: 'MR', singular: 'merge request' };
   if (provider?.kind === 'unknown') return { shortLabel: 'change request', singular: 'change request' };
@@ -148,7 +148,7 @@ function changeRequestTerms(provider) {
 }
 
 async function defaultRefName(cwd, hasPrimaryRemote) {
-  // T3code resolveDefaultBranchName(cwd, remoteName) — primary remote, not hardcoded origin.
+  // Default branch from the primary remote, not a hardcoded origin.
   if (hasPrimaryRemote) {
     const primary = await resolvePrimaryRemoteName(cwd);
     if (primary) {
@@ -171,7 +171,7 @@ async function defaultRefName(cwd, hasPrimaryRemote) {
 const DEFAULT_BASE_BRANCH_CANDIDATES = ['main', 'master'];
 
 /**
- * T3code `resolveBaseBranchForNoUpstream`: gh-merge-base, then default, then main/master.
+ * No-upstream base: gh-merge-base, then default, then main/master.
  * Prefers the primary remote-tracking ref when it exists.
  * @param {string} cwd
  * @param {string} refName
@@ -239,7 +239,7 @@ async function resolvePushRemoteName(cwd, refName) {
 }
 
 /**
- * T3code resolvePublishBranchName: strip a remote-name prefix from a local ref.
+ * Strip a remote-name prefix from a local ref.
  * @param {string} cwd
  * @param {string} branchName
  * @returns {Promise<string>}
