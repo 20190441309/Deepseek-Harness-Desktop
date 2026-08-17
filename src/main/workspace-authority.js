@@ -126,10 +126,19 @@ function collectRoots(candidates) {
     } catch {
       continue;
     }
-    const key = identityKey(resolved);
+    // Roots and checked cwds must live on the same path plane: a lexical root
+    // (e.g. macOS /var/...) never contains the realpathSync'd candidate
+    // (/private/var/...), so every accepted root is canonicalized here.
+    let real;
+    try {
+      real = fs.realpathSync(resolved);
+    } catch {
+      continue;
+    }
+    const key = identityKey(real);
     if (seen.has(key)) continue;
     seen.add(key);
-    roots.push(resolved);
+    roots.push(real);
   }
   return roots;
 }

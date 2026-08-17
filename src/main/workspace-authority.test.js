@@ -126,6 +126,32 @@ test('resolveInside keeps directory links that stay inside the workspace', (t) =
   }
 });
 
+test('resolveAuthorizedCwd accepts a workspace configured through a directory link', (t) => {
+  // Regression for macOS CI: roots used to be kept lexical while candidates
+  // were realpath'd, so a /var -> /private/var prefix (or any linked root)
+  // made every temp-dir workspace resolve to null.
+  const root = makeRoot();
+  const link = path.join(os.tmpdir(), `dsh-auth-root-link-${process.pid}-${Date.now()}`);
+  try {
+    fs.mkdirSync(path.join(root, 'sub'));
+    try {
+      makeDirLink(root, link);
+    } catch (error) {
+      t.skip(`directory links unavailable: ${error.code ?? error.message}`);
+      return;
+    }
+    const authority = createWorkspaceAuthority({ workspace: link });
+    assert.equal(authority.resolveAuthorizedCwd(link), fs.realpathSync(root));
+    assert.equal(
+      authority.resolveAuthorizedCwd(path.join(root, 'sub')),
+      fs.realpathSync(path.join(root, 'sub')),
+    );
+  } finally {
+    fs.rmSync(link, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('empty workspace yields a null root that disables everything', () => {
   const authority = createWorkspaceAuthority({ workspace: '' });
   assert.equal(authority.authorizedRoot(), null);
