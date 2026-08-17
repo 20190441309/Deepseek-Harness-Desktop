@@ -227,6 +227,7 @@ describe('SkillInventoryGateway', () => {
 
   it('creates a project skill and refuses create without cwd', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'dsh-skill-proj-'))
+    await mkdir(join(cwd, '.git'))
     const ctx = new Context()
     contexts.push(ctx)
     provideAgents(ctx)
