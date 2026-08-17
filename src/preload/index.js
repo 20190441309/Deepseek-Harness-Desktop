@@ -1,127 +1,154 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('shell', {
-  getState: () => ipcRenderer.invoke('shell:get-state'),
-  getConfig: () => ipcRenderer.invoke('shell:get-config'),
-  saveConfig: (patch) => ipcRenderer.invoke('shell:save-config', patch),
-  pickWorkspace: () => ipcRenderer.invoke('shell:pick-workspace'),
-  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
-  restart: () => ipcRenderer.invoke('shell:restart'),
-  cancelRestart: () => ipcRenderer.invoke('shell:cancel-restart'),
-  openSettings: () => ipcRenderer.invoke('shell:open-settings'),
-  checkUpdate: () => ipcRenderer.invoke('shell:check-update'),
-  installUpdate: () => ipcRenderer.invoke('shell:install-update'),
-  onUpdateProgress: (handler) => {
+const SHELL_ROLES = new Set(['boot', 'harness', 'marketplace']);
+
+function shellRole(argv = process.argv) {
+  const prefix = '--dshd-shell-role=';
+  const value = argv.find((item) => typeof item === 'string' && item.startsWith(prefix));
+  const role = value ? value.slice(prefix.length) : '';
+  return SHELL_ROLES.has(role) ? role : null;
+}
+
+function invoke(renderer, channel) {
+  return (...args) => renderer.invoke(channel, ...args);
+}
+
+function send(renderer, channel) {
+  return (...args) => renderer.send(channel, ...args);
+}
+
+function subscribe(renderer, channel) {
+  return (handler) => {
     const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:update-progress', listener);
-    return () => ipcRenderer.removeListener('shell:update-progress', listener);
-  },
-  reportChrome: (metrics) => ipcRenderer.send('shell:chrome-metrics', metrics),
-  windowAction: (action) => ipcRenderer.send('shell:window', action),
-  getWindowState: () => ipcRenderer.invoke('shell:window-state'),
-  onWindowState: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:window-state', listener);
-    return () => ipcRenderer.removeListener('shell:window-state', listener);
-  },
-  onTheme: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:theme', listener);
-    return () => ipcRenderer.removeListener('shell:theme', listener);
-  },
-  onState: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:state', listener);
-    return () => ipcRenderer.removeListener('shell:state', listener);
-  },
-  onLog: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:log', listener);
-    return () => ipcRenderer.removeListener('shell:log', listener);
-  },
-  listMarketplace: (options) => ipcRenderer.invoke('shell:list-marketplace', options),
-  refreshMarketplace: () => ipcRenderer.invoke('shell:refresh-marketplace'),
-  listInstalledPlugins: () => ipcRenderer.invoke('shell:list-installed-plugins'),
-  installPlugin: (spec, options) => ipcRenderer.invoke('shell:install-plugin', spec, options),
-  uninstallPlugin: (name) => ipcRenderer.invoke('shell:uninstall-plugin', name),
-  seedInstallDraft: (item) => ipcRenderer.invoke('shell:seed-install-draft', item),
-  openMarketplace: () => ipcRenderer.invoke('shell:open-marketplace'),
-  gitStatus: (cwd) => ipcRenderer.invoke('shell:git-status', cwd),
-  gitFetchForStatus: (cwd) => ipcRenderer.invoke('shell:git-fetch-status', cwd),
-  gitReadPullRequest: (cwd) => ipcRenderer.invoke('shell:git-pull-request', cwd),
-  gitInit: (cwd) => ipcRenderer.invoke('shell:git-init', cwd),
-  gitDiff: (cwd, options) => ipcRenderer.invoke('shell:git-diff', cwd, options),
-  gitCommit: (cwd, message, filePaths, actionId, options) => ipcRenderer.invoke('shell:git-commit', cwd, message, filePaths, actionId, options),
-  gitChangedFiles: (cwd) => ipcRenderer.invoke('shell:git-changed-files', cwd),
-  gitPush: (cwd, actionId) => ipcRenderer.invoke('shell:git-push', cwd, actionId),
-  gitPull: (cwd, actionId) => ipcRenderer.invoke('shell:git-pull', cwd, actionId),
-  onGitProgress: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:git-progress', listener);
-    return () => ipcRenderer.removeListener('shell:git-progress', listener);
-  },
-  gitCreateChangeRequest: (cwd, input, actionId) => ipcRenderer.invoke('shell:git-create-change-request', cwd, input, actionId),
-  gitPublishRepository: (cwd, input, actionId) => ipcRenderer.invoke('shell:git-publish', cwd, input, actionId),
-  openWorkspacePath: (cwd, relativePath) => ipcRenderer.invoke('shell:open-workspace-path', cwd, relativePath),
-  listDir: (cwd, relativePath) => ipcRenderer.invoke('shell:list-dir', cwd, relativePath),
-  readFile: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file', cwd, relativePath),
-  readFileMedia: (cwd, relativePath) => ipcRenderer.invoke('shell:read-file-media', cwd, relativePath),
-  writeFile: (cwd, relativePath, text) => ipcRenderer.invoke('shell:write-file', cwd, relativePath, text),
-  gitStage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-stage', cwd, relativePath),
-  gitUnstage: (cwd, relativePath) => ipcRenderer.invoke('shell:git-unstage', cwd, relativePath),
-  gitDiscard: (cwd, relativePath) => ipcRenderer.invoke('shell:git-discard', cwd, relativePath),
-  gitStatusEntries: (cwd) => ipcRenderer.invoke('shell:git-status-entries', cwd),
-  gitBranchList: (cwd) => ipcRenderer.invoke('shell:git-branch-list', cwd),
-  gitSwitchBranch: (cwd, ref) => ipcRenderer.invoke('shell:git-switch-branch', cwd, ref),
-  gitCreateBranch: (cwd, name) => ipcRenderer.invoke('shell:git-create-branch', cwd, name),
-  ptyCreate: (input) => ipcRenderer.invoke('shell:pty-create', input),
-  ptyWrite: (id, data) => ipcRenderer.invoke('shell:pty-write', id, data),
-  ptyResize: (id, cols, rows) => ipcRenderer.invoke('shell:pty-resize', id, cols, rows),
-  ptyKill: (id) => ipcRenderer.invoke('shell:pty-kill', id),
-  onPtyData: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:pty-data', listener);
-    return () => ipcRenderer.removeListener('shell:pty-data', listener);
-  },
-  onPtyExit: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:pty-exit', listener);
-    return () => ipcRenderer.removeListener('shell:pty-exit', listener);
-  },
-  previewOpen: (input) => ipcRenderer.invoke('shell:preview-open', input),
-  previewNavigate: (id, url) => ipcRenderer.invoke('shell:preview-navigate', id, url),
-  previewBack: (id) => ipcRenderer.invoke('shell:preview-back', id),
-  previewForward: (id) => ipcRenderer.invoke('shell:preview-forward', id),
-  previewReload: (id) => ipcRenderer.invoke('shell:preview-reload', id),
-  previewState: (id) => ipcRenderer.invoke('shell:preview-state', id),
-  previewOpenDevTools: (id) => ipcRenderer.invoke('shell:preview-devtools', id),
-  previewDiscover: () => ipcRenderer.invoke('shell:preview-discover'),
-  previewResize: (id, bounds) => ipcRenderer.invoke('shell:preview-resize', id, bounds),
-  previewHide: (id) => ipcRenderer.invoke('shell:preview-hide', id),
-  previewShow: (id, bounds) => ipcRenderer.invoke('shell:preview-show', id, bounds),
-  previewClose: (id) => ipcRenderer.invoke('shell:preview-close', id),
-  onPreviewStateChange: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:preview-state-change', listener);
-    return () => ipcRenderer.removeListener('shell:preview-state-change', listener);
-  },
-  getRemote: () => ipcRenderer.invoke('shell:get-remote'),
-  saveRemote: (patch) => ipcRenderer.invoke('shell:save-remote', patch),
-  rotateRemoteToken: () => ipcRenderer.invoke('shell:rotate-remote-token'),
-  unbindRemoteDevice: (id) => ipcRenderer.invoke('shell:unbind-remote-device', id),
-  onPluginProgress: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:plugin-progress', listener);
-    return () => ipcRenderer.removeListener('shell:plugin-progress', listener);
-  },
-  onPluginBoot: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:plugin-boot', listener);
-    return () => ipcRenderer.removeListener('shell:plugin-boot', listener);
-  },
-  onSeedInstallDraft: (handler) => {
-    const listener = (_event, payload) => handler(payload);
-    ipcRenderer.on('shell:seed-install-draft', listener);
-    return () => ipcRenderer.removeListener('shell:seed-install-draft', listener);
-  },
-});
+    renderer.on(channel, listener);
+    return () => renderer.removeListener(channel, listener);
+  };
+}
+
+function windowApi(renderer) {
+  return {
+    windowAction: send(renderer, 'shell:window'),
+    getWindowState: invoke(renderer, 'shell:window-state'),
+    onWindowState: subscribe(renderer, 'shell:window-state'),
+    onTheme: subscribe(renderer, 'shell:theme'),
+  };
+}
+
+function configApi(renderer) {
+  return {
+    getConfig: invoke(renderer, 'shell:get-config'),
+    saveConfig: invoke(renderer, 'shell:save-config'),
+  };
+}
+
+function bootApi(renderer) {
+  return {
+    ...windowApi(renderer),
+    getConfig: invoke(renderer, 'shell:get-config'),
+    getState: invoke(renderer, 'shell:get-state'),
+    restart: invoke(renderer, 'shell:restart'),
+    cancelRestart: invoke(renderer, 'shell:cancel-restart'),
+    onState: subscribe(renderer, 'shell:state'),
+    onLog: subscribe(renderer, 'shell:log'),
+    onPluginBoot: subscribe(renderer, 'shell:plugin-boot'),
+  };
+}
+
+function marketplaceApi(renderer) {
+  return {
+    ...windowApi(renderer),
+    ...configApi(renderer),
+    openExternal: invoke(renderer, 'shell:open-external'),
+    listMarketplace: invoke(renderer, 'shell:list-marketplace'),
+    refreshMarketplace: invoke(renderer, 'shell:refresh-marketplace'),
+    listInstalledPlugins: invoke(renderer, 'shell:list-installed-plugins'),
+    uninstallPlugin: invoke(renderer, 'shell:uninstall-plugin'),
+    seedInstallDraft: invoke(renderer, 'shell:seed-install-draft'),
+    onPluginProgress: subscribe(renderer, 'shell:plugin-progress'),
+  };
+}
+
+function harnessApi(renderer) {
+  return {
+    ...windowApi(renderer),
+    ...configApi(renderer),
+    pickWorkspace: invoke(renderer, 'shell:pick-workspace'),
+    openExternal: invoke(renderer, 'shell:open-external'),
+    openSettings: invoke(renderer, 'shell:open-settings'),
+    checkUpdate: invoke(renderer, 'shell:check-update'),
+    installUpdate: invoke(renderer, 'shell:install-update'),
+    onUpdateProgress: subscribe(renderer, 'shell:update-progress'),
+    reportChrome: send(renderer, 'shell:chrome-metrics'),
+    listMarketplace: invoke(renderer, 'shell:list-marketplace'),
+    refreshMarketplace: invoke(renderer, 'shell:refresh-marketplace'),
+    listInstalledPlugins: invoke(renderer, 'shell:list-installed-plugins'),
+    installPlugin: invoke(renderer, 'shell:install-plugin'),
+    uninstallPlugin: invoke(renderer, 'shell:uninstall-plugin'),
+    seedInstallDraft: invoke(renderer, 'shell:seed-install-draft'),
+    openMarketplace: invoke(renderer, 'shell:open-marketplace'),
+    onPluginProgress: subscribe(renderer, 'shell:plugin-progress'),
+    onSeedInstallDraft: subscribe(renderer, 'shell:seed-install-draft'),
+    gitStatus: invoke(renderer, 'shell:git-status'),
+    gitFetchForStatus: invoke(renderer, 'shell:git-fetch-status'),
+    gitReadPullRequest: invoke(renderer, 'shell:git-pull-request'),
+    gitInit: invoke(renderer, 'shell:git-init'),
+    gitDiff: invoke(renderer, 'shell:git-diff'),
+    gitCommit: invoke(renderer, 'shell:git-commit'),
+    gitChangedFiles: invoke(renderer, 'shell:git-changed-files'),
+    gitPush: invoke(renderer, 'shell:git-push'),
+    gitPull: invoke(renderer, 'shell:git-pull'),
+    onGitProgress: subscribe(renderer, 'shell:git-progress'),
+    gitCreateChangeRequest: invoke(renderer, 'shell:git-create-change-request'),
+    gitPublishRepository: invoke(renderer, 'shell:git-publish'),
+    openWorkspacePath: invoke(renderer, 'shell:open-workspace-path'),
+    listDir: invoke(renderer, 'shell:list-dir'),
+    readFile: invoke(renderer, 'shell:read-file'),
+    readFileMedia: invoke(renderer, 'shell:read-file-media'),
+    writeFile: invoke(renderer, 'shell:write-file'),
+    gitStage: invoke(renderer, 'shell:git-stage'),
+    gitUnstage: invoke(renderer, 'shell:git-unstage'),
+    gitDiscard: invoke(renderer, 'shell:git-discard'),
+    gitStatusEntries: invoke(renderer, 'shell:git-status-entries'),
+    gitBranchList: invoke(renderer, 'shell:git-branch-list'),
+    gitSwitchBranch: invoke(renderer, 'shell:git-switch-branch'),
+    gitCreateBranch: invoke(renderer, 'shell:git-create-branch'),
+    ptyCreate: invoke(renderer, 'shell:pty-create'),
+    ptyWrite: invoke(renderer, 'shell:pty-write'),
+    ptyResize: invoke(renderer, 'shell:pty-resize'),
+    ptyKill: invoke(renderer, 'shell:pty-kill'),
+    onPtyData: subscribe(renderer, 'shell:pty-data'),
+    onPtyExit: subscribe(renderer, 'shell:pty-exit'),
+    previewOpen: invoke(renderer, 'shell:preview-open'),
+    previewNavigate: invoke(renderer, 'shell:preview-navigate'),
+    previewBack: invoke(renderer, 'shell:preview-back'),
+    previewForward: invoke(renderer, 'shell:preview-forward'),
+    previewReload: invoke(renderer, 'shell:preview-reload'),
+    previewState: invoke(renderer, 'shell:preview-state'),
+    previewOpenDevTools: invoke(renderer, 'shell:preview-devtools'),
+    previewDiscover: invoke(renderer, 'shell:preview-discover'),
+    previewResize: invoke(renderer, 'shell:preview-resize'),
+    previewHide: invoke(renderer, 'shell:preview-hide'),
+    previewShow: invoke(renderer, 'shell:preview-show'),
+    previewClose: invoke(renderer, 'shell:preview-close'),
+    onPreviewStateChange: subscribe(renderer, 'shell:preview-state-change'),
+  };
+}
+
+function buildShellApi(role, renderer) {
+  if (role === 'boot') return bootApi(renderer);
+  if (role === 'marketplace') return marketplaceApi(renderer);
+  if (role === 'harness') return harnessApi(renderer);
+  return null;
+}
+
+const role = shellRole();
+const isMainFrame = process.isMainFrame !== false;
+const api = isMainFrame ? buildShellApi(role, ipcRenderer) : null;
+
+if (api) {
+  contextBridge.exposeInMainWorld('shell', api);
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { buildShellApi, shellRole };
+}

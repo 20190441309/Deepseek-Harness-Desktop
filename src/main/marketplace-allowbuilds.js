@@ -1,3 +1,5 @@
+const { isValidAllowBuild, normalizeAllowBuilds } = require('../host/install-dsh-plugin-client');
+
 /**
  * Parse package names pnpm asked the user to allow-build.
  * @param {string} log
@@ -24,7 +26,7 @@ function parseAllowBuilds(log) {
   for (const match of text.matchAll(/["'](@?[\w.-]+(?:[/.][\w.-]+)*)["']\s*:\s*(?:true|false)/g)) {
     names.add(match[1]);
   }
-  return [...names].filter((name) => name.length > 1 && name.length < 120);
+  return [...names].filter(isValidAllowBuild);
 }
 
-module.exports = { parseAllowBuilds };
+module.exports = { parseAllowBuilds, normalizeAllowBuilds };

@@ -4,10 +4,57 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   emptyInstallResult,
+  isValidGithubSpec,
+  isValidPackageName,
+  normalizeAllowBuilds,
   normalizeInstallResult,
   renderInstall,
   executeInstallDshPlugin,
 } = require('./install-dsh-plugin-client');
+
+test('github install specs use a bounded owner/repo/ref whitelist', () => {
+  assert.equal(isValidGithubSpec('github:owner/repo'), true);
+  assert.equal(isValidGithubSpec('github:owner/repo#feature/one'), true);
+  for (const value of [
+    'github:owner/repo#../../main',
+    'github:owner/repo#main@{1}',
+    'github:-owner/repo',
+    'github:owner/repo.',
+    'github:owner/repo#main;calc',
+  ]) {
+    assert.equal(isValidGithubSpec(value), false, value);
+  }
+});
+
+test('allowBuilds accepts only package or github repository keys', () => {
+  assert.deepEqual(normalizeAllowBuilds([
+    '@scope/package',
+    'github.com/owner/repo',
+    '@scope/package',
+  ]), ['@scope/package', 'github.com/owner/repo']);
+  for (const value of [
+    ['../prepare'],
+    ['https://github.com/owner/repo'],
+    ['good-package\nmalicious: true'],
+    [{ package: 'good-package' }],
+  ]) {
+    assert.equal(normalizeAllowBuilds(value), null);
+  }
+});
+
+test('package names reject shell syntax, paths, URLs, and extra arguments', () => {
+  assert.equal(isValidPackageName('@dsh-external/dsh-loop'), true);
+  assert.equal(isValidPackageName('plain-package'), true);
+  for (const value of [
+    'pkg;calc',
+    'pkg && calc',
+    '--global',
+    '../package',
+    'https://example.com/package',
+  ]) {
+    assert.equal(isValidPackageName(value), false, value);
+  }
+});
 
 test('empty spec fails before contacting the control endpoint', async () => {
   const request = async () => {
@@ -28,6 +75,22 @@ test('non-github specs fail client-side before contacting the control endpoint',
     assert.equal(result.restarting, false, spec);
     assert.match(result.error, /github:owner\/repo/, spec);
   }
+});
+
+test('invalid allowBuilds fails before contacting the control endpoint', async () => {
+  let requested = false;
+  const result = await executeInstallDshPlugin(
+    { url: 'http://127.0.0.1:1', token: 't' },
+    'github:owner/repo',
+    ['../prepare'],
+    async () => {
+      requested = true;
+      return { ok: true };
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.error, /allowBuilds/);
+  assert.equal(requested, false);
 });
 
 test('needsAllowBuilds is a canonical result and does not mark restarting', async () => {

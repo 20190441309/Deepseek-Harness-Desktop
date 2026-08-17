@@ -30,7 +30,7 @@ function normalizeRelayOrigin(value) {
   }
   try {
     const url = new URL(raw);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    if (url.protocol !== 'https:') {
       return '';
     }
     return url.origin;

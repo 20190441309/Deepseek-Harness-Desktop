@@ -3,6 +3,9 @@ const path = require('path');
 const { app } = require('electron');
 const { projectRoot } = require('./paths');
 const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
+const { normalizeRelayHostToken } = require('../shared/relay-auth');
+
+const REMOTE_FEATURE_ENABLED = false;
 
 const DEFAULTS = {
   workspace: '',
@@ -22,11 +25,100 @@ const DEFAULTS = {
   remotePort: 3180,
   remoteToken: '',
   remoteMode: 'lan',
-  remoteRelayUrl: 'http://125.124.85.212:8411',
+  remoteRelayUrl: '',
+  remoteRelayToken: '',
   harnessAutoRestart: true,
   harnessRestartMaxAttempts: 3,
   harnessRestartBaseDelayMs: 1000,
 };
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeRendererConfigPatch(patch) {
+  if (!isPlainObject(patch)) {
+    throw new TypeError('Config patch must be an object');
+  }
+  const next = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (['closeToTray', 'openAtLogin', 'openDevTools', 'harnessAutoRestart'].includes(key)) {
+      if (typeof value !== 'boolean') {
+        throw new TypeError(`${key} must be a boolean`);
+      }
+      next[key] = value;
+      continue;
+    }
+    if (key === 'harnessRestartMaxAttempts') {
+      if (!Number.isInteger(value) || value < 1 || value > 10) {
+        throw new TypeError(`${key} must be an integer from 1 to 10`);
+      }
+      next[key] = value;
+      continue;
+    }
+    if (key === 'harnessRestartBaseDelayMs') {
+      if (!Number.isInteger(value) || value < 500 || value > 30_000) {
+        throw new TypeError(`${key} must be an integer from 500 to 30000`);
+      }
+      next[key] = value;
+      continue;
+    }
+    if (key === 'locale') {
+      if (value !== 'zh' && value !== 'en') {
+        throw new TypeError('locale must be zh or en');
+      }
+      next.locale = value;
+      continue;
+    }
+    if (key === 'theme') {
+      if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) {
+        throw new TypeError('theme must be a valid theme id');
+      }
+      next.theme = value;
+      continue;
+    }
+    if (key === 'githubToken') {
+      if (typeof value !== 'string' || value.length > 512 || /[\r\n\0]/.test(value)) {
+        throw new TypeError('githubToken must be a valid string');
+      }
+      next.githubToken = value.trim();
+      continue;
+    }
+    throw new Error(`Config field is not renderer-writable: ${key}`);
+  }
+  return next;
+}
+
+function normalizeRelayOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeRemoteConfig(config) {
+  const next = { ...config };
+  next.remoteEnabled = REMOTE_FEATURE_ENABLED && next.remoteEnabled === true;
+  next.remoteRelayUrl = REMOTE_FEATURE_ENABLED ? normalizeRelayOrigin(next.remoteRelayUrl) : '';
+  next.remoteRelayToken = normalizeRelayHostToken(next.remoteRelayToken);
+  next.remoteMode = REMOTE_FEATURE_ENABLED
+    && next.remoteMode === 'relay'
+    && next.remoteRelayUrl
+    && next.remoteRelayToken
+    ? 'relay'
+    : 'lan';
+  const remotePort = Number(next.remotePort);
+  next.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
+    ? remotePort
+    : DEFAULTS.remotePort;
+  return next;
+}
 
 function normalizeHarnessRecovery(config) {
   const next = { ...config };
@@ -93,26 +185,10 @@ function loadConfig() {
     baseUrl: typeof creds.baseUrl === 'string' ? creds.baseUrl : stored.baseUrl || '',
     githubToken: typeof creds.githubToken === 'string' ? creds.githubToken : stored.githubToken || '',
     remoteToken: typeof creds.remoteToken === 'string' ? creds.remoteToken : stored.remoteToken || '',
+    remoteRelayToken: typeof creds.remoteRelayToken === 'string' ? creds.remoteRelayToken : '',
     remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
-  config.remoteEnabled = Boolean(config.remoteEnabled);
-  config.remoteMode = config.remoteMode === 'relay' ? 'relay' : 'lan';
-  try {
-    const relay = String(config.remoteRelayUrl || '').trim();
-    if (!relay) {
-      config.remoteRelayUrl = DEFAULTS.remoteRelayUrl;
-    } else {
-      const url = new URL(relay);
-      config.remoteRelayUrl = (url.protocol === 'http:' || url.protocol === 'https:') ? url.origin : '';
-    }
-  } catch {
-    config.remoteRelayUrl = '';
-  }
-  const remotePort = Number(config.remotePort);
-  config.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
-    ? remotePort
-    : DEFAULTS.remotePort;
-  config = normalizeHarnessRecovery(config);
+  config = normalizeRemoteConfig(normalizeHarnessRecovery(config));
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -126,7 +202,7 @@ function loadConfig() {
 
 function saveConfig(next) {
   const current = loadConfig();
-  const merged = normalizeHarnessRecovery({ ...current, ...next });
+  const merged = normalizeRemoteConfig(normalizeHarnessRecovery({ ...current, ...next }));
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
   }
@@ -136,13 +212,14 @@ function saveConfig(next) {
   merged.locale = merged.locale === 'en' ? 'en' : 'zh';
   delete merged.pluginSubagent;
   delete merged.pluginGenUi;
-  const { apiKey, baseUrl, githubToken, remoteToken, remoteDevices, ...publicLayer } = merged;
+  const { apiKey, baseUrl, githubToken, remoteToken, remoteRelayToken, remoteDevices, ...publicLayer } = merged;
   writeJson(configPath(), publicLayer);
   writeJson(credentialsPath(), {
     apiKey: apiKey || '',
     baseUrl: baseUrl || '',
     githubToken: githubToken || '',
     remoteToken: remoteToken || '',
+    remoteRelayToken: remoteRelayToken || '',
     remoteDevices: Array.isArray(remoteDevices) ? remoteDevices : [],
   });
   return merged;
@@ -156,20 +233,26 @@ function publicConfig(config) {
     hasApiKey: Boolean(config.apiKey),
     hasGithubToken: Boolean(config.githubToken),
     remoteEnabled: Boolean(config.remoteEnabled),
+    remoteAvailable: REMOTE_FEATURE_ENABLED,
     remotePort: Number(config.remotePort) || DEFAULTS.remotePort,
     remoteMode: config.remoteMode === 'relay' ? 'relay' : 'lan',
     remoteRelayUrl: config.remoteRelayUrl || '',
     remoteToken: '',
+    remoteRelayToken: '',
     remoteDevices: [],
   };
 }
 
 module.exports = {
   DEFAULTS,
+  REMOTE_FEATURE_ENABLED,
   loadConfig,
   saveConfig,
   publicConfig,
   defaultWorkspace,
   configPath,
   normalizeHarnessRecovery,
+  normalizeRendererConfigPatch,
+  normalizeRelayOrigin,
+  normalizeRemoteConfig,
 };

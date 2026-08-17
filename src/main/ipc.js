@@ -1,5 +1,11 @@
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
-const { loadConfig, saveConfig, publicConfig } = require('./config');
+const {
+  REMOTE_FEATURE_ENABLED,
+  loadConfig,
+  saveConfig,
+  publicConfig,
+  normalizeRendererConfigPatch,
+} = require('./config');
 const { getMainWindow, getHarnessWebContents, openHarnessSettings, openMarketplace, openRemote, showMain, isHarnessLoaded, closeMarketplaceWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
@@ -11,7 +17,12 @@ const { gitBranchList, gitChangedFiles, gitCommit, gitCreateBranch, gitCreateCha
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
-const { isRemoteModeOnlyPatch } = require('./remote');
+const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
+
+const BOOT_ONLY = [IPC_ROLES.BOOT];
+const HARNESS_ONLY = [IPC_ROLES.HARNESS];
+const CONFIG_SURFACES = [IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
+const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -47,27 +58,36 @@ function sendPluginProgress(event, payload) {
 }
 
 function registerIpc({ dsh, harness, startHarness, remote }) {
-  ipcMain.handle('shell:get-state', () => (harness ? harness.snapshot() : dsh.snapshot()));
+  const handle = (channel, roles, listener) => {
+    ipcMain.handle(channel, (event, ...args) => {
+      assertIpcSender(event, roles);
+      return listener(event, ...args);
+    });
+  };
+  const authorizeHarness = (event) => assertIpcSender(event, HARNESS_ONLY);
 
-  ipcMain.handle('shell:get-config', () => configPayload(loadConfig()));
+  handle('shell:get-state', BOOT_ONLY, () => (harness ? harness.snapshot() : dsh.snapshot()));
 
-  ipcMain.handle('shell:save-config', async (_event, patch) => {
-    const next = saveConfig(patch || {});
+  handle('shell:get-config', ALL_SURFACES, () => configPayload(loadConfig()));
+
+  handle('shell:save-config', CONFIG_SURFACES, async (_event, patch) => {
+    const safePatch = normalizeRendererConfigPatch(patch || {});
+    const next = saveConfig(safePatch);
     app.setLoginItemSettings({ openAtLogin: Boolean(next.openAtLogin) });
-    if (patch && Object.prototype.hasOwnProperty.call(patch, 'theme')) {
+    if (Object.prototype.hasOwnProperty.call(safePatch, 'theme')) {
       applyAppTheme();
     }
-    if (harness && patch && [
+    if (harness && [
       'harnessAutoRestart',
       'harnessRestartMaxAttempts',
       'harnessRestartBaseDelayMs',
-    ].some((key) => Object.prototype.hasOwnProperty.call(patch, key))) {
+    ].some((key) => Object.prototype.hasOwnProperty.call(safePatch, key))) {
       harness.refreshPolicy();
     }
     return configPayload(next);
   });
 
-  ipcMain.handle('shell:open-external', async (_event, url) => {
+  handle('shell:open-external', CONFIG_SURFACES, async (_event, url) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
       throw new Error('Invalid URL');
     }
@@ -75,7 +95,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return true;
   });
 
-  ipcMain.handle('shell:pick-workspace', async () => {
+  handle('shell:pick-workspace', HARNESS_ONLY, async () => {
     const win = getMainWindow();
     const result = await dialog.showOpenDialog(win || undefined, {
       title: configLocale() === 'en' ? 'Choose workspace' : '选择工作区',
@@ -88,20 +108,20 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return result.filePaths[0];
   });
 
-  ipcMain.handle('shell:restart', async () => {
+  handle('shell:restart', BOOT_ONLY, async () => {
     await startHarness();
     return harness ? harness.snapshot() : dsh.snapshot();
   });
 
-  ipcMain.handle('shell:cancel-restart', () => (
+  handle('shell:cancel-restart', BOOT_ONLY, () => (
     harness ? harness.cancelRecovery() : dsh.snapshot()
   ));
 
-  ipcMain.handle('shell:open-settings', () => openHarnessSettings());
+  handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
 
-  ipcMain.handle('shell:check-update', () => checkUpdate());
+  handle('shell:check-update', HARNESS_ONLY, () => checkUpdate());
 
-  ipcMain.handle('shell:list-marketplace', async (_event, options = {}) => {
+  handle('shell:list-marketplace', CONFIG_SURFACES, async (_event, options = {}) => {
     const config = loadConfig();
     return listMarketplace({
       token: config.githubToken,
@@ -109,14 +129,14 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     });
   });
 
-  ipcMain.handle('shell:refresh-marketplace', async () => {
+  handle('shell:refresh-marketplace', CONFIG_SURFACES, async () => {
     const config = loadConfig();
     return listMarketplace({ token: config.githubToken, refresh: true });
   });
 
-  ipcMain.handle('shell:list-installed-plugins', () => listInstalledPlugins());
+  handle('shell:list-installed-plugins', CONFIG_SURFACES, () => listInstalledPlugins());
 
-  ipcMain.handle('shell:install-plugin', async (event, spec, options = {}) => {
+  handle('shell:install-plugin', HARNESS_ONLY, async (event, spec, options = {}) => {
     const config = loadConfig();
     const result = await installPlugin(spec, {
       token: config.githubToken,
@@ -130,7 +150,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return result;
   });
 
-  ipcMain.handle('shell:uninstall-plugin', async (event, name) => {
+  handle('shell:uninstall-plugin', CONFIG_SURFACES, async (event, name) => {
     const result = await uninstallPlugin(name, {
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
@@ -141,9 +161,9 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return result;
   });
 
-  ipcMain.handle('shell:open-marketplace', () => openMarketplace());
+  handle('shell:open-marketplace', HARNESS_ONLY, () => openMarketplace());
 
-  ipcMain.handle('shell:seed-install-draft', async (_event, item) => {
+  handle('shell:seed-install-draft', CONFIG_SURFACES, async (_event, item) => {
     const repo = String(item?.repo || '').trim();
     const installSpec = String(item?.installSpec || '').trim();
     if (!repo || !installSpec) {
@@ -159,59 +179,77 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return { ok: true };
   });
 
-  ipcMain.handle('shell:git-status', (_event, cwd) => gitStatus(cwd));
-  ipcMain.handle('shell:git-fetch-status', (_event, cwd) => gitFetchForStatus(cwd));
-  ipcMain.handle('shell:git-pull-request', (_event, cwd) => gitReadPullRequest(cwd));
-  ipcMain.handle('shell:git-init', (_event, cwd) => gitInit(cwd));
-  ipcMain.handle('shell:git-diff', (_event, cwd, options) => gitDiff(cwd, options));
+  handle('shell:git-status', HARNESS_ONLY, (_event, cwd) => gitStatus(cwd));
+  handle('shell:git-fetch-status', HARNESS_ONLY, (_event, cwd) => gitFetchForStatus(cwd));
+  handle('shell:git-pull-request', HARNESS_ONLY, (_event, cwd) => gitReadPullRequest(cwd));
+  handle('shell:git-init', HARNESS_ONLY, (_event, cwd) => gitInit(cwd));
+  handle('shell:git-diff', HARNESS_ONLY, (_event, cwd, options) => gitDiff(cwd, options));
   const sendGitProgress = (event, actionId) => (progress) => {
     if (actionId == null || event.sender.isDestroyed()) return;
     event.sender.send('shell:git-progress', { actionId, ...progress });
   };
-  ipcMain.handle('shell:git-commit', (event, cwd, message, filePaths, actionId, options) => (
+  handle('shell:git-commit', HARNESS_ONLY, (event, cwd, message, filePaths, actionId, options) => (
     gitCommit(cwd, message, filePaths, sendGitProgress(event, actionId), options)
   ));
-  ipcMain.handle('shell:git-changed-files', (_event, cwd) => gitChangedFiles(cwd));
-  ipcMain.handle('shell:git-push', (event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId)));
-  ipcMain.handle('shell:git-pull', (event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId)));
-  ipcMain.handle('shell:git-create-change-request', (event, cwd, input, actionId) => (
+  handle('shell:git-changed-files', HARNESS_ONLY, (_event, cwd) => gitChangedFiles(cwd));
+  handle('shell:git-push', HARNESS_ONLY, (event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId)));
+  handle('shell:git-pull', HARNESS_ONLY, (event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId)));
+  handle('shell:git-create-change-request', HARNESS_ONLY, (event, cwd, input, actionId) => (
     gitCreateChangeRequest(cwd, input, sendGitProgress(event, actionId))
   ));
-  ipcMain.handle('shell:git-publish', (event, cwd, input, actionId) => (
+  handle('shell:git-publish', HARNESS_ONLY, (event, cwd, input, actionId) => (
     gitPublishRepository(cwd, input, sendGitProgress(event, actionId))
   ));
-  ipcMain.handle('shell:open-workspace-path', (_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath));
-  ipcMain.handle('shell:list-dir', (_event, cwd, relativePath) => listDir(cwd, relativePath));
-  ipcMain.handle('shell:read-file', (_event, cwd, relativePath) => readFile(cwd, relativePath));
-  ipcMain.handle('shell:read-file-media', (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));
-  ipcMain.handle('shell:write-file', (_event, cwd, relativePath, text) => writeFile(cwd, relativePath, text));
-  ipcMain.handle('shell:git-stage', (_event, cwd, relativePath) => gitStage(cwd, relativePath));
-  ipcMain.handle('shell:git-unstage', (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
-  ipcMain.handle('shell:git-discard', (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));
-  ipcMain.handle('shell:git-status-entries', (_event, cwd) => gitStatusEntries(cwd));
-  ipcMain.handle('shell:git-branch-list', (_event, cwd) => gitBranchList(cwd));
-  ipcMain.handle('shell:git-switch-branch', (_event, cwd, ref) => gitSwitchBranch(cwd, ref));
-  ipcMain.handle('shell:git-create-branch', (_event, cwd, name) => gitCreateBranch(cwd, name));
-  const pty = registerPtyIpc(ipcMain);
-  const preview = registerPreviewIpc(ipcMain);
+  handle('shell:open-workspace-path', HARNESS_ONLY, (_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath));
+  handle('shell:list-dir', HARNESS_ONLY, (_event, cwd, relativePath) => listDir(cwd, relativePath));
+  handle('shell:read-file', HARNESS_ONLY, (_event, cwd, relativePath) => readFile(cwd, relativePath));
+  handle('shell:read-file-media', HARNESS_ONLY, (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));
+  handle('shell:write-file', HARNESS_ONLY, (_event, cwd, relativePath, text) => writeFile(cwd, relativePath, text));
+  handle('shell:git-stage', HARNESS_ONLY, (_event, cwd, relativePath) => gitStage(cwd, relativePath));
+  handle('shell:git-unstage', HARNESS_ONLY, (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
+  handle('shell:git-discard', HARNESS_ONLY, (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));
+  handle('shell:git-status-entries', HARNESS_ONLY, (_event, cwd) => gitStatusEntries(cwd));
+  handle('shell:git-branch-list', HARNESS_ONLY, (_event, cwd) => gitBranchList(cwd));
+  handle('shell:git-switch-branch', HARNESS_ONLY, (_event, cwd, ref) => gitSwitchBranch(cwd, ref));
+  handle('shell:git-create-branch', HARNESS_ONLY, (_event, cwd, name) => gitCreateBranch(cwd, name));
+  const pty = registerPtyIpc(ipcMain, undefined, { authorize: authorizeHarness });
+  const preview = registerPreviewIpc(ipcMain, undefined, { authorize: authorizeHarness });
 
-  ipcMain.handle('shell:open-remote', () => openRemote());
-
-  ipcMain.handle('shell:get-remote', () => (remote ? remote.snapshot() : null));
-
-  ipcMain.handle('shell:save-remote', async (_event, patch) => {
-    saveConfig(patch || {});
-    if (remote && isRemoteModeOnlyPatch(patch)) {
-      // Mode only changes the pairing QR; LAN and relay stay as the enable flag left them.
-      return remote.snapshot();
+  handle('shell:open-remote', HARNESS_ONLY, () => {
+    if (!REMOTE_FEATURE_ENABLED) {
+      throw new Error('Remote is disabled in this build');
     }
+    return openRemote();
+  });
+
+  handle('shell:get-remote', HARNESS_ONLY, () => {
+    const snapshot = remote ? remote.snapshot() : {};
+    return {
+      ...snapshot,
+      available: REMOTE_FEATURE_ENABLED,
+      enabled: REMOTE_FEATURE_ENABLED && Boolean(snapshot.enabled),
+    };
+  });
+
+  handle('shell:save-remote', HARNESS_ONLY, async (_event, patch) => {
+    if (!REMOTE_FEATURE_ENABLED) {
+      saveConfig({ remoteEnabled: false, remoteMode: 'lan', remoteRelayUrl: '' });
+      if (remote && typeof remote.sync === 'function') {
+        await remote.sync();
+      }
+      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+    }
+    saveConfig(patch || {});
     if (remote && typeof remote.sync === 'function') {
       return remote.sync();
     }
     return remote ? remote.snapshot() : null;
   });
 
-  ipcMain.handle('shell:rotate-remote-token', async () => {
+  handle('shell:rotate-remote-token', HARNESS_ONLY, async () => {
+    if (!REMOTE_FEATURE_ENABLED) {
+      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+    }
     if (remote && typeof remote.rotateToken === 'function') {
       remote.rotateToken();
       return remote.sync();
@@ -219,14 +257,17 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return null;
   });
 
-  ipcMain.handle('shell:unbind-remote-device', async (_event, id) => {
+  handle('shell:unbind-remote-device', HARNESS_ONLY, async (_event, id) => {
+    if (!REMOTE_FEATURE_ENABLED) {
+      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+    }
     if (remote && typeof remote.unbindDevice === 'function') {
       return remote.unbindDevice(id);
     }
     return remote ? remote.snapshot() : null;
   });
 
-  ipcMain.handle('shell:install-update', async (event) => {
+  handle('shell:install-update', HARNESS_ONLY, async (event) => {
     try {
       return await installUpdate((payload) => {
         if (!event.sender.isDestroyed()) {

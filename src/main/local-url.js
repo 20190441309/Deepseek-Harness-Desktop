@@ -26,6 +26,21 @@ function isLoopbackHttpUrl(raw) {
 }
 
 /**
+ * True when both URLs are loopback http(s) and share an exact origin.
+ * @param {unknown} raw
+ * @param {unknown} expected
+ * @returns {boolean}
+ */
+function isSameOriginLoopbackUrl(raw, expected) {
+  if (!isLoopbackHttpUrl(raw) || !isLoopbackHttpUrl(expected)) return false;
+  try {
+    return new URL(String(raw)).origin === new URL(String(expected)).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Map `0.0.0.0` to `127.0.0.1` for actual loads (Vite/Next paste habit).
  * Other loopback hosts keep the original text. Returns null when not loopback.
  * @param {unknown} raw
@@ -105,21 +120,17 @@ function isPackagedRendererFileUrl(raw, relativeFromRenderer, options = {}) {
 }
 
 /**
- * Boot window may stay on the packaged `boot.html` file URL or navigate to
- * the local harness. Arbitrary `file:` URLs (including `evilboot.html` and
- * Downloads/boot.html) are rejected.
+ * Boot window stays on the packaged `boot.html` file URL. Harness content
+ * lives in a separate BrowserView with its own exact-origin policy.
  * @param {unknown} raw
  * @param {{ resolveBootPath?: () => string }} [options]
  * @returns {boolean}
  */
 function isLocalAppNavigationUrl(raw, options = {}) {
   if (typeof raw !== 'string' || raw.trim() === '') return false;
-  if (raw.startsWith('file:')) {
-    return isPackagedRendererFileUrl(raw, 'boot.html', {
-      resolvePath: options.resolveBootPath,
-    });
-  }
-  return isLoopbackHttpUrl(raw);
+  return raw.startsWith('file:') && isPackagedRendererFileUrl(raw, 'boot.html', {
+    resolvePath: options.resolveBootPath,
+  });
 }
 
 /**
@@ -157,6 +168,7 @@ function shouldAllowPrivilegedRedirect({ nextUrl, allowUrl }) {
 module.exports = {
   LOOPBACK_HOSTS,
   isLoopbackHttpUrl,
+  isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
   isMarketplaceNavigationUrl,
   isPackagedRendererFileUrl,

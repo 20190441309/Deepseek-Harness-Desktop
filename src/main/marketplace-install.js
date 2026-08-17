@@ -9,6 +9,11 @@ const { projectRoot, harnessRoot } = require('./paths');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
+const {
+  isValidGithubSpec,
+  isValidPackageName,
+  normalizeAllowBuilds,
+} = require('../host/install-dsh-plugin-client');
 const { prependPath } = require('../shared/env-path');
 
 const ALLOW_HINT = /ignored build scripts|allowbuilds|approve-builds|blocked.*prepare|pnpm-workspace\.yaml/i;
@@ -100,13 +105,17 @@ function workspaceYamlPath() {
 }
 
 function allowBuildsInWorkspace(keys) {
+  const normalized = normalizeAllowBuilds(keys);
+  if (!normalized) {
+    throw new Error('allowBuilds contains an invalid package key');
+  }
   const file = workspaceYamlPath();
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   if (!/allowBuilds\s*:/m.test(text)) {
     text = `${text.replace(/\s+$/, '')}${text ? '\n' : ''}allowBuilds:\n`;
   }
-  for (const key of keys) {
-    const quoted = /[:@/]/.test(key) ? JSON.stringify(key) : key;
+  for (const key of normalized) {
+    const quoted = JSON.stringify(key);
     const pattern = new RegExp(`^\\s*${quoted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`, 'm');
     if (pattern.test(text)) {
       continue;
@@ -192,7 +201,11 @@ function runPlugin(args, onProgress) {
 }
 
 function parseGithubSpec(spec) {
-  const match = /^github:([^/#]+)\/([^/#]+)(?:#(.+))?$/.exec(String(spec || '').trim());
+  const value = String(spec || '').trim();
+  if (!isValidGithubSpec(value)) {
+    return null;
+  }
+  const match = /^github:([^/#]+)\/([^/#]+)(?:#(.+))?$/.exec(value);
   if (!match) {
     return null;
   }
@@ -216,6 +229,13 @@ async function installPlugin(spec, options = {}) {
   if (!name) {
     return { ok: false, error: '缺少安装规格' };
   }
+  if (!isValidGithubSpec(name)) {
+    return { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格' };
+  }
+  const allowBuilds = normalizeAllowBuilds(options.allowBuilds);
+  if (!allowBuilds) {
+    return { ok: false, error: 'allowBuilds 包含非法包名' };
+  }
   if (DROPPED.includes(name) || DROPPED.some((item) => name.includes(item))) {
     return { ok: false, error: '该插件已退役，不再提供安装' };
   }
@@ -223,8 +243,8 @@ async function installPlugin(spec, options = {}) {
     options.onProgress({ phase: 'start', line: `正在安装 ${name}` });
   }
   const pinned = await pinInstallSpec(name, options.token);
-  if (options.allowBuilds?.length) {
-    allowBuildsInWorkspace(options.allowBuilds);
+  if (allowBuilds.length) {
+    allowBuildsInWorkspace(allowBuilds);
   }
   const result = await runPlugin(['add', pinned], options.onProgress);
   if (result.ok) {
@@ -237,6 +257,9 @@ async function uninstallPlugin(packageName, options = {}) {
   const name = String(packageName || '').trim();
   if (!name) {
     return { ok: false, error: '缺少包名' };
+  }
+  if (!isValidPackageName(name)) {
+    return { ok: false, error: '包名格式非法' };
   }
   if (typeof options.onProgress === 'function') {
     options.onProgress({ phase: 'start', line: `正在卸载 ${name}` });

@@ -104,6 +104,24 @@ describe('desktop install control', { concurrency: false }, () => {
     assert.equal(response.status, 401);
   });
 
+  test('rejects invalid allowBuilds with 400 and never installs', async () => {
+    let installs = 0;
+    startDesktopInstallControl({
+      installPlugin: async () => {
+        installs += 1;
+        return { ok: true };
+      },
+      startHarness: async () => {},
+    });
+    const { url, token } = await desktopInstallReady();
+    const response = await postInstall(url, token, JSON.stringify({
+      spec: 'github:owner/repo',
+      allowBuilds: ['good-package\nmalicious: true'],
+    }));
+    assert.equal(response.status, 400);
+    assert.equal(installs, 0);
+  });
+
   test('rejects invalid JSON with 400', async () => {
     startDesktopInstallControl({
       installPlugin: async () => ({ ok: true }),

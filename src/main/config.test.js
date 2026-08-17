@@ -24,10 +24,12 @@ require.cache[electronPath] = {
 
 const {
   DEFAULTS,
+  REMOTE_FEATURE_ENABLED,
   loadConfig,
   publicConfig,
   saveConfig,
   normalizeHarnessRecovery,
+  normalizeRendererConfigPatch,
 } = require('./config');
 
 test.after(() => {
@@ -58,6 +60,47 @@ test('invalid recovery settings fall back to safe defaults', () => {
   assert.equal(normalizeHarnessRecovery({ harnessRestartMaxAttempts: 10 }).harnessRestartMaxAttempts, 10);
   assert.equal(normalizeHarnessRecovery({ harnessRestartBaseDelayMs: 500 }).harnessRestartBaseDelayMs, 500);
   assert.equal(normalizeHarnessRecovery({ harnessRestartBaseDelayMs: 30_000 }).harnessRestartBaseDelayMs, 30_000);
+});
+
+test('renderer config patch only accepts safe typed fields', () => {
+  assert.deepEqual(normalizeRendererConfigPatch({
+    closeToTray: false,
+    locale: 'en',
+    harnessRestartMaxAttempts: 4,
+    githubToken: ' token ',
+  }), {
+    closeToTray: false,
+    locale: 'en',
+    harnessRestartMaxAttempts: 4,
+    githubToken: 'token',
+  });
+  for (const patch of [
+    { dshBin: 'C:\\malware.cmd' },
+    { nodeBin: 'C:\\malware.exe' },
+    { workspace: 'C:\\' },
+    { baseUrl: 'https://attacker.invalid' },
+    { closeToTray: 'yes' },
+    { harnessRestartMaxAttempts: 99 },
+  ]) {
+    assert.throws(() => normalizeRendererConfigPatch(patch));
+  }
+});
+
+test('remote stays disabled while its UI feature is frozen', () => {
+  assert.equal(REMOTE_FEATURE_ENABLED, false);
+  const saved = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remoteRelayUrl: 'http://relay.example:8787/path',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(saved.remoteEnabled, false);
+  assert.equal(saved.remoteMode, 'lan');
+  assert.equal(saved.remoteRelayUrl, '');
+  const loaded = loadConfig();
+  assert.equal(loaded.remoteEnabled, false);
+  assert.equal(loaded.remoteMode, 'lan');
+  assert.equal(loaded.remoteRelayUrl, '');
 });
 
 test('saveConfig persists normalized recovery settings', () => {

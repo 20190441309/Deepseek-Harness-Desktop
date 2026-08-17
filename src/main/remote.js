@@ -15,15 +15,6 @@ const { listLanAddresses, pairingUrl, publicUrl } = require('../shared/lan');
 const { createDevice, normalizeDevices, publicDevices } = require('../shared/remote-devices');
 const { RelayClient } = require('./relay-client');
 
-/** True when the write only switches LAN/relay QR mode and must not restart transports. */
-function isRemoteModeOnlyPatch(patch) {
-  if (!patch || typeof patch !== 'object') {
-    return false;
-  }
-  const keys = Object.keys(patch).filter((key) => patch[key] !== undefined);
-  return keys.length === 1 && (patch.remoteMode === 'lan' || patch.remoteMode === 'relay');
-}
-
 const DEFAULT_PORT = 3180;
 
 const HOP_BY_HOP = new Set([
@@ -203,8 +194,10 @@ class RemoteGateway extends EventEmitter {
     this.target = null;
     this.sockets = new Map();
     this.relayOp = 0;
-    this.relay = new RelayClient({
+    this.relay = options.relay || new RelayClient({
+      ...options.relayOptions,
       getLocal: () => (this.port ? { port: this.port } : null),
+      getHostToken: () => (this.getConfig() || {}).remoteRelayToken || '',
     });
     this.relay.on('connected', () => {
       this.error = '';
@@ -410,11 +403,16 @@ class RemoteGateway extends EventEmitter {
       return;
     }
     const op = ++this.relayOp;
-    if (config.remoteEnabled && config.remoteRelayUrl && this.server) {
+    if (config.remoteEnabled && config.remoteMode === 'relay' && this.server) {
+      if (!config.remoteRelayUrl || !config.remoteRelayToken) {
+        await this.relay.disconnect();
+        this.error = !config.remoteRelayUrl ? '中继地址未配置' : '中继宿主令牌未配置';
+        return;
+      }
       try {
-        await this.relay.sync(config.remoteRelayUrl);
+        await this.relay.sync(config.remoteRelayUrl, config.remoteRelayToken);
       } catch {
-        // Relay errors stay on the client; LAN snapshots must not show them.
+        // Relay errors stay on the client and are surfaced by snapshot().
       }
       return;
     }
@@ -422,7 +420,7 @@ class RemoteGateway extends EventEmitter {
     if (op !== this.relayOp) {
       return;
     }
-    if (/^relay /i.test(this.error)) {
+    if (config.remoteMode !== 'relay' || /^(?:relay |中继)/i.test(this.error)) {
       this.error = '';
     }
   }
@@ -641,6 +639,5 @@ module.exports = {
   RemoteGateway,
   rewriteProxyHeaders,
   shouldGzipProxy,
-  isRemoteModeOnlyPatch,
   DEFAULT_PORT,
 };

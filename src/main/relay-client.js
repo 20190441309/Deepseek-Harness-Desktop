@@ -4,6 +4,7 @@ const tls = require('tls');
 const { EventEmitter } = require('events');
 const { encodeFrame, attachFrameReader } = require('../shared/relay-frames');
 const { normalizeRelayOrigin } = require('../shared/lan');
+const { normalizeRelayHostToken } = require('../shared/relay-auth');
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -42,16 +43,40 @@ function openSocket(target) {
   return net.connect({ host, port });
 }
 
+function isLoopbackHostname(hostname) {
+  const value = String(hostname || '').toLowerCase();
+  return value === '127.0.0.1' || value === 'localhost' || value === '::1' || value === '[::1]';
+}
+
+function normalizeClientRelayOrigin(value, allowInsecureHttp = false) {
+  const secure = normalizeRelayOrigin(value);
+  if (secure) {
+    return secure;
+  }
+  if (!allowInsecureHttp) {
+    return '';
+  }
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'http:' && isLoopbackHostname(url.hostname) ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
 class RelayClient extends EventEmitter {
   constructor(options = {}) {
     super();
     this.getLocal = options.getLocal || (() => null);
+    this.getHostToken = options.getHostToken || (() => '');
+    this.allowInsecureHttp = options.allowInsecureHttp === true;
     this.retryMs = Number(options.retryMs) > 0 ? Number(options.retryMs) : DEFAULT_RETRY_MS;
     this.handshakeTimeoutMs = Number(options.handshakeTimeoutMs) > 0
       ? Number(options.handshakeTimeoutMs)
       : DEFAULT_HANDSHAKE_MS;
     this.socket = null;
     this.url = '';
+    this.hostToken = '';
     this.error = '';
     this.shouldRun = false;
     this.attempt = 0;
@@ -72,26 +97,42 @@ class RelayClient extends EventEmitter {
     };
   }
 
-  async sync(relayUrl) {
-    const origin = normalizeRelayOrigin(relayUrl);
+  async sync(relayUrl, hostToken = this.getHostToken()) {
+    const origin = normalizeClientRelayOrigin(relayUrl, this.allowInsecureHttp);
     if (!origin) {
       await this.disconnect();
+      this.error = 'relay URL must use HTTPS';
       return this.snapshot();
     }
-    if (this.url === origin && this.shouldRun && this.socket && !this.socket.destroyed) {
+    const token = normalizeRelayHostToken(hostToken);
+    if (!token) {
+      await this.disconnect();
+      this.error = 'relay host token is required';
+      return this.snapshot();
+    }
+    if (this.url === origin && this.hostToken === token && this.shouldRun && this.socket && !this.socket.destroyed) {
       return this.snapshot();
     }
     this.shouldRun = true;
     this.clearReconnect();
     this.teardown();
-    await this.connect(origin);
+    await this.connect(origin, token);
     return this.snapshot();
   }
 
-  async connect(origin) {
-    const target = new URL(origin);
+  async connect(origin, hostToken = this.getHostToken()) {
+    const normalizedOrigin = normalizeClientRelayOrigin(origin, this.allowInsecureHttp);
+    const token = normalizeRelayHostToken(hostToken);
+    if (!normalizedOrigin) {
+      throw new Error('relay URL must use HTTPS');
+    }
+    if (!token) {
+      throw new Error('relay host token is required');
+    }
+    const target = new URL(normalizedOrigin);
     this.shouldRun = true;
-    this.url = origin;
+    this.url = normalizedOrigin;
+    this.hostToken = token;
     this.error = '';
     this.clearReconnect();
     this.teardown();
@@ -127,7 +168,7 @@ class RelayClient extends EventEmitter {
       });
       const onReady = () => {
         socket.write(
-          `GET /__dsh__/host HTTP/1.1\r\nHost: ${target.host}\r\nConnection: Upgrade\r\nUpgrade: dsh-relay\r\n\r\n`,
+          `GET /__dsh__/host HTTP/1.1\r\nHost: ${target.host}\r\nAuthorization: Bearer ${token}\r\nConnection: Upgrade\r\nUpgrade: dsh-relay\r\n\r\n`,
         );
       };
       if (target.protocol === 'https:') {
@@ -200,6 +241,7 @@ class RelayClient extends EventEmitter {
     this.clearReconnect();
     this.teardown();
     this.url = '';
+    this.hostToken = '';
     this.error = '';
     this.attempt = 0;
   }
@@ -232,7 +274,7 @@ class RelayClient extends EventEmitter {
       if (!this.shouldRun || this.connected) {
         return;
       }
-      this.connect(this.url).catch(() => {
+      this.connect(this.url, this.hostToken).catch(() => {
         this.scheduleReconnect();
       });
     }, delay);
@@ -362,4 +404,4 @@ class RelayClient extends EventEmitter {
   }
 }
 
-module.exports = { RelayClient };
+module.exports = { RelayClient, normalizeClientRelayOrigin };

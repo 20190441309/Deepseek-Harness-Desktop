@@ -5,7 +5,12 @@
  * Kept free of Cordis and dsh-tools so node:test can load it.
  */
 
-const GITHUB_SPEC_PATTERN = /^github:[^/#\s]+\/[^/#\s]+(?:#[^\s#]+)?$/;
+const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const GITHUB_REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
+const GITHUB_REF_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,254})$/;
+const PACKAGE_ALLOW_BUILD_PATTERN = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const GITHUB_ALLOW_BUILD_PATTERN = /^github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const MAX_ALLOW_BUILDS = 32;
 
 /**
  * The control channel installs marketplace plugins only: a bare github:
@@ -15,7 +20,78 @@ const GITHUB_SPEC_PATTERN = /^github:[^/#\s]+\/[^/#\s]+(?:#[^\s#]+)?$/;
  * @returns whether the spec is a github: owner/repo reference.
  */
 function isValidGithubSpec(spec) {
-  return GITHUB_SPEC_PATTERN.test(String(spec || '').trim());
+  const value = String(spec || '').trim();
+  const match = /^github:([^/#]+)\/([^/#]+)(?:#([^#]+))?$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const [, owner, repo, ref = ''] = match;
+  if (!GITHUB_OWNER_PATTERN.test(owner) || !GITHUB_REPO_PATTERN.test(repo)) {
+    return false;
+  }
+  if (owner.endsWith('-') || repo === '.' || repo === '..' || repo.endsWith('.')) {
+    return false;
+  }
+  if (!ref) {
+    return true;
+  }
+  return GITHUB_REF_PATTERN.test(ref)
+    && !ref.includes('..')
+    && !ref.includes('@{')
+    && !ref.endsWith('.')
+    && !ref.endsWith('/');
+}
+
+function isValidAllowBuild(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const key = value.trim();
+  if (!key || key.length > 214 || key === '.' || key === '..' || key.includes('..')) {
+    return false;
+  }
+  return isValidPackageName(key) || GITHUB_ALLOW_BUILD_PATTERN.test(key);
+}
+
+function isValidPackageName(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const name = value.trim();
+  return Boolean(name)
+    && name.length <= 214
+    && name !== '.'
+    && name !== '..'
+    && !name.includes('..')
+    && PACKAGE_ALLOW_BUILD_PATTERN.test(name);
+}
+
+/**
+ * Validate pnpm allowBuilds keys without accepting YAML syntax, paths, URLs,
+ * or arbitrary objects from a renderer/tool call.
+ * @param value - candidate allowBuilds array.
+ * @returns a unique normalized array, or null when any item is invalid.
+ */
+function normalizeAllowBuilds(value) {
+  if (value == null) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.length > MAX_ALLOW_BUILDS) {
+    return null;
+  }
+  const keys = [];
+  const seen = new Set();
+  for (const item of value) {
+    if (!isValidAllowBuild(item)) {
+      return null;
+    }
+    const key = item.trim();
+    if (!seen.has(key)) {
+      seen.add(key);
+      keys.push(key);
+    }
+  }
+  return keys;
 }
 
 function emptyInstallResult(error, spec = '') {
@@ -101,13 +177,20 @@ async function executeInstallDshPlugin(control, spec, allowBuilds = [], request 
   if (!isValidGithubSpec(trimmed)) {
     return emptyInstallResult('install spec must be github:owner/repo[#ref]', trimmed);
   }
-  const result = await request(control.url, control.token, trimmed, allowBuilds ?? []);
+  const normalizedAllowBuilds = normalizeAllowBuilds(allowBuilds);
+  if (!normalizedAllowBuilds) {
+    return emptyInstallResult('allowBuilds contains an invalid package key', trimmed);
+  }
+  const result = await request(control.url, control.token, trimmed, normalizedAllowBuilds);
   return normalizeInstallResult(result, trimmed);
 }
 
 module.exports = {
   emptyInstallResult,
   isValidGithubSpec,
+  isValidAllowBuild,
+  isValidPackageName,
+  normalizeAllowBuilds,
   normalizeInstallResult,
   renderInstall,
   requestDesktopInstall,

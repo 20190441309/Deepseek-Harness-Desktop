@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   isLoopbackHttpUrl,
+  isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
   isMarketplaceNavigationUrl,
   rewriteLoopbackLoadUrl,
@@ -32,6 +33,13 @@ test('isLoopbackHttpUrl rejects prefix and userinfo spoofs', () => {
   assert.equal(isLoopbackHttpUrl('javascript:alert(1)'), false);
 });
 
+test('isSameOriginLoopbackUrl pins scheme, host, and port', () => {
+  assert.equal(isSameOriginLoopbackUrl('http://127.0.0.1:3080/chat', 'http://127.0.0.1:3080/'), true);
+  assert.equal(isSameOriginLoopbackUrl('http://127.0.0.1:5173/', 'http://127.0.0.1:3080/'), false);
+  assert.equal(isSameOriginLoopbackUrl('https://127.0.0.1:3080/', 'http://127.0.0.1:3080/'), false);
+  assert.equal(isSameOriginLoopbackUrl('https://example.com/', 'https://127.0.0.1:3080/'), false);
+});
+
 test('isLocalAppNavigationUrl allows only the packaged boot.html path', () => {
   const boot = path.join(os.tmpdir(), `dsh-boot-${process.pid}`, 'boot.html');
   fs.mkdirSync(path.dirname(boot), { recursive: true });
@@ -41,7 +49,7 @@ test('isLocalAppNavigationUrl allows only the packaged boot.html path', () => {
   assert.equal(isLocalAppNavigationUrl(packaged, { resolveBootPath }), true);
   assert.equal(isLocalAppNavigationUrl(pathToFileURL(path.join(path.dirname(boot), 'evilboot.html')).href, { resolveBootPath }), false);
   assert.equal(isLocalAppNavigationUrl(pathToFileURL(path.join(os.tmpdir(), 'Downloads', 'boot.html')).href, { resolveBootPath }), false);
-  assert.equal(isLocalAppNavigationUrl('http://127.0.0.1:3080/'), true);
+  assert.equal(isLocalAppNavigationUrl('http://127.0.0.1:3080/'), false);
   assert.equal(isLocalAppNavigationUrl('http://127.0.0.1.evil.example/'), false);
   fs.rmSync(path.dirname(boot), { recursive: true, force: true });
 });

@@ -3,7 +3,7 @@
 const http = require('http');
 const crypto = require('crypto');
 
-const { isValidGithubSpec } = require('../host/install-dsh-plugin-client.js');
+const { isValidGithubSpec, normalizeAllowBuilds } = require('../host/install-dsh-plugin-client.js');
 
 const RESTART_DELAY_MS = 500;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -96,9 +96,13 @@ function createHandler({ installPlugin, startHarness, restartDelayMs }) {
       return;
     }
     const spec = String(payload.spec || '').trim();
-    const allowBuilds = Array.isArray(payload.allowBuilds) ? payload.allowBuilds.map(String) : [];
+    const allowBuilds = normalizeAllowBuilds(payload.allowBuilds);
     if (!isValidGithubSpec(spec)) {
       sendJson(res, 400, { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格', needsAllowBuilds: false, allowBuilds: [], spec, log: '' });
+      return;
+    }
+    if (!allowBuilds) {
+      sendJson(res, 400, { ok: false, error: 'allowBuilds 包含非法包名', needsAllowBuilds: false, allowBuilds: [], spec, log: '' });
       return;
     }
     try {

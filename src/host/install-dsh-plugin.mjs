@@ -1,9 +1,11 @@
 import { createRequire } from 'node:module'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const { executeInstallDshPlugin, renderInstall } = createRequire(import.meta.url)('./install-dsh-plugin-client.js')
 
-export const name = 'dsh-desktop-plugin-install'
+export const name = 'dshd-desktop-plugin-install'
 export const inject = ['tools']
 
 const DESCRIPTION = 'Install a DeepSeek Harness plugin into the desktop web profile from a github:owner/repo[#sha] spec. Prepare scripts run on this machine, outside the sandbox. Call only for the spec the user named. If needsAllowBuilds is true, ask the user, then retry with those allowBuilds keys. A successful install restarts the desktop app to load the plugin.'
@@ -15,13 +17,54 @@ function controlConfig() {
   return { url, token }
 }
 
+function requireAnchors() {
+  const anchors = []
+  const harnessRoot = process.env.DSH_HARNESS_ROOT
+  if (harnessRoot) {
+    anchors.push(path.join(harnessRoot, 'package.json'))
+    anchors.push(path.join(harnessRoot, 'apps', 'cli', 'package.json'))
+  }
+  anchors.push(fileURLToPath(import.meta.url))
+  return anchors
+}
+
+/**
+ * Resolve defineTool from the running Harness install, not from this profile
+ * copy. The plugin file lives under $DSH_HOME; a static
+ * `import '@deepseek-ai/dsh-tools'` from that path aborts the whole Host when
+ * the profile fallback cannot see the package.
+ * @returns defineTool from @deepseek-ai/dsh-tools.
+ */
+async function loadDefineTool() {
+  let lastError
+  for (const anchor of requireAnchors()) {
+    if (!existsSync(anchor)) continue
+    try {
+      const resolved = createRequire(anchor).resolve('@deepseek-ai/dsh-tools')
+      const mod = await import(pathToFileURL(resolved).href)
+      if (typeof mod.defineTool === 'function') return mod.defineTool
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('Cannot resolve @deepseek-ai/dsh-tools')
+}
+
 /**
  * Register install_dsh_plugin when the desktop control endpoint is in the environment.
  * @param ctx - Host context with the tools registry.
  */
-export function apply(ctx) {
+export async function apply(ctx) {
   const control = controlConfig()
   if (control === null) return
+  let defineTool
+  try {
+    defineTool = await loadDefineTool()
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error)
+    console.error(`[dshd-desktop-plugin-install] skipped install_dsh_plugin: ${message}`)
+    return
+  }
   ctx.tools.register(defineTool({
     name: 'install_dsh_plugin',
     description: DESCRIPTION,

@@ -5,7 +5,7 @@ const net = require('net');
 const { generateToken } = require('../shared/remote-auth');
 const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
-const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy, isRemoteModeOnlyPatch } = require('./remote');
+const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
 const { RelayClient } = require('./relay-client');
 const { RelayServer } = require('../relay/server');
 
@@ -25,6 +25,48 @@ async function request(port, path, options = {}) {
   return { status: response.status, body, headers: response.headers };
 }
 
+function insecureRelay(hostToken) {
+  return new RelayServer({ hostToken, allowInsecureHttp: true });
+}
+
+function insecureRelayClient(hostToken, options = {}) {
+  return new RelayClient({
+    ...options,
+    allowInsecureHttp: true,
+    getHostToken: () => hostToken,
+  });
+}
+
+test('relay close destroys upgraded clients and completes pending responses', async () => {
+  const relay = insecureRelay('host-token-1234567890');
+  const host = { destroyed: false, destroy() { this.destroyed = true; } };
+  const client = { destroyed: false, destroy() { this.destroyed = true; } };
+  const response = {
+    headersSent: false,
+    status: 0,
+    body: '',
+    writeHead(status) {
+      this.status = status;
+      this.headersSent = true;
+    },
+    end(body) {
+      this.body = body;
+    },
+  };
+  relay.host = host;
+  relay.pending.set(1, { res: response });
+  relay.upgrades.set(2, client);
+
+  await relay.close();
+
+  assert.equal(host.destroyed, true);
+  assert.equal(client.destroyed, true);
+  assert.equal(response.status, 502);
+  assert.equal(response.body, 'desktop disconnected');
+  assert.equal(relay.pending.size, 0);
+  assert.equal(relay.upgrades.size, 0);
+});
+
 test('shouldGzipProxy gzips script and html when the client asks for gzip', () => {
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip, deflate' }, 'text/javascript; charset=utf-8'), true);
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'text/html; charset=utf-8'), true);
@@ -32,14 +74,6 @@ test('shouldGzipProxy gzips script and html when the client asks for gzip', () =
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'application/json'), false);
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip' }, 'text/plain'), false);
   assert.equal(shouldGzipProxy({ 'accept-encoding': 'gzip', 'content-encoding': 'br' }, 'text/javascript'), false);
-});
-
-test('isRemoteModeOnlyPatch is true only for a lone lan/relay mode write', () => {
-  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'lan' }), true);
-  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'relay' }), true);
-  assert.equal(isRemoteModeOnlyPatch({ remoteMode: 'lan', remoteEnabled: true }), false);
-  assert.equal(isRemoteModeOnlyPatch({ remoteEnabled: true }), false);
-  assert.equal(isRemoteModeOnlyPatch(null), false);
 });
 
 test('rewriteProxyHeaders forces loopback Host and Origin', () => {
@@ -67,11 +101,11 @@ test('pairingUrl puts the token in the hash offer, not the query', () => {
 });
 
 test('pairingUrl for relay uses the relay origin and keeps the secret in the hash', () => {
-  const url = pairingUrl('10.0.0.4', 3180, 'abc', { mode: 'relay', relay: 'http://relay.example:8787/path' });
-  assert.equal(url.startsWith('http://relay.example:8787/#offer='), true);
+  const url = pairingUrl('10.0.0.4', 3180, 'abc', { mode: 'relay', relay: 'https://relay.example:8787/path' });
+  assert.equal(url.startsWith('https://relay.example:8787/#offer='), true);
   const offer = offerFromHash(new URL(url).hash);
   assert.equal(offer.mode, 'relay');
-  assert.equal(offer.relay, 'http://relay.example:8787');
+  assert.equal(offer.relay, 'https://relay.example:8787');
   assert.equal(offer.token, 'abc');
 });
 
@@ -81,6 +115,7 @@ test('offer encode/decode round-trips and rejects junk', () => {
   assert.equal(decodeOffer('@@@'), null);
   assert.equal(decodeOffer(encodeOffer({ v: 2, token: 'x' })), null);
   assert.equal(normalizeRelayOrigin('ftp://nope'), '');
+  assert.equal(normalizeRelayOrigin('http://relay.example'), '');
   assert.equal(normalizeRelayOrigin('not a url'), '');
 });
 
@@ -164,6 +199,7 @@ test('self-host relay forwards an authorized request to the local gateway', asyn
   });
   const upstreamPort = await listen(upstream);
   const token = generateToken();
+  const hostToken = generateToken();
   const gateway = new RemoteGateway();
   await gateway.start({
     port: 0,
@@ -173,12 +209,12 @@ test('self-host relay forwards an authorized request to the local gateway', asyn
   const gatewayPort = gateway.port || gateway.server.address().port;
   gateway.port = gatewayPort;
 
-  const relay = new RelayServer();
+  const relay = insecureRelay(hostToken);
   const relayPort = await relay.listen(0, '127.0.0.1');
-  const client = new RelayClient({
+  const client = insecureRelayClient(hostToken, {
     getLocal: () => ({ port: gatewayPort }),
   });
-  await client.connect(`http://127.0.0.1:${relayPort}`);
+  await client.connect(`http://127.0.0.1:${relayPort}`, hostToken);
   assert.equal(client.connected, true);
 
   const denied = await request(relayPort, '/api/ping');
@@ -220,7 +256,7 @@ function waitFor(predicate, timeoutMs = 3000) {
 }
 
 test('relay without a desktop host tells the phone to wait', async () => {
-  const relay = new RelayServer();
+  const relay = insecureRelay(generateToken());
   const relayPort = await relay.listen(0, '127.0.0.1');
   const denied = await request(relayPort, '/');
   assert.equal(denied.status, 503);
@@ -228,10 +264,11 @@ test('relay without a desktop host tells the phone to wait', async () => {
   await relay.close();
 });
 
-test('switching from relay to lan keeps an in-flight handshake', async () => {
+test('switching from relay to lan cancels an in-flight relay handshake', async () => {
   const upstream = http.createServer((_req, res) => res.end('ok'));
   const upstreamPort = await listen(upstream);
   const token = generateToken();
+  const hostToken = generateToken();
   const blackhole = net.createServer();
   const relayPort = await listen(blackhole);
   const stored = {
@@ -239,6 +276,7 @@ test('switching from relay to lan keeps an in-flight handshake', async () => {
     remoteToken: token,
     remoteMode: 'relay',
     remoteRelayUrl: `http://127.0.0.1:${relayPort}`,
+    remoteRelayToken: hostToken,
   };
   const gateway = new RemoteGateway({
     getTarget: () => ({ port: upstreamPort }),
@@ -247,35 +285,38 @@ test('switching from relay to lan keeps an in-flight handshake', async () => {
       Object.assign(stored, patch);
       return stored;
     },
+    relayOptions: { allowInsecureHttp: true },
   });
   await gateway.start({ port: 0, token, target: { port: upstreamPort } });
   stored.remotePort = gateway.port;
   const connecting = gateway.sync();
   await waitFor(() => Boolean(gateway.relay && gateway.relay.socket));
-  const socket = gateway.relay.socket;
   stored.remoteMode = 'lan';
   await gateway.sync();
   assert.equal(gateway.snapshot().mode, 'lan');
   assert.equal(gateway.snapshot().error, '');
   assert.equal(gateway.snapshot().relayError, '');
-  assert.equal(gateway.relay.socket, socket);
+  assert.equal(gateway.relay.socket, null);
+  assert.equal(gateway.relay.shouldRun, false);
   await gateway.stop();
   await connecting.catch(() => {});
   await close(blackhole);
   await close(upstream);
 });
 
-test('enabled remote keeps the relay up in lan mode and drops it when turned off', async () => {
+test('LAN mode never connects relay and relay mode disconnects when switched back', async () => {
   const upstream = http.createServer((_req, res) => res.end('ok'));
   const upstreamPort = await listen(upstream);
   const token = generateToken();
-  const relay = new RelayServer();
+  const hostToken = generateToken();
+  const relay = insecureRelay(hostToken);
   const relayPort = await relay.listen(0, '127.0.0.1');
   const stored = {
     remoteEnabled: true,
     remoteToken: token,
     remoteMode: 'lan',
     remoteRelayUrl: `http://127.0.0.1:${relayPort}`,
+    remoteRelayToken: hostToken,
   };
   const gateway = new RemoteGateway({
     getTarget: () => ({ port: upstreamPort }),
@@ -284,16 +325,20 @@ test('enabled remote keeps the relay up in lan mode and drops it when turned off
       Object.assign(stored, patch);
       return stored;
     },
+    relayOptions: { allowInsecureHttp: true },
   });
   await gateway.start({ port: 0, token, target: { port: upstreamPort } });
   stored.remotePort = gateway.port;
   await gateway.sync();
-  assert.equal(gateway.relay.connected, true);
+  assert.equal(gateway.relay.connected, false);
   assert.equal(gateway.snapshot().listening, true);
   stored.remoteMode = 'relay';
   await gateway.sync();
   assert.equal(gateway.relay.connected, true);
   assert.equal(gateway.snapshot().listening, true);
+  stored.remoteMode = 'lan';
+  await gateway.sync();
+  assert.equal(gateway.relay.connected, false);
   stored.remoteEnabled = false;
   await gateway.sync();
   assert.equal(gateway.relay.connected, false);
@@ -306,11 +351,12 @@ test('enabled remote keeps the relay up in lan mode and drops it when turned off
 test('relay client sync keeps an in-flight socket to the same origin', async () => {
   const blackhole = net.createServer();
   const relayPort = await listen(blackhole);
-  const client = new RelayClient({ handshakeTimeoutMs: 5000 });
-  const connecting = client.sync(`http://127.0.0.1:${relayPort}`);
+  const hostToken = generateToken();
+  const client = insecureRelayClient(hostToken, { handshakeTimeoutMs: 5000 });
+  const connecting = client.sync(`http://127.0.0.1:${relayPort}`, hostToken);
   await waitFor(() => Boolean(client.socket));
   const socket = client.socket;
-  await client.sync(`http://127.0.0.1:${relayPort}`);
+  await client.sync(`http://127.0.0.1:${relayPort}`, hostToken);
   assert.equal(client.socket, socket);
   await client.disconnect();
   await connecting.catch(() => {});
@@ -324,6 +370,7 @@ test('relay client reconnects after the host socket drops', async () => {
   });
   const upstreamPort = await listen(upstream);
   const token = generateToken();
+  const hostToken = generateToken();
   const gateway = new RemoteGateway();
   await gateway.start({
     port: 0,
@@ -333,28 +380,30 @@ test('relay client reconnects after the host socket drops', async () => {
   const gatewayPort = gateway.port || gateway.server.address().port;
   gateway.port = gatewayPort;
 
-  const relay = new RelayServer();
+  const relay = insecureRelay(hostToken);
   const relayPort = await relay.listen(0, '127.0.0.1');
-  const client = new RelayClient({
+  const client = insecureRelayClient(hostToken, {
     getLocal: () => ({ port: gatewayPort }),
     retryMs: 50,
   });
-  await client.connect(`http://127.0.0.1:${relayPort}`);
-  assert.equal(client.connected, true);
+  try {
+    await client.connect(`http://127.0.0.1:${relayPort}`, hostToken);
+    assert.equal(client.connected, true);
 
-  client.socket.destroy();
-  await waitFor(() => client.connected);
+    client.socket.destroy();
+    await waitFor(() => client.connected);
 
-  const allowed = await request(relayPort, '/api/ping', {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  assert.equal(allowed.status, 200);
-  assert.equal(allowed.body, 'via-relay');
-
-  await client.disconnect();
-  await relay.close();
-  await gateway.stop();
-  await close(upstream);
+    const allowed = await request(relayPort, '/api/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.body, 'via-relay');
+  } finally {
+    await client.disconnect();
+    await relay.close();
+    await gateway.stop();
+    await close(upstream);
+  }
 });
 
 function memoryConfig(initial = {}) {

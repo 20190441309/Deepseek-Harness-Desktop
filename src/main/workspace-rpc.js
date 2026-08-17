@@ -1,8 +1,16 @@
 const { randomUUID } = require('crypto');
 
-async function rpc(baseUrl, method, payload) {
+function rpcEndpoint(baseUrl, method) {
+  const endpoint = new URL(baseUrl);
+  endpoint.pathname = `/api/${encodeURIComponent(method)}`;
+  endpoint.search = '';
+  endpoint.hash = '';
+  return endpoint.toString();
+}
+
+async function rpc(baseUrl, method, payload, fetchImpl = fetch) {
   const rpcId = randomUUID();
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/`, {
+  const response = await fetchImpl(rpcEndpoint(baseUrl, method), {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -24,15 +32,18 @@ async function rpc(baseUrl, method, payload) {
   if (!response.ok) {
     throw new Error(`RPC ${method} HTTP ${response.status}: ${body.slice(0, 240)}`);
   }
-  if (parsed?.result?.ok === false) {
+  if (parsed?.type !== 'server-response' || parsed.rpcId !== rpcId || typeof parsed?.result?.ok !== 'boolean') {
+    throw new Error(`RPC ${method} 返回无效响应`);
+  }
+  if (parsed.result.ok === false) {
     const error = parsed.result.error;
     throw new Error(error?.message || `${method} 失败`);
   }
-  return parsed?.result?.value;
+  return parsed.result.value;
 }
 
-async function ensureWorkspace(baseUrl, workspacePath) {
-  return rpc(baseUrl, 'workspace.create', { path: workspacePath });
+async function ensureWorkspace(baseUrl, workspacePath, fetchImpl = fetch) {
+  return rpc(baseUrl, 'workspace.create', { path: workspacePath }, fetchImpl);
 }
 
 module.exports = {
