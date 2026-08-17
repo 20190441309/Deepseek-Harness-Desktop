@@ -21,6 +21,19 @@ function git(cwd, args) {
   return result.stdout;
 }
 
+/**
+ * A "not a repository" fixture must be hermetic: plain discovery from the
+ * temp dir would also find an ancestor repo (e.g. a stray ~/.git on the dev
+ * machine). An invalid `.git` file stops that discovery with the same
+ * "not a repository" failure these tests exercise.
+ * @returns {string} the isolated non-repo directory.
+ */
+function makeNonRepoDir() {
+  const dir = makeTempDir();
+  fs.writeFileSync(path.join(dir, '.git'), 'not a repository\n');
+  return dir;
+}
+
 /** A heads ref whose commit object is corrupt, so `rev-list <ref>..HEAD` fails. */
 function writeUnreadableMergeBase(cwd, refName) {
   const orig = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
@@ -38,7 +51,7 @@ function writeUnreadableMergeBase(cwd, refName) {
 }
 
 test('gitStatus reports isRepo false when the directory is not a git repository', async () => {
-  const cwd = makeTempDir();
+  const cwd = makeNonRepoDir();
   try {
     const status = await gitStatus(cwd);
     assert.equal(status.isRepo, false);
@@ -85,7 +98,7 @@ test('gitStatus reports hasWorkingTreeChanges after init and an uncommitted file
 });
 
 test('gitDiff returns null when the directory is not a git repository', async () => {
-  const cwd = makeTempDir();
+  const cwd = makeNonRepoDir();
   try {
     assert.equal(await gitDiff(cwd), null);
   } finally {
