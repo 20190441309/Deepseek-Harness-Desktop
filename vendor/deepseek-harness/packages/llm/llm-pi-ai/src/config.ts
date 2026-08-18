@@ -93,8 +93,9 @@ export interface PiAiProviderProfile {
   /**
    * Reasoning-dispatch switches for every `openai-completions` model on this
    * route; each model's own `compat` overrides per field. What neither sets
-   * keeps the installed catalog entry's value, then pi-ai's baseURL-derived
-   * detection.
+   * keeps the installed catalog entry's value, then `false` for
+   * `supportsDeveloperRole` on a Volcengine ARK host, then pi-ai's
+   * baseURL-derived detection.
    */
   compat?: PiAiCompatProfile
   /**
@@ -188,6 +189,7 @@ const thinkingBudgets = z.object({
 const compatProfile: z<PiAiCompatProfile> = z.object({
   thinkingFormat: z.union(SUPPORTED_THINKING_FORMATS),
   supportsReasoningEffort: z.boolean(),
+  supportsDeveloperRole: z.boolean(),
 })
 
 /**

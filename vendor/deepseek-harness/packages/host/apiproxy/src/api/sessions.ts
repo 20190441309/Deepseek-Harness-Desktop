@@ -124,6 +124,11 @@ export interface ModelCatalogModel {
   name: string
   /** Optional provider-supplied description. */
   description?: string
+  /**
+   * Request modalities the adapter advertised for this listing (`text`, `image`).
+   * Omitted when the listing did not declare any.
+   */
+  inputModalities?: readonly ('text' | 'image')[]
   /** Exact-route reasoning metadata when the adapter exposes it. */
   reasoning?: ModelReasoning
 }

@@ -504,4 +504,25 @@ describe('Web session model selection', () => {
       .not.toContain('deleted-gateway/deleted-model')
     await ctx.fiber.dispose()
   })
+
+  it('advertises listed input modalities so a vision picker can filter image-capable models', async () => {
+    const { ctx } = await harness()
+    ctx.llm.registerAdapter(['codingplan'], new CatalogAdapter('Codingplan', [
+      { provider: 'codingplan', id: 'doubao-seed', name: 'Doubao Seed', inputModalities: ['text', 'image'] },
+      { provider: 'codingplan', id: 'glm-5.3', name: 'GLM 5.3', inputModalities: ['text'] },
+      { provider: 'codingplan', id: 'bare', name: 'Bare' },
+    ]))
+    const api = createApiProxy(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+
+    const catalog = expectValue(await api.llm.models(request({})))
+    expect(catalog.groups.find(group => group.id === 'codingplan')?.models).toEqual([
+      { id: 'doubao-seed', name: 'Doubao Seed', inputModalities: ['text', 'image'] },
+      { id: 'glm-5.3', name: 'GLM 5.3', inputModalities: ['text'] },
+      { id: 'bare', name: 'Bare' },
+    ])
+    await ctx.fiber.dispose()
+  })
 })

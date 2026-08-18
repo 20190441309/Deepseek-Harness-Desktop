@@ -779,6 +779,65 @@ describe('reasoning-dispatch compat switches', () => {
     expect(models.get('dialect-odd')?.compat).toEqual({ thinkingFormat: 'openai', supportsReasoningEffort: false })
   })
 
+  it.each([
+    'https://ark.cn-beijing.volces.com/api/coding/v3',
+    'https://volces.com/v1',
+  ])('does not claim the OpenAI developer role on %s', (baseURL) => {
+    const models = modelsOf({
+      codingplan: {
+        api: 'openai-completions',
+        baseURL,
+        models: [{ id: 'glm-5.3', reasoningEfforts: { off: null, high: 'high' } }],
+      },
+    }, 'codingplan')
+
+    expect((models.get('glm-5.3')?.compat as OpenAICompletionsCompat | undefined)?.supportsDeveloperRole).toBe(false)
+  })
+
+  it('honours an explicit developer-role switch on an ARK route', () => {
+    const models = modelsOf({
+      codingplan: {
+        api: 'openai-completions',
+        baseURL: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+        models: [{
+          id: 'glm-5.3',
+          reasoningEfforts: { off: null, high: 'high' },
+          compat: { supportsDeveloperRole: true },
+        }],
+      },
+    }, 'codingplan')
+
+    expect((models.get('glm-5.3')?.compat as OpenAICompletionsCompat).supportsDeveloperRole).toBe(true)
+  })
+
+  it('stores an explicit developer-role refusal on a non-ARK completions route', () => {
+    const models = modelsOf({
+      'acme-gateway': {
+        api: 'openai-completions',
+        baseURL: 'https://acme.test/v1',
+        models: [{
+          id: 'acme-think',
+          reasoningEfforts: { off: null, high: 'high' },
+          compat: { supportsDeveloperRole: false },
+        }],
+      },
+    }, 'acme-gateway')
+
+    expect((models.get('acme-think')?.compat as OpenAICompletionsCompat).supportsDeveloperRole).toBe(false)
+  })
+
+  it('does not treat an unparseable baseURL as an ARK host', () => {
+    const models = modelsOf({
+      'acme-gateway': {
+        api: 'openai-completions',
+        baseURL: '::::',
+        models: [{ id: 'bare' }],
+      },
+    }, 'acme-gateway')
+
+    expect((models.get('bare')?.compat as OpenAICompletionsCompat | undefined)?.supportsDeveloperRole).toBeUndefined()
+  })
+
   it('merges the switches over the catalog entry’s own compat instead of replacing it', () => {
     const [catalogModel] = getBuiltinModels('deepseek')
     if (catalogModel === undefined) throw new Error('the installed catalog ships no deepseek model')
@@ -813,17 +872,23 @@ describe('reasoning-dispatch compat switches', () => {
     expect(models.get(responses.id)?.compat).toEqual(responses.compat)
   })
 
-  it('rejects a model-level switch on a protocol that has no such field', () => {
+  it.each([
+    { thinkingFormat: 'openai' as const },
+    { supportsDeveloperRole: false },
+  ])('rejects a model-level switch %o on a protocol that has no such field', (compat) => {
     expect(() => resolveProfiles({
       anthropic: {
-        models: [{ id: 'claude-sonnet-4-5', compat: { thinkingFormat: 'openai' } }],
+        models: [{ id: 'claude-sonnet-4-5', compat }],
       },
     })).toThrow(/exist only on openai-completions/)
   })
 
-  it('rejects route switches no model on the route can take', () => {
+  it.each([
+    { thinkingFormat: 'openai' as const },
+    { supportsDeveloperRole: false },
+  ])('rejects route switch %o when no model on the route can take it', (compat) => {
     expect(() => resolveProfiles({
-      anthropic: { compat: { thinkingFormat: 'openai' } },
+      anthropic: { compat },
     })).toThrow(/no model on the route speaks openai-completions/)
   })
 })

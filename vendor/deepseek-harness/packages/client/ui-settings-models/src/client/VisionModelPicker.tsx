@@ -1,6 +1,7 @@
 /**
- * Vision-model picker: one dropdown over every configured model, persisting
- * the designated vision route into the `vision-fallback` settings namespace.
+ * Vision-model picker: one dropdown over catalog models that advertise image
+ * input, persisting the designated vision route into the `vision-fallback`
+ * settings namespace.
  * The host-side vision-fallback plugin reads that namespace; when the main
  * model cannot read images, it calls the designated model to describe them.
  * The control renders only when the host exposes the namespace (the plugin
@@ -45,14 +46,16 @@ function routeValue(provider: string, model: string): string {
   return `${provider}\n${model}`
 }
 
-/** Flatten catalog groups into selectable routes in catalog order. */
+/** Flatten catalog groups into selectable image-capable routes in catalog order. */
 function flattenGroups(groups: readonly ModelProviderGroup[]): RouteOption[] {
-  return groups.flatMap(group => group.models.map(model => ({
-    provider: group.id,
-    providerName: group.name,
-    model: model.id,
-    modelName: model.name,
-  })))
+  return groups.flatMap(group => group.models
+    .filter(model => model.inputModalities?.includes('image') === true)
+    .map(model => ({
+      provider: group.id,
+      providerName: group.name,
+      model: model.id,
+      modelName: model.name,
+    })))
 }
 
 /** Read one string field from the namespace's resolved value. */
@@ -101,9 +104,12 @@ export function VisionModelPicker(props: VisionModelPickerProps): ReactNode {
     ? routeValue(currentProvider, currentModel)
     : ''
   const known = options ?? []
-  // A stored route missing from the catalog (provider removed, model unlisted)
-  // stays visible and selected instead of silently snapping to "off".
-  const stale = current !== '' && !known.some(option => routeValue(option.provider, option.model) === current)
+  // A stored route missing from the image-capable catalog (text-only, removed
+  // provider, model unlisted) stays visible and selected instead of snapping to "off".
+  const staleOption = currentProvider !== undefined && currentModel !== undefined
+    && !known.some(option => routeValue(option.provider, option.model) === current)
+    ? { value: current, label: `${currentProvider} / ${currentModel}` }
+    : undefined
 
   const save = (value: string): void => {
     setSaveFailure(undefined)
@@ -141,9 +147,9 @@ export function VisionModelPicker(props: VisionModelPickerProps): ReactNode {
           onChange={(event) => { save(event.target.value) }}
         >
           <option value="">{t('visionModelOff')}</option>
-          {stale
-            ? <option value={current}>{`${currentProvider ?? ''} / ${currentModel ?? ''}`}</option>
-            : null}
+          {staleOption === undefined
+            ? null
+            : <option value={staleOption.value}>{staleOption.label}</option>}
           {known.map(option => (
             <option
               key={routeValue(option.provider, option.model)}

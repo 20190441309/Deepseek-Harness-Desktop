@@ -32,4 +32,4 @@ Substituted description text becomes part of the assembled prefix; a new descrip
 
 - Descriptions are substituted whole; there is no per-image size cap beyond `maxOutputTokens`.
 - A failed vision call fails the main request loudly instead of degrading to a placeholder.
-- The settings UI offers every configured model as a candidate; it cannot yet filter to vision-capable routes because the browser model catalog does not carry `inputModalities`.
+- The Models page picker lists only catalog rows whose `inputModalities` include `'image'`. A stored designation missing from that list stays selected. Hand-written `settings.yaml` can still name a text-only route, and `configured()` stays true regardless of that route's advertised modalities.

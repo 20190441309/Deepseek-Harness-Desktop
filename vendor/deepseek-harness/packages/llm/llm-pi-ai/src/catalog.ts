@@ -184,18 +184,26 @@ export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | n
 
 /**
  * Reasoning-dispatch compatibility switches, set on the route (its models'
- * default) or per model (winning over the route). Only the switches pi-ai's
- * reasoning dispatch reads are offered; the rest of pi-ai's compat surface
- * keeps its baseURL-derived auto-detection. pi-ai types both fields only on
- * `OpenAICompletionsCompat` — the other wire protocols define their reasoning
- * fields in the protocol itself — so resolution rejects a model-level switch
- * anywhere else, while a route-level default skips past models it cannot fit.
+ * default) or per model (winning over the route). The switches pi-ai's
+ * completions dispatch reads are offered; the rest of pi-ai's compat
+ * surface keeps its baseURL-derived auto-detection. pi-ai types these fields
+ * only on `OpenAICompletionsCompat` — the other wire protocols define their
+ * reasoning fields in the protocol itself — so resolution rejects a
+ * model-level switch anywhere else, while a route-level default skips past
+ * models it cannot fit.
  */
 export interface PiAiCompatProfile {
   /** Reasoning parameter format the endpoint expects; absent keeps the catalog entry's, then pi-ai's baseURL-derived guess. */
   thinkingFormat?: PiAiThinkingFormat
   /** Whether the endpoint accepts `reasoning_effort`; absent keeps the catalog entry's, then pi-ai's baseURL-derived guess. */
   supportsReasoningEffort?: boolean
+  /**
+   * Whether reasoning system prompts may use `role: "developer"`. Absent keeps
+   * the catalog entry's value, then `false` on a Volcengine ARK host
+   * (`*.volces.com`), then pi-ai's baseURL-derived guess. ARK accepts only
+   * `system` / `assistant` / `user` / `tool`.
+   */
+  supportsDeveloperRole?: boolean
 }
 
 /** One configured model entry: an id plus the catalog fields it overrides. */
@@ -369,20 +377,39 @@ function resolveModelReasoning(
 }
 
 /**
+ * Whether `baseUrl` is a Volcengine ARK OpenAI-compatible host. pi-ai treats
+ * unrecognized hosts as standard OpenAI and sends reasoning system prompts as
+ * `developer`, which ARK rejects.
+ * @param baseUrl - the model's resolved endpoint.
+ * @returns whether this host is ARK.
+ */
+function volcengineArkEndpoint(baseUrl: string): boolean {
+  let host: string
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase()
+  } catch {
+    // `baseURL` is a free-form string; a value `URL` cannot parse is not ARK.
+    return false
+  }
+  return host === 'volces.com' || host.endsWith('.volces.com')
+}
+
+/**
  * Resolve one model's compat block from the profile's reasoning switches.
  *
  * A model switch wins over the route switch; whatever neither sets keeps the
- * installed entry's value, and a field no layer decides falls through to
- * pi-ai's baseURL-derived detection. Only an `openai-completions` model takes
- * the switches at all: a model-level switch on any other protocol fails
- * resolution, while a route-level default skips past such models — the same
- * posture as the route-level `reasoning` default, which also must not fail
- * models it does not fit.
+ * installed entry's value, then `false` on a Volcengine ARK host, and a field
+ * no layer decides falls through to pi-ai's baseURL-derived detection. Only an
+ * `openai-completions` model takes the switches at all: a model-level switch
+ * on any other protocol fails resolution, while a route-level default skips
+ * past such models — the same posture as the route-level `reasoning` default,
+ * which also must not fail models it does not fit.
  * @param provider - provider route key, for diagnostics.
  * @param entry - the configured model entry.
  * @param route - the route-level switches, when any.
  * @param base - the installed catalog entry of the same id, when one exists.
  * @param api - the model's resolved wire protocol.
+ * @param baseUrl - the model's resolved endpoint, for ARK-host detection.
  * @returns a `compat` field to spread into the model, or nothing.
  */
 function resolveModelCompat(
@@ -391,14 +418,22 @@ function resolveModelCompat(
   route: PiAiCompatProfile | undefined,
   base: Model<Api> | undefined,
   api: string,
+  baseUrl: string,
 ): { compat: OpenAICompletionsCompat } | Record<string, never> {
   const thinkingFormat = entry.compat?.thinkingFormat ?? route?.thinkingFormat
   const supportsReasoningEffort = entry.compat?.supportsReasoningEffort ?? route?.supportsReasoningEffort
-  if (thinkingFormat === undefined && supportsReasoningEffort === undefined) return {}
+  const supportsDeveloperRole = entry.compat?.supportsDeveloperRole ?? route?.supportsDeveloperRole
+    ?? (volcengineArkEndpoint(baseUrl) ? false : undefined)
+  if (thinkingFormat === undefined && supportsReasoningEffort === undefined && supportsDeveloperRole === undefined) {
+    return {}
+  }
+  const modelSwitch = entry.compat?.thinkingFormat !== undefined
+    || entry.compat?.supportsReasoningEffort !== undefined
+    || entry.compat?.supportsDeveloperRole !== undefined
   if (api !== 'openai-completions') {
-    if (entry.compat?.thinkingFormat !== undefined || entry.compat?.supportsReasoningEffort !== undefined) {
+    if (modelSwitch) {
       invalid(provider, `model "${entry.id}" sets compat reasoning switches, but its api is "${api}";`
-        + ' thinkingFormat and supportsReasoningEffort exist only on openai-completions')
+        + ' thinkingFormat, supportsReasoningEffort, and supportsDeveloperRole exist only on openai-completions')
     }
     return {}
   }
@@ -414,6 +449,7 @@ function resolveModelCompat(
       ...inherited,
       ...thinkingFormat === undefined ? {} : { thinkingFormat },
       ...supportsReasoningEffort === undefined ? {} : { supportsReasoningEffort },
+      ...supportsDeveloperRole === undefined ? {} : { supportsDeveloperRole },
     },
   }
 }
@@ -487,6 +523,7 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
   const routeApi = sharedCatalogApi(defaults)
   const routeCompatDefined = request.compat?.thinkingFormat !== undefined
     || request.compat?.supportsReasoningEffort !== undefined
+    || request.compat?.supportsDeveloperRole !== undefined
   const seen = new Set<string>()
   const configuredMaxTokens = new Map<string, number>()
   const models = entries.map((entry) => {
@@ -535,12 +572,12 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
       contextWindow,
       maxTokens,
       ...resolveModelReasoning(provider, entry, base),
-      ...resolveModelCompat(provider, entry, request.compat, base, api),
+      ...resolveModelCompat(provider, entry, request.compat, base, api, baseUrl),
     }
   })
   if (routeCompatDefined && !models.some(model => model.api === 'openai-completions')) {
     invalid(provider, 'sets compat reasoning switches, but no model on the route speaks openai-completions;'
-      + ' thinkingFormat and supportsReasoningEffort exist only on that protocol')
+      + ' thinkingFormat, supportsReasoningEffort, and supportsDeveloperRole exist only on that protocol')
   }
   return { models, configuredMaxTokens }
 }
