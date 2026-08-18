@@ -1,4 +1,4 @@
-const { run, runGit, asCwd, parseStatusHeader, GH_TIMEOUT_MS } = require('./git-exec');
+const { run, runGit, asCwd, GH_TIMEOUT_MS } = require('./git-exec');
 const {
   normalizeGitRemoteUrl,
   selectProviderContext,
@@ -197,9 +197,10 @@ function parseGhPullRequestRow(parsed) {
 /**
  * Probe open PRs across head selectors. Distinguishes lookup failure from empty.
  * @param {string} cwd
+ * @param {string} [refName]
  * @returns {Promise<{ pr: object | null, failed: boolean, headContext?: object }>}
  */
-async function lookupOpenPullRequest(cwd) {
+async function lookupOpenPullRequest(cwd, refName) {
   if (lookupOpenPullRequestOverride) return lookupOpenPullRequestOverride(cwd);
   const root = asCwd(cwd);
   if (!root) return { pr: null, failed: true };
@@ -208,10 +209,9 @@ async function lookupOpenPullRequest(cwd) {
   if (selected?.provider?.kind !== 'github') {
     return { pr: null, failed: false };
   }
-  const header = await runGit(root, ['status', '-sb']);
-  const parsedHeader = parseStatusHeader((header.stdout || '').split(/\r?\n/)[0] || '## HEAD (no branch)');
-  if (!parsedHeader.refName) return { pr: null, failed: false };
-  const headContext = await resolveBranchHeadContext(root, parsedHeader.refName);
+  const headRef = typeof refName === 'string' && refName.trim() ? refName.trim() : '';
+  if (!headRef) return { pr: null, failed: false };
+  const headContext = await resolveBranchHeadContext(root, headRef);
   const jsonFields = 'number,title,url,baseRefName,headRefName,state,isCrossRepository,headRepository,headRepositoryOwner';
   let sawFailure = false;
   for (const headSelector of headContext.headSelectors) {
@@ -262,8 +262,8 @@ function setLookupOpenPullRequest(resolver) {
   lookupOpenPullRequestOverride = typeof resolver === 'function' ? resolver : null;
 }
 
-async function readPullRequest(cwd) {
-  const looked = await lookupOpenPullRequest(cwd);
+async function readPullRequest(cwd, refName) {
+  const looked = await lookupOpenPullRequest(cwd, refName);
   if (looked.failed) return null;
   return looked.pr;
 }

@@ -70,9 +70,7 @@ describe('ui-git apply', () => {
     await expect(injected.gitCommit('/tmp', 'msg')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
     })
-    await expect(injected.gitChangedFiles('/tmp')).resolves.toEqual({
-      ok: false, message: 'Git status is unavailable.', files: [],
-    })
+    expect('gitChangedFiles' in injected).toBe(false)
     await expect(injected.gitPush('/tmp')).resolves.toEqual({
       ok: false, message: 'Git status is unavailable.',
     })

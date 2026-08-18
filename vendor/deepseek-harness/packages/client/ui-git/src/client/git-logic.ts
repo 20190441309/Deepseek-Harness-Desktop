@@ -25,8 +25,14 @@ export interface VcsStatus {
   aheadCount: number
   behindCount: number
   aheadOfDefaultCount?: number
-  /** True when no-upstream ahead vs the default/base ref could not be counted. */
+  /** True when no-upstream ahead vs the default/base ref could not be counted. Titlebar Push treats this as pushable; Create PR still uses aheadCount only. */
   aheadUnreliable?: boolean
+  /** Changed paths with numstat; 0/0 when porcelain has no numstat. */
+  workingTree: {
+    files: Array<{ path: string; insertions: number; deletions: number }>
+    insertions: number
+    deletions: number
+  }
   pr: VcsPr | null
   sourceControlProvider?: SourceControlProvider
   isDefaultRef?: boolean
@@ -105,19 +111,6 @@ export const DEFAULT_CHANGE_REQUEST_TERMINOLOGY: ChangeRequestTerminology = {
 }
 
 /**
- * Desktop change requests go through `gh` on GitHub remotes only.
- * @param provider - discovered provider from status.
- * @returns true when Create PR / commit_push_pr is offered.
- */
-export function supportsGitHubChangeRequests(
-  provider: SourceControlProvider | null | undefined,
-): boolean {
-  // Absent, null, and non-GitHub kinds stay fail-closed. gitStatus omits the
-  // field when get-url fails or the remote is not GitHub.
-  return provider?.kind === 'github'
-}
-
-/**
  * Resolve change-request wording for a provider.
  * @param provider - discovered provider, or absent for the GitHub default.
  * @returns short and singular labels.
@@ -164,11 +157,12 @@ export function buildMenuItems(
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream
   const canCommit = !isBusy && hasChanges
+  const canPushAhead = gitStatus.aheadCount > 0 || Boolean(gitStatus.aheadUnreliable)
   const canPush =
     !isBusy
     && hasBranch
     && !isBehind
-    && (gitStatus.aheadCount > 0 || Boolean(gitStatus.aheadUnreliable))
+    && canPushAhead
     && (gitStatus.hasUpstream || canPushWithoutUpstream)
   const canCreatePr =
     !isBusy
@@ -178,7 +172,6 @@ export function buildMenuItems(
     && hasDefaultBranchDelta
     && !isBehind
     && (gitStatus.hasUpstream || canPushWithoutUpstream)
-    && supportsGitHubChangeRequests(gitStatus.sourceControlProvider)
   const canOpenPr = !isBusy && hasOpenPr
 
   const commitItem: GitActionMenuItem = {
@@ -194,7 +187,7 @@ export function buildMenuItems(
     return [commitItem]
   }
 
-  const items: GitActionMenuItem[] = [
+  return [
     commitItem,
     {
       id: 'push',
@@ -204,27 +197,23 @@ export function buildMenuItems(
       kind: 'open_dialog',
       dialogAction: 'push',
     },
+    hasOpenPr
+      ? {
+          id: 'pr',
+          label: `View ${terminology.shortLabel}`,
+          disabled: !canOpenPr,
+          icon: 'pr',
+          kind: 'open_pr',
+        }
+      : {
+          id: 'pr',
+          label: `Create ${terminology.shortLabel}`,
+          disabled: !canCreatePr,
+          icon: 'pr',
+          kind: 'open_dialog',
+          dialogAction: 'create_pr',
+        },
   ]
-  if (hasOpenPr) {
-    items.push({
-      id: 'pr',
-      label: `View ${terminology.shortLabel}`,
-      disabled: !canOpenPr,
-      icon: 'pr',
-      kind: 'open_pr',
-    })
-  } else if (supportsGitHubChangeRequests(gitStatus.sourceControlProvider)) {
-    // Omit Create entirely for non-GitHub remotes (desktop is github/`gh`-only).
-    items.push({
-      id: 'pr',
-      label: `Create ${terminology.shortLabel}`,
-      disabled: !canCreatePr,
-      icon: 'pr',
-      kind: 'open_dialog',
-      dialogAction: 'create_pr',
-    })
-  }
-  return items
 }
 
 /**
@@ -246,7 +235,7 @@ export function getMenuActionDisabledReason(input: {
   const hasBranch = gitStatus.refName !== null
   const hasChanges = gitStatus.hasWorkingTreeChanges
   const hasOpenPr = gitStatus.pr?.state === 'open'
-  const isAhead = gitStatus.aheadCount > 0 || Boolean(gitStatus.aheadUnreliable)
+  const isAhead = gitStatus.aheadCount > 0
   const isBehind = gitStatus.behindCount > 0
   const terminology = resolveChangeRequestTerminology(gitStatus)
 
@@ -260,7 +249,7 @@ export function getMenuActionDisabledReason(input: {
     if (hasChanges) return 'Commit or stash local changes before pushing.'
     if (isBehind) return 'Branch is behind upstream. Pull/rebase before pushing.'
     if (!gitStatus.hasUpstream && !hasPrimaryRemote) return 'Add an "origin" remote before pushing.'
-    if (!isAhead) return 'No local commits to push.'
+    if (!isAhead && !gitStatus.aheadUnreliable) return 'No local commits to push.'
     return 'Push is currently unavailable.'
   }
 
@@ -270,7 +259,7 @@ export function getMenuActionDisabledReason(input: {
   if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
     return `Add an "origin" remote before creating a ${terminology.singular}.`
   }
-  if (!isAhead && (gitStatus.aheadOfDefaultCount ?? 0) === 0) {
+  if (!isAhead) {
     return `No local commits to include in a ${terminology.singular}.`
   }
   if (isBehind) return `Branch is behind upstream. Pull/rebase before creating a ${terminology.singular}.`
@@ -307,15 +296,12 @@ export function resolveQuickAction(
   const hasBranch = gitStatus.refName !== null
   const hasChanges = gitStatus.hasWorkingTreeChanges
   const hasOpenPr = gitStatus.pr?.state === 'open'
-  const canCreateCr = supportsGitHubChangeRequests(gitStatus.sourceControlProvider)
   const isAhead = gitStatus.aheadCount > 0
-  const aheadUnreliable = Boolean(gitStatus.aheadUnreliable)
+  const canPushAhead = isAhead || Boolean(gitStatus.aheadUnreliable)
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0
   const isBehind = gitStatus.behindCount > 0
   const isDiverged = isAhead && isBehind
   const terminology = resolveChangeRequestTerminology(gitStatus)
-  // Captured before the !hasUpstream early return below, so the type stays
-  // boolean instead of narrowing to literal true by line 330.
   const canViewPr = hasOpenPr && gitStatus.hasUpstream
 
   if (!hasBranch) {
@@ -331,7 +317,7 @@ export function resolveQuickAction(
     if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
       return { label: 'Commit', disabled: false, kind: 'run_action', action: 'commit' }
     }
-    if (hasOpenPr || isDefaultRef || !canCreateCr) {
+    if (hasOpenPr || isDefaultRef) {
       return { label: 'Commit & push', disabled: false, kind: 'run_action', action: 'commit_push' }
     }
     return {
@@ -353,7 +339,7 @@ export function resolveQuickAction(
         kind: 'open_publish',
       }
     }
-    if (!isAhead && !aheadUnreliable) {
+    if (!canPushAhead) {
       if (hasOpenPr) {
         return { label: `View ${terminology.shortLabel}`, disabled: false, kind: 'open_pr' }
       }
@@ -364,7 +350,10 @@ export function resolveQuickAction(
         hint: 'No local commits to push.',
       }
     }
-    if (hasOpenPr || isDefaultRef || !canCreateCr || (aheadUnreliable && !isAhead)) {
+    if (gitStatus.aheadUnreliable && !isAhead) {
+      return { label: 'Push', disabled: false, kind: 'run_action', action: 'push' }
+    }
+    if (hasOpenPr || isDefaultRef) {
       return {
         label: 'Push',
         disabled: false,
@@ -397,17 +386,11 @@ export function resolveQuickAction(
     }
   }
 
-  if (!isAhead && aheadUnreliable) {
-    return {
-      label: 'Push',
-      disabled: false,
-      kind: 'run_action',
-      action: isDefaultRef ? 'commit_push' : 'push',
+  if (canPushAhead) {
+    if (gitStatus.aheadUnreliable && !isAhead) {
+      return { label: 'Push', disabled: false, kind: 'run_action', action: 'push' }
     }
-  }
-
-  if (isAhead) {
-    if (hasOpenPr || isDefaultRef || !canCreateCr) {
+    if (hasOpenPr || isDefaultRef) {
       return {
         label: 'Push',
         disabled: false,
@@ -427,7 +410,7 @@ export function resolveQuickAction(
     return { label: `View ${terminology.shortLabel}`, disabled: false, kind: 'open_pr' }
   }
 
-  if (hasDefaultBranchDelta && !isDefaultRef && canCreateCr) {
+  if (hasDefaultBranchDelta && !isDefaultRef) {
     return {
       label: `Create ${terminology.shortLabel}`,
       disabled: false,
@@ -488,7 +471,7 @@ export function buildGitActionProgressStages(input: {
   const shouldIncludeCommitStages = input.action === 'commit' || input.hasWorkingTreeChanges
   const commitStages = !shouldIncludeCommitStages
     ? []
-    : input.hasCustomCommitMessage || input.featureBranch
+    : input.hasCustomCommitMessage
       ? ['Committing...']
       : ['Generating commit message...', 'Committing...']
   if (input.action === 'commit') return [...branchStages, ...commitStages]
@@ -665,14 +648,12 @@ export function summarizeGitActionResult(
  * @param result - commit/push/PR outcomes.
  * @param terms - provider wording.
  * @param isDefaultRef - whether the current ref is the default branch.
- * @param canCreateChangeRequest - whether this provider exposes create-PR.
  * @returns the toast action, or none.
  */
 export function resolveCompletionCta(
   result: StackedActionResult,
   terms: ChangeRequestTerminology,
   isDefaultRef: boolean,
-  canCreateChangeRequest = true,
 ): GitCompletionCta {
   if (result.action === 'commit' && result.commit?.status === 'created') {
     return { kind: 'run_action', label: 'Push', action: 'push' }
@@ -691,7 +672,6 @@ export function resolveCompletionCta(
     (result.action === 'push' || result.action === 'commit_push')
     && result.push?.status === 'pushed'
     && !isDefaultRef
-    && canCreateChangeRequest
   ) {
     return { kind: 'run_action', label: `Create ${terms.shortLabel}`, action: 'create_pr' }
   }
@@ -713,21 +693,20 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   terminology?: ChangeRequestTerminology
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName
-  const continueSuffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`
-  const pushOnlySuffix = ` on "${branchLabel}".`
+  const suffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`
   const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY
 
   if (input.action === 'push' || input.action === 'commit_push') {
     if (input.includesCommit) {
       return {
         title: 'Commit & push to default ref?',
-        description: `This action will commit and push changes${continueSuffix}`,
+        description: `This action will commit and push changes${suffix}`,
         continueLabel: `Commit & push to ${branchLabel}`,
       }
     }
     return {
       title: 'Push to default ref?',
-      description: `This action will push local commits${pushOnlySuffix}`,
+      description: `This action will push local commits${suffix}`,
       continueLabel: `Push to ${branchLabel}`,
     }
   }
@@ -735,13 +714,13 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   if (input.includesCommit) {
     return {
       title: `Commit, push & create ${terminology.shortLabel} from default ref?`,
-      description: `This action will commit, push, and create a ${terminology.singular}${continueSuffix}`,
+      description: `This action will commit, push, and create a ${terminology.singular}${suffix}`,
       continueLabel: `Commit, push & create ${terminology.shortLabel}`,
     }
   }
   return {
     title: `Push & create ${terminology.shortLabel} from default ref?`,
-    description: `This action will push local commits and create a ${terminology.singular}${pushOnlySuffix}`,
+    description: `This action will push local commits and create a ${terminology.singular}${suffix}`,
     continueLabel: `Push & create ${terminology.shortLabel}`,
   }
 }

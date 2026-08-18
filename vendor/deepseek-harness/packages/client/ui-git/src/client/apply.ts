@@ -5,7 +5,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { GitActionsInjected } from './GitActionsControl.tsx'
 import { GitActionsControl } from './GitActionsControl.tsx'
 import type { BranchRef } from './branches.ts'
-import type { CommitFileRow } from './CommitDialog.tsx'
 import type { GitProgressEvent, GitResult, VcsStatus } from './git-logic.ts'
 import { en, NS, zh, type GitKey } from './locales.ts'
 
@@ -27,7 +26,6 @@ interface GitShell {
   gitReadPullRequest?: (cwd: string) => Promise<GitResult & { pr?: VcsStatus['pr'] }>
   gitInit?: (cwd: string) => Promise<GitResult>
   gitCommit?: (cwd: string, message: string, filePaths?: readonly string[], actionId?: number, options?: { featureBranch?: boolean }) => Promise<GitResult>
-  gitChangedFiles?: (cwd: string) => Promise<GitResult & { files?: CommitFileRow[] }>
   gitPush?: (cwd: string, actionId?: number) => Promise<GitResult>
   gitPull?: (cwd: string, actionId?: number) => Promise<GitResult>
   onGitProgress?: (handler: (event: GitProgressEvent) => void) => () => void
@@ -63,7 +61,6 @@ function readGitShell(): GitActionsInjected {
     gitReadPullRequest: cwd => shell?.gitReadPullRequest?.(cwd) ?? Promise.resolve({ ...unavailable(), pr: null }),
     gitInit: cwd => shell?.gitInit?.(cwd) ?? Promise.resolve(unavailable()),
     gitCommit: (cwd, message, filePaths, actionId, options) => shell?.gitCommit?.(cwd, message, filePaths, actionId, options) ?? Promise.resolve(unavailable()),
-    gitChangedFiles: cwd => shell?.gitChangedFiles?.(cwd) ?? Promise.resolve({ ...unavailable(), files: [] }),
     gitPush: (cwd, actionId) => shell?.gitPush?.(cwd, actionId) ?? Promise.resolve(unavailable()),
     gitPull: (cwd, actionId) => shell?.gitPull?.(cwd, actionId) ?? Promise.resolve(unavailable()),
     onGitProgress: handler => shell?.onGitProgress?.(handler) ?? (() => {}),

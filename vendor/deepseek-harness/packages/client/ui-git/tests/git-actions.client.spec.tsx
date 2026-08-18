@@ -62,7 +62,16 @@ function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
       name: 'GitHub',
       baseUrl: 'https://github.com',
     },
+    workingTree: { files: [], insertions: 0, deletions: 0 },
     ...overrides,
+  }
+}
+
+function filesTree(files: Array<{ path: string; insertions: number; deletions: number }>) {
+  return {
+    files,
+    insertions: files.reduce((sum, file) => sum + file.insertions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
   }
 }
 
@@ -74,7 +83,6 @@ function mount(opts: {
   gitReadPullRequest?: GitActionsProps['gitReadPullRequest']
   gitInit?: GitActionsProps['gitInit']
   gitCommit?: GitActionsProps['gitCommit']
-  gitChangedFiles?: GitActionsProps['gitChangedFiles']
   gitPush?: GitActionsProps['gitPush']
   gitPull?: GitActionsProps['gitPull']
   gitCreateChangeRequest?: GitActionsProps['gitCreateChangeRequest']
@@ -94,7 +102,6 @@ function mount(opts: {
   }))
   const gitInit = opts.gitInit ?? vi.fn(async () => ({ ok: true }))
   const gitCommit = opts.gitCommit ?? vi.fn(async () => ({ ok: true }))
-  const gitChangedFiles = opts.gitChangedFiles ?? vi.fn(async () => ({ ok: true, files: [] }))
   const gitPush = opts.gitPush ?? vi.fn(async () => ({ ok: true }))
   const gitPull = opts.gitPull ?? vi.fn(async () => ({ ok: true }))
   const gitCreateChangeRequest = opts.gitCreateChangeRequest ?? vi.fn(async () => ({ ok: true }))
@@ -117,7 +124,6 @@ function mount(opts: {
       gitReadPullRequest={gitReadPullRequest}
       gitInit={gitInit}
       gitCommit={gitCommit}
-      gitChangedFiles={gitChangedFiles}
       gitPush={gitPush}
       gitPull={gitPull}
       gitCreateChangeRequest={gitCreateChangeRequest}
@@ -132,7 +138,7 @@ function mount(opts: {
     />,
   )
   return {
-    gitStatus, gitFetchForStatus, gitReadPullRequest, gitInit, gitCommit, gitChangedFiles, gitPush, gitPull, gitCreateChangeRequest,
+    gitStatus, gitFetchForStatus, gitReadPullRequest, gitInit, gitCommit, gitPush, gitPull, gitCreateChangeRequest,
     gitPublishRepository, gitBranchList, gitSwitchBranch, gitCreateBranch, openWorkspacePath,
     onGitProgress, openExternal, rerender: view.rerender,
   }
@@ -226,7 +232,9 @@ describe('GitActionsControl', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Push' }))
     expect(await screen.findByRole('dialog', { name: 'Push to default ref?' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Checkout feature branch & continue' })).toBeNull()
-    expect(screen.getByText('This action will push local commits on "main".')).toBeTruthy()
+    expect(screen.getByText(
+      'This action will push local commits on "main". You can continue on this ref or create a feature ref and run the same action there.',
+    )).toBeTruthy()
     expect(b.gitPush).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Push to main' }))
     await waitFor(() => { expect(b.gitPush).toHaveBeenCalledWith('/work', expect.any(Number)) })
@@ -243,7 +251,6 @@ describe('GitActionsControl', () => {
       gitReadPullRequest: vi.fn(async () => ({ ok: true, pr: null })),
       gitInit: vi.fn(async () => ({ ok: true })),
       gitCommit: vi.fn(async () => ({ ok: true })),
-      gitChangedFiles: vi.fn(async () => ({ ok: true, files: [] })),
       gitPush: vi.fn(async () => ({ ok: true })),
       gitPull: vi.fn(async () => ({ ok: true })),
       gitCreateChangeRequest: vi.fn(async () => ({ ok: true })),
@@ -500,16 +507,38 @@ describe('GitActionsControl', () => {
     expect(gitCreateChangeRequest).toHaveBeenCalled()
   })
 
-  it('opens the commit review dialog from the menu', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'src/demo.ts', insertions: 2, deletions: 1 }],
+  it('commit dialog file list follows live status.workingTree while open', async () => {
+    let files = [{ path: 'a.ts', insertions: 1, deletions: 0 }]
+    const gitStatus = vi.fn(async () => status({
+      hasWorkingTreeChanges: true,
+      workingTree: filesTree(files),
     }))
+    mount({ cwd: '/work', gitStatus })
+    fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Commit' }))
+    expect(await screen.findByRole('dialog', { name: 'Commit changes' })).toBeTruthy()
+    expect(screen.getByText('a.ts')).toBeTruthy()
+    files = [{ path: 'b.ts', insertions: 2, deletions: 0 }]
+    fireEvent(window, new Event('focus'))
+    await waitFor(() => {
+      expect(screen.getByText('b.ts')).toBeTruthy()
+    })
+    expect(screen.queryByText('a.ts')).toBeNull()
+  })
+
+  it('opens the commit review dialog from status.workingTree files like T3', async () => {
     const gitCommit = vi.fn(async () => ({ ok: true }))
     mount({
       cwd: '/work',
-      git: status({ hasWorkingTreeChanges: true, refName: 'large-bird' }),
-      gitChangedFiles,
+      git: status({
+        hasWorkingTreeChanges: true,
+        refName: 'large-bird',
+        workingTree: {
+          files: [{ path: 'src/demo.ts', insertions: 2, deletions: 1 }],
+          insertions: 2,
+          deletions: 1,
+        },
+      }),
       gitCommit,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
@@ -523,10 +552,6 @@ describe('GitActionsControl', () => {
   })
 
   it('creates a feature ref before commit when Commit on new branch is used', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'a.ts', insertions: 1, deletions: 0 }],
-    }))
     const gitBranchList = vi.fn(async () => ({
       ok: true,
       branches: [{ name: 'main', isRemote: false, isCurrent: false }],
@@ -535,8 +560,12 @@ describe('GitActionsControl', () => {
     const gitCommit = vi.fn(async () => ({ ok: true }))
     mount({
       cwd: '/work',
-      git: status({ hasWorkingTreeChanges: true, refName: 'main', isDefaultRef: true }),
-      gitChangedFiles,
+      git: status({
+        hasWorkingTreeChanges: true,
+        refName: 'main',
+        isDefaultRef: true,
+        workingTree: filesTree([{ path: 'a.ts', insertions: 1, deletions: 0 }]),
+      }),
       gitBranchList,
       gitCreateBranch,
       gitCommit,
@@ -551,18 +580,14 @@ describe('GitActionsControl', () => {
   })
 
   it('opens the commit review dialog from the Commit-only main button', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'only.ts', insertions: 1, deletions: 0 }],
-    }))
     mount({
       cwd: '/work',
       git: status({
         hasWorkingTreeChanges: true,
         hasUpstream: false,
         hasPrimaryRemote: false,
+        workingTree: filesTree([{ path: 'only.ts', insertions: 1, deletions: 0 }]),
       }),
-      gitChangedFiles,
     })
     await waitFor(() => {
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Commit' }).disabled).toBe(false)
@@ -572,34 +597,29 @@ describe('GitActionsControl', () => {
     expect(screen.getByText('only.ts')).toBeTruthy()
   })
 
-  it('closes the dialog and shows the IPC error when changed files fail', async () => {
-    const gitChangedFiles = vi.fn(async () => ({ ok: false, message: 'numstat failed.' }))
+  it('opens the commit dialog with none when workingTree has no files', async () => {
     mount({
       cwd: '/work',
       git: status({ hasWorkingTreeChanges: true }),
-      gitChangedFiles,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Commit' }))
-    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
-    expect(screen.getByText('numstat failed.')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
-    expect(screen.queryByRole('dialog', { name: 'Commit changes' })).toBeNull()
+    expect(await screen.findByRole('dialog', { name: 'Commit changes' })).toBeTruthy()
+    expect(screen.getByText('none')).toBeTruthy()
   })
 
   it('commits only the files that remain selected after Edit', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [
-        { path: 'keep.ts', insertions: 1, deletions: 0 },
-        { path: 'skip.ts', insertions: 2, deletions: 0 },
-      ],
-    }))
     const gitCommit = vi.fn(async () => ({ ok: true }))
     mount({
       cwd: '/work',
-      git: status({ hasWorkingTreeChanges: true, refName: 'large-bird' }),
-      gitChangedFiles,
+      git: status({
+        hasWorkingTreeChanges: true,
+        refName: 'large-bird',
+        workingTree: filesTree([
+          { path: 'keep.ts', insertions: 1, deletions: 0 },
+          { path: 'skip.ts', insertions: 2, deletions: 0 },
+        ]),
+      }),
       gitCommit,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
@@ -618,15 +638,13 @@ describe('GitActionsControl', () => {
   })
 
   it('passes featureBranch into gitCommit for Commit on new branch', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'a.ts', insertions: 1, deletions: 0 }],
-    }))
     const gitCommit = vi.fn(async () => ({ ok: false, message: 'cannot create ref.' }))
     mount({
       cwd: '/work',
-      git: status({ hasWorkingTreeChanges: true }),
-      gitChangedFiles,
+      git: status({
+        hasWorkingTreeChanges: true,
+        workingTree: filesTree([{ path: 'a.ts', insertions: 1, deletions: 0 }]),
+      }),
       gitCommit,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
@@ -760,15 +778,12 @@ describe('GitActionsControl', () => {
   })
 
   it('shows a commit-only success toast without waiting for fetch', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'only.ts', insertions: 1, deletions: 0 }],
-    }))
     const gitCommit = vi.fn(async () => ({ ok: true, commitSha: 'abc1234', subject: 'Add files' }))
     const initial = status({
       hasWorkingTreeChanges: true,
       hasUpstream: false,
       hasPrimaryRemote: false,
+      workingTree: filesTree([{ path: 'only.ts', insertions: 1, deletions: 0 }]),
     })
     let fetchCalls = 0
     const gitFetchForStatus = vi.fn(async () => {
@@ -779,7 +794,6 @@ describe('GitActionsControl', () => {
     mount({
       cwd: '/work',
       git: initial,
-      gitChangedFiles,
       gitCommit,
       gitFetchForStatus,
     })
@@ -815,15 +829,13 @@ describe('GitActionsControl', () => {
   })
 
   it('shows an open-file failure on the progress toast', async () => {
-    const gitChangedFiles = vi.fn(async () => ({
-      ok: true,
-      files: [{ path: 'only.ts', insertions: 1, deletions: 0 }],
-    }))
     const openWorkspacePath = vi.fn(async () => ({ ok: false, message: 'no handler' }))
     mount({
       cwd: '/work',
-      git: status({ hasWorkingTreeChanges: true }),
-      gitChangedFiles,
+      git: status({
+        hasWorkingTreeChanges: true,
+        workingTree: filesTree([{ path: 'only.ts', insertions: 1, deletions: 0 }]),
+      }),
       openWorkspacePath,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))

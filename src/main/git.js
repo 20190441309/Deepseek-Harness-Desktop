@@ -21,7 +21,6 @@ const {
   gitChildEnv,
   sanitizeProgressText,
   isGitAdviceLine,
-  parseStatusHeader,
   GIT_TIMEOUT_MS,
   FETCH_TIMEOUT_MS,
   GH_TIMEOUT_MS,
@@ -54,14 +53,34 @@ const {
   resetLastKnownPrCache,
 } = require('./git-pullrequest');
 const { fetchForStatus, resetFetchCooldowns } = require('./git-fetch');
-const { MAX_UNTRACKED_BYTES, parseUnifiedDiff, gitDiff } = require('./git-diff');
+const { parseUnifiedDiff, gitDiff } = require('./git-diff');
 const { readPrTemplate, resolvePrBaseBranch, setGhDefaultBranchResolver } = require('./git-templates');
+
+/**
+ * Git-for-Windows `core.protectNTFS` rejects these device names in any path
+ * component, including `NUL.txt` and trailing dots/spaces.
+ * @param {unknown} rel
+ * @returns {boolean}
+ */
+function isNtfsReservedGitPath(rel) {
+  const normalized = String(rel || '').replaceAll('\\', '/');
+  if (!normalized) return false;
+  return normalized.split('/').some((part) => {
+    const stem = part.replace(/[. ]+$/g, '').split('.')[0];
+    return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem);
+  });
+}
+
+function emptyWorkingTree() {
+  return { files: [], insertions: 0, deletions: 0 };
+}
 
 function notARepoStatus() {
   return {
     isRepo: false,
     refName: null,
     hasWorkingTreeChanges: false,
+    workingTree: emptyWorkingTree(),
     hasUpstream: false,
     aheadCount: 0,
     behindCount: 0,
@@ -73,6 +92,110 @@ function notARepoStatus() {
   };
 }
 
+function parseBranchAb(value) {
+  const match = /^\+(\d+)\s+-(\d+)$/.exec(String(value || '').trim());
+  if (!match) return { ahead: 0, behind: 0 };
+  return { ahead: Number(match[1]), behind: Number(match[2]) };
+}
+
+function parsePorcelainV2Path(line) {
+  if (line.startsWith('? ') || line.startsWith('! ')) {
+    const simple = line.slice(2).trim();
+    return simple.length > 0 ? simple : null;
+  }
+  if (!(line.startsWith('1 ') || line.startsWith('2 ') || line.startsWith('u '))) {
+    return null;
+  }
+  const tabIndex = line.indexOf('\t');
+  if (tabIndex >= 0) {
+    const fromTab = line.slice(tabIndex + 1);
+    const [filePath] = fromTab.split('\t');
+    return filePath?.trim().length ? filePath.trim() : null;
+  }
+  const parts = line.trim().split(/\s+/g);
+  const filePath = parts.at(-1) ?? '';
+  return filePath.length > 0 ? filePath : null;
+}
+
+function isUnbornHeadStderr(stderr) {
+  const lower = String(stderr || '').toLowerCase();
+  return lower.includes('unknown revision') && lower.includes('path not in the working tree');
+}
+
+function parseNumstatEntries(stdout) {
+  const entries = [];
+  for (const line of String(stdout || '').split(/\r?\n/g)) {
+    if (line.trim().length === 0) continue;
+    const [addedRaw, deletedRaw, ...pathParts] = line.split('\t');
+    const rawPath = pathParts.length > 1
+      ? (pathParts.at(-1) ?? '').trim()
+      : pathParts.join('\t').trim();
+    if (rawPath.length === 0) continue;
+    const added = addedRaw === '-' ? 0 : Number.parseInt(addedRaw ?? '0', 10);
+    const deleted = deletedRaw === '-' ? 0 : Number.parseInt(deletedRaw ?? '0', 10);
+    const renameArrowIndex = rawPath.indexOf(' => ');
+    const normalizedPath = renameArrowIndex >= 0
+      ? rawPath.slice(renameArrowIndex + ' => '.length).trim()
+      : rawPath;
+    entries.push({
+      path: normalizedPath.length > 0 ? normalizedPath : rawPath,
+      insertions: Number.isFinite(added) ? added : 0,
+      deletions: Number.isFinite(deleted) ? deleted : 0,
+    });
+  }
+  return entries;
+}
+
+function mergeNumstatMaps(rows) {
+  const map = new Map();
+  for (const entry of rows) {
+    const existing = map.get(entry.path) ?? { insertions: 0, deletions: 0 };
+    existing.insertions += entry.insertions;
+    existing.deletions += entry.deletions;
+    map.set(entry.path, existing);
+  }
+  return Array.from(map.entries()).map(([filePath, stat]) => ({
+    path: filePath,
+    insertions: stat.insertions,
+    deletions: stat.deletions,
+  }));
+}
+
+async function readWorkingTreeNumstat(root) {
+  const head = await runGit(root, ['diff', 'HEAD', '--numstat']);
+  if (head.code === 0) return parseNumstatEntries(head.stdout);
+  if (isUnbornHeadStderr(head.stderr)) {
+    const unstaged = await runGit(root, ['diff', '--numstat']);
+    const staged = await runGit(root, ['diff', '--cached', '--numstat']);
+    return mergeNumstatMaps([
+      ...parseNumstatEntries(staged.stdout),
+      ...parseNumstatEntries(unstaged.stdout),
+    ]);
+  }
+  return parseNumstatEntries(head.stdout);
+}
+
+function buildWorkingTree(numstatEntries, porcelainPaths) {
+  const fileStatMap = new Map();
+  let insertions = 0;
+  let deletions = 0;
+  for (const entry of numstatEntries) {
+    if (isNtfsReservedGitPath(entry.path)) continue;
+    fileStatMap.set(entry.path, { insertions: entry.insertions, deletions: entry.deletions });
+  }
+  const files = Array.from(fileStatMap.entries()).map(([filePath, stat]) => {
+    insertions += stat.insertions;
+    deletions += stat.deletions;
+    return { path: filePath, insertions: stat.insertions, deletions: stat.deletions };
+  });
+  for (const filePath of porcelainPaths) {
+    if (fileStatMap.has(filePath) || isNtfsReservedGitPath(filePath)) continue;
+    files.push({ path: filePath, insertions: 0, deletions: 0 });
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return { files, insertions, deletions };
+}
+
 async function gitStatus(cwd) {
   const root = asCwd(cwd);
   if (!root) return null;
@@ -81,37 +204,72 @@ async function gitStatus(cwd) {
     return notARepoStatus();
   }
 
-  const short = await runGit(root, ['status', '-sb']);
-  if (short.code !== 0) return null;
-  const lines = short.stdout.replace(/\r\n/g, '\n').split('\n').filter((line) => line.length > 0);
-  const header = parseStatusHeader(lines[0] || '## HEAD (no branch)');
+  const porcelain = await runGit(root, ['status', '--porcelain=v2', '--branch']);
+  if (porcelain.code !== 0) return null;
+  let refName = null;
+  let upstreamRef = null;
+  let aheadCount = 0;
+  let behindCount = 0;
+  let sawAheadBehind = false;
+  let hasWorkingTreeChanges = false;
+  const changedFilesWithoutNumstat = new Set();
+  for (const line of porcelain.stdout.split(/\r?\n/g)) {
+    if (line.startsWith('# branch.head ')) {
+      const value = line.slice('# branch.head '.length).trim();
+      refName = value.startsWith('(') ? null : value;
+      continue;
+    }
+    if (line.startsWith('# branch.upstream ')) {
+      const value = line.slice('# branch.upstream '.length).trim();
+      upstreamRef = value.length > 0 ? value : null;
+      continue;
+    }
+    if (line.startsWith('# branch.ab ')) {
+      const parsed = parseBranchAb(line.slice('# branch.ab '.length).trim());
+      aheadCount = parsed.ahead;
+      behindCount = parsed.behind;
+      sawAheadBehind = true;
+      continue;
+    }
+    if (line.trim().length > 0 && !line.startsWith('#')) {
+      const filePath = parsePorcelainV2Path(line);
+      if (filePath && isNtfsReservedGitPath(filePath)) continue;
+      hasWorkingTreeChanges = true;
+      if (filePath) changedFilesWithoutNumstat.add(filePath);
+    }
+  }
+
   const remotes = await runGit(root, ['remote']);
   const remoteNames = remotes.code === 0
     ? remotes.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
     : [];
   const hasPrimaryRemote = remoteNames.includes('origin');
   const defaultRef = await defaultRefName(root, hasPrimaryRemote);
-  const isDefaultRef = header.refName !== null && header.refName === defaultRef;
-  // No-upstream ahead is vs the default/base ref, not porcelain 0.
-  const vsDefault = header.refName && (!isDefaultRef || !header.hasUpstream)
-    ? await computeAheadCountAgainstBase(root, header.refName)
+  const isDefaultRef = refName !== null && (
+    refName === defaultRef || (defaultRef === null && (refName === 'main' || refName === 'master'))
+  );
+  // Porcelain v2 omits `# branch.ab` when the listed upstream is gone.
+  const hasUsableUpstream = upstreamRef !== null && sawAheadBehind;
+  const vsDefault = refName && (!isDefaultRef || !hasUsableUpstream)
+    ? await computeAheadCountAgainstBase(root, refName)
     : { count: 0, unreliable: false };
-  let aheadCount = header.aheadCount;
-  let behindCount = header.behindCount;
-  if (!header.hasUpstream && header.refName) {
+  if (!hasUsableUpstream && refName) {
     aheadCount = vsDefault.count;
     behindCount = 0;
   }
+  const aheadOfDefaultCount = isDefaultRef ? 0 : vsDefault.count;
   const selected = await selectProviderContext(root);
   const sourceControlProvider = selected?.provider;
+  const numstatEntries = await readWorkingTreeNumstat(root);
 
   return {
-    refName: header.refName,
-    hasWorkingTreeChanges: lines.length > 1,
-    hasUpstream: header.hasUpstream,
+    refName,
+    hasWorkingTreeChanges,
+    workingTree: buildWorkingTree(numstatEntries, changedFilesWithoutNumstat),
+    hasUpstream: hasUsableUpstream,
     aheadCount,
     behindCount,
-    aheadOfDefaultCount: isDefaultRef ? 0 : vsDefault.count,
+    aheadOfDefaultCount,
     aheadUnreliable: vsDefault.unreliable,
     pr: null,
     ...(sourceControlProvider ? { sourceControlProvider } : {}),
@@ -183,27 +341,43 @@ async function prepareCommitContext(root, filePaths) {
   const selected = Array.isArray(filePaths)
     ? filePaths.map((item) => String(item || '')).filter(Boolean)
     : [];
+  let rels;
   if (selected.length > 0) {
-    const rels = [];
+    rels = [];
     for (const item of selected) {
       const { rel } = resolveGitPath(root, item);
       if (!rel) return { error: 'Path is outside the workspace.' };
-      rels.push(rel);
+      if (!isNtfsReservedGitPath(rel)) rels.push(rel);
     }
+    if (rels.length === 0) return { skipped: true };
     await runGit(root, ['reset']);
-    const add = await runGit(root, ['--literal-pathspecs', 'add', '-A', '--', ...rels]);
-    if (add.missing) return { error: 'Git is unavailable.' };
-    if (add.timedOut) return { error: 'Git command timed out.' };
-    if (add.code !== 0) return { error: gitFailureMessage(add, 'git add failed.') };
-  } else {
-    const add = await runGit(root, ['add', '-A']);
-    if (add.missing) return { error: 'Git is unavailable.' };
-    if (add.timedOut) return { error: 'Git command timed out.' };
-    if (add.code !== 0) return { error: gitFailureMessage(add, 'git add failed.') };
   }
-  const stagedSummary = await runGit(root, ['diff', '--cached', '--name-status']);
+
+  let add = selected.length > 0
+    ? await runGit(root, ['--literal-pathspecs', 'add', '-A', '--', ...rels])
+    : await runGit(root, ['add', '-A']);
+  if (add.missing) return { error: 'Git is unavailable.' };
+  if (add.timedOut) return { error: 'Git command timed out.' };
+  let stagedSummary = await runGit(root, ['diff', '--cached', '--name-status']);
   if (stagedSummary.timedOut) return { error: 'Git command timed out.' };
-  const summary = stagedSummary.stdout.trim();
+  let summary = stagedSummary.stdout.trim();
+  if (!summary && selected.length === 0) {
+    const listed = await gitStatusEntries(root);
+    const fallback = (listed.ok ? listed.entries || [] : [])
+      .map((entry) => entry.path)
+      .filter((filePath) => filePath && !isNtfsReservedGitPath(filePath));
+    if (fallback.length === 0) {
+      if (!listed.ok && add.code !== 0) return { error: gitFailureMessage(add, 'git add failed.') };
+      return { skipped: true };
+    }
+    add = await runGit(root, ['--literal-pathspecs', 'add', '-A', '--', ...fallback]);
+    if (add.missing) return { error: 'Git is unavailable.' };
+    if (add.timedOut) return { error: 'Git command timed out.' };
+    stagedSummary = await runGit(root, ['diff', '--cached', '--name-status']);
+    if (stagedSummary.timedOut) return { error: 'Git command timed out.' };
+    summary = stagedSummary.stdout.trim();
+  }
+  if (add.code !== 0) return { error: gitFailureMessage(add, 'git add failed.') };
   if (!summary) return { skipped: true };
   const stagedPatch = await runGit(root, ['diff', '--no-ext-diff', '--cached', '--patch', '--minimal'], {
     maxBytes: PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES,
@@ -369,12 +543,11 @@ async function gitFetchForStatus(cwd) {
 async function gitReadPullRequest(cwd) {
   const root = asCwd(cwd);
   if (!root) return fail('Git status is unavailable.');
-  const header = await runGit(root, ['status', '-sb']);
-  const parsedHeader = parseStatusHeader((header.stdout || '').split(/\r?\n/)[0] || '## HEAD (no branch)');
-  if (!parsedHeader.refName) return ok({ pr: null });
-  const branchKey = `${root}\u0000${parsedHeader.refName}`;
-  const looked = await lookupOpenPullRequest(root);
-  const headContext = looked.headContext || await resolveBranchHeadContext(root, parsedHeader.refName);
+  const status = await gitStatus(cwd);
+  if (!status?.refName) return ok({ pr: null });
+  const branchKey = `${root}\u0000${status.refName}`;
+  const looked = await lookupOpenPullRequest(root, status.refName);
+  const headContext = looked.headContext || await resolveBranchHeadContext(root, status.refName);
   const current = {
     upstreamRef: headContext.upstreamRef,
     headBranch: headContext.headBranch,
@@ -555,7 +728,7 @@ async function gitCreateChangeRequest(cwd, input, onProgress) {
   if (!status.hasUpstream) {
     return fail('Current branch has not been pushed. Push before creating a PR.');
   }
-  const existingLookup = await lookupOpenPullRequest(root);
+  const existingLookup = await lookupOpenPullRequest(root, status.refName);
   const headContext = existingLookup.headContext
     || await resolveBranchHeadContext(root, status.refName);
   const branchKey = `${root}\u0000${status.refName}`;
@@ -635,7 +808,7 @@ async function gitCreateChangeRequest(cwd, input, onProgress) {
   }
   if (created.missing) return fail('gh is unavailable.');
   if (created.code !== 0) return fail(created.stderr.trim() || created.stdout.trim() || 'gh pr create failed.');
-  const viewed = await readPullRequest(root);
+  const viewed = await readPullRequest(root, status.refName);
   const url = viewed?.url || created.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
   // Only remember a real lookup row — do not invent number:0 when list flakes.
   if (viewed?.url && typeof viewed.number === 'number' && viewed.number > 0) {
@@ -796,77 +969,6 @@ async function gitStatusEntries(cwd) {
   return ok({ entries: parsePorcelainZ(listed.stdout) });
 }
 
-/**
- * Parse `git diff --numstat` rows into path / insertion / deletion triples.
- * Binary rows use `-` for both counts and become 0/0.
- * @param {string} stdout
- * @returns {{ path: string, insertions: number, deletions: number }[]}
- */
-function parseNumstat(stdout) {
-  const files = [];
-  for (const line of String(stdout || '').split('\n')) {
-    if (!line) continue;
-    const tab1 = line.indexOf('\t');
-    const tab2 = line.indexOf('\t', tab1 + 1);
-    if (tab1 < 0 || tab2 < 0) continue;
-    const ins = line.slice(0, tab1);
-    const del = line.slice(tab1 + 1, tab2);
-    const filePath = line.slice(tab2 + 1);
-    if (!filePath) continue;
-    files.push({
-      path: filePath,
-      insertions: ins === '-' ? 0 : Number(ins) || 0,
-      deletions: del === '-' ? 0 : Number(del) || 0,
-    });
-  }
-  return files;
-}
-
-function countUntrackedInsertions(root, rel) {
-  const target = path.join(root, rel);
-  let stat;
-  try {
-    stat = fs.statSync(target);
-  } catch {
-    return 0;
-  }
-  if (!stat.isFile() || stat.size > MAX_UNTRACKED_BYTES) return 0;
-  const buf = fs.readFileSync(target);
-  if (buf.includes(0)) return 0;
-  const body = buf.toString('utf8').replace(/\r\n/g, '\n');
-  const rows = body.split('\n');
-  if (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
-  return rows.length;
-}
-
-async function gitChangedFiles(cwd) {
-  const root = asCwd(cwd);
-  if (!root) return fail('Git status is unavailable.');
-  const files = [];
-  const head = await runGit(root, ['rev-parse', '--verify', '--quiet', 'HEAD']);
-  if (head.missing) return fail('Git is unavailable.');
-  if (head.timedOut) return fail('Git command timed out.');
-  if (head.code === 0) {
-    const num = await runGit(root, ['diff', 'HEAD', '--numstat', '--find-renames']);
-    if (num.timedOut) return fail('Git command timed out.');
-    if (num.code !== 0) return fail(num.stderr.trim() || 'git diff --numstat failed.');
-    files.push(...parseNumstat(num.stdout));
-  } else {
-    const staged = await runGit(root, ['diff', '--cached', '--numstat']);
-    const unstaged = await runGit(root, ['diff', '--numstat']);
-    if (staged.timedOut || unstaged.timedOut) return fail('Git command timed out.');
-    files.push(...parseNumstat(staged.stdout), ...parseNumstat(unstaged.stdout));
-  }
-  const untracked = await runGit(root, ['ls-files', '--others', '--exclude-standard', '-z']);
-  if (untracked.code === 0 && untracked.stdout) {
-    for (const rel of untracked.stdout.split('\0').filter(Boolean)) {
-      if (files.some(file => file.path === rel)) continue;
-      files.push({ path: rel, insertions: countUntrackedInsertions(root, rel), deletions: 0 });
-    }
-  }
-  return ok({ files });
-}
-
 async function gitBranchList(cwd) {
   const root = asCwd(cwd);
   if (!root) return fail('Git status is unavailable.');
@@ -950,7 +1052,6 @@ module.exports = {
   gitUnstage,
   gitDiscard,
   gitStatusEntries,
-  gitChangedFiles,
   gitBranchList,
   gitSwitchBranch,
   gitCreateBranch,
@@ -981,7 +1082,7 @@ module.exports = {
   gitFailureMessage,
   inferHookName,
   parsePorcelainZ,
-  parseStatusHeader,
+  isNtfsReservedGitPath,
   parseUnifiedDiff,
   run,
   gitChildEnv,

@@ -26,7 +26,7 @@ worktree 多环境与线程↔分支绑定不在范围内：本 harness 没有�
 
 ## 后果
 
-标题栏 Git 簇现在是完整的引用闭环：切换、新建、提交、推送、变更请求。提交对话框会核对当前引用、带 numstat `+/-` 的变更文件，并提供 Commit 或 Commit on new refName（`feature/update`）。`git.test.js` 钉住 list/switch/create 往返与不安全引用拒绝；`branch-menu.client.spec.tsx` 钉住纯函数以及 Menu 过滤 / 新建页脚 / toast 错误交互。选择器只在会话 cwd 是仓库时渲染；非 git 目录保持隐藏，初始化 Git 流程不受影响。
+标题栏 Git 簇现在是完整的引用闭环：切换、新建、提交、推送、变更请求。提交对话框会核对当前分支、`status.workingTree` 里带 numstat `+/-` 的文件，并提供 Commit 或 Commit on new branch（`feature/update`）。`git.test.js` 钉住 list/switch/create 往返与不安全引用拒绝；`branch-menu.client.spec.tsx` 钉住纯函数以及 Menu 过滤 / 新建页脚 / toast 错误交互。选择器只在会话 cwd 是仓库时渲染；非 git 目录保持隐藏，初始化 Git 流程不受影响。
 
 ## 相关
 

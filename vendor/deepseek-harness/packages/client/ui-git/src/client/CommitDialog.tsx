@@ -1,6 +1,6 @@
 /**
  * Commit review dialog: branch, file list with +/- stats,
- * optional message, and Commit / Commit on new refName.
+ * optional message, and Commit / Commit on new branch.
  * @module @deepseek-ai/dsh-client-ui-git/client/CommitDialog
  */
 

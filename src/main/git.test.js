@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createWorkspaceAuthority } = require('./workspace-authority');
-const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranchList, gitChangedFiles, gitChildEnv, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFailureMessage, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, inferHookName, isGitAdviceLine, matchesBranchHeadContext, normalizeGitRemoteUrl, parseCustomCommitMessage, parseGhPullRequestRow, parseGitHubRepositoryNameWithOwner, parsePorcelainZ, parseStatusHeader, parseUnifiedDiff, providerFromRemoteUrl, readPrTemplate, readRangeContext, rememberLastKnownPr, resetFetchCooldowns, resetLastKnownPrCache, resolveBaseBranchForNoUpstream, resolveBranchHeadContext, resolveLastKnownPr, resolvePrBaseBranch, resolvePreferredHeadSelector, run, sanitizeProgressText, setGhDefaultBranchResolver, setLookupOpenPullRequest, setWorkspaceAuthority, summarizeCommitMessage } = require('./git.js');
+const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranchList, gitChildEnv, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFailureMessage, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, inferHookName, isGitAdviceLine, isNtfsReservedGitPath, matchesBranchHeadContext, normalizeGitRemoteUrl, parseCustomCommitMessage, parseGhPullRequestRow, parseGitHubRepositoryNameWithOwner, parsePorcelainZ, parseUnifiedDiff, providerFromRemoteUrl, readPrTemplate, readRangeContext, rememberLastKnownPr, resetFetchCooldowns, resetLastKnownPrCache, resolveBaseBranchForNoUpstream, resolveBranchHeadContext, resolveLastKnownPr, resolvePrBaseBranch, resolvePreferredHeadSelector, run, sanitizeProgressText, setGhDefaultBranchResolver, setLookupOpenPullRequest, setWorkspaceAuthority, summarizeCommitMessage } = require('./git.js');
 const { parseRepositoryNameWithOwnerFromNormalized } = require('./git-pullrequest');
 const { setTextGenerator } = require('./git-generate.js');
 
@@ -79,6 +79,31 @@ test('gitInit creates a repository the titlebar can commit into', async () => {
   }
 });
 
+test('gitStatus reports T3 workingTree numstat after a committed file is edited', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init']);
+    git(cwd, ['config', 'user.email', 'git-test@example.com']);
+    git(cwd, ['config', 'user.name', 'Git Test']);
+    git(cwd, ['checkout', '-b', 'main']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'Add readme']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasWorkingTreeChanges, true);
+    const file = status.workingTree.files.find((entry) => entry.path === 'README.md');
+    assert.ok(file);
+    assert.equal(file.insertions, 1);
+    assert.equal(file.deletions, 0);
+    assert.equal(status.workingTree.insertions, 1);
+    assert.equal(status.workingTree.deletions, 0);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitStatus reports hasWorkingTreeChanges after init and an uncommitted file', async () => {
   const cwd = makeTempDir();
   try {
@@ -92,6 +117,11 @@ test('gitStatus reports hasWorkingTreeChanges after init and an uncommitted file
     assert.equal(status.isRepo, true);
     assert.equal(status.hasWorkingTreeChanges, true);
     assert.equal(status.refName, 'main');
+    assert.deepEqual(status.workingTree, {
+      files: [{ path: 'README.md', insertions: 0, deletions: 0 }],
+      insertions: 0,
+      deletions: 0,
+    });
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -279,7 +309,7 @@ test('gitCommit records a message and clears working-tree changes', async () => 
   }
 });
 
-test('gitChangedFiles reports numstat for a modified file and an untracked file', async () => {
+test('gitStatus workingTree lists a modified file and an untracked path', async () => {
   const cwd = makeTempDir();
   try {
     git(cwd, ['init', '-b', 'main']);
@@ -290,11 +320,10 @@ test('gitChangedFiles reports numstat for a modified file and an untracked file'
     git(cwd, ['commit', '-m', 'base']);
     fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
     fs.writeFileSync(path.join(cwd, 'extra.txt'), 'a\nb\n');
-    const listed = await gitChangedFiles(cwd);
-    assert.equal(listed.ok, true, listed.message);
-    const byPath = Object.fromEntries(listed.files.map(file => [file.path, file]));
+    const listed = await gitStatus(cwd);
+    const byPath = Object.fromEntries(listed.workingTree.files.map(file => [file.path, file]));
     assert.equal(byPath['README.md'].insertions, 1);
-    assert.equal(byPath['extra.txt'].insertions, 2);
+    assert.ok(byPath['extra.txt']);
     assert.equal(byPath['extra.txt'].deletions, 0);
   } finally {
     setWorkspaceAuthority(null);
@@ -341,11 +370,99 @@ test('gitCommit with filePaths stages only those paths', async () => {
     fs.writeFileSync(path.join(cwd, 'skip.md'), 'skip\nchanged\n');
     const result = await gitCommit(cwd, 'only keep', ['keep.md']);
     assert.equal(result.ok, true, result.message);
-    const leftover = await gitChangedFiles(cwd);
-    assert.equal(leftover.ok, true);
-    assert.deepEqual(leftover.files.map(file => file.path), ['skip.md']);
+    const leftover = await gitStatus(cwd);
+    assert.deepEqual(leftover.workingTree.files.map(file => file.path), ['skip.md']);
   } finally {
     setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+function win32LiteralPath(dir, name) {
+  return `\\\\?\\${path.resolve(dir, name)}`;
+}
+
+test('isNtfsReservedGitPath matches Git-for-Windows device names', () => {
+  assert.equal(isNtfsReservedGitPath('nul'), true);
+  assert.equal(isNtfsReservedGitPath('NUL.txt'), true);
+  assert.equal(isNtfsReservedGitPath('foo/aux'), true);
+  assert.equal(isNtfsReservedGitPath('COM1'), true);
+  assert.equal(isNtfsReservedGitPath('README.md'), false);
+  assert.equal(isNtfsReservedGitPath('null'), false);
+  assert.equal(isNtfsReservedGitPath('com10'), false);
+});
+
+test('gitCommit stages real files when a Windows reserved-name path cannot be indexed', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const cwd = makeTempDir();
+  const reserved = win32LiteralPath(cwd, 'nul');
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    fs.writeFileSync(reserved, 'junk\n');
+    const result = await gitCommit(cwd, 'Add readme');
+    assert.equal(result.ok, true, result.message);
+    const tracked = git(cwd, ['ls-files']);
+    assert.equal(tracked.trim(), 'README.md');
+    const status = await gitStatus(cwd);
+    assert.equal(status.hasWorkingTreeChanges, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(reserved, { force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit skips when the only untracked path is a Windows reserved-name', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const cwd = makeTempDir();
+  const reserved = win32LiteralPath(cwd, 'nul');
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(reserved, 'junk\n');
+    const result = await gitCommit(cwd, 'should skip');
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.skipped, true);
+    const log = git(cwd, ['log', '-1', '--pretty=%s']);
+    assert.equal(log.trim(), 'base');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(reserved, { force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitStatus ignores a Windows reserved-name untracked file as working-tree changes', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const cwd = makeTempDir();
+  const reserved = win32LiteralPath(cwd, 'nul');
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(reserved, 'junk\n');
+    const clean = await gitStatus(cwd);
+    assert.equal(clean.hasWorkingTreeChanges, false);
+    assert.deepEqual(clean.workingTree, { files: [], insertions: 0, deletions: 0 });
+    fs.writeFileSync(path.join(cwd, 'extra.md'), 'x\n');
+    const dirty = await gitStatus(cwd);
+    assert.equal(dirty.hasWorkingTreeChanges, true);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(reserved, { force: true });
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
@@ -572,6 +689,71 @@ test('gitCommit keeps a custom subject verbatim (no sanitize)', async () => {
   }
 });
 
+test('gitCommit fails when git add fails and status listing also fails', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    fs.rmSync(path.join(cwd, '.git'), { recursive: true, force: true });
+    fs.writeFileSync(path.join(cwd, '.git'), 'not a repository\n');
+    const result = await gitCommit(cwd, 'should fail');
+    assert.equal(result.ok, false, result.message);
+    assert.notEqual(result.skipped, true);
+    assert.match(String(result.message || ''), /add failed|not a git repository|invalid gitfile format|git add failed/i);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit fails when git add cannot lock the index', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\nworld\n');
+    fs.writeFileSync(path.join(cwd, '.git', 'index.lock'), '');
+    const result = await gitCommit(cwd, 'should fail');
+    assert.equal(result.ok, false, result.message);
+    assert.notEqual(result.skipped, true);
+    assert.match(String(result.message || ''), /add failed|index\.lock|Unable to create|locked|another git process/i);
+    const log = git(cwd, ['log', '-1', '--pretty=%s']);
+    assert.equal(log.trim(), 'base');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit skips when the worktree is clean', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    const result = await gitCommit(cwd, 'unused');
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.skipped, true);
+    const log = git(cwd, ['log', '-1', '--pretty=%s']);
+    assert.equal(log.trim(), 'base');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitCommit featureBranch fails closed when there is nothing to commit', async () => {
   const cwd = makeTempDir();
   try {
@@ -680,6 +862,32 @@ test('gitStatus leaves pr null so the titlebar can load the change request separ
     assert.equal(status.pr, null);
     const pr = await gitReadPullRequest(cwd);
     assert.equal(pr.ok, true);
+    assert.equal(pr.pr, null);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('git.js and git-pullrequest.js do not spawn git status -sb', () => {
+  const gitJs = fs.readFileSync(require.resolve('./git.js'), 'utf8');
+  const prJs = fs.readFileSync(require.resolve('./git-pullrequest'), 'utf8');
+  assert.doesNotMatch(gitJs, /status',\s*'-sb'/);
+  assert.doesNotMatch(prJs, /status',\s*'-sb'/);
+});
+
+test('gitReadPullRequest returns null pr on detached HEAD without short-status', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['checkout', '--detach', 'HEAD']);
+    const pr = await gitReadPullRequest(cwd);
+    assert.equal(pr.ok, true, pr.message);
     assert.equal(pr.pr, null);
   } finally {
     setWorkspaceAuthority(null);
@@ -1536,17 +1744,6 @@ test('gitCreateChangeRequest returns opened_existing for an open PR', async () =
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(bare, { recursive: true, force: true });
   }
-});
-
-test('parseStatusHeader treats a gone upstream as no usable tracking ref', () => {
-  const gone = parseStatusHeader('## feature/demo...origin/feature/demo [gone]');
-  assert.equal(gone.refName, 'feature/demo');
-  assert.equal(gone.hasUpstream, false);
-  assert.equal(gone.aheadCount, 0);
-  assert.equal(gone.behindCount, 0);
-  const healthy = parseStatusHeader('## feature/demo...origin/feature/demo [ahead 2]');
-  assert.equal(healthy.hasUpstream, true);
-  assert.equal(healthy.aheadCount, 2);
 });
 
 test('gitStatus and gitPush treat a deleted upstream as unpublished', async () => {

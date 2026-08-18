@@ -31,15 +31,15 @@ import {
   GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS,
   requiresDefaultBranchConfirmation,
   resolveCompletionCta,
+  resolveDefaultBranchActionDialogCopy,
   resolveQuickAction,
   summarizeGitActionResult,
-  supportsGitHubChangeRequests,
   toastFailureDescription,
 } from './git-logic.ts'
 import { NS } from './locales.ts'
 import { BranchMenu } from './BranchMenu.tsx'
 import type { BranchRef } from './branches.ts'
-import { CommitDialog, type CommitFileRow } from './CommitDialog.tsx'
+import { CommitDialog } from './CommitDialog.tsx'
 import { GitProgressToast, type GitProgressState } from './GitProgressToast.tsx'
 import { PublishDialog } from './PublishDialog.tsx'
 import css from './GitActionsControl.module.css'
@@ -51,7 +51,6 @@ export interface GitActionsInjected {
   gitReadPullRequest: (cwd: string) => Promise<GitResult & { pr?: VcsStatus['pr'] }>
   gitInit: (cwd: string) => Promise<GitResult>
   gitCommit: (cwd: string, message: string, filePaths?: readonly string[], actionId?: number, options?: { featureBranch?: boolean }) => Promise<GitResult>
-  gitChangedFiles: (cwd: string) => Promise<GitResult & { files?: CommitFileRow[] }>
   gitPush: (cwd: string, actionId?: number) => Promise<GitResult>
   gitPull: (cwd: string, actionId?: number) => Promise<GitResult>
   onGitProgress: (handler: (event: GitProgressEvent) => void) => () => void
@@ -110,42 +109,6 @@ function quickIcon(action: { kind: string; action?: string; label: string }): Gi
   return 'push'
 }
 
-function localizeDefaultBranchDialog(
-  pending: PendingDefaultBranchAction,
-  t: GitActionsProps['t'],
-  terms: ReturnType<typeof getChangeRequestTerminology>,
-): { title: string; description: string; continueLabel: string } {
-  const branch = pending.branchName
-  const kind = terms.shortLabel
-  const isPush = pending.action === 'push' || pending.action === 'commit_push'
-  if (isPush) {
-    if (pending.includesCommit) {
-      return {
-        title: t('confirm.commitPush.title'),
-        description: t('confirm.commitPush.description', { branch }),
-        continueLabel: t('confirm.commitPush.continue', { branch }),
-      }
-    }
-    return {
-      title: t('confirm.push.title'),
-      description: t('confirm.push.description', { branch }),
-      continueLabel: t('confirm.push.continue', { branch }),
-    }
-  }
-  if (pending.includesCommit) {
-    return {
-      title: t('confirm.commitPr.title', { kind }),
-      description: t('confirm.commitPr.description', { branch, kind }),
-      continueLabel: t('confirm.commitPr.continue', { kind }),
-    }
-  }
-  return {
-    title: t('confirm.pr.title', { kind }),
-    description: t('confirm.pr.description', { branch, kind }),
-    continueLabel: t('confirm.pr.continue', { kind }),
-  }
-}
-
 function failureMessage(result: GitResult, fallback: string): string | undefined {
   if (result.ok) return undefined
   const message = result.message?.trim()
@@ -198,7 +161,6 @@ export function GitActionsControl({
   gitReadPullRequest,
   gitInit,
   gitCommit,
-  gitChangedFiles,
   gitPush,
   gitPull,
   onGitProgress,
@@ -222,7 +184,6 @@ export function GitActionsControl({
   const [menuOpen, setMenuOpen] = useState(false)
   const [commitOpen, setCommitOpen] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
-  const [commitFiles, setCommitFiles] = useState<CommitFileRow[]>([])
   const [excludedFiles, setExcludedFiles] = useState<Set<string>>(() => new Set())
   const [editingFiles, setEditingFiles] = useState(false)
   const [pending, setPending] = useState<PendingDefaultBranchAction | null>(null)
@@ -402,6 +363,7 @@ export function GitActionsControl({
   const isDefaultRef = status?.isDefaultRef ?? false
   const hasPrimaryRemote = status?.hasPrimaryRemote ?? false
   const isRepo = status?.isRepo ?? true
+  const commitFiles = status?.workingTree.files ?? []
   const canPublish = loaded && status !== null && isRepo && !hasPrimaryRemote
   const showInit = loaded && cwd !== undefined && status !== null && ! isRepo
   const quickAction = useMemo(() => {
@@ -418,7 +380,12 @@ export function GitActionsControl({
     [busy, hasPrimaryRemote, status],
   )
   const pendingCopy = pending
-    ? localizeDefaultBranchDialog(pending, t, getChangeRequestTerminology(status?.sourceControlProvider))
+    ? resolveDefaultBranchActionDialogCopy({
+        action: pending.action,
+        branchName: pending.branchName,
+        includesCommit: pending.includesCommit,
+        terminology: getChangeRequestTerminology(status?.sourceControlProvider),
+      })
     : null
 
   const runInit = (): void => {
@@ -438,7 +405,6 @@ export function GitActionsControl({
   const closeCommit = (): void => {
     setCommitOpen(false)
     setCommitMessage('')
-    setCommitFiles([])
     setExcludedFiles(new Set())
     setEditingFiles(false)
   }
@@ -447,18 +413,6 @@ export function GitActionsControl({
     setExcludedFiles(new Set())
     setEditingFiles(false)
     setCommitOpen(true)
-    if (cwd === undefined) {
-      setCommitFiles([])
-      return
-    }
-    void gitChangedFiles(cwd).then((result) => {
-      if (result.ok) setCommitFiles(result.files ?? [])
-      else {
-        setCommitFiles([])
-        setCommitOpen(false)
-        failProgress(result.message ?? t('error.fallback'))
-      }
-    })
   }
 
   const selectedCommitPaths = (): string[] | undefined => {
@@ -603,7 +557,6 @@ export function GitActionsControl({
         attachOpenPrForCta(folded, nextStatus),
         terms,
         nextStatus?.isDefaultRef ?? false,
-        supportsGitHubChangeRequests(nextStatus?.sourceControlProvider ?? actionStatus?.sourceControlProvider),
       )
       succeedProgress(
         summary.title,

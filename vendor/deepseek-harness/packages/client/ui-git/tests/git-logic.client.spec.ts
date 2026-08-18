@@ -13,7 +13,6 @@ import {
   resolveCompletionCta,
   resolveQuickAction,
   summarizeGitActionResult,
-  supportsGitHubChangeRequests,
   getMenuActionDisabledReason,
   toastFailureDescription,
 } from '../src/client/git-logic.ts'
@@ -33,6 +32,7 @@ function status(overrides: Omit<Partial<VcsStatus>, 'sourceControlProvider'> & {
     behindCount: 0,
     pr: null,
     sourceControlProvider: GITHUB,
+    workingTree: { files: [], insertions: 0, deletions: 0 },
   }
   // Spread-equivalent merge that keeps exactOptionalPropertyTypes quiet: an
   // explicit `sourceControlProvider: undefined` override must win over GITHUB,
@@ -130,7 +130,7 @@ describe('when: ref is clean, ahead, and has no open PR', () => {
 })
 
 describe('when: source control provider uses merge requests', () => {
-  it('omits Create MR when GitLab remotes cannot use gh', () => {
+  it('keeps T3 Create MR rows; desktop gh failure stays on the backend', () => {
     const gitlabStatus = status({
       aheadCount: 2,
       sourceControlProvider: {
@@ -141,10 +141,11 @@ describe('when: source control provider uses merge requests', () => {
     })
     expect(resolveQuickAction(gitlabStatus, false)).toMatchObject({
       kind: 'run_action',
-      action: 'push',
-      label: 'Push',
+      action: 'create_pr',
+      label: 'Push & create MR',
     })
-    expect(buildMenuItems(gitlabStatus, false).map(item => item.id)).toEqual(['commit', 'push'])
+    expect(buildMenuItems(gitlabStatus, false).map(item => item.id)).toEqual(['commit', 'push', 'pr'])
+    expect(buildMenuItems(gitlabStatus, false).find(item => item.id === 'pr')?.label).toBe('Create MR')
   })
 })
 
@@ -197,7 +198,7 @@ describe('resolveDefaultBranchActionDialogCopy', () => {
     })).toEqual({
       title: 'Push to default ref?',
       description:
-        'This action will push local commits on "main".',
+        'This action will push local commits on "main". You can continue on this ref or create a feature ref and run the same action there.',
       continueLabel: 'Push to main',
     })
   })
@@ -245,7 +246,7 @@ describe('git progress helpers', () => {
       hasCustomCommitMessage: false,
       hasWorkingTreeChanges: true,
       featureBranch: true,
-    })).toEqual(['Preparing feature ref...', 'Committing...'])
+    })).toEqual(['Preparing feature ref...', 'Generating commit message...', 'Committing...'])
   })
 
   it('inferHookName maps lefthook and pre-push lines', () => {
@@ -356,6 +357,17 @@ describe('git progress helpers', () => {
       url: 'https://example.com/4',
     })
   })
+
+  it('resolveCompletionCta offers Create MR after push without a GitHub gate', () => {
+    expect(resolveCompletionCta({
+      action: 'push',
+      push: { status: 'pushed' },
+    }, { shortLabel: 'MR', singular: 'merge request' }, false)).toEqual({
+      kind: 'run_action',
+      label: 'Create MR',
+      action: 'create_pr',
+    })
+  })
 })
 
 describe('when: a feature ref has commits and no upstream', () => {
@@ -390,41 +402,58 @@ describe('when: a feature ref has commits and no upstream', () => {
     })
   })
 
-  it('keeps Push enabled when no-upstream aheadCount is unreliable', () => {
-    const unreliable = status({
+  it('keeps Push enabled when aheadUnreliable so gitPush can run', () => {
+    const noUpstream = status({
       hasUpstream: false,
       aheadCount: 0,
       aheadOfDefaultCount: 0,
       aheadUnreliable: true,
     })
-    expect(resolveQuickAction(unreliable, false)).toMatchObject({
+    expect(resolveQuickAction(noUpstream, false)).toMatchObject({
       kind: 'run_action',
-      action: 'push',
       label: 'Push',
       disabled: false,
+      action: 'push',
     })
-    expect(buildMenuItems(unreliable, false).find(item => item.id === 'push')?.disabled).toBe(false)
-    expect(buildMenuItems(unreliable, false).find(item => item.id === 'pr')?.disabled).toBe(true)
+    expect(buildMenuItems(noUpstream, false).find(item => item.id === 'push')).toMatchObject({
+      disabled: false,
+    })
+    expect(buildMenuItems(noUpstream, false).find(item => item.id === 'pr')?.disabled).toBe(true)
+
+    const withUpstream = status({
+      hasUpstream: true,
+      aheadCount: 0,
+      aheadUnreliable: true,
+    })
+    expect(resolveQuickAction(withUpstream, false)).toMatchObject({
+      kind: 'run_action',
+      label: 'Push',
+      disabled: false,
+      action: 'push',
+    })
+    expect(buildMenuItems(withUpstream, false).find(item => item.id === 'push')).toMatchObject({
+      disabled: false,
+    })
   })
 })
 
-describe('supportsGitHubChangeRequests', () => {
-  it('fail-closes when the provider is absent or not GitHub', () => {
-    expect(supportsGitHubChangeRequests(undefined)).toBe(false)
-    expect(supportsGitHubChangeRequests(null)).toBe(false)
-    expect(supportsGitHubChangeRequests(GITHUB)).toBe(true)
-    expect(resolveQuickAction(status({
-      aheadCount: 2,
-      sourceControlProvider: undefined,
-    }), false)).toMatchObject({
-      kind: 'run_action',
-      action: 'push',
-      label: 'Push',
-    })
+describe('Create PR in the menu', () => {
+  it('stays in the menu when the provider is absent or not GitHub', () => {
     expect(buildMenuItems(status({
       aheadCount: 2,
       sourceControlProvider: undefined,
-    }), false).map(item => item.id)).toEqual(['commit', 'push'])
+    }), false).map(item => item.id)).toEqual(['commit', 'push', 'pr'])
+    expect(buildMenuItems(status({
+      aheadCount: 2,
+      sourceControlProvider: {
+        kind: 'gitlab',
+        name: 'GitLab',
+        baseUrl: 'https://gitlab.com',
+      },
+    }), false).find(item => item.id === 'pr')).toMatchObject({
+      label: 'Create MR',
+      disabled: false,
+    })
   })
 })
 
@@ -452,6 +481,22 @@ describe('getMenuActionDisabledReason', () => {
     })).toBe('Commit local changes before creating a pull request.')
   })
 
+  it('Push disabled reason does not claim no local commits when aheadUnreliable', () => {
+    const unreliable = status({
+      aheadCount: 0,
+      aheadUnreliable: true,
+      hasWorkingTreeChanges: false,
+      hasUpstream: true,
+    })
+    const push = { ...buildMenuItems(unreliable, false).find(item => item.id === 'push')!, disabled: true }
+    expect(getMenuActionDisabledReason({
+      item: push,
+      gitStatus: unreliable,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBe('Push is currently unavailable.')
+  })
+
   it('returns null for an enabled row and busy copy while an action runs', () => {
     const ahead = status({ aheadCount: 2 })
     expect(getMenuActionDisabledReason({
@@ -466,5 +511,36 @@ describe('getMenuActionDisabledReason', () => {
       isBusy: true,
       hasPrimaryRemote: true,
     })).toBe('Git action in progress.')
+  })
+
+  it('Create PR disabled reason uses aheadCount only, like T3', () => {
+    const noUpstreamAheadVsDefault = status({
+      hasUpstream: false,
+      aheadCount: 2,
+      aheadOfDefaultCount: 2,
+      hasWorkingTreeChanges: false,
+    })
+    expect(getMenuActionDisabledReason({
+      item: buildMenuItems(noUpstreamAheadVsDefault, false)[2]!,
+      gitStatus: noUpstreamAheadVsDefault,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBeNull()
+
+    const behindWithDefaultDeltaOnly = status({
+      hasUpstream: true,
+      aheadCount: 0,
+      aheadOfDefaultCount: 2,
+      behindCount: 1,
+      hasWorkingTreeChanges: false,
+    })
+    const createPr = buildMenuItems(behindWithDefaultDeltaOnly, false)[2]!
+    expect(createPr.disabled).toBe(true)
+    expect(getMenuActionDisabledReason({
+      item: createPr,
+      gitStatus: behindWithDefaultDeltaOnly,
+      isBusy: false,
+      hasPrimaryRemote: true,
+    })).toBe('No local commits to include in a pull request.')
   })
 })

@@ -94,7 +94,6 @@ function harnessApi(renderer) {
     gitInit: invoke(renderer, 'shell:git-init'),
     gitDiff: invoke(renderer, 'shell:git-diff'),
     gitCommit: invoke(renderer, 'shell:git-commit'),
-    gitChangedFiles: invoke(renderer, 'shell:git-changed-files'),
     gitPush: invoke(renderer, 'shell:git-push'),
     gitPull: invoke(renderer, 'shell:git-pull'),
     onGitProgress: subscribe(renderer, 'shell:git-progress'),

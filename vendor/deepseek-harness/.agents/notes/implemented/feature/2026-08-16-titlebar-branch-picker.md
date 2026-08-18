@@ -26,7 +26,7 @@ Worktree environments and thread↔branch binding stay out: this harness has no 
 
 ## Consequences
 
-The titlebar Git cluster is now a complete ref loop: switch, create, commit, push, PR. The commit dialog reviews the current ref, changed files with numstat `+/-`, and offers Commit or Commit on new refName (`feature/update`). `git.test.js` pins list/switch/create round-trips and unsafe-ref rejection; `branch-menu.client.spec.tsx` pins the pure functions and the Menu filter / create-footer / toast-error interaction. The picker renders only when the session cwd is a repository; outside git it stays hidden and the Initialize Git flow keeps its place.
+The titlebar Git cluster is now a complete ref loop: switch, create, commit, push, PR. The commit dialog reviews the current branch, `status.workingTree` files with numstat `+/-`, and offers Commit or Commit on new branch (`feature/update`). `git.test.js` pins list/switch/create round-trips and unsafe-ref rejection; `branch-menu.client.spec.tsx` pins the pure functions and the Menu filter / create-footer / toast-error interaction. The picker renders only when the session cwd is a repository; outside git it stays hidden and the Initialize Git flow keeps its place.
 
 ## Related
 

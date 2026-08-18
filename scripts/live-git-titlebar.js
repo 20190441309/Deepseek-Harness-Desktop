@@ -171,6 +171,53 @@ async function caseCreatePrCopy() {
   }
 }
 
+async function caseReservedNameCommitPush() {
+  if (process.platform !== 'win32') {
+    console.log('SKIP  reserved-name commit_push (not win32)');
+    return;
+  }
+  const cwd = tempDir('dsh-live-nul-');
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-live-bare-'));
+  const reserved = `\\\\?\\${path.resolve(cwd, 'nul')}`;
+  try {
+    git(bare, ['init', '--bare']);
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'hello\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['remote', 'add', 'origin', bare]);
+    git(cwd, ['push', '-u', 'origin', 'main']);
+    fs.writeFileSync(path.join(cwd, 'extra.md'), 'change\n');
+    fs.writeFileSync(reserved, 'junk\n');
+
+    const first = await gitCommit(cwd, 'Add extra');
+    assert.equal(first.ok, true, first.message);
+    assert.equal(first.skipped, undefined);
+    const tracked = git(cwd, ['ls-files']);
+    assert.match(tracked, /extra\.md/);
+    assert.doesNotMatch(tracked, /^nul$/m);
+    const afterCommit = await gitStatus(cwd);
+    assert.equal(afterCommit.hasWorkingTreeChanges, false);
+
+    const pushed = await gitPush(cwd);
+    assert.equal(pushed.ok, true, pushed.message);
+
+    const second = await gitCommit(cwd, 'should skip');
+    assert.equal(second.ok, true, second.message);
+    assert.equal(second.skipped, true);
+    const afterSkip = await gitStatus(cwd);
+    assert.equal(afterSkip.hasWorkingTreeChanges, false);
+    console.log('PASS  commit_push skips leftover Windows reserved name');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(reserved, { force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   await caseCleanInit();
   await caseCommitPushSkip();
@@ -178,6 +225,7 @@ async function main() {
   await casePrBaseGhWins();
   await caseCeilingEnv();
   await caseCreatePrCopy();
+  await caseReservedNameCommitPush();
   console.log('LIVE git titlebar: all cases passed');
 }
 

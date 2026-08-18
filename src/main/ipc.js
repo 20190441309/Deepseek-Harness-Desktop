@@ -13,7 +13,7 @@ const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
-const { gitBranchList, gitChangedFiles, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
+const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
@@ -191,7 +191,6 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   handle('shell:git-commit', HARNESS_ONLY, (event, cwd, message, filePaths, actionId, options) => (
     gitCommit(cwd, message, filePaths, sendGitProgress(event, actionId), options)
   ));
-  handle('shell:git-changed-files', HARNESS_ONLY, (_event, cwd) => gitChangedFiles(cwd));
   handle('shell:git-push', HARNESS_ONLY, (event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId)));
   handle('shell:git-pull', HARNESS_ONLY, (event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId)));
   handle('shell:git-create-change-request', HARNESS_ONLY, (event, cwd, input, actionId) => (

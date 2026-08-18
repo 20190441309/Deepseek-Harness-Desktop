@@ -232,39 +232,6 @@ function ok(extra = {}) {
   return { ok: true, ...extra };
 }
 
-function parseAheadBehind(detail) {
-  let aheadCount = 0;
-  let behindCount = 0;
-  if (!detail) return { aheadCount, behindCount };
-  const ahead = detail.match(/ahead (\d+)/);
-  const behind = detail.match(/behind (\d+)/);
-  if (ahead) aheadCount = Number(ahead[1]);
-  if (behind) behindCount = Number(behind[1]);
-  return { aheadCount, behindCount };
-}
-
-function parseStatusHeader(header) {
-  if (header.startsWith('## HEAD (no branch)')) {
-    return { refName: null, hasUpstream: false, aheadCount: 0, behindCount: 0 };
-  }
-  const match = header.match(/^## (?:No commits yet on )?(\S+?)(?:\.\.\.(\S+))?(?: \[(.+)\])?$/);
-  if (!match) {
-    return { refName: null, hasUpstream: false, aheadCount: 0, behindCount: 0 };
-  }
-  const detail = match[3] || '';
-  // `git status -sb` prints `[gone]` when the configured upstream ref was deleted.
-  // Treat that as no usable upstream so ahead falls back to the default/base count
-  // and push can republish with `-u` instead of skipping as up to date.
-  const gone = /\bgone\b/.test(detail);
-  const counts = gone ? { aheadCount: 0, behindCount: 0 } : parseAheadBehind(detail);
-  return {
-    refName: match[1],
-    hasUpstream: Boolean(match[2]) && !gone,
-    aheadCount: counts.aheadCount,
-    behindCount: counts.behindCount,
-  };
-}
-
 /** Ref names git accepts on the command line; blocks option-like and traversal-ish values. */
 const REF_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
@@ -298,8 +265,6 @@ module.exports = {
   inferHookName,
   fail,
   ok,
-  parseAheadBehind,
-  parseStatusHeader,
   REF_NAME_PATTERN,
   safeRefName,
 };
