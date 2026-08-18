@@ -1,13 +1,11 @@
 const {
   isLocalAppNavigationUrl,
-  isMarketplaceNavigationUrl,
   isSameOriginLoopbackUrl,
 } = require('./local-url');
 
 const IPC_ROLES = Object.freeze({
   BOOT: 'boot',
   HARNESS: 'harness',
-  MARKETPLACE: 'marketplace',
 });
 
 function defaultSurfaces() {
@@ -15,14 +13,12 @@ function defaultSurfaces() {
     getMainWindow,
     getHarnessWebContents,
     getHarnessOrigin,
-    getMarketplaceWebContents,
   } = require('./window');
   const mainWindow = getMainWindow();
   return {
     boot: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null,
     harness: getHarnessWebContents(mainWindow),
     harnessOrigin: getHarnessOrigin(),
-    marketplace: getMarketplaceWebContents(),
   };
 }
 
@@ -35,7 +31,6 @@ function ipcSenderRole(event, options = {}) {
 
   const surfaces = options.surfaces || defaultSurfaces();
   const bootUrl = options.isBootUrl || isLocalAppNavigationUrl;
-  const marketplaceUrl = options.isMarketplaceUrl || isMarketplaceNavigationUrl;
   const harnessUrl = options.isHarnessUrl || isSameOriginLoopbackUrl;
 
   if (sender === surfaces.boot && bootUrl(frame.url)) {
@@ -43,9 +38,6 @@ function ipcSenderRole(event, options = {}) {
   }
   if (sender === surfaces.harness && harnessUrl(frame.url, surfaces.harnessOrigin)) {
     return IPC_ROLES.HARNESS;
-  }
-  if (sender === surfaces.marketplace && marketplaceUrl(frame.url)) {
-    return IPC_ROLES.MARKETPLACE;
   }
   return null;
 }

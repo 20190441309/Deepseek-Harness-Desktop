@@ -46,7 +46,7 @@ function paintBackground(win, color) {
   win.setBackgroundColor(color);
 }
 
-const WINDOW_ROLES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
+const WINDOW_ROLES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
 
 function authorizedRole(event, roles) {
   try {

@@ -16,9 +16,9 @@ function harnessEvent(progress = []) {
   };
 }
 
-function marketplaceEvent() {
+function leftoverMarketplaceEvent() {
   return {
-    role: IPC_ROLES.MARKETPLACE,
+    role: 'marketplace',
     sender: {
       isDestroyed: () => true,
       send() {},
@@ -105,9 +105,6 @@ function loadIpc(options = {}) {
     openHarnessSettings() {},
     openMarketplace() {},
     openRemote() {},
-    showMain: () => null,
-    isHarnessLoaded: () => false,
-    closeMarketplaceWindow() {},
   });
   stub('./dsh', {
     resolveNodeBin: () => 'node',
@@ -242,7 +239,7 @@ test('shell:refresh-marketplace forwards locale and defaults to zh', async () =>
 test('marketplace catalog and plugin channels reject marketplace senders', async () => {
   const ipc = loadIpc();
   try {
-    const sender = marketplaceEvent();
+    const sender = leftoverMarketplaceEvent();
     const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
     await assert.rejects(() => ipc.invoke('shell:list-marketplace', sender, {}), unauthorized);
     await assert.rejects(() => ipc.invoke('shell:refresh-marketplace', sender), unauthorized);
@@ -254,10 +251,14 @@ test('marketplace catalog and plugin channels reject marketplace senders', async
   }
 });
 
-test('shell:get-config still allows the leftover marketplace surface', async () => {
+test('config surfaces reject leftover marketplace senders', async () => {
   const ipc = loadIpc();
   try {
-    await ipc.invoke('shell:get-config', marketplaceEvent());
+    const sender = leftoverMarketplaceEvent();
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(() => ipc.invoke('shell:get-config', sender), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:save-config', sender, { theme: 'midnight' }), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:open-external', sender, 'https://example.com'), unauthorized);
   } finally {
     ipc.restore();
   }

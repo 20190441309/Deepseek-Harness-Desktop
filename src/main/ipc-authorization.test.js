@@ -28,11 +28,17 @@ function options() {
   };
 }
 
+test('IPC_ROLES does not define a marketplace sender', () => {
+  assert.equal('MARKETPLACE' in IPC_ROLES, false);
+  assert.equal(IPC_ROLES.MARKETPLACE, undefined);
+  assert.deepEqual(Object.values(IPC_ROLES).sort(), [IPC_ROLES.BOOT, IPC_ROLES.HARNESS].sort());
+});
+
 test('ipcSenderRole identifies only exact top-level desktop surfaces', () => {
   const policy = options();
   assert.equal(ipcSenderRole(eventFor(policy.surfaces.boot), policy), IPC_ROLES.BOOT);
   assert.equal(ipcSenderRole(eventFor(policy.surfaces.harness), policy), IPC_ROLES.HARNESS);
-  assert.equal(ipcSenderRole(eventFor(policy.surfaces.marketplace), policy), IPC_ROLES.MARKETPLACE);
+  assert.equal(ipcSenderRole(eventFor(policy.surfaces.marketplace), policy), null);
 
   const childFrame = { url: policy.surfaces.harness.mainFrame.url };
   assert.equal(ipcSenderRole(eventFor(policy.surfaces.harness, childFrame), policy), null);

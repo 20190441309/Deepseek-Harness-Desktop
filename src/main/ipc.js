@@ -21,8 +21,8 @@ const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
 
 const BOOT_ONLY = [IPC_ROLES.BOOT];
 const HARNESS_ONLY = [IPC_ROLES.HARNESS];
-const CONFIG_SURFACES = [IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
-const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
+const CONFIG_SURFACES = [IPC_ROLES.HARNESS];
+const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
