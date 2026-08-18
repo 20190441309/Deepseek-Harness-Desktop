@@ -93,6 +93,10 @@ function formatDay(value: string | undefined): string {
   return Number.isNaN(ms) ? '' : new Date(ms).toISOString().slice(0, 10)
 }
 
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : fallback
+}
+
 function sortItems(items: MarketplaceItem[], sort: SortId): MarketplaceItem[] {
   return [...items].sort((left, right) => {
     const hot = starCount(right) - starCount(left)
@@ -178,48 +182,50 @@ export function MarketplaceSettingsTab({
 
   const paged = visible.slice(0, visibleLimit)
 
+  const failAction = (body: string, extraLog?: string): void => {
+    setAction({ kind: 'failure', title: t('marketFailTitle'), body })
+    if (extraLog) setLog(extraLog)
+  }
+
   const runInstall = async (item: MarketplaceItem, allowBuilds?: string[]): Promise<void> => {
     setBusy(true)
     setAction({ kind: 'installing', item })
-    const result = allowBuilds === undefined
-      ? await installMarketplacePlugin(item.id)
-      : await installMarketplacePlugin(item.id, { allowBuilds })
-    if (result.needsAllowBuilds && allowBuilds === undefined) {
+    try {
+      const result = allowBuilds === undefined
+        ? await installMarketplacePlugin(item.id)
+        : await installMarketplacePlugin(item.id, { allowBuilds })
+      if (result.needsAllowBuilds && allowBuilds === undefined) {
+        setAction({ kind: 'allow-builds', item, allowBuilds: result.allowBuilds ?? [] })
+        return
+      }
+      if (!result.ok) {
+        failAction(result.error || t('marketFail'), result.log)
+        return
+      }
+      setAction(null)
+      await load(false)
+    } catch (error: unknown) {
+      failAction(messageOf(error, t('marketFail')))
+    } finally {
       setBusy(false)
-      setAction({ kind: 'allow-builds', item, allowBuilds: result.allowBuilds ?? [] })
-      return
     }
-    if (!result.ok) {
-      setBusy(false)
-      setAction({
-        kind: 'failure',
-        title: t('marketFailTitle'),
-        body: result.error || t('marketFail'),
-      })
-      if (result.log) setLog(result.log)
-      return
-    }
-    setAction(null)
-    setBusy(false)
-    await load(false)
   }
 
   const runUninstall = async (name: string): Promise<void> => {
     setBusy(true)
-    const result = await uninstallPlugin(name)
-    if (!result.ok) {
+    try {
+      const result = await uninstallPlugin(name)
+      if (!result.ok) {
+        failAction(result.error || t('marketFail'), result.log)
+        return
+      }
+      setAction(null)
+      await load(false)
+    } catch (error: unknown) {
+      failAction(messageOf(error, t('marketFail')))
+    } finally {
       setBusy(false)
-      setAction({
-        kind: 'failure',
-        title: t('marketFailTitle'),
-        body: result.error || t('marketFail'),
-      })
-      if (result.log) setLog(result.log)
-      return
     }
-    setAction(null)
-    setBusy(false)
-    await load(false)
   }
 
   const closeAction = (): void => {

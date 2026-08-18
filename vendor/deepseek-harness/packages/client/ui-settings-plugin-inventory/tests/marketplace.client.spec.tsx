@@ -238,6 +238,36 @@ describe('MarketplaceSettingsTab', () => {
     await waitFor(() => { expect(props.listMarketplace).toHaveBeenCalledWith({ refresh: true }) })
   })
 
+  it('shows a dismissible failure Modal when installMarketplacePlugin rejects', async () => {
+    renderTab({
+      installMarketplacePlugin: vi.fn(async () => { throw new Error('Harness did not start') }),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    const detail = openCard('dsh-loop')
+    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: en.marketInstallTitle })).getByRole('button', { name: en.marketInstall }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: en.marketFailTitle })).toBeTruthy() })
+    expect(screen.getByText('Harness did not start')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.marketOk }))
+    expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
+  })
+
+  it('shows a dismissible failure Modal when uninstallPlugin rejects', async () => {
+    renderTab({
+      listInstalled: vi.fn(async () => ({ plugins: [{ name: '@dsh-external/dsh-loop', spec: 'github:owner/dsh-loop#abc' }] })),
+      uninstallPlugin: vi.fn(async () => { throw new Error('profile lock') }),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    pickMenu(en.marketStatus, en.marketInstalled)
+    const detail = openCard('dsh-loop')
+    fireEvent.click(within(detail).getByRole('button', { name: en.marketRemove }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: en.marketRemoveTitle })).getByRole('button', { name: en.marketRemoveOk }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: en.marketFailTitle })).toBeTruthy() })
+    expect(screen.getByText('profile lock')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.marketOk }))
+    expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
+  })
+
   it('shows a loading status until the catalog resolves', async () => {
     let resolveCatalog!: (value: MarketplaceCatalog) => void
     renderTab({
