@@ -21,8 +21,7 @@ const ITEM = {
   installSpec: 'github:owner/dsh-loop#abc',
   isBundle: true,
   category: 'workflow',
-  updated: '2024-01-01T00:00:00Z',
-  pushed: '2024-01-01T00:00:00Z',
+  added: '2024-01-01T00:00:00Z',
   license: 'MIT',
   topics: ['dsh-plugin'],
 }
@@ -38,8 +37,7 @@ const DOC = {
   installSpec: 'github:owner/awesome#main',
   homepage: 'https://github.com/owner/awesome',
   stars: 1,
-  updated: '2026-08-01T00:00:00Z',
-  pushed: '2026-08-01T00:00:00Z',
+  added: '2026-08-01T00:00:00Z',
   license: '',
   topics: [],
 }
@@ -164,7 +162,7 @@ describe('MarketplaceSettingsTab', () => {
     expect(props.close).not.toHaveBeenCalled()
   })
 
-  it('sorts by stars and then by last push', async () => {
+  it('sorts by stars and then by added date', async () => {
     renderTab()
     await waitFor(() => { expect(screen.getByRole('button', { name: 'dsh-loop' })).toBeTruthy() })
     expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
@@ -318,6 +316,48 @@ describe('MarketplaceSettingsTab', () => {
       listInstalled: vi.fn(async () => ({ plugins: [{ name: 'loop', spec: 'github:owner/dsh-loop#abc' }] })),
     })
     await waitFor(() => { expect(screen.getByText(en.marketInstalled)).toBeTruthy() })
+  })
+
+  it('matches a #path: catalog row to a git+https installed spec when packageName is empty', async () => {
+    const pathItem = {
+      id: 'DamonKoy/dsh-web-ui#dsh-aionui-panel',
+      owner: 'DamonKoy',
+      repo: 'dsh-web-ui#dsh-aionui-panel',
+      description: 'aionui panel',
+      stars: 2,
+      packageName: '',
+      homepage: 'https://github.com/DamonKoy/dsh-web-ui',
+      installSpec: 'github:DamonKoy/dsh-web-ui#path:/packages/dsh-aionui-panel',
+      isBundle: true,
+      category: 'ui',
+    }
+    const sibling = {
+      ...pathItem,
+      id: 'DamonKoy/dsh-web-ui#dsh-skins',
+      repo: 'dsh-web-ui#dsh-skins',
+      description: 'skins',
+      installSpec: 'github:DamonKoy/dsh-web-ui#path:/packages/dsh-skins',
+    }
+    renderTab({
+      listMarketplace: vi.fn(async () => ({
+        items: [pathItem, sibling],
+        categories: [{ id: 'all', label: 'All', count: 2 }],
+      })),
+      listInstalled: vi.fn(async () => ({
+        plugins: [{
+          name: 'dsh-aionui-panel',
+          spec: 'git+https://github.com/DamonKoy/dsh-web-ui.git#path:/packages/dsh-aionui-panel',
+        }],
+      })),
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'dsh-web-ui#dsh-aionui-panel' })).toBeTruthy()
+    })
+    expect(within(screen.getByRole('button', { name: 'dsh-web-ui#dsh-aionui-panel' })).getByText(en.marketInstalled)).toBeTruthy()
+    expect(within(screen.getByRole('button', { name: 'dsh-web-ui#dsh-skins' })).queryByText(en.marketInstalled)).toBeNull()
+    const detail = openCard('dsh-web-ui#dsh-aionui-panel')
+    expect(within(detail).getByRole('button', { name: en.marketRemove })).toBeTruthy()
+    expect(within(detail).queryByRole('button', { name: en.marketInstall })).toBeNull()
   })
 
   it('renders 60 cards first and appends 60 more, then resets on query or category change', async () => {

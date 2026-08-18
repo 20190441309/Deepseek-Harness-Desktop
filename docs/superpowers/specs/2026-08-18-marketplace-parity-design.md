@@ -70,7 +70,7 @@ TTL 1 小时。
 | `stars` | `stars` 或 `0` |
 | `packageName` | `npm` 或 `''` |
 | `homepage` | `url` |
-| `installSpec` | 有 `npm` 用 npm 包名，否则从 `install` 解析 `github:owner/repo` |
+| `installSpec` | `install` 命令最后一个空白分词 token（含 `#path:`） |
 | `isBundle` | `true`，除非 `deprecated` 为 true |
 | `category` | registry 的 `category` |
 | `added` | `added` |

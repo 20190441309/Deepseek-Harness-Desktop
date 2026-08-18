@@ -52,10 +52,24 @@ type ActionDialog =
   | { kind: 'uninstall'; name: string }
   | { kind: 'failure'; title: string; body: string }
 
+function githubRepoName(repo: string): string {
+  const hash = repo.indexOf('#')
+  return hash < 0 ? repo : repo.slice(0, hash)
+}
+
+function marketplacePathSuffix(installSpec: string): string {
+  const marker = '#path:/'
+  const index = installSpec.indexOf(marker)
+  return index < 0 ? '' : installSpec.slice(index)
+}
+
 function installedName(item: MarketplaceItem, installed: Map<string, string>): string {
   if (item.packageName && installed.has(item.packageName)) return item.packageName
+  const ownerRepo = `${item.owner}/${githubRepoName(item.repo)}`
+  const pathSuffix = marketplacePathSuffix(item.installSpec)
   for (const [name, spec] of installed) {
-    if (spec.includes(`${item.owner}/${item.repo}`)) return name
+    if (!spec.includes(ownerRepo)) continue
+    if (pathSuffix ? spec.includes(pathSuffix) : !spec.includes('#path:/')) return name
   }
   return ''
 }
@@ -85,7 +99,7 @@ function dedupeItems(items: MarketplaceItem[]): MarketplaceItem[] {
 }
 
 function activityTime(item: MarketplaceItem): number {
-  return Date.parse(item.pushed || item.updated || '') || 0
+  return Date.parse(item.added || item.pushed || item.updated || '') || 0
 }
 
 function formatDay(value: string | undefined): string {
@@ -245,7 +259,7 @@ export function MarketplaceSettingsTab({
   const sortLabel = sortOptions.find(([id]) => id === sort)?.[1] ?? t('marketSortHot')
 
   const detailName = detail ? installedName(detail, installed) : ''
-  const updated = formatDay(detail?.pushed || detail?.updated)
+  const updated = formatDay(detail?.added || detail?.pushed || detail?.updated)
   const topics = [...new Set([...(detail?.topics ?? []), ...(detail?.keywords ?? [])])].filter(Boolean)
 
   return (

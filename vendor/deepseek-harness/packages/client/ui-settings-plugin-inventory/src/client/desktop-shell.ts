@@ -16,6 +16,7 @@ export type MarketplaceItem = {
   installSpec: string
   isBundle: boolean
   category: string
+  added?: string
   updated?: string
   pushed?: string
   license?: string
