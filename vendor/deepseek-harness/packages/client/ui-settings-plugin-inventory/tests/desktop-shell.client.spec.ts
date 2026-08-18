@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { desktopShell } from '../src/client/desktop-shell.ts'
+import { catalogLocale, desktopShell } from '../src/client/desktop-shell.ts'
 
 describe('desktopShell', () => {
   it('returns null without a shell bridge', () => {
@@ -15,3 +15,13 @@ describe('desktopShell', () => {
     delete (window as Window & { shell?: unknown }).shell
   })
 })
+
+describe('catalogLocale', () => {
+  it('maps zh-prefixed tags to zh and everything else to en', () => {
+    expect(catalogLocale('zh')).toBe('zh')
+    expect(catalogLocale('zh-CN')).toBe('zh')
+    expect(catalogLocale('en')).toBe('en')
+    expect(catalogLocale('en-US')).toBe('en')
+  })
+})
+

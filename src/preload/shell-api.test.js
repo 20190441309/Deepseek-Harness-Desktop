@@ -52,7 +52,7 @@ const { buildShellApi, shellRole } = loadPreload().exports;
 test('shellRole accepts only explicit desktop roles', () => {
   assert.equal(shellRole(['electron', '--dshd-shell-role=boot']), 'boot');
   assert.equal(shellRole(['electron', '--dshd-shell-role=harness']), 'harness');
-  assert.equal(shellRole(['electron', '--dshd-shell-role=marketplace']), 'marketplace');
+  assert.equal(shellRole(['electron', '--dshd-shell-role=marketplace']), null);
   assert.equal(shellRole(['electron', '--dshd-shell-role=admin']), null);
   assert.equal(shellRole(['electron']), null);
 });
@@ -76,14 +76,11 @@ test('boot preload exposes recovery but no workspace mutation', () => {
   assert.equal(api.saveConfig, undefined);
 });
 
-test('marketplace preload is limited to catalog and token settings', () => {
-  const api = buildShellApi('marketplace', fakeRenderer());
-  assert.equal(typeof api.listMarketplace, 'function');
-  assert.equal(typeof api.seedInstallDraft, 'function');
-  assert.equal(typeof api.saveConfig, 'function');
-  assert.equal(api.installPlugin, undefined);
-  assert.equal(api.writeFile, undefined);
-  assert.equal(api.ptyCreate, undefined);
+test('marketplace preload role is not exposed', () => {
+  assert.equal(buildShellApi('marketplace', fakeRenderer()), null);
+
+  const { exposed } = loadPreload(['electron', '--dshd-shell-role=marketplace']);
+  assert.equal(exposed, null);
 });
 
 test('harness preload keeps work loops but omits frozen remote controls', () => {
@@ -94,4 +91,12 @@ test('harness preload keeps work loops but omits frozen remote controls', () => 
   assert.equal(typeof api.gitCommit, 'function');
   assert.equal(api.saveRemote, undefined);
   assert.equal(api.rotateRemoteToken, undefined);
+});
+
+test('harness preload exposes installMarketplacePlugin and omits seed install draft', () => {
+  const api = buildShellApi('harness', fakeRenderer());
+  assert.equal(typeof api.installMarketplacePlugin, 'function');
+  assert.equal(typeof api.installPlugin, 'function');
+  assert.equal(api.seedInstallDraft, undefined);
+  assert.equal(api.onSeedInstallDraft, undefined);
 });

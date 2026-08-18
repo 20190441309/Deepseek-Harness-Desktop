@@ -2,63 +2,243 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { DROPPED } = require('./plugins');
-const { classifyPlugin, countCategories } = require('./marketplace-categories');
+const { isValidPackageName } = require('../host/install-dsh-plugin-client');
+const { isAllowedMarketplaceSpec } = require('./marketplace-spec');
 
-const SEARCH_QUERY = 'topic:dsh-plugin';
-const CACHE_VERSION = 2;
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const PAGE_SIZE = 100;
-const MAX_PAGES = 10;
-const PROBE_CONCURRENCY = 8;
+const DEFAULT_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
+const CACHE_VERSION = 3;
+const CACHE_TTL_MS = 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 4000;
 const USER_AGENT = 'Deepseek-Harness-Desktop';
+const SNAPSHOT_PATH = path.join(__dirname, 'marketplace-registry-snapshot.json');
+const WARNING_FRESH_CACHE = '正在使用一小时内的本地插件目录。';
+const WARNING_EMPTY = '无法加载插件目录。';
+
+let memoryRegistry = null;
+let memoryFetchedAt = 0;
 
 function cachePath() {
   return path.join(app.getPath('userData'), 'marketplace-cache.json');
 }
 
-function readCache() {
+function registryUrl() {
+  const fromEnv = process.env.DSHD_MARKETPLACE_REGISTRY_URL;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
+  return DEFAULT_REGISTRY_URL;
+}
+
+function isValidRegistry(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Array.isArray(value.plugins)
+    && value.plugins.length > 0,
+  );
+}
+
+function resolveLocale(locale) {
+  const raw = String(locale || 'zh').trim();
+  if (!raw || raw.toLowerCase().startsWith('zh')) {
+    return 'zh';
+  }
+  return 'en';
+}
+
+function pickLocalized(map, locale) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) {
+    return '';
+  }
+  if (typeof map[locale] === 'string') {
+    return map[locale];
+  }
+  if (typeof map.en === 'string') {
+    return map.en;
+  }
+  return '';
+}
+
+function lastInstallToken(install) {
+  const parts = String(install || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function unquoteToken(value) {
+  const token = String(value || '').trim();
+  if (token.length >= 2) {
+    const start = token[0];
+    const end = token[token.length - 1];
+    if ((start === '"' && end === '"') || (start === "'" && end === "'")) {
+      return token.slice(1, -1);
+    }
+  }
+  return token;
+}
+
+function parseSourceUrl(url) {
+  const match = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\/tree\/[^/]+\/(.+?))?\/?$/i.exec(String(url || '').trim());
+  if (!match) {
+    return null;
+  }
+  const repo = match[1].replace(/\.git$/i, '');
+  const [owner, name] = repo.split('/');
+  if (!owner || !name || name.includes('#')) {
+    return null;
+  }
+  const subpath = match[2] || '';
+  if (subpath && (subpath.includes('..') || subpath.includes(':') || subpath.includes('\\'))) {
+    return null;
+  }
+  return { owner, repo: name, subpath };
+}
+
+function allowedFallbackSpec(spec, plugin) {
+  const item = { homepage: plugin?.url || '', npm: plugin?.npm || null };
+  return isAllowedMarketplaceSpec(spec, item) ? spec : '';
+}
+
+/**
+ * Resolve the CLI spec the way dsh-market `installTargetFor` does:
+ * a valid npm name, else github / #path: from the GitHub URL,
+ * else the last `install` token when `isAllowedMarketplaceSpec` accepts it.
+ * @param {object} plugin
+ * @returns {string}
+ */
+function resolveInstallSpec(plugin) {
+  const npm = typeof plugin?.npm === 'string' ? plugin.npm.trim() : '';
+  if (isValidPackageName(npm)) {
+    return npm;
+  }
+  const source = parseSourceUrl(plugin?.url);
+  if (source) {
+    return source.subpath
+      ? `github:${source.owner}/${source.repo}#path:/${source.subpath}`
+      : `github:${source.owner}/${source.repo}`;
+  }
+  return allowedFallbackSpec(unquoteToken(lastInstallToken(plugin?.install)), plugin);
+}
+
+function starCount(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapPlugin(plugin, locale) {
+  const owner = String(plugin?.owner || '');
+  const name = String(plugin?.name || '');
+  if (!owner || !name) {
+    return null;
+  }
+  const npm = typeof plugin.npm === 'string' && plugin.npm ? plugin.npm : null;
+  const deprecated = plugin.deprecated === true;
+  return {
+    id: `${owner}/${name}`,
+    owner,
+    repo: name,
+    description: pickLocalized(plugin.description, locale),
+    stars: starCount(plugin.stars),
+    packageName: npm || '',
+    homepage: plugin.url || '',
+    installSpec: resolveInstallSpec(plugin),
+    isBundle: !deprecated,
+    category: plugin.category || '',
+    added: plugin.added,
+    deprecated: plugin.deprecated,
+    replacement: plugin.replacement,
+    screenshots: Array.isArray(plugin.screenshots) ? plugin.screenshots : [],
+    npm,
+  };
+}
+
+function isDropped(item) {
+  return DROPPED.includes(item.id) || DROPPED.includes(item.packageName);
+}
+
+function buildCategories(registry, items, locale) {
+  const categories = registry?.categories && typeof registry.categories === 'object' && !Array.isArray(registry.categories)
+    ? registry.categories
+    : {};
+  const counts = Object.create(null);
+  for (const item of items) {
+    counts[item.category] = (counts[item.category] || 0) + 1;
+  }
+  return [
+    { id: 'all', label: locale === 'en' ? 'All' : '全部', count: items.length },
+    ...Object.keys(categories).map((id) => ({
+      id,
+      label: pickLocalized(categories[id], locale) || id,
+      count: counts[id] || 0,
+    })),
+  ];
+}
+
+function toPayload(registry, locale, extra) {
+  const mapped = (registry.plugins || []).map((plugin) => mapPlugin(plugin, locale)).filter(Boolean);
+  const items = mapped.filter((item) => !isDropped(item));
+  return {
+    ok: true,
+    items,
+    categories: buildCategories(registry, items, locale),
+    fetchedAt: extra.fetchedAt || 0,
+    source: extra.source,
+    warning: extra.warning || '',
+  };
+}
+
+function emptyPayload(locale, warning) {
+  return {
+    ok: false,
+    items: [],
+    categories: [{ id: 'all', label: locale === 'en' ? 'All' : '全部', count: 0 }],
+    fetchedAt: 0,
+    source: '',
+    warning: warning || WARNING_EMPTY,
+  };
+}
+
+function cacheIsCurrent(fetchedAt) {
+  return Date.now() - Number(fetchedAt || 0) < CACHE_TTL_MS;
+}
+
+function readDiskCache() {
   try {
     const cache = JSON.parse(fs.readFileSync(cachePath(), 'utf8'));
-    if (!cache || !Array.isArray(cache.items) || cache.items.length === 0) {
+    if (!cache || cache.version !== CACHE_VERSION || !isValidRegistry(cache.registry)) {
       return null;
     }
     return cache;
   } catch {
+    // Missing or invalid cache files are a cache miss, not a crash.
     return null;
   }
 }
 
-function cacheIsCurrent(cache) {
-  return Boolean(
-    cache
-    && cache.version === CACHE_VERSION
-    && Date.now() - Number(cache.fetchedAt || 0) < CACHE_TTL_MS,
-  );
-}
-
-function writeCache(payload) {
+function writeDiskCache(registry, fetchedAt) {
   fs.mkdirSync(path.dirname(cachePath()), { recursive: true });
   const tmp = `${cachePath()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ version: CACHE_VERSION, ...payload }, null, 2), 'utf8');
+  fs.writeFileSync(tmp, JSON.stringify({
+    version: CACHE_VERSION,
+    fetchedAt,
+    registry,
+  }, null, 2), 'utf8');
   fs.renameSync(tmp, cachePath());
 }
 
-function starCount(item) {
-  const n = Number(item && item.stars);
-  return Number.isFinite(n) ? n : 0;
+function readSnapshot() {
+  try {
+    const registry = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
+    return isValidRegistry(registry) ? registry : null;
+  } catch {
+    // A missing or invalid packed snapshot is treated as empty, not fatal.
+    return null;
+  }
 }
 
-function dedupeItems(items) {
-  const seen = new Set();
-  const result = [];
-  for (const item of items || []) {
-    if (!item || !item.id || seen.has(item.id)) {
-      continue;
-    }
-    seen.add(item.id);
-    result.push({ ...item, stars: starCount(item) });
-  }
-  return result;
+function remember(registry, fetchedAt) {
+  memoryRegistry = registry;
+  memoryFetchedAt = fetchedAt;
 }
 
 function githubHeaders(token) {
@@ -73,223 +253,119 @@ function githubHeaders(token) {
   return headers;
 }
 
-async function githubJson(url, token, timeoutMs = 15000) {
+async function fetchRegistry() {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
-      headers: githubHeaders(token),
+    const response = await fetch(registryUrl(), {
+      headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
     const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`插件目录请求失败（${response.status}）`);
+    }
     let body = null;
     try {
       body = text ? JSON.parse(text) : null;
     } catch {
-      body = text;
+      throw new Error('插件目录响应无效');
     }
-    return { ok: response.ok, status: response.status, body };
+    if (!isValidRegistry(body)) {
+      throw new Error('插件目录为空');
+    }
+    return body;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function searchTopic(token) {
-  const items = [];
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(SEARCH_QUERY)}&sort=stars&order=desc&per_page=${PAGE_SIZE}&page=${page}`;
-    const result = await githubJson(url, token);
-    if (!result.ok) {
-      const message = result.status === 403 || result.status === 429
-        ? 'GitHub 请求过于频繁，稍后重试或在市场页填写 Token'
-        : `GitHub 搜索失败（${result.status}）`;
-      const error = new Error(message);
-      error.status = result.status;
-      error.partial = items;
-      throw error;
-    }
-    const pageItems = Array.isArray(result.body?.items) ? result.body.items : [];
-    items.push(...pageItems);
-    if (pageItems.length < PAGE_SIZE || items.length >= Number(result.body?.total_count || 0)) {
-      break;
-    }
-  }
-  return items;
-}
-
-async function fetchText(url, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
-      signal: controller.signal,
+function fallbackPayload(locale, error) {
+  const failed = error && error.name === 'AbortError'
+    ? '插件目录请求超时'
+    : (error && error.message) || WARNING_EMPTY;
+  if (memoryRegistry) {
+    return toPayload(memoryRegistry, locale, {
+      source: 'cache',
+      fetchedAt: memoryFetchedAt,
+      warning: `${failed}，已使用本地缓存。`,
     });
-    if (!response.ok) {
-      return null;
-    }
-    return response.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
   }
-}
-
-async function probePackage(owner, repo, branch) {
-  const branches = [...new Set([branch, 'main', 'master'].filter(Boolean))];
-  for (const ref of branches) {
-    const text = await fetchText(`https://raw.githubusercontent.com/${owner}/${repo}/${ref}/package.json`);
-    if (!text) {
-      continue;
-    }
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
+  const disk = readDiskCache();
+  if (disk) {
+    remember(disk.registry, disk.fetchedAt);
+    return toPayload(disk.registry, locale, {
+      source: 'cache',
+      fetchedAt: disk.fetchedAt,
+      warning: `${failed}，已使用本地缓存。`,
+    });
   }
-  return null;
-}
-
-async function mapLimit(items, limit, worker) {
-  const results = new Array(items.length);
-  let index = 0;
-  async function next() {
-    const current = index;
-    index += 1;
-    if (current >= items.length) {
-      return;
-    }
-    results[current] = await worker(items[current], current);
-    return next();
+  const snapshot = readSnapshot();
+  if (snapshot) {
+    return toPayload(snapshot, locale, {
+      source: 'snapshot',
+      fetchedAt: 0,
+      warning: `${failed}，已使用离线快照。`,
+    });
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => next()));
-  return results;
-}
-
-function licenseName(repo) {
-  const license = repo.license;
-  if (!license) {
-    return '';
-  }
-  return license.spdx_id && license.spdx_id !== 'NOASSERTION' ? license.spdx_id : (license.name || '');
-}
-
-function toEntry(repo, pkg) {
-  const owner = repo.owner?.login || repo.full_name.split('/')[0];
-  const name = repo.name;
-  const packageName = typeof pkg?.name === 'string' ? pkg.name : '';
-  const keywords = Array.isArray(pkg?.keywords) ? pkg.keywords : [];
-  const topics = Array.isArray(repo.topics) ? repo.topics : [];
-  const isBundle = Boolean(pkg?.dsh?.bundle?.patch);
-  const dropped = DROPPED.includes(packageName);
-  const branch = repo.default_branch || 'main';
-  return {
-    id: repo.full_name,
-    owner,
-    repo: name,
-    description: repo.description || '',
-    stars: starCount({ stars: repo.stargazers_count }),
-    updated: repo.updated_at || '',
-    pushed: repo.pushed_at || repo.updated_at || '',
-    license: licenseName(repo),
-    defaultBranch: branch,
-    sha: '',
-    packageName,
-    keywords,
-    topics,
-    homepage: repo.html_url,
-    installSpec: `github:${repo.full_name}#${branch}`,
-    isBundle,
-    dropped,
-    category: classifyPlugin({
-      topics,
-      keywords,
-      name: packageName || name,
-      repo: name,
-      packageName,
-      description: repo.description || '',
-    }),
-  };
-}
-
-function decorate(items) {
-  return (items || []).map((item) => ({
-    ...item,
-    category: classifyPlugin(item),
-  }));
-}
-
-function payloadFromItems(items, extra = {}) {
-  const visible = dedupeItems(items.filter((item) => !item.dropped));
-  return {
-    ok: true,
-    query: SEARCH_QUERY,
-    topicUrl: 'https://github.com/topics/dsh-plugin',
-    items: visible,
-    categories: countCategories(visible),
-    fetchedAt: extra.fetchedAt || Date.now(),
-    stale: Boolean(extra.stale),
-    warning: extra.warning || '',
-  };
+  return emptyPayload(locale, failed);
 }
 
 /**
- * List dsh-plugin topic repositories, probing package.json for bundle metadata.
- * @param {{ token?: string, refresh?: boolean }} options
+ * List curated marketplace plugins from plugins.json.
+ * @param {{ refresh?: boolean, locale?: string }} options
  */
 async function listMarketplace(options = {}) {
-  const cache = readCache();
-  if (cache && !options.refresh && cacheIsCurrent(cache)) {
-    return payloadFromItems(decorate(cache.items), { fetchedAt: cache.fetchedAt });
+  const locale = resolveLocale(options.locale);
+  if (!options.refresh) {
+    if (memoryRegistry && cacheIsCurrent(memoryFetchedAt)) {
+      return toPayload(memoryRegistry, locale, {
+        source: 'cache',
+        fetchedAt: memoryFetchedAt,
+        warning: WARNING_FRESH_CACHE,
+      });
+    }
+    const disk = readDiskCache();
+    if (disk && cacheIsCurrent(disk.fetchedAt)) {
+      remember(disk.registry, disk.fetchedAt);
+      return toPayload(disk.registry, locale, {
+        source: 'cache',
+        fetchedAt: disk.fetchedAt,
+        warning: WARNING_FRESH_CACHE,
+      });
+    }
   }
 
   try {
-    const repos = await searchTopic(options.token);
-    const probed = await mapLimit(repos, PROBE_CONCURRENCY, async (repo) => {
-      const owner = repo.owner?.login;
-      const name = repo.name;
-      if (!owner || !name) {
-        return null;
-      }
-      const pkg = await probePackage(owner, name, repo.default_branch);
-      return toEntry(repo, pkg);
-    });
-    const items = probed.filter(Boolean);
+    const registry = await fetchRegistry();
     const fetchedAt = Date.now();
-    writeCache({ fetchedAt, query: SEARCH_QUERY, items });
-    return payloadFromItems(items, { fetchedAt });
+    remember(registry, fetchedAt);
+    writeDiskCache(registry, fetchedAt);
+    return toPayload(registry, locale, { source: 'live', fetchedAt });
   } catch (error) {
-    if (cache?.items?.length) {
-      return payloadFromItems(decorate(cache.items), {
-        fetchedAt: cache.fetchedAt,
-        stale: true,
-        warning: error.message,
-      });
-    }
-    const rawPartial = Array.isArray(error.partial) ? error.partial : [];
-    if (rawPartial.length) {
-      const items = rawPartial
-        .filter((repo) => repo?.owner?.login && repo.name)
-        .map((repo) => toEntry(repo, null));
-      return payloadFromItems(items, {
-        fetchedAt: Date.now(),
-        stale: true,
-        warning: error.message,
-      });
-    }
-    return {
-      ok: false,
-      query: SEARCH_QUERY,
-      topicUrl: 'https://github.com/topics/dsh-plugin',
-      items: [],
-      categories: countCategories([]),
-      fetchedAt: 0,
-      stale: false,
-      warning: error.message,
-    };
+    return fallbackPayload(locale, error);
   }
+}
+
+/**
+ * Look up one registry plugin by id without fetching.
+ * DROPPED rows are returned so install can reject them.
+ * @param {string} id
+ * @returns {object | null}
+ */
+function getMarketplacePlugin(id) {
+  const wanted = String(id || '');
+  if (!wanted) {
+    return null;
+  }
+  const locale = resolveLocale('zh');
+  const disk = memoryRegistry ? null : readDiskCache();
+  const registry = memoryRegistry || disk?.registry || readSnapshot();
+  if (!registry) {
+    return null;
+  }
+  const plugin = (registry.plugins || []).find((row) => row && `${row.owner}/${row.name}` === wanted);
+  return plugin ? mapPlugin(plugin, locale) : null;
 }
 
 async function resolveCommitSha(owner, repo, ref, token) {
@@ -310,6 +386,7 @@ async function resolveCommitSha(owner, repo, ref, token) {
     const sha = (await response.text()).trim();
     return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : '';
   } catch {
+    // GitHub SHA lookup failed (network, abort, or non-JSON); keep the floating ref.
     return '';
   } finally {
     clearTimeout(timer);
@@ -317,9 +394,7 @@ async function resolveCommitSha(owner, repo, ref, token) {
 }
 
 module.exports = {
-  SEARCH_QUERY,
-  CACHE_TTL_MS,
   listMarketplace,
+  getMarketplacePlugin,
   resolveCommitSha,
-  classifyPlugin,
 };

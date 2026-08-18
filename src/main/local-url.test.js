@@ -8,7 +8,6 @@ const {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
-  isMarketplaceNavigationUrl,
   rewriteLoopbackLoadUrl,
   isHttpOrHttpsUrl,
   shouldAllowPrivilegedNavigate,
@@ -54,17 +53,9 @@ test('isLocalAppNavigationUrl allows only the packaged boot.html path', () => {
   fs.rmSync(path.dirname(boot), { recursive: true, force: true });
 });
 
-test('isMarketplaceNavigationUrl allows only packaged marketplace/index.html', () => {
-  const root = path.join(os.tmpdir(), `dsh-mkt-${process.pid}`);
-  const market = path.join(root, 'marketplace', 'index.html');
-  fs.mkdirSync(path.dirname(market), { recursive: true });
-  fs.writeFileSync(market, '<html></html>');
-  const resolveMarketplacePath = () => market;
-  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(market).href, { resolveMarketplacePath }), true);
-  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(path.join(root, 'boot.html')).href, { resolveMarketplacePath }), false);
-  assert.equal(isMarketplaceNavigationUrl('http://127.0.0.1:3080/', { resolveMarketplacePath }), false);
-  assert.equal(isMarketplaceNavigationUrl(pathToFileURL(path.join(os.tmpdir(), 'evil', 'index.html')).href, { resolveMarketplacePath }), false);
-  fs.rmSync(root, { recursive: true, force: true });
+test('local-url has no marketplace navigation policy', () => {
+  const localUrl = require('./local-url.js');
+  assert.equal(localUrl.isMarketplaceNavigationUrl, undefined);
 });
 
 test('rewriteLoopbackLoadUrl maps 0.0.0.0 to 127.0.0.1', () => {

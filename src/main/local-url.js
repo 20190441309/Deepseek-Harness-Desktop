@@ -134,18 +134,6 @@ function isLocalAppNavigationUrl(raw, options = {}) {
 }
 
 /**
- * Marketplace window stays on packaged `marketplace/index.html` only.
- * @param {unknown} raw
- * @param {{ resolveMarketplacePath?: () => string }} [options]
- * @returns {boolean}
- */
-function isMarketplaceNavigationUrl(raw, options = {}) {
-  return isPackagedRendererFileUrl(raw, path.join('marketplace', 'index.html'), {
-    resolvePath: options.resolveMarketplacePath,
-  });
-}
-
-/**
  * Pure policy for will-navigate: allow when the URL is permitted or equals
  * the current document (same-document reload / hash churn).
  * @param {{ nextUrl: unknown, currentUrl: unknown, allowUrl: (url: unknown) => boolean }} args
@@ -170,7 +158,6 @@ module.exports = {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
-  isMarketplaceNavigationUrl,
   isPackagedRendererFileUrl,
   rewriteLoopbackLoadUrl,
   isHttpOrHttpsUrl,

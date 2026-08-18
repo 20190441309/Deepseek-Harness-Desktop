@@ -6,13 +6,13 @@ const {
   publicConfig,
   normalizeRendererConfigPatch,
 } = require('./config');
-const { getMainWindow, getHarnessWebContents, openHarnessSettings, openMarketplace, openRemote, showMain, isHarnessLoaded, closeMarketplaceWindow } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
-const { listInstalledPlugins, installPlugin, uninstallPlugin } = require('./marketplace-install');
+const { listInstalledPlugins, installPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
@@ -21,8 +21,8 @@ const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
 
 const BOOT_ONLY = [IPC_ROLES.BOOT];
 const HARNESS_ONLY = [IPC_ROLES.HARNESS];
-const CONFIG_SURFACES = [IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
-const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.MARKETPLACE];
+const CONFIG_SURFACES = [IPC_ROLES.HARNESS];
+const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -55,6 +55,23 @@ function sendPluginProgress(event, payload) {
   if (event?.sender && !event.sender.isDestroyed()) {
     event.sender.send('shell:plugin-progress', payload);
   }
+}
+
+const HARNESS_DOWN_AFTER_ADD = '插件已写入 web profile，但 Harness 没有起来。请从现有入口重启，不要再安装一次。';
+const HARNESS_DOWN_AFTER_REMOVE = '插件已从 web profile 移除，但 Harness 没有起来。请从现有入口重启，不要再卸载一次。';
+
+async function restartAfterProfileWrite(event, result, startHarness, downError) {
+  if (result.ok !== true || typeof startHarness !== 'function') {
+    return result;
+  }
+  sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
+  try {
+    await startHarness();
+  } catch {
+    // startHarness threw after the profile write committed. Return ok so the UI does not retry the write.
+    return { ...result, ok: true, harnessStarted: false, error: downError };
+  }
+  return { ...result, harnessStarted: true };
 }
 
 function registerIpc({ dsh, harness, startHarness, remote }) {
@@ -121,20 +138,21 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   handle('shell:check-update', HARNESS_ONLY, () => checkUpdate());
 
-  handle('shell:list-marketplace', CONFIG_SURFACES, async (_event, options = {}) => {
-    const config = loadConfig();
+  handle('shell:list-marketplace', HARNESS_ONLY, async (_event, options = {}) => {
     return listMarketplace({
-      token: config.githubToken,
       refresh: Boolean(options && options.refresh),
+      locale: options?.locale,
     });
   });
 
-  handle('shell:refresh-marketplace', CONFIG_SURFACES, async () => {
-    const config = loadConfig();
-    return listMarketplace({ token: config.githubToken, refresh: true });
+  handle('shell:refresh-marketplace', HARNESS_ONLY, async (_event, options = {}) => {
+    return listMarketplace({
+      refresh: true,
+      locale: options?.locale,
+    });
   });
 
-  handle('shell:list-installed-plugins', CONFIG_SURFACES, () => listInstalledPlugins());
+  handle('shell:list-installed-plugins', HARNESS_ONLY, () => listInstalledPlugins());
 
   handle('shell:install-plugin', HARNESS_ONLY, async (event, spec, options = {}) => {
     const config = loadConfig();
@@ -143,41 +161,27 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
       allowBuilds: Array.isArray(options?.allowBuilds) ? options.allowBuilds : [],
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    if (result.ok && typeof startHarness === 'function') {
-      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
-      await startHarness();
-    }
-    return result;
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_ADD);
   });
 
-  handle('shell:uninstall-plugin', CONFIG_SURFACES, async (event, name) => {
+  handle('shell:install-marketplace-plugin', HARNESS_ONLY, async (event, id, options = {}) => {
+    const config = loadConfig();
+    const result = await installMarketplacePlugin(id, {
+      token: config.githubToken,
+      allowBuilds: Array.isArray(options?.allowBuilds) ? options.allowBuilds : [],
+      onProgress: (payload) => sendPluginProgress(event, payload),
+    });
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_ADD);
+  });
+
+  handle('shell:uninstall-plugin', HARNESS_ONLY, async (event, name) => {
     const result = await uninstallPlugin(name, {
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    if (result.ok && typeof startHarness === 'function') {
-      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
-      await startHarness();
-    }
-    return result;
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_REMOVE);
   });
 
   handle('shell:open-marketplace', HARNESS_ONLY, () => openMarketplace());
-
-  handle('shell:seed-install-draft', CONFIG_SURFACES, async (_event, item) => {
-    const repo = String(item?.repo || '').trim();
-    const installSpec = String(item?.installSpec || '').trim();
-    if (!repo || !installSpec) {
-      return { ok: false, error: 'missing-item' };
-    }
-    const win = showMain();
-    if (!win || !isHarnessLoaded(win)) {
-      return { ok: false, error: 'harness-not-ready' };
-    }
-    const wc = getHarnessWebContents(win) || win.webContents;
-    wc.send('shell:seed-install-draft', { repo, installSpec });
-    closeMarketplaceWindow();
-    return { ok: true };
-  });
 
   handle('shell:git-status', HARNESS_ONLY, (_event, cwd) => gitStatus(cwd));
   handle('shell:git-fetch-status', HARNESS_ONLY, (_event, cwd) => gitFetchForStatus(cwd));

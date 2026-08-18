@@ -7,13 +7,19 @@ const { loadConfig } = require('./config');
 const { resolveNodeBin, sourceHarnessStatus } = require('./dsh');
 const { projectRoot, harnessRoot } = require('./paths');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
-const { resolveCommitSha } = require('./marketplace-catalog');
+const { resolveCommitSha, getMarketplacePlugin } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
 const {
   isValidGithubSpec,
   isValidPackageName,
+  isValidAllowBuild,
   normalizeAllowBuilds,
 } = require('../host/install-dsh-plugin-client');
+const {
+  GITHUB_PATH_SPEC,
+  parseGithubSpec,
+  isAllowedMarketplaceSpec,
+} = require('./marketplace-spec');
 const { prependPath } = require('../shared/env-path');
 
 const ALLOW_HINT = /ignored build scripts|allowbuilds|approve-builds|blocked.*prepare|pnpm-workspace\.yaml/i;
@@ -24,6 +30,7 @@ function whichAll(command) {
     const out = execFileSync(bin, [command], { encoding: 'utf8' });
     return out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   } catch {
+    // where/which exited non-zero; the command is absent from PATH.
     return [];
   }
 }
@@ -200,19 +207,291 @@ function runPlugin(args, onProgress) {
   });
 }
 
-function parseGithubSpec(spec) {
-  const value = String(spec || '').trim();
-  if (!isValidGithubSpec(value)) {
+const BUSY_ERROR = '已有插件正在安装或卸载，请稍后再试';
+
+let pluginLock = false;
+
+function pluginCommand(options) {
+  return typeof options.runPlugin === 'function' ? options.runPlugin : runPlugin;
+}
+
+async function withPluginLock(work) {
+  if (pluginLock) {
+    return { ok: false, error: BUSY_ERROR };
+  }
+  pluginLock = true;
+  try {
+    return await work();
+  } finally {
+    pluginLock = false;
+  }
+}
+
+function isDroppedInstall(plugin, spec) {
+  return DROPPED.includes(plugin.id)
+    || DROPPED.includes(plugin.packageName)
+    || (isValidPackageName(spec) && DROPPED.includes(spec));
+}
+
+function packageInstallDir(packageName) {
+  return path.join(webProfileDir(), 'node_modules', packageName);
+}
+
+function readJsonFile(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    // Missing files and invalid JSON are unread, not fatal.
     return null;
   }
-  const match = /^github:([^/#]+)\/([^/#]+)(?:#(.+))?$/.exec(value);
-  if (!match) {
+}
+
+function resolveExportFile(pkg, dir, key) {
+  const exp = pkg.exports;
+  if (typeof exp === 'string') {
+    return key === '.' ? path.resolve(dir, exp) : null;
+  }
+  if (!exp || typeof exp !== 'object') {
     return null;
   }
-  return { owner: match[1], repo: match[2], ref: match[3] || '' };
+  const entry = exp[key];
+  if (typeof entry === 'string') {
+    return path.resolve(dir, entry);
+  }
+  if (entry && typeof entry === 'object') {
+    const rel = entry.default || entry.import || entry.require;
+    return typeof rel === 'string' ? path.resolve(dir, rel) : null;
+  }
+  return null;
+}
+
+function isExistingFile(file) {
+  try {
+    return Boolean(file) && fs.statSync(file).isFile();
+  } catch {
+    // Absent paths are not loadable entries.
+    return false;
+  }
+}
+
+function hasLoadableEntry(packageName) {
+  const dir = packageInstallDir(packageName);
+  const pkg = readJsonFile(path.join(dir, 'package.json'));
+  if (!pkg || typeof pkg !== 'object') {
+    return false;
+  }
+  const patch = pkg.dsh?.bundle?.patch;
+  if (typeof patch === 'string' && patch && isExistingFile(path.resolve(dir, patch))) {
+    return true;
+  }
+  const client = pkg.dsh?.client;
+  if (typeof client === 'string' && isExistingFile(path.resolve(dir, client))) {
+    return true;
+  }
+  if (client && typeof client === 'object' && isExistingFile(resolveExportFile(pkg, dir, './client'))) {
+    return true;
+  }
+  if (typeof pkg.main === 'string' && isExistingFile(path.resolve(dir, pkg.main))) {
+    return true;
+  }
+  return isExistingFile(resolveExportFile(pkg, dir, '.'));
+}
+
+function pluginNames(installed) {
+  return (installed?.plugins || []).map((row) => row.name).filter(Boolean);
+}
+
+function listNodeModuleNames() {
+  const root = path.join(webProfileDir(), 'node_modules');
+  const names = [];
+  if (!fs.existsSync(root)) {
+    return names;
+  }
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    // Unreadable node_modules is treated as empty.
+    return names;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === '.bin' || entry.name === '.pnpm') {
+      continue;
+    }
+    if (entry.name.startsWith('@')) {
+      let nested = [];
+      try {
+        nested = fs.readdirSync(path.join(root, entry.name), { withFileTypes: true });
+      } catch {
+        // Unreadable scope directory is skipped.
+        continue;
+      }
+      for (const child of nested) {
+        if (child.isDirectory()) {
+          names.push(`${entry.name}/${child.name}`);
+        }
+      }
+      continue;
+    }
+    names.push(entry.name);
+  }
+  return names;
+}
+
+function githubIdentity(spec) {
+  const value = String(spec || '');
+  const pathMatch = GITHUB_PATH_SPEC.exec(value);
+  if (pathMatch) {
+    return `${pathMatch[1]}/${pathMatch[2]}#path:/${pathMatch[3]}`.toLowerCase();
+  }
+  const parsed = parseGithubSpec(value);
+  if (parsed) {
+    return `${parsed.owner}/${parsed.repo}`.toLowerCase();
+  }
+  const url = value.match(/github\.com[:/]([^/#]+)\/([^/#]+?)(?:\.git)?(?:#path:\/([^#]+))?/i);
+  if (!url) {
+    return '';
+  }
+  const owner = url[1];
+  const repo = String(url[2]).replace(/\.git$/i, '');
+  return url[3]
+    ? `${owner}/${repo}#path:/${url[3]}`.toLowerCase()
+    : `${owner}/${repo}`.toLowerCase();
+}
+
+function specMatchesInstall(installedSpec, installSpec) {
+  const left = githubIdentity(installedSpec);
+  const right = githubIdentity(installSpec);
+  return Boolean(left && right && left === right);
+}
+
+function resolveInstalledNames(spec, before, after, beforeModules, afterModules) {
+  const previous = new Set([...pluginNames(before), ...beforeModules]);
+  const next = [...new Set([...pluginNames(after), ...afterModules])];
+  const added = next.filter((name) => !previous.has(name));
+  if (added.length > 0) {
+    return added;
+  }
+  if (isValidPackageName(spec)) {
+    return [spec];
+  }
+  return (after.plugins || [])
+    .filter((row) => specMatchesInstall(row.spec, spec))
+    .map((row) => row.name);
+}
+
+function parsePatchInsertedIds(text) {
+  // Loader ids nested under an insert: key. Not a YAML parser; indented id: lines only.
+  const ids = [];
+  let insertIndent = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '');
+    if (!line.trim()) {
+      continue;
+    }
+    const indent = line.length - line.trimStart().length;
+    if (/^\s*-?\s*insert:\s*$/u.test(line)) {
+      insertIndent = indent;
+      continue;
+    }
+    const id = /^\s*-?\s*id:\s*['"]?([^'"\s]+)/.exec(line);
+    if (!id) {
+      if (insertIndent !== null && indent <= insertIndent && !/^\s*-?\s*(id|name|config):/u.test(line)) {
+        insertIndent = null;
+      }
+      continue;
+    }
+    if (insertIndent !== null && indent > insertIndent) {
+      if (!ids.includes(id[1])) {
+        ids.push(id[1]);
+      }
+    } else {
+      insertIndent = null;
+    }
+  }
+  return ids;
+}
+
+function bundlePatchInsertedIds(packageName) {
+  const dir = packageInstallDir(packageName);
+  const pkg = readJsonFile(path.join(dir, 'package.json'));
+  const declared = pkg?.dsh?.bundle?.patch;
+  if (typeof declared !== 'string' || !declared) {
+    return [];
+  }
+  const file = path.resolve(dir, declared);
+  if (!isExistingFile(file)) {
+    return [];
+  }
+  try {
+    return parsePatchInsertedIds(fs.readFileSync(file, 'utf8'));
+  } catch {
+    // Unreadable patch files contribute no loader ids.
+    return [];
+  }
+}
+
+function conflictingEntryIds(packageName, installedNames) {
+  const mine = bundlePatchInsertedIds(packageName);
+  if (mine.length === 0) {
+    return [];
+  }
+  const hits = [];
+  for (const owner of installedNames) {
+    if (owner === packageName) {
+      continue;
+    }
+    const theirs = new Set(bundlePatchInsertedIds(owner));
+    for (const id of mine) {
+      if (theirs.has(id) && !hits.some((hit) => hit.id === id)) {
+        hits.push({ id, owner });
+      }
+    }
+  }
+  return hits;
+}
+
+function gitAllowBuildsKey(name, spec) {
+  const pathMatch = GITHUB_PATH_SPEC.exec(spec);
+  if (pathMatch) {
+    return `${name}@git+https://github.com/${pathMatch[1]}/${pathMatch[2]}.git`;
+  }
+  const parsed = parseGithubSpec(spec);
+  if (!parsed) {
+    return null;
+  }
+  return `${name}@git+https://github.com/${parsed.owner}/${parsed.repo}.git`;
+}
+
+function withGitAllowBuilds(result, spec) {
+  if (!result?.needsAllowBuilds) {
+    return result;
+  }
+  const allowBuilds = [...(result.allowBuilds || [])];
+  for (const name of allowBuilds.slice()) {
+    const key = gitAllowBuildsKey(name, spec);
+    if (key && isValidAllowBuild(key) && !allowBuilds.includes(key)) {
+      allowBuilds.push(key);
+    }
+  }
+  return { ...result, allowBuilds };
+}
+
+function loadableInstallFailure(added, error) {
+  return {
+    ok: false,
+    spec: added.spec,
+    error: error || '该包不是可加载的 dsh 插件',
+    needsAllowBuilds: false,
+    allowBuilds: [],
+    log: added.log || '',
+  };
 }
 
 async function pinInstallSpec(spec, token) {
+  if (!token) {
+    return spec;
+  }
   const parsed = parseGithubSpec(spec);
   if (!parsed) {
     return spec;
@@ -224,33 +503,47 @@ async function pinInstallSpec(spec, token) {
   return sha ? `github:${parsed.owner}/${parsed.repo}#${sha}` : spec;
 }
 
+function failedInstall(result, pinned) {
+  return {
+    ...result,
+    spec: pinned,
+    error: result.needsAllowBuilds ? '需要允许该插件在本机执行构建脚本' : '安装失败',
+  };
+}
+
+async function addPluginSpec(spec, options) {
+  const allowBuilds = normalizeAllowBuilds(options.allowBuilds);
+  if (!allowBuilds) {
+    return { ok: false, error: 'allowBuilds 包含非法包名' };
+  }
+  if (typeof options.onProgress === 'function') {
+    options.onProgress({ phase: 'start', line: `正在安装 ${spec}` });
+  }
+  const pinned = await pinInstallSpec(spec, options.token);
+  if (allowBuilds.length) {
+    allowBuildsInWorkspace(allowBuilds);
+  }
+  const result = await pluginCommand(options)(['add', pinned], options.onProgress);
+  if (result.ok) {
+    return { ...result, spec: pinned, installed: listInstalledPlugins() };
+  }
+  return failedInstall(withGitAllowBuilds(result, pinned), pinned);
+}
+
 async function installPlugin(spec, options = {}) {
   const name = String(spec || '').trim();
   if (!name) {
     return { ok: false, error: '缺少安装规格' };
   }
-  if (!isValidGithubSpec(name)) {
-    return { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格' };
-  }
-  const allowBuilds = normalizeAllowBuilds(options.allowBuilds);
-  if (!allowBuilds) {
-    return { ok: false, error: 'allowBuilds 包含非法包名' };
-  }
-  if (DROPPED.includes(name) || DROPPED.some((item) => name.includes(item))) {
-    return { ok: false, error: '该插件已退役，不再提供安装' };
-  }
-  if (typeof options.onProgress === 'function') {
-    options.onProgress({ phase: 'start', line: `正在安装 ${name}` });
-  }
-  const pinned = await pinInstallSpec(name, options.token);
-  if (allowBuilds.length) {
-    allowBuildsInWorkspace(allowBuilds);
-  }
-  const result = await runPlugin(['add', pinned], options.onProgress);
-  if (result.ok) {
-    return { ...result, spec: pinned, installed: listInstalledPlugins() };
-  }
-  return { ...result, spec: pinned, error: result.needsAllowBuilds ? '需要允许该插件在本机执行构建脚本' : '安装失败' };
+  return withPluginLock(async () => {
+    if (!isValidGithubSpec(name)) {
+      return { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格' };
+    }
+    if (DROPPED.includes(name) || DROPPED.some((item) => name.includes(item))) {
+      return { ok: false, error: '该插件已退役，不再提供安装' };
+    }
+    return addPluginSpec(name, options);
+  });
 }
 
 async function uninstallPlugin(packageName, options = {}) {
@@ -258,17 +551,79 @@ async function uninstallPlugin(packageName, options = {}) {
   if (!name) {
     return { ok: false, error: '缺少包名' };
   }
-  if (!isValidPackageName(name)) {
-    return { ok: false, error: '包名格式非法' };
+  return withPluginLock(async () => {
+    if (!isValidPackageName(name)) {
+      return { ok: false, error: '包名格式非法' };
+    }
+    if (typeof options.onProgress === 'function') {
+      options.onProgress({ phase: 'start', line: `正在卸载 ${name}` });
+    }
+    const result = await pluginCommand(options)(['remove', name], options.onProgress);
+    if (result.ok) {
+      return { ...result, installed: listInstalledPlugins() };
+    }
+    return { ...result, error: '卸载失败' };
+  });
+}
+
+/**
+ * Install a curated marketplace plugin by catalog id.
+ * The CLI only receives that row's installSpec after marketplace validation.
+ * @param {string} id - registry `owner/name` id.
+ * @param {{ allowBuilds?: string[], token?: string, onProgress?: Function }} [options]
+ * @returns {Promise<{ ok: boolean, error?: string, spec?: string, needsAllowBuilds?: boolean, allowBuilds?: string[], log?: string, installed?: object }>}
+ */
+async function installMarketplacePlugin(id, options = {}) {
+  if (typeof id !== 'string' || !id.trim()) {
+    return { ok: false, error: '缺少插件 id' };
   }
-  if (typeof options.onProgress === 'function') {
-    options.onProgress({ phase: 'start', line: `正在卸载 ${name}` });
-  }
-  const result = await runPlugin(['remove', name], options.onProgress);
-  if (result.ok) {
-    return { ...result, installed: listInstalledPlugins() };
-  }
-  return { ...result, error: '卸载失败' };
+  return withPluginLock(async () => {
+    const plugin = getMarketplacePlugin(id.trim());
+    if (!plugin) {
+      return { ok: false, error: '未收录该插件' };
+    }
+    const spec = plugin.installSpec;
+    if (typeof spec !== 'string' || !spec || !isAllowedMarketplaceSpec(spec, plugin)) {
+      return { ok: false, error: '安装规格不受支持' };
+    }
+    if (isDroppedInstall(plugin, spec)) {
+      return { ok: false, error: '该插件已退役，不再提供安装' };
+    }
+    const before = listInstalledPlugins();
+    const beforeModules = listNodeModuleNames();
+    const added = await addPluginSpec(spec, options);
+    if (!added.ok) {
+      return added;
+    }
+    const names = resolveInstalledNames(
+      added.spec,
+      before,
+      added.installed,
+      beforeModules,
+      listNodeModuleNames(),
+    );
+    if (names.length === 0) {
+      return loadableInstallFailure(added);
+    }
+    const runner = pluginCommand(options);
+    async function removeNames() {
+      for (const name of names) {
+        if (isValidPackageName(name)) {
+          await runner(['remove', name], options.onProgress);
+        }
+      }
+    }
+    const clashes = names.flatMap((name) => conflictingEntryIds(name, pluginNames(before)));
+    if (clashes.length > 0) {
+      await removeNames();
+      return loadableInstallFailure(added, `插件会与已装包冲突（loader id: ${clashes[0].id}）`);
+    }
+    if (names.every(hasLoadableEntry)) {
+      return added;
+    }
+    await removeNames();
+    return loadableInstallFailure(added);
+  });
 }
 
 module.exports = {
@@ -277,5 +632,6 @@ module.exports = {
   allowBuildsInWorkspace,
   installPlugin,
   uninstallPlugin,
+  installMarketplacePlugin,
   resolveCli,
 };

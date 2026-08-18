@@ -26,12 +26,13 @@ test('github install specs use a bounded owner/repo/ref whitelist', () => {
   }
 });
 
-test('allowBuilds accepts only package or github repository keys', () => {
+test('allowBuilds accepts package, github.com/owner/repo, and name@git+https keys', () => {
   assert.deepEqual(normalizeAllowBuilds([
     '@scope/package',
     'github.com/owner/repo',
     '@scope/package',
-  ]), ['@scope/package', 'github.com/owner/repo']);
+    'dsh-loop@git+https://github.com/owner/dsh-loop.git',
+  ]), ['@scope/package', 'github.com/owner/repo', 'dsh-loop@git+https://github.com/owner/dsh-loop.git']);
   for (const value of [
     ['../prepare'],
     ['https://github.com/owner/repo'],

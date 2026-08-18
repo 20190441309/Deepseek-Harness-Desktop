@@ -27,7 +27,7 @@ The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applicatio
 - **Files and terminal** — `Ctrl+\` opens the right column (Files / Diff / Browser / Agents); `` Ctrl+` `` opens the bottom terminal. A selection can join chat.
 - **Models** — Thinking intensity for third-party models, vision fallback; the latest user message can be edited and resent.
 - **Appearance** — Light / dark themes, wallpaper, glass.
-- **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is GitHub [dsh-plugin](https://github.com/topics/dsh-plugin).
+- **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is the [awesome-dsh-plugin](https://awesome-dsh-plugin.com/) curated catalog; one-click install is on the Settings tab. There is no standalone marketplace window.
 - **Desktop** — Minimize to tray, auto-update. If Harness dies, the window returns to a failure page and restarts.
 
 `Ctrl+,` opens Settings.

@@ -6,7 +6,6 @@ const {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
-  isMarketplaceNavigationUrl,
   isHttpOrHttpsUrl,
   rewriteLoopbackLoadUrl,
   shouldAllowPrivilegedNavigate,
@@ -28,12 +27,34 @@ const PLUGIN_BOOT_PROBE = `(() => {
   };
 })()`;
 
+const MARKETPLACE_TAB_SCRIPT = `
+      (() => {
+        return new Promise((resolve) => {
+          let n = 0;
+          const tick = () => {
+            const tab = document.querySelector('[data-dsh-settings-plugin-tab="marketplace"]');
+            if (tab) {
+              tab.click();
+              resolve(true);
+              return;
+            }
+            if (n++ > 60) {
+              resolve(false);
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          tick();
+        });
+      })()
+    `;
+
 let mainWindow = null;
-let marketplaceWindow = null;
 let harnessView = null;
 let harnessRevealed = false;
 let harnessOrigin = '';
 let pluginBootWatch = null;
+let pendingMarketplaceJump = false;
 
 function pluginBootCancelled(message = 'Web UI 插件加载已取消') {
   const error = new Error(message);
@@ -143,13 +164,6 @@ function getHarnessOrigin() {
   return getHarnessWebContents() ? harnessOrigin : '';
 }
 
-function getMarketplaceWebContents() {
-  if (!marketplaceWindow || marketplaceWindow.isDestroyed()) {
-    return null;
-  }
-  return marketplaceWindow.webContents;
-}
-
 function isHarnessNavigationUrl(url) {
   return Boolean(harnessOrigin && isSameOriginLoopbackUrl(url, harnessOrigin));
 }
@@ -222,6 +236,7 @@ function revealHarnessView(win) {
   setBootHarnessCovered(win, true);
   prepareHarnessChrome(win);
   syncHarnessChrome(win, harnessView.webContents);
+  consumePendingMarketplaceJump(win);
 }
 
 function watchPluginBoot(view, win) {
@@ -406,100 +421,53 @@ function openHarnessSettings(sectionId) {
   }
   return harnessPageContents(win)
     .executeJavaScript(buildSettingsSectionScript(requested.section))
-    .catch(() => false);
+    .catch(() => {
+      // executeJavaScript rejected (destroyed view or thrown page script).
+      return false;
+    });
 }
 
-function openMarketplaceWindow() {
-  if (marketplaceWindow && !marketplaceWindow.isDestroyed()) {
-    if (marketplaceWindow.isMinimized()) {
-      marketplaceWindow.restore();
+function jumpToMarketplaceTab(win) {
+  return openHarnessSettings('plugins').then((opened) => {
+    if (!opened) {
+      return false;
     }
-    marketplaceWindow.show();
-    marketplaceWindow.focus();
-    return marketplaceWindow;
-  }
-
-  marketplaceWindow = new BrowserWindow({
-    ...windowChrome({
-      width: 1120,
-      height: 780,
-      minWidth: 880,
-      minHeight: 600,
-      show: false,
-      icon: iconImage(),
-    }),
-    webPreferences: {
-      preload: preloadFile(),
-      additionalArguments: ['--dshd-shell-role=marketplace'],
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      spellcheck: false,
-    },
+    const contents = harnessPageContents(win);
+    if (!contents) {
+      return false;
+    }
+    return contents.executeJavaScript(MARKETPLACE_TAB_SCRIPT).catch(() => {
+      // Settings tab click is best-effort; a missing tab is not a crash.
+      return false;
+    });
   });
-
-  attachIntegratedChrome(marketplaceWindow);
-  marketplaceWindow.once('ready-to-show', () => {
-    hideNativeMenu(marketplaceWindow);
-    marketplaceWindow.show();
-  });
-  marketplaceWindow.on('closed', () => {
-    marketplaceWindow = null;
-  });
-  attachPrivilegedNavigationGuards(marketplaceWindow.webContents, {
-    allowUrl: isMarketplaceNavigationUrl,
-    openDeniedExternal: true,
-  });
-  marketplaceWindow.loadFile(rendererFile('marketplace/index.html'));
-  return marketplaceWindow;
 }
 
-function closeMarketplaceWindow() {
-  if (marketplaceWindow && !marketplaceWindow.isDestroyed()) {
-    marketplaceWindow.close();
+function consumePendingMarketplaceJump(win) {
+  if (!pendingMarketplaceJump) {
+    return;
   }
-}
-
-function openRemote() {
-  return showMain();
+  if (!win || !isHarnessLoaded(win)) {
+    return;
+  }
+  void jumpToMarketplaceTab(win).then((ok) => {
+    if (ok) {
+      pendingMarketplaceJump = false;
+    }
+  });
 }
 
 function openMarketplace() {
   const win = showMain();
   if (!win || !isHarnessLoaded(win)) {
-    return openMarketplaceWindow();
+    pendingMarketplaceJump = true;
+    return win || null;
   }
-  return openHarnessSettings('plugins').then((opened) => {
-    if (!opened) {
-      return openMarketplaceWindow();
-    }
-    return harnessPageContents(win).executeJavaScript(`
-      (() => {
-        return new Promise((resolve) => {
-          let n = 0;
-          const tick = () => {
-            const tab = document.querySelector('[data-dsh-settings-plugin-tab="marketplace"]');
-            if (tab) {
-              tab.click();
-              resolve(true);
-              return;
-            }
-            if (n++ > 60) {
-              resolve(false);
-              return;
-            }
-            requestAnimationFrame(tick);
-          };
-          tick();
-        });
-      })()
-    `).then((selected) => {
-      if (!selected) {
-        return openMarketplaceWindow();
-      }
-      return true;
-    }).catch(() => openMarketplaceWindow());
-  });
+  return jumpToMarketplaceTab(win);
+}
+
+function openRemote() {
+  return showMain();
 }
 
 function sendToBoot(channel, payload) {
@@ -518,7 +486,6 @@ module.exports = {
   getMainWindow,
   getHarnessWebContents,
   getHarnessOrigin,
-  getMarketplaceWebContents,
   isHarnessNavigationUrl,
   hideHarnessView,
   showBoot,
@@ -532,6 +499,5 @@ module.exports = {
   isBootLoaded,
   isHarnessLoaded,
   iconImage,
-  closeMarketplaceWindow,
   attachPrivilegedNavigationGuards,
 };

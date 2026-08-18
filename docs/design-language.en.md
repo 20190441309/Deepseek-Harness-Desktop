@@ -73,7 +73,7 @@ Window controls stay on [`window-controls.css`](../src/renderer/window-controls.
 
 ## Known drift (do not spread)
 
-The remote login page now consumes official tokens. `src/renderer/marketplace/marketplace.css` still uses a parallel palette — **new code must not copy its hex values**. Converge it when touched.
+Product pages, including remote pairing and the Settings marketplace tab, use official tokens and `ui-primitives`. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet.
 
 ## Self-check
 

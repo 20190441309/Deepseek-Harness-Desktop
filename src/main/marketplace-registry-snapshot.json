@@ -1,0 +1,133 @@
+{
+  "name": "awesome-dsh-plugin",
+  "url": "https://awesome-dsh-plugin.com",
+  "source": "https://github.com/awesome-dsh-plugin/awesome-dsh-plugin",
+  "updated": "2026-08-18",
+  "count": 7,
+  "categories": {
+    "ui": {
+      "en": "UI Enhancements",
+      "zh": "UI 增强"
+    },
+    "workflow": {
+      "en": "Workflow & Automation",
+      "zh": "工作流与自动化"
+    },
+    "theme": {
+      "en": "Themes & Appearance",
+      "zh": "主题与外观"
+    }
+  },
+  "plugins": [
+    {
+      "name": "dsh-composer-expand",
+      "owner": "13071301808",
+      "url": "https://github.com/13071301808/dsh-composer-expand",
+      "page": "https://awesome-dsh-plugin.com/p/13071301808/dsh-composer-expand/",
+      "category": "ui",
+      "description": {
+        "en": "Composer expand/collapse toggle for the Web UI.",
+        "zh": "Web UI 输入框展开/收起。"
+      },
+      "npm": "dsh-composer-expand",
+      "stars": 4,
+      "install": "dsh plugin --profile web add dsh-composer-expand",
+      "added": "2026-08-15"
+    },
+    {
+      "name": "dsh-status-rotator",
+      "owner": "01Virex",
+      "url": "https://github.com/01Virex/dsh-status-rotator",
+      "page": "https://awesome-dsh-plugin.com/p/01Virex/dsh-status-rotator/",
+      "category": "ui",
+      "description": {
+        "en": "Replaces the turn-status label with rotating phrases.",
+        "zh": "把回合状态文案替换成轮换自定义短句。"
+      },
+      "npm": null,
+      "stars": 21,
+      "install": "dsh plugin --profile web add github:01Virex/dsh-status-rotator",
+      "added": "2026-08-14"
+    },
+    {
+      "name": "dsh-web-ui#dsh-aionui-panel",
+      "owner": "DamonKoy",
+      "url": "https://github.com/DamonKoy/dsh-web-ui/tree/main/packages/dsh-aionui-panel",
+      "page": "https://awesome-dsh-plugin.com/p/DamonKoy/dsh-web-ui--packages-dsh-aionui-panel/",
+      "category": "ui",
+      "description": {
+        "en": "Right-panel system for the dsh web GUI.",
+        "zh": "dsh web GUI 右侧面板系统。"
+      },
+      "npm": null,
+      "stars": 3,
+      "install": "dsh plugin --profile web add github:DamonKoy/dsh-web-ui#path:/packages/dsh-aionui-panel",
+      "added": "2026-08-17"
+    },
+    {
+      "name": "dsh-spotlight",
+      "owner": "0xsline",
+      "url": "https://github.com/0xsline/dsh-spotlight",
+      "page": "https://awesome-dsh-plugin.com/p/0xsline/dsh-spotlight/",
+      "category": "ui",
+      "description": {
+        "en": "Keyboard-first command palette for the DSH Web UI.",
+        "zh": "键盘优先的命令面板。"
+      },
+      "npm": null,
+      "stars": 8,
+      "install": "dsh plugin --profile web add github:0xsline/dsh-spotlight",
+      "added": "2026-08-13"
+    },
+    {
+      "name": "dsh-genui",
+      "owner": "omdsh-dev",
+      "url": "https://github.com/omdsh-dev/dsh-genui",
+      "page": "https://awesome-dsh-plugin.com/p/omdsh-dev/dsh-genui/",
+      "category": "ui",
+      "description": {
+        "en": "Interactive UI components rendered inline in replies.",
+        "zh": "助手回复内渲染交互式 UI 组件。"
+      },
+      "npm": "@dsh-external/dsh-genui",
+      "stars": 196,
+      "install": "dsh plugin --profile web add @dsh-external/dsh-genui",
+      "added": "2026-08-13"
+    },
+    {
+      "name": "old-loop",
+      "owner": "example",
+      "url": "https://github.com/example/old-loop",
+      "page": "https://awesome-dsh-plugin.com/p/example/old-loop/",
+      "category": "workflow",
+      "description": {
+        "en": "Deprecated loop helper.",
+        "zh": "已弃用的循环助手。"
+      },
+      "npm": null,
+      "stars": 0,
+      "install": "dsh plugin --profile web add github:example/old-loop",
+      "added": "2026-07-01",
+      "deprecated": true,
+      "replacement": "DamonKoy/dsh-web-ui#dsh-aionui-panel"
+    },
+    {
+      "name": "dsh-skins",
+      "owner": "DamonKoy",
+      "url": "https://github.com/DamonKoy/dsh-web-ui/tree/main/packages/dsh-skins",
+      "page": "https://awesome-dsh-plugin.com/p/DamonKoy/dsh-web-ui--packages-dsh-skins/",
+      "category": "theme",
+      "description": {
+        "en": "Community skins for the dsh web GUI.",
+        "zh": "dsh web GUI 社区皮肤。"
+      },
+      "npm": null,
+      "stars": 3,
+      "install": "dsh plugin --profile web add github:DamonKoy/dsh-web-ui#path:/packages/dsh-skins",
+      "added": "2026-08-17",
+      "screenshots": [
+        "https://raw.githubusercontent.com/DamonKoy/dsh-web-ui/main/packages/dsh-skins/preview.png"
+      ]
+    }
+  ]
+}
