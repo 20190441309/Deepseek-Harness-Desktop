@@ -34,7 +34,7 @@ Deepseek-Harness-Desktop 把现有插件市场升级到 [dsh-market](https://git
 托盘和菜单的「插件市场」调用 `openMarketplace()`。
 `openMarketplace()` 打开主窗口，跳到设置 → 插件 → 插件市场，绝不创建 `src/renderer/marketplace/index.html`。
 
-若 Harness 尚未加载，该调用只显示主窗口，不再打开市场 `BrowserWindow`。
+若 Harness 尚未加载，该调用显示主窗口，记下一次待跳转，等 Harness 第一次就绪后再跳设置 → 插件市场。跳转成功才清标志。
 
 ## 目录
 
@@ -70,7 +70,7 @@ TTL 1 小时。
 | `stars` | `stars` 或 `0` |
 | `packageName` | `npm` 或 `''` |
 | `homepage` | `url` |
-| `installSpec` | `install` 命令最后一个空白分词 token（含 `#path:`） |
+| `installSpec` | 与 dsh-market `installTargetFor` 相同：合法 `npm` 包名；否则从 GitHub `url` 得到 `github:owner/repo` 或 `/tree/<ref>/<posix>` → `github:owner/repo#path:/<posix>`；再否则仅当 `install` 最后 token 已是允许规格时才用它。last-token npm 必须等于该行 `npm` 字段（`npm` 为 null 时得到空 `installSpec`）。tarball / git / file URL 不会成为 `installSpec` |
 | `isBundle` | `true`，除非 `deprecated` 为 true |
 | `category` | registry 的 `category` |
 | `added` | `added` |
@@ -102,8 +102,9 @@ TTL 1 小时。
 
 - 通过 `isValidPackageName` 的 registry `npm` 包名
 - 通过 `isValidGithubSpec`、且与该行 GitHub URL 一致的 `github:owner/repo` 或 `github:owner/repo#ref`
+- `github:owner/repo#path:/<posix>`：`path:/` 后无 `..`、无 `:`、无反斜杠；owner/repo 与该行 `url` 解析出的 GitHub 仓库一致（不用 `isValidGithubSpec`）
 
-进 CLI 之前拒绝：`file:`、`link:`、tarball URL、git URL、未知 id、`DROPPED` 包、非法 `allowBuilds`。
+进 CLI 之前拒绝：`file:`、`link:`、tarball URL、git URL、未知 id、`DROPPED` 包、非法 `allowBuilds`。空 `installSpec` 的卡片不提供安装按钮。
 
 安装仍通过现有 Node + pnpm shim 跑 `dsh plugin --profile web add <spec>`。
 `allowBuilds` 仍是 `needsAllowBuilds` 之后的显式确认。
@@ -112,7 +113,8 @@ add 成功但新包没有可加载的 dsh 入口：当场卸掉并返回失败�
 `MarketplaceSettingsTab` 注入 `installMarketplacePlugin(id)` 和 `uninstallPlugin(name)`。
 安装路径不再是 `seedInstallDraft`。
 
-设置页安装/卸载成功后，仍由对应 IPC 调用 `startHarness()` 重启 Harness。
+设置页安装/卸载成功后，对应 IPC 调用 `startHarness()` 重启 Harness。
+若 profile 已写入而 `startHarness()` 抛错，安装、Host `install-plugin`、卸载共用同一包装：仍返回 `ok: true`，并带 `harnessStarted: false` 与对应文案（写入后不要再安装一次；移除后不要再卸载一次）。界面不把它当成失败、不自动再 add 或 remove。
 市场自己不拉起 Electron，也不拉脱离的 `dsh` 进程。
 
 第一轮不搬 dsh-market 的 hoist / release-age / fetchTimeout 重试，也不做一键安装 pnpm。
@@ -172,13 +174,14 @@ AI 修复把诊断 prompt 复制到剪贴板，不代发。
 ## 失败
 
 目录：有缓存或快照就展示卡片并带警告；只有每一层都失败才空列表。
+设置页对成功返回的空 `items` 清掉卡片；`listMarketplace` 抛错则保留上一份卡片。`listInstalled` 抛错不挡住目录应用；保留上一份已安装映射，并在目录成功时显示 `marketError`。
 
 安装：弹窗标题和正文用活人能懂的 `error`。
 pnpm 的 ndjson 进度对象不当失败正文，最多放进可展开日志。
 
 `needsAllowBuilds`：再确认一次，然后带名单重试一次。
 
-profile 已经改成功但 `startHarness()` 失败：界面说明插件已在 profile 里、Harness 没起来，并给出已有的重启入口。不自动再跑一遍 add。
+profile 已经改成功但 `startHarness()` 失败：安装与卸载 IPC 都返回 `ok: true` / `harnessStarted: false`。安装文案说插件已写入 web profile、不要再安装一次；卸载文案说插件已从 web profile 移除、不要再卸载一次。界面不自动再跑一遍 add 或 remove。
 
 截图 / 主题 / 更新 / 备份 / 开关的失败遵守上面各轮约束：不留下半启用的主题，也不把补丁写得更坏。
 
@@ -186,12 +189,14 @@ profile 已经改成功但 `startHarness()` 失败：界面说明插件已在 pr
 
 第一轮只跑相关的：
 
-- 目录映射 fixture：中英简介、npm 优先、github 回退、退役条目 `isBundle: false`、官方分类标签。
+- 目录映射 fixture：中英简介、`installSpec` 跟 dsh-market `installTargetFor`（npm 字段优先于 tarball `install` 命令；GitHub URL 含 `/tree/` 时得到 `#path:`；last-token npm 必须等于行 `npm`；行无 `npm` 时 last-token 包名为空）、退役条目 `isBundle: false`、官方分类标签。
+- `#path:` 的 `..` / `:` / `\` 拒绝测试用 GitHub blob URL（owner/repo 匹配，但不是仓库首页），钉住 posix 校验。
 - 在线拉取失败依次落到缓存、快照。
 - `installMarketplacePlugin(id)` 查 fixture 目录；拒绝未知 id；收录的 npm 与 github 能过闸；`file:` / tarball 不可能从目录 id 查出，因此到不了 CLI。
 - `installPlugin(spec)` 对 Host 通道仍拒绝非 github 规格。
 - 卸载仍拒绝带 shell 语法的包名。
-- `MarketplaceSettingsTab` 能列表、筛选、用 `installMarketplacePlugin(id)` 安装、确认卸载，没有 Token 栏。
+- `MarketplaceSettingsTab` 能列表、筛选、用 `installMarketplacePlugin(id)` 安装、确认卸载，没有 Token 栏。成功空目录即使 `listInstalled` 抛错也清卡片。安装/卸载 `harnessStarted: false` 用本地化文案，不把 IPC 中文串当失败。
+- 安装、Host `install-plugin`、卸载在 `startHarness()` 抛错后仍 `ok: true` / `harnessStarted: false`。
 - `openMarketplace` 不再加载 `marketplace/index.html`。
 - IPC 授权不再定义 marketplace 渲染角色。
 

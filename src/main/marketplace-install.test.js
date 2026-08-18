@@ -74,7 +74,12 @@ function writePlugin(packageName, manifest, files = {}) {
 }
 
 function writeBundlePlugin(packageName) {
-  writePlugin(packageName, { dsh: { bundle: { patch: true } } });
+  const id = `bundle-${String(packageName).replace(/[^A-Za-z0-9]+/g, '-')}`.slice(0, 48);
+  writePlugin(packageName, {
+    dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }, {
+    'cordis.patch.yml': `- insert:\n    - id: ${id}\n      name: ${packageName}\n`,
+  });
 }
 
 function writeClientPlugin(packageName) {
@@ -265,13 +270,13 @@ test('installMarketplacePlugin rejects #path: specs with .. or backslash', async
     githubRow(
       'evil',
       'dotdot',
-      'https://github.com/evil/dotdot',
+      'https://github.com/evil/dotdot/blob/main/README.md',
       'github:evil/dotdot#path:/packages/../../../tmp',
     ),
     githubRow(
       'evil',
       'backslash',
-      'https://github.com/evil/backslash',
+      'https://github.com/evil/backslash/blob/main/README.md',
       'github:evil/backslash#path:/packages\\windows',
     ),
   ]);
@@ -353,4 +358,145 @@ test('installMarketplacePlugin removes a #path: package with no loadable dsh ent
   assert.equal(result.ok, false);
   assert.match(result.error, /可加载/);
   assert.deepEqual(calls, [['add', PATH_SPEC], ['remove', 'dsh-aionui-panel']]);
+});
+
+test('installMarketplacePlugin installs a GitHub URL when the install command is a tarball', async () => {
+  writeDiskRegistry([githubRow(
+    'HUITianYi',
+    'dsh-whale-desktop-launcher',
+    'https://github.com/HUITianYi/dsh-whale-desktop-launcher',
+    '"https://github.com/HUITianYi/dsh-whale-desktop-launcher/releases/latest/download/x.tgz"',
+  )]);
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep('dsh-whale-desktop-launcher', 'github:HUITianYi/dsh-whale-desktop-launcher');
+    writeClientPlugin('dsh-whale-desktop-launcher');
+  });
+  const result = await installMarketplacePlugin('HUITianYi/dsh-whale-desktop-launcher', { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', 'github:HUITianYi/dsh-whale-desktop-launcher']]);
+  assert.equal(result.spec.includes('.tgz'), false);
+});
+
+test('installMarketplacePlugin rejects a github spec whose owner/repo does not match the catalog URL', async () => {
+  writeDiskRegistry([githubRow(
+    'evil',
+    'mismatch',
+    'https://example.com/not-github',
+    'github:evil/mismatch',
+  )]);
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin('evil/mismatch', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /不受支持/);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin rejects a #path: spec that contains a colon', async () => {
+  writeDiskRegistry([githubRow(
+    'evil',
+    'colon',
+    'https://github.com/evil/colon/blob/main/README.md',
+    'github:evil/colon#path:/packages:foo',
+  )]);
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin('evil/colon', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin removes a github package that landed only in node_modules', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeBarePlugin('@virex/dsh-status-rotator');
+  });
+  const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载/);
+  assert.deepEqual(calls, [['add', GITHUB_SPEC], ['remove', '@virex/dsh-status-rotator']]);
+});
+
+test('installMarketplacePlugin removes a github package already in the profile when it is not loadable', async () => {
+  writeProfileDep('@virex/dsh-status-rotator', GITHUB_SPEC);
+  writeBarePlugin('@virex/dsh-status-rotator');
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载/);
+  assert.ok(calls.some((args) => args[0] === 'remove' && args[1] === '@virex/dsh-status-rotator'));
+});
+
+test('installMarketplacePlugin removes a package whose bundle patch only sets patch: true', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writePlugin(NPM_SPEC, { dsh: { bundle: { patch: true } } });
+  });
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
+});
+
+test('installMarketplacePlugin removes a package that inserts a duplicate loader id', async () => {
+  writeProfileDep('@deepseek-ai/dsh-web-app', 'workspace:*');
+  writePlugin('@deepseek-ai/dsh-web-app', {
+    dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }, {
+    'cordis.patch.yml': '- insert:\n    - id: storage\n      name: @deepseek-ai/dsh-web-app\n',
+  });
+  const { calls, runPlugin } = recordRunner(() => {
+    writePlugin(NPM_SPEC, {
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, {
+      'cordis.patch.yml': '- insert:\n    - id: storage\n      name: dsh-composer-expand\n',
+    });
+  });
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /storage/);
+  assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
+});
+
+test('parseAllowBuilds reads ndjson-escaped prepare-not-allowed package names', () => {
+  const keys = parseAllowBuilds('{"msg":"The git-hosted package \\"dsh-loop@1.0.0\\" needs to execute build scripts but is not in the allowBuilds allowlist."}');
+  assert.ok(keys.includes('dsh-loop'));
+});
+
+test('installMarketplacePlugin leaves a floating github ref when no token is stored', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('api.github.com')) {
+      return { ok: true, status: 200, text: async () => 'abc1234567890' };
+    }
+    throw new Error('unexpected fetch');
+  };
+  try {
+    const { calls, runPlugin } = recordRunner((spec) => {
+      writeProfileDep('@virex/dsh-status-rotator', spec);
+      writeClientPlugin('@virex/dsh-status-rotator');
+    });
+    const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin, token: '' });
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls[0], ['add', GITHUB_SPEC]);
+    assert.equal(String(calls[0][1]).includes('abc1234567890'), false);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
+test('installMarketplacePlugin pins a SHA when a GitHub token is stored', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('api.github.com')) {
+      return { ok: true, status: 200, text: async () => 'abc1234567890' };
+    }
+    throw new Error('unexpected fetch');
+  };
+  try {
+    const { calls, runPlugin } = recordRunner((spec) => {
+      writeProfileDep('@virex/dsh-status-rotator', spec);
+      writeClientPlugin('@virex/dsh-status-rotator');
+    });
+    const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin, token: 'ghp_test' });
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls[0], ['add', 'github:01Virex/dsh-status-rotator#abc1234567890']);
+  } finally {
+    globalThis.fetch = previous;
+  }
 });

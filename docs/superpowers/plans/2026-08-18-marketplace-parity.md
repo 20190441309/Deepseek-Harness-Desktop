@@ -11,7 +11,7 @@ TDD 强制：每个任务先写失败测试并跑红，再写生产代码。不�
 - 不要预装或 vendor `dshmarket`。不要抄 `src/renderer/marketplace/marketplace.css` 或 dsh-market 皮肤。
 - 前端只用 `ui-primitives`（Input / Button / Modal / Menu）和 `--dsw-alias-*`。产品文案中文，注释英文。
 - Host 的 `installPlugin(spec)` / `src/host/install-dsh-plugin-client.js` 的 `isValidGithubSpec` **不得放宽**，仍 github-only，不含 `#path:`。
-- 市场安装规格 = 目录行 `install` 命令**最后一个 token**，必须与该 token **逐字相同**。禁止用 `isValidGithubSpec` 去验证 `#path:` 规格。
+- 市场安装规格与 dsh-market `installTargetFor` 相同：合法 `npm` 字段，否则从 GitHub URL 得到 `github:` / `#path:`。`install` 最后 token 只在它已是允许规格时作为回退。禁止用 `isValidGithubSpec` 去验证 `#path:` 规格。
 - 允许的市场规格仅：该行 npm 包名（`isValidPackageName`）；`github:owner/repo`；`github:owner/repo#<gitRef>`（现有 git ref 规则）；`github:owner/repo#path:/<posix>`（`path:/` 后无 `..`、无 `:`、无反斜杠；owner/repo 与该行 `url` 解析出的 GitHub 仓库一致）。
 - 渲染层只传目录 `id`（`owner/name`，name 可含 `#`，例如 `DamonKoy/dsh-web-ui#dsh-aionui-panel`）。
 - `listMarketplace({ refresh?, locale? })`：`locale` 为 `zh` | `en`，默认 `zh`；`zh*` → `zh`，否则 `en`。
@@ -27,7 +27,7 @@ TDD 强制：每个任务先写失败测试并跑红，再写生产代码。不�
 
 ## 对抗性审查覆盖 spec 的句子（已裁定）
 
-- spec 字段表写「有 npm 用 npm 包名，否则解析 github」过粗：**installSpec = `install` 最后一个 token**（含 `#path:`）。
+- spec 字段表写「有 npm 用 npm 包名，否则解析 github」过粗，曾裁定 last-token。**现已改回与 dsh-market `installTargetFor` 对齐**：合法 npm 字段，否则 GitHub URL → `github:` / `#path:`；last-token 只作允许规格的回退。这样 Release `.tgz` `install` 命令仍走 github，不会把 tarball 送进 CLI。
 - spec 写 Harness 未就绪只显示主窗：**记下待跳转，Harness 第一次就绪后再跳设置 → 插件市场**。
 
 ---
@@ -58,7 +58,7 @@ TDD 强制：每个任务先写失败测试并跑红，再写生产代码。不�
 | `stars` | `stars` 或 `0` |
 | `packageName` | `npm` 或 `''` |
 | `homepage` | `url` |
-| `installSpec` | `install` 命令最后一个 token（空白分词）。**不是**「有 npm 就用 npm 字段」 |
+| `installSpec` | 与 dsh-market `installTargetFor` 相同：合法 npm 字段，否则 GitHub URL → `github:` / `#path:`；last-token 只在已是允许规格时回退 |
 | `isBundle` | `true`，除非 `deprecated === true` |
 | `category` | registry 的 `category` |
 | `added` | `added` |
@@ -129,7 +129,7 @@ TDD 强制：每个任务先写失败测试并跑红，再写生产代码。不�
 ### 行为
 
 - `shell:list-marketplace`：把 renderer `options.locale`（及 `refresh`）传给 `listMarketplace`。不要再传 GitHub token 作为目录必需（catalog 已忽略 token）。`refresh-marketplace` 同样传 locale（若无则默认 zh）。
-- `shell:install-marketplace-plugin`：参数只有 `id` 和可选 `{ allowBuilds }`。调用 `installMarketplacePlugin`。仅 `result.ok === true` 时 `startHarness()`。失败不重启。
+- `shell:install-marketplace-plugin`：参数只有 `id` 和可选 `{ allowBuilds }`。调用 `installMarketplacePlugin`。仅 `result.ok === true` 时 `startHarness()`。`startHarness()` 抛错不把安装改成失败：返回 `ok: true`、`harnessStarted: false`。失败不重启。
 - 删除 `shell:seed-install-draft` handler。
 - preload `harnessApi`：增加 `installMarketplacePlugin`；删除 `seedInstallDraft` / `onSeedInstallDraft`。`installPlugin` 可留（Host 残留）。
 - preload：删除 `marketplace` 角色——`SHELL_ROLES` 去掉 `marketplace`，删除 `marketplaceApi`，`shellRole` 对 `--dshd-shell-role=marketplace` 返回 null。更新 `shell-api.test.js`：断言 marketplace 角色不再暴露 API；harness 有 `installMarketplacePlugin` 且无 `seedInstallDraft`。

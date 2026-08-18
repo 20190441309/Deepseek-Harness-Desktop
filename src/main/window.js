@@ -421,7 +421,10 @@ function openHarnessSettings(sectionId) {
   }
   return harnessPageContents(win)
     .executeJavaScript(buildSettingsSectionScript(requested.section))
-    .catch(() => false);
+    .catch(() => {
+      // executeJavaScript rejected (destroyed view or thrown page script).
+      return false;
+    });
 }
 
 function jumpToMarketplaceTab(win) {
@@ -433,7 +436,10 @@ function jumpToMarketplaceTab(win) {
     if (!contents) {
       return false;
     }
-    return contents.executeJavaScript(MARKETPLACE_TAB_SCRIPT).catch(() => false);
+    return contents.executeJavaScript(MARKETPLACE_TAB_SCRIPT).catch(() => {
+      // Settings tab click is best-effort; a missing tab is not a crash.
+      return false;
+    });
   });
 }
 
@@ -444,8 +450,11 @@ function consumePendingMarketplaceJump(win) {
   if (!win || !isHarnessLoaded(win)) {
     return;
   }
-  pendingMarketplaceJump = false;
-  void jumpToMarketplaceTab(win);
+  void jumpToMarketplaceTab(win).then((ok) => {
+    if (ok) {
+      pendingMarketplaceJump = false;
+    }
+  });
 }
 
 function openMarketplace() {

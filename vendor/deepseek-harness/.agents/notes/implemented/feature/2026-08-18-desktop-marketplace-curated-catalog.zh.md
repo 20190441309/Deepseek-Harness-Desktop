@@ -10,17 +10,17 @@ Status: implemented
 
 ## 决策
 
-**唯一界面是设置标签页 `settings.plugins.tab`（id `marketplace`）。** 托盘和菜单的 `openMarketplace()` 显示主窗口，并跳到设置 → 插件 → 插件市场。Harness 未加载时，该调用记下待跳转并只显示主窗口，绝不创建市场 `BrowserWindow`。该标签页使用 `ui-primitives`（`Input` / `Button` / `Menu` / `Modal`）和 `--dsw-alias-*`。确认 Modal 原样展示目录 `installSpec`，再调用 `installMarketplacePlugin(id)`。没有 GitHub Token 输入。
+**唯一界面是设置标签页 `settings.plugins.tab`（id `marketplace`）。** 托盘和菜单的 `openMarketplace()` 显示主窗口，并跳到设置 → 插件 → 插件市场。Harness 未加载时，该调用记下待跳转并只显示主窗口，绝不创建市场 `BrowserWindow`。该标签页使用 `ui-primitives`（`Input` / `Button` / `Menu` / `Modal` / `FlipText`）和 `--dsw-alias-*`。确认 Modal 原样展示目录 `installSpec`，再调用 `installMarketplacePlugin(id)`。没有 GitHub Token 输入。
 
-**目录是 `https://awesome-dsh-plugin.com/plugins.json`。** 主进程拉取（测试用 `DSHD_MARKETPLACE_REGISTRY_URL`）。超时 4 秒。成功响应必须是带非空 `plugins` 数组的对象。`listMarketplace({ refresh?, locale? })` 的 `locale` 为 `zh` | `en`（默认 `zh`；`zh*` 映射为 `zh`）。磁盘缓存在 `app.getPath('userData')`，`CACHE_VERSION` 为 3，TTL 1 小时。回退顺序是内存、磁盘、打包快照 `src/main/marketplace-registry-snapshot.json`。`source` 为 `live` | `cache` | `snapshot`；非 live 必须带 `warning`。每一层都空时返回 `ok: false`、`items: []` 和可见警告。不搜 GitHub topic。
+**目录是 `https://awesome-dsh-plugin.com/plugins.json`。** 主进程拉取（测试用 `DSHD_MARKETPLACE_REGISTRY_URL`）。超时 4 秒。成功响应必须是带非空 `plugins` 数组的对象。`listMarketplace({ refresh?, locale? })` 的 `locale` 为 `zh` | `en`（默认 `zh`；`zh*` 映射为 `zh`）。磁盘缓存在 `app.getPath('userData')`，`CACHE_VERSION` 为 3，TTL 1 小时。回退顺序是内存、磁盘、打包快照 `src/main/marketplace-registry-snapshot.json`。`source` 为 `live` | `cache` | `snapshot`；非 live 必须带 `warning`。每一层都空时返回 `ok: false`、`items: []` 和可见警告。设置页对成功返回的目录（含空 `items`）应用卡片；只有 `listMarketplace` 抛错才保留上一份卡片。`listInstalled` 抛错不挡住目录应用；保留上一份已安装映射，并在目录成功时显示目录错误警告。不搜 GitHub topic。
 
-`installSpec` 是目录 `install` 命令的最后一个空白分词。目录 `id` 是 `owner/name`（name 可含 `#`）。
+`installSpec` 与 dsh-market 的 `installTargetFor` 一致：合法的目录 `npm` 包名；否则从 GitHub `url` 得到 `github:owner/repo` 或 `github:owner/repo#path:/<posix>`（`/tree/<ref>/<posix>`）。`install` 的最后一个空白分词只在 `isAllowedMarketplaceSpec` 接受时使用：last-token npm 必须等于该行 `npm` 字段（`npm` 为 null 时 `installSpec` 为空）。tarball、git、file URL 不会成为 `installSpec`。目录 `id` 是 `owner/name`（name 可含 `#`）。
 
 **安装路径分开。** `installMarketplacePlugin(id)` 在当前目录（内存，否则磁盘，否则快照）按该 id 查出这一行。只有该行的 `installSpec` 能进 `dsh plugin --profile web add`。允许的规格：通过 `isValidPackageName` 的目录 npm 包名；通过 `isValidGithubSpec` 且与该行 GitHub URL 一致的 `github:owner/repo` 或 `github:owner/repo#<gitRef>`；`github:owner/repo#path:/<posix>`，其中 posix 路径不含 `..`、`:`、反斜杠，且 owner/repo 与该行 URL 一致（`isValidMarketplacePathSpec`）。进 CLI 之前拒绝：`file:`、`link:`、tarball 或 git URL、未知 id、`DROPPED` 包、非法 `allowBuilds`。桌面其它功能已存的 GitHub Token 可用来钉 SHA；没有 Token 就装浮动 ref。
 
 `installPlugin(spec)` 仍只接受 github（`isValidGithubSpec`），给 Host 的 `install_dsh_plugin` 控制通道用。设置页不调用它。
 
-安装与卸载共用一把进行中互斥锁。add 成功但没有可加载的 dsh 入口：当场卸掉并报失败。`ok: false` 时不调用 `startHarness()`。`needsAllowBuilds` 再确认一次，然后带名单重试一次。渲染层只传目录 id。
+安装与卸载共用一把进行中互斥锁。已安装名来自新增的 profile 键、新增的 `node_modules` 目录，或与 github 身份匹配的已有 profile 规格。add 成功但没有可加载的 dsh 入口（仅布尔 `dsh.bundle.patch: true` 不够）或插入了重复 loader id：当场卸掉并报失败。`ok: false` 时不调用 `startHarness()`。若 add、Host `install-plugin` 或卸载成功而 `startHarness()` 抛错，IPC 返回 `ok: true`、`harnessStarted: false`。安装文案说明插件已写入 web profile；卸载文案说明插件已从 web profile 移除。设置页这些对话框用本地化文案，不用 IPC 的中文 `error`。`needsAllowBuilds` 再确认一次，然后带名单重试一次，名单含 ndjson 转义的 prepare-not-allowed 名以及 `name@git+https://github.com/owner/repo.git` 键。渲染层只传目录 id。
 
 截图画廊、页内主题页、检查更新、热禁用、备份和诊断不在本决策里。
 
@@ -38,7 +38,7 @@ Status: implemented
 
 ## 测试
 
-`src/main/marketplace-catalog.test.js` 钉住语言映射、npm／github／`#path:` token、`DROPPED` 过滤，以及 live → cache → snapshot 回退。`src/main/marketplace-install.test.js` 钉住 `installMarketplacePlugin(id)` 查找、未知 id、`DROPPED`、非法 `allowBuilds`、目录 `#path:` 允许而 `installPlugin` 拒绝、路径含 `..`／反斜杠拒绝、安装卸载互斥锁，以及无入口回滚。`src/main/window-marketplace.test.js` 钉住 `openMarketplace` 不加载 `marketplace/index.html` 窗口。`src/main/ipc-authorization.test.js` 钉住没有 `MARKETPLACE` 角色。`src/main/local-url.test.js` 钉住不存在 `isMarketplaceNavigationUrl`。`ui-settings-plugin-inventory` 钉住列表与筛选、Modal 确认 `installSpec`、`installMarketplacePlugin(id)`、卸载确认、无 Token 栏，以及可关闭的抛错安装失败。
+`src/main/marketplace-catalog.test.js` 钉住语言映射、`installTargetFor` 得到的 npm／github／`#path:` 规格（含仍解析为 `github:` 的 Release tarball `install` 命令）、非白名单 last-token 得到空 `installSpec`、行无目录 `npm` 时 last-token npm 为空、`DROPPED` 过滤、TTL 过期、4 秒中止，以及 live → cache → snapshot 回退。`src/main/marketplace-install.test.js` 钉住 `installMarketplacePlugin(id)` 查找、未知 id、`DROPPED`、非法 `allowBuilds`、目录 `#path:` 允许而 `installPlugin` 拒绝、路径含 `..`／反斜杠／冒号拒绝（GitHub blob 首页使 owner/repo 匹配）、owner/repo URL 不一致、tarball `install` 命令仍装 `github:`、仅在有 Token 时钉 SHA、安装卸载互斥锁、仅 node_modules 与已存在规格回滚、布尔 `patch: true` 拒绝，以及重复 loader id 回滚。`src/main/ipc.test.js` 钉住 add、Host `install-plugin` 或卸载成功后 `startHarness()` 抛错仍返回 `ok: true`／`harnessStarted: false`。`src/main/window-marketplace.test.js` 钉住 `openMarketplace` 不加载 `marketplace/index.html` 窗口。`src/main/ipc-authorization.test.js` 钉住没有 `MARKETPLACE` 角色。`src/main/local-url.test.js` 钉住不存在 `isMarketplaceNavigationUrl`。`ui-settings-plugin-inventory` 钉住列表与筛选、Modal 确认 `installSpec`、`installMarketplacePlugin(id)`、卸载确认、无 Token 栏、空 `installSpec` 卡片无安装按钮、精确 `#path:` 已安装匹配、成功的空刷新即使 `listInstalled` 抛错也清卡片、抛错的目录读取保留卡片、安装后的本地化 Harness 未启动文案，以及卸载后的 Harness 未启动文案。
 
 ## 相关
 

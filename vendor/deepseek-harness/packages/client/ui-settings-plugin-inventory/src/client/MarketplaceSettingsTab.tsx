@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Button,
+  FlipText,
   IconSearchOutline16,
   Input,
   Menu,
@@ -51,27 +52,46 @@ type ActionDialog =
   | { kind: 'allow-builds'; item: MarketplaceItem; allowBuilds: string[] }
   | { kind: 'uninstall'; name: string }
   | { kind: 'failure'; title: string; body: string }
+  | { kind: 'harness-down'; title: string; body: string }
 
 function githubRepoName(repo: string): string {
   const hash = repo.indexOf('#')
   return hash < 0 ? repo : repo.slice(0, hash)
 }
 
-function marketplacePathSuffix(installSpec: string): string {
+function specPathSuffix(spec: string): string {
   const marker = '#path:/'
-  const index = installSpec.indexOf(marker)
-  return index < 0 ? '' : installSpec.slice(index)
+  const index = spec.indexOf(marker)
+  return index < 0 ? '' : spec.slice(index)
+}
+
+function specHasPath(spec: string, pathSuffix: string): boolean {
+  if (!pathSuffix) return !spec.includes('#path:/')
+  return specPathSuffix(spec) === pathSuffix
+}
+
+function specHasOwnerRepo(spec: string, ownerRepo: string): boolean {
+  const hay = spec.toLowerCase()
+  const needle = ownerRepo.toLowerCase()
+  const index = hay.indexOf(needle)
+  if (index < 0) return false
+  const after = hay[index + needle.length] ?? ''
+  return after === '' || after === '#' || after === '.' || after === '/'
 }
 
 function installedName(item: MarketplaceItem, installed: Map<string, string>): string {
   if (item.packageName && installed.has(item.packageName)) return item.packageName
   const ownerRepo = `${item.owner}/${githubRepoName(item.repo)}`
-  const pathSuffix = marketplacePathSuffix(item.installSpec)
+  const pathSuffix = specPathSuffix(item.installSpec)
   for (const [name, spec] of installed) {
-    if (!spec.includes(ownerRepo)) continue
-    if (pathSuffix ? spec.includes(pathSuffix) : !spec.includes('#path:/')) return name
+    if (!specHasOwnerRepo(spec, ownerRepo)) continue
+    if (specHasPath(spec, pathSuffix)) return name
   }
   return ''
+}
+
+function canInstall(item: MarketplaceItem): boolean {
+  return Boolean(item.isBundle && item.installSpec)
 }
 
 function categoryLabel(
@@ -150,20 +170,30 @@ export function MarketplaceSettingsTab({
   const load = async (refresh = false): Promise<void> => {
     setBusy(true)
     try {
-      const [catalog, profile] = await Promise.all([
-        listMarketplace({ refresh }),
-        listInstalled(),
-      ])
-      const next = dedupeItems(catalog.items ?? [])
-      if (next.length > 0) {
+      let catalog: MarketplaceCatalog | null = null
+      try {
+        catalog = await listMarketplace({ refresh })
+      } catch {
+        // listMarketplace rejected; keep the last successful cards.
+        setWarning(t('marketError'))
+      }
+      if (catalog) {
+        const next = dedupeItems(catalog.items ?? [])
         setItems(next)
         setCategories(catalog.categories ?? [])
-        setDetail(current => current ? next.find(item => item.id === current.id) ?? current : null)
+        setDetail(current => current ? next.find(item => item.id === current.id) ?? null : null)
+        setWarning(catalog.warning ?? '')
       }
-      setWarning(catalog.warning ?? '')
-      setInstalled(new Map((profile.plugins ?? []).map(row => [row.name, row.spec])))
-    } catch {
-      setWarning(t('marketError'))
+      let profile: InstalledPlugins | null = null
+      try {
+        profile = await listInstalled()
+      } catch {
+        // listInstalled rejected; keep the last installed map.
+        if (catalog) setWarning(t('marketError'))
+      }
+      if (profile) {
+        setInstalled(new Map((profile.plugins ?? []).map(row => [row.name, row.spec])))
+      }
     } finally {
       setBusy(false)
     }
@@ -187,7 +217,7 @@ export function MarketplaceSettingsTab({
       if (category !== 'all' && item.category !== category) return false
       const name = installedName(item, installed)
       if (status === 'installed' && !name) return false
-      if (status === 'installable' && (name || !item.isBundle)) return false
+      if (status === 'installable' && (name || !canInstall(item))) return false
       if (!needle) return true
       return [item.id, item.packageName, item.description].join(' ').toLocaleLowerCase().includes(needle)
     })
@@ -212,6 +242,15 @@ export function MarketplaceSettingsTab({
         setAction({ kind: 'allow-builds', item, allowBuilds: result.allowBuilds ?? [] })
         return
       }
+      if (result.ok && result.harnessStarted === false) {
+        setAction({
+          kind: 'harness-down',
+          title: t('marketHarnessDownTitle'),
+          body: t('marketHarnessDownBody'),
+        })
+        await load(false)
+        return
+      }
       if (!result.ok) {
         failAction(result.error || t('marketFail'), result.log)
         return
@@ -231,6 +270,15 @@ export function MarketplaceSettingsTab({
       const result = await uninstallPlugin(name)
       if (!result.ok) {
         failAction(result.error || t('marketFail'), result.log)
+        return
+      }
+      if (result.harnessStarted === false) {
+        setAction({
+          kind: 'harness-down',
+          title: t('marketUninstallHarnessDownTitle'),
+          body: t('marketUninstallHarnessDownBody'),
+        })
+        await load(false)
         return
       }
       setAction(null)
@@ -335,7 +383,7 @@ export function MarketplaceSettingsTab({
                   setSortOpen(false)
                 }}
               >
-                {statusLabel}
+                <FlipText text={statusLabel} />
               </Button>
             )}
           />
@@ -364,7 +412,7 @@ export function MarketplaceSettingsTab({
                   setStatusOpen(false)
                 }}
               >
-                {sortLabel}
+                <FlipText text={sortLabel} />
               </Button>
             )}
           />
@@ -376,7 +424,7 @@ export function MarketplaceSettingsTab({
       {paged.length > 0 ? (
         <div className={css.masonry}>
           {[0, 1].map(column => (
-            <ul key={column} className={css.masonryCol} data-market-col={column}>
+            <ul key={column} className={css.masonryCol}>
               {paged.filter((_, index) => index % 2 === column).map((item) => {
                 const name = installedName(item, installed)
                 return (
@@ -384,7 +432,6 @@ export function MarketplaceSettingsTab({
                     <button
                       type="button"
                       className={css.card}
-                      data-market-card={item.id}
                       aria-label={item.repo}
                       onClick={() => { setDetail(item) }}
                     >
@@ -419,7 +466,7 @@ export function MarketplaceSettingsTab({
         description={detail ? (detail.description || t('marketNoDescription')) : undefined}
         footer={detail ? (
           <>
-            {detail.isBundle && !detailName ? (
+            {canInstall(detail) && !detailName ? (
               <Button
                 variant="primary"
                 disabled={busy}
@@ -505,6 +552,7 @@ function actionTitle(
     case 'uninstall':
       return t('marketRemoveTitle')
     case 'failure':
+    case 'harness-down':
       return action.title
   }
 }
@@ -520,6 +568,7 @@ function actionDescription(
     case 'uninstall':
       return t('marketRemoveBody').replace('{name}', action.name)
     case 'failure':
+    case 'harness-down':
       return action.body
     default:
       return undefined
@@ -574,6 +623,7 @@ function actionFooter(
         </>
       )
     case 'failure':
+    case 'harness-down':
       return <Button variant="primary" onClick={handlers.onDismiss}>{t('marketOk')}</Button>
   }
 }

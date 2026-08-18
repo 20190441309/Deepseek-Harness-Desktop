@@ -6,7 +6,7 @@ const { isValidAllowBuild, normalizeAllowBuilds } = require('../host/install-dsh
  * @returns {string[]}
  */
 function parseAllowBuilds(log) {
-  const text = String(log || '');
+  const text = String(log || '').replace(/\\"/g, '"');
   const names = new Set();
   const ignored = text.match(/ignored build scripts:\s*([^\n]+)/i);
   if (ignored) {
@@ -15,6 +15,15 @@ function parseAllowBuilds(log) {
       if (name && /[@a-z0-9._/-]/i.test(name) && !/^https?:/i.test(name)) {
         names.add(name);
       }
+    }
+  }
+  const prepare = /git-hosted package "([^"]+)" needs to execute build scripts/.exec(text);
+  if (prepare) {
+    const raw = prepare[1].trim();
+    const at = raw.lastIndexOf('@');
+    const name = at > 0 ? raw.slice(0, at) : raw;
+    if (name) {
+      names.add(name);
     }
   }
   for (const match of text.matchAll(/^\s{2,}([@a-z0-9._/-]+(?:\/[a-z0-9._-]+)?)\s*$/gim)) {

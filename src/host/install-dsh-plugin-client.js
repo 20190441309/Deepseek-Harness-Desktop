@@ -10,6 +10,7 @@ const GITHUB_REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
 const GITHUB_REF_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,254})$/;
 const PACKAGE_ALLOW_BUILD_PATTERN = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const GITHUB_ALLOW_BUILD_PATTERN = /^github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const GIT_ALLOW_BUILD_PATTERN = /^[A-Za-z0-9@/_.-]+@git\+https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.git$/;
 const MAX_ALLOW_BUILDS = 32;
 
 /**
@@ -50,7 +51,7 @@ function isValidAllowBuild(value) {
   if (!key || key.length > 214 || key === '.' || key === '..' || key.includes('..')) {
     return false;
   }
-  return isValidPackageName(key) || GITHUB_ALLOW_BUILD_PATTERN.test(key);
+  return isValidPackageName(key) || GITHUB_ALLOW_BUILD_PATTERN.test(key) || GIT_ALLOW_BUILD_PATTERN.test(key);
 }
 
 function isValidPackageName(value) {
@@ -67,8 +68,9 @@ function isValidPackageName(value) {
 }
 
 /**
- * Validate pnpm allowBuilds keys without accepting YAML syntax, paths, URLs,
- * or arbitrary objects from a renderer/tool call.
+ * Validate pnpm allowBuilds keys: package names, `github.com/owner/repo`,
+ * and `name@git+https://github.com/owner/repo.git`. Rejects bare `https://`
+ * URLs, YAML, paths, and arbitrary objects from a renderer/tool call.
  * @param value - candidate allowBuilds array.
  * @returns a unique normalized array, or null when any item is invalid.
  */

@@ -57,6 +57,23 @@ function sendPluginProgress(event, payload) {
   }
 }
 
+const HARNESS_DOWN_AFTER_ADD = '插件已写入 web profile，但 Harness 没有起来。请从现有入口重启，不要再安装一次。';
+const HARNESS_DOWN_AFTER_REMOVE = '插件已从 web profile 移除，但 Harness 没有起来。请从现有入口重启，不要再卸载一次。';
+
+async function restartAfterProfileWrite(event, result, startHarness, downError) {
+  if (result.ok !== true || typeof startHarness !== 'function') {
+    return result;
+  }
+  sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
+  try {
+    await startHarness();
+  } catch {
+    // startHarness threw after the profile write committed. Return ok so the UI does not retry the write.
+    return { ...result, ok: true, harnessStarted: false, error: downError };
+  }
+  return { ...result, harnessStarted: true };
+}
+
 function registerIpc({ dsh, harness, startHarness, remote }) {
   const handle = (channel, roles, listener) => {
     ipcMain.handle(channel, (event, ...args) => {
@@ -131,7 +148,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   handle('shell:refresh-marketplace', HARNESS_ONLY, async (_event, options = {}) => {
     return listMarketplace({
       refresh: true,
-      locale: options?.locale || 'zh',
+      locale: options?.locale,
     });
   });
 
@@ -144,11 +161,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
       allowBuilds: Array.isArray(options?.allowBuilds) ? options.allowBuilds : [],
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    if (result.ok && typeof startHarness === 'function') {
-      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
-      await startHarness();
-    }
-    return result;
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_ADD);
   });
 
   handle('shell:install-marketplace-plugin', HARNESS_ONLY, async (event, id, options = {}) => {
@@ -158,22 +171,14 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
       allowBuilds: Array.isArray(options?.allowBuilds) ? options.allowBuilds : [],
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    if (result.ok === true && typeof startHarness === 'function') {
-      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
-      await startHarness();
-    }
-    return result;
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_ADD);
   });
 
   handle('shell:uninstall-plugin', HARNESS_ONLY, async (event, name) => {
     const result = await uninstallPlugin(name, {
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    if (result.ok && typeof startHarness === 'function') {
-      sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
-      await startHarness();
-    }
-    return result;
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_REMOVE);
   });
 
   handle('shell:open-marketplace', HARNESS_ONLY, () => openMarketplace());

@@ -80,6 +80,16 @@ function pickMenu(label: string, option: string) {
   fireEvent.click(screen.getByRole('menuitem', { name: option }))
 }
 
+function cardRepos() {
+  return screen.getAllByRole('listitem').map(row => within(row).getByRole('button').getAttribute('aria-label'))
+}
+
+function columnRepos() {
+  return screen.getAllByRole('list').map(list => (
+    within(list).getAllByRole('button').map(btn => btn.getAttribute('aria-label'))
+  ))
+}
+
 function dialogMask(name: string) {
   const dialog = screen.getByRole('dialog', { name })
   return dialog.parentElement?.querySelector('[data-dsh-motion-part="mask"]') as HTMLElement
@@ -165,14 +175,11 @@ describe('MarketplaceSettingsTab', () => {
   it('sorts by stars and then by added date', async () => {
     renderTab()
     await waitFor(() => { expect(screen.getByRole('button', { name: 'dsh-loop' })).toBeTruthy() })
-    expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
-      .toEqual(['owner/dsh-loop', 'owner/awesome'])
+    expect(cardRepos()).toEqual(['dsh-loop', 'awesome'])
     pickMenu(en.marketSort, en.marketSortNew)
-    expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
-      .toEqual(['owner/awesome', 'owner/dsh-loop'])
+    expect(cardRepos()).toEqual(['awesome', 'dsh-loop'])
     pickMenu(en.marketSort, en.marketSortHot)
-    expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
-      .toEqual(['owner/dsh-loop', 'owner/awesome'])
+    expect(cardRepos()).toEqual(['dsh-loop', 'awesome'])
   })
 
   it('keeps a 1-star plugin after higher star counts and drops duplicate ids', async () => {
@@ -188,13 +195,10 @@ describe('MarketplaceSettingsTab', () => {
       })),
     })
     await waitFor(() => { expect(screen.getByRole('button', { name: 'dsh-web-ui' })).toBeTruthy() })
-    const left = [...document.querySelectorAll('[data-market-col="0"] [data-market-card]')]
-      .map(node => node.getAttribute('data-market-card'))
-    const right = [...document.querySelectorAll('[data-market-col="1"] [data-market-card]')]
-      .map(node => node.getAttribute('data-market-card'))
-    expect(left[0]).toBe('zhu/dsh-web-ui')
-    expect(right[0]).toBe('paean/deeptide')
-    expect([...left, ...right].filter(id => id === 'xiaomiba/dsh-obsidian-export')).toEqual(['xiaomiba/dsh-obsidian-export'])
+    const [left, right] = columnRepos()
+    expect(left[0]).toBe('dsh-web-ui')
+    expect(right[0]).toBe('deeptide')
+    expect([...left, ...right].filter(name => name === 'dsh-obsidian-export')).toEqual(['dsh-obsidian-export'])
     expect(screen.getAllByRole('button', { name: 'dsh-obsidian-export' })).toHaveLength(1)
   })
 
@@ -250,6 +254,96 @@ describe('MarketplaceSettingsTab', () => {
     expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
   })
 
+  it('explains that the plugin is already in the profile when Harness did not start', async () => {
+    renderTab({
+      installMarketplacePlugin: vi.fn(async () => ({
+        ok: true,
+        harnessStarted: false,
+        error: '插件已写入 web profile，但 Harness 没有起来。请从现有入口重启，不要再安装一次。',
+      })),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    const detail = openCard('dsh-loop')
+    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: en.marketInstallTitle })).getByRole('button', { name: en.marketInstall }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: en.marketHarnessDownTitle })).toBeTruthy() })
+    expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
+    expect(screen.getByText(en.marketHarnessDownBody)).toBeTruthy()
+  })
+
+  it('explains uninstall already happened when Harness did not start', async () => {
+    renderTab({
+      listInstalled: vi.fn(async () => ({ plugins: [{ name: '@dsh-external/dsh-loop', spec: 'github:owner/dsh-loop#abc' }] })),
+      uninstallPlugin: vi.fn(async () => ({ ok: true, harnessStarted: false })),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    pickMenu(en.marketStatus, en.marketInstalled)
+    const detail = openCard('dsh-loop')
+    fireEvent.click(within(detail).getByRole('button', { name: en.marketRemove }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: en.marketRemoveTitle })).getByRole('button', { name: en.marketRemoveOk }))
+    await waitFor(() => { expect(screen.getByRole('dialog', { name: en.marketUninstallHarnessDownTitle })).toBeTruthy() })
+    expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
+  })
+
+  it('does not offer Install when installSpec is empty', async () => {
+    renderTab({
+      listMarketplace: vi.fn(async () => ({
+        items: [{ ...ITEM, installSpec: '' }],
+        categories: [{ id: 'all', label: 'All', count: 1 }],
+      })),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    const detail = openCard('dsh-loop')
+    expect(within(detail).queryByRole('button', { name: en.marketInstall })).toBeNull()
+  })
+
+  it('does not mark a #path: prefix sibling as installed', async () => {
+    const panel = {
+      ...ITEM,
+      id: 'DamonKoy/dsh-web-ui#panel',
+      owner: 'DamonKoy',
+      repo: 'dsh-web-ui#panel',
+      packageName: '',
+      homepage: 'https://github.com/DamonKoy/dsh-web-ui',
+      installSpec: 'github:DamonKoy/dsh-web-ui#path:/packages/foo',
+    }
+    const longer = {
+      ...panel,
+      id: 'DamonKoy/dsh-web-ui#panel-bar',
+      repo: 'dsh-web-ui#panel-bar',
+      installSpec: 'github:DamonKoy/dsh-web-ui#path:/packages/foo-bar',
+    }
+    renderTab({
+      listMarketplace: vi.fn(async () => ({
+        items: [panel, longer],
+        categories: [{ id: 'all', label: 'All', count: 2 }],
+      })),
+      listInstalled: vi.fn(async () => ({
+        plugins: [{
+          name: 'foo-bar',
+          spec: 'git+https://github.com/DamonKoy/dsh-web-ui.git#path:/packages/foo-bar',
+        }],
+      })),
+    })
+    await waitFor(() => { expect(screen.getByRole('button', { name: 'dsh-web-ui#panel-bar' })).toBeTruthy() })
+    expect(within(screen.getByRole('button', { name: 'dsh-web-ui#panel-bar' })).getByText(en.marketInstalled)).toBeTruthy()
+    expect(within(screen.getByRole('button', { name: 'dsh-web-ui#panel' })).queryByText(en.marketInstalled)).toBeNull()
+  })
+
+  it('does not mark a shorter catalog id as installed from a longer github spec', async () => {
+    renderTab({
+      listMarketplace: vi.fn(async () => ({
+        items: [ITEM],
+        categories: [{ id: 'all', label: 'All', count: 1 }],
+      })),
+      listInstalled: vi.fn(async () => ({
+        plugins: [{ name: 'dsh-loop-extra', spec: 'github:owner/dsh-loop-extra#abc' }],
+      })),
+    })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    expect(screen.queryByText(en.marketInstalled)).toBeNull()
+  })
+
   it('shows a dismissible failure Modal when uninstallPlugin rejects', async () => {
     renderTab({
       listInstalled: vi.fn(async () => ({ plugins: [{ name: '@dsh-external/dsh-loop', spec: 'github:owner/dsh-loop#abc' }] })),
@@ -278,17 +372,41 @@ describe('MarketplaceSettingsTab', () => {
     await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
   })
 
-  it('keeps the current catalog when a refresh returns no items', async () => {
+  it('clears cards when a successful refresh returns no items', async () => {
     const listMarketplace = vi.fn()
       .mockResolvedValueOnce({ items: [ITEM], categories: [{ id: 'all', label: 'All', count: 1 }] })
       .mockResolvedValueOnce({ items: [], warning: '请求过于频繁', categories: [] })
     renderTab({ listMarketplace })
     await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
     fireEvent.click(screen.getByRole('button', { name: en.marketRefresh }))
-    await waitFor(() => { expect(listMarketplace).toHaveBeenCalledWith({ refresh: true }) })
-    expect(screen.getByText('dsh-loop')).toBeTruthy()
+    await waitFor(() => { expect(screen.queryByText('dsh-loop')).toBeNull() })
     expect(screen.getByText('请求过于频繁')).toBeTruthy()
     expect(screen.queryByText(en.marketEmpty)).toBeNull()
+  })
+
+  it('clears cards when a successful empty catalog arrives even if listInstalled throws', async () => {
+    const listMarketplace = vi.fn()
+      .mockResolvedValueOnce({ items: [ITEM], categories: [{ id: 'all', label: 'All', count: 1 }] })
+      .mockResolvedValueOnce({ items: [], warning: '请求过于频繁', categories: [] })
+    const listInstalled = vi.fn()
+      .mockResolvedValueOnce({ plugins: [] })
+      .mockRejectedValueOnce(new Error('profile unreadable'))
+    renderTab({ listMarketplace, listInstalled })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: en.marketRefresh }))
+    await waitFor(() => { expect(screen.queryByText('dsh-loop')).toBeNull() })
+    expect(screen.getByText(en.marketError)).toBeTruthy()
+  })
+
+  it('keeps cards when a later catalog read throws', async () => {
+    const listMarketplace = vi.fn()
+      .mockResolvedValueOnce({ items: [ITEM], categories: [{ id: 'all', label: 'All', count: 1 }] })
+      .mockRejectedValueOnce(new Error('offline'))
+    renderTab({ listMarketplace })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: en.marketRefresh }))
+    await waitFor(() => { expect(screen.getByText(en.marketError)).toBeTruthy() })
+    expect(screen.getByText('dsh-loop')).toBeTruthy()
   })
 
   it('does not treat a rate-limited catalog as an empty category', async () => {
@@ -377,15 +495,15 @@ describe('MarketplaceSettingsTab', () => {
       })),
     })
     await waitFor(() => { expect(screen.getByRole('button', { name: 'plugin-0' })).toBeTruthy() })
-    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+    expect(screen.getAllByRole('listitem')).toHaveLength(60)
     fireEvent.click(screen.getByRole('button', { name: en.marketShowMore }))
-    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(61)
+    expect(screen.getAllByRole('listitem')).toHaveLength(61)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'plugin' } })
-    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+    expect(screen.getAllByRole('listitem')).toHaveLength(60)
     fireEvent.click(screen.getByRole('button', { name: en.marketShowMore }))
-    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(61)
+    expect(screen.getAllByRole('listitem')).toHaveLength(61)
     fireEvent.click(within(screen.getByRole('tablist', { name: en.marketCategories })).getByRole('tab', { name: /Workflow/ }))
-    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+    expect(screen.getAllByRole('listitem')).toHaveLength(60)
   })
 
   it('expands category chips from the default two-row clip', async () => {

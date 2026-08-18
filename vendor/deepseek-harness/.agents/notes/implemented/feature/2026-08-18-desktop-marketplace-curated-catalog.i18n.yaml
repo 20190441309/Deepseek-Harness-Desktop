@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-18-desktop-marketplace-curated-catalog.md
-2026-08-18-desktop-marketplace-curated-catalog.md: 869991b09d656592df450c314b1b16865f309515
-2026-08-18-desktop-marketplace-curated-catalog.zh.md: 5d5ea84616c2baead20e6ce94c0a3aa798dcb13a
+2026-08-18-desktop-marketplace-curated-catalog.md: 2d1a3f23069bf961484eaf7e5557dcb9ebf1be10
+2026-08-18-desktop-marketplace-curated-catalog.zh.md: 6fdbe45ffa6d97b9961844b48961244f2800ea60

@@ -71,6 +71,7 @@ function loadIpc(options = {}) {
   const uninstallCalls = [];
   let startHarnessCalls = 0;
   const installResult = options.installResult || { ok: true };
+  const startHarnessImpl = options.startHarness || (async () => {});
 
   function stub(id, exports) {
     restoreEntries.push(stubModule(id, exports));
@@ -174,6 +175,7 @@ function loadIpc(options = {}) {
     harness: null,
     startHarness: async () => {
       startHarnessCalls += 1;
+      return startHarnessImpl();
     },
     remote: null,
   });
@@ -222,13 +224,13 @@ test('shell:list-marketplace forwards locale and refresh without a GitHub token'
   }
 });
 
-test('shell:refresh-marketplace forwards locale and defaults to zh', async () => {
+test('shell:refresh-marketplace forwards locale without defaulting to zh', async () => {
   const ipc = loadIpc();
   try {
     await ipc.invoke('shell:refresh-marketplace', harnessEvent());
     await ipc.invoke('shell:refresh-marketplace', harnessEvent(), { locale: 'en', token: 'renderer-token' });
     assert.deepEqual(ipc.listMarketplaceCalls, [
-      { locale: 'zh', refresh: true },
+      { locale: undefined, refresh: true },
       { locale: 'en', refresh: true },
     ]);
   } finally {
@@ -313,6 +315,77 @@ test('shell:install-marketplace-plugin does not restart harness when install fai
     );
     assert.equal(result.ok, false);
     assert.equal(ipc.startHarness(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:install-marketplace-plugin does not restart harness for needsAllowBuilds', async () => {
+  const ipc = loadIpc({ installResult: { ok: false, needsAllowBuilds: true, allowBuilds: ['pkg'] } });
+  try {
+    const result = await ipc.invoke(
+      'shell:install-marketplace-plugin',
+      harnessEvent(),
+      'owner/name',
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.needsAllowBuilds, true);
+    assert.equal(ipc.startHarness(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:install-marketplace-plugin keeps ok when startHarness throws', async () => {
+  const ipc = loadIpc({
+    installResult: { ok: true, spec: 'dsh-loop' },
+    startHarness: async () => {
+      throw new Error('spawn failed');
+    },
+  });
+  try {
+    const result = await ipc.invoke(
+      'shell:install-marketplace-plugin',
+      harnessEvent(),
+      'owner/name',
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessStarted, false);
+    assert.match(String(result.error), /web profile/);
+    assert.equal(ipc.startHarness(), 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:uninstall-plugin keeps ok when startHarness throws', async () => {
+  const ipc = loadIpc({
+    startHarness: async () => {
+      throw new Error('spawn failed');
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:uninstall-plugin', harnessEvent(), 'pkg');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessStarted, false);
+    assert.match(String(result.error), /移除/);
+    assert.equal(ipc.startHarness(), 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:install-plugin keeps ok when startHarness throws', async () => {
+  const ipc = loadIpc({
+    startHarness: async () => {
+      throw new Error('spawn failed');
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:install-plugin', harnessEvent(), 'github:owner/repo');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessStarted, false);
+    assert.equal(ipc.startHarness(), 1);
   } finally {
     ipc.restore();
   }

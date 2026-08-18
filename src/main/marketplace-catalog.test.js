@@ -103,6 +103,34 @@ const LIVE_REGISTRY = {
       deprecated: true,
       replacement: 'DamonKoy/dsh-web-ui#dsh-aionui-panel',
     },
+    {
+      name: 'dsh-whale-desktop-launcher',
+      owner: 'HUITianYi',
+      url: 'https://github.com/HUITianYi/dsh-whale-desktop-launcher',
+      category: 'ui',
+      description: {
+        en: 'Release tarball install command.',
+        zh: '用 Release tarball 写的安装命令。',
+      },
+      npm: null,
+      stars: 1,
+      install: 'dsh plugin --profile web add "https://github.com/HUITianYi/dsh-whale-desktop-launcher/releases/latest/download/dsh-whale-desktop-launcher-0.1.0.tgz"',
+      added: '2026-08-16',
+    },
+    {
+      name: 'dsh-wallpaper-engine#plugin',
+      owner: 'TianYa-DAO',
+      url: 'https://github.com/TianYa-DAO/dsh-wallpaper-engine/tree/main/packages/dsh-wallpaper-engine',
+      category: 'ui',
+      description: {
+        en: 'Monorepo plugin with a tarball install command.',
+        zh: '安装命令是 tarball 的 monorepo 插件。',
+      },
+      npm: null,
+      stars: 2,
+      install: 'dsh plugin --profile web add "https://github.com/TianYa-DAO/dsh-wallpaper-engine/releases/download/dsh-0.1.2/dsh-wallpaper-engine-0.1.2.tgz"',
+      added: '2026-08-16',
+    },
   ],
 };
 
@@ -222,9 +250,19 @@ test('live catalog maps npm, github, and #path: install tokens from plugins.json
   assert.equal(pathPlugin.owner, 'DamonKoy');
 
   const mismatch = byId(result.items, 'acme/spec-mismatch');
-  assert.equal(mismatch.installSpec, 'github:acme/spec-mismatch');
+  assert.equal(mismatch.installSpec, 'npm-name-not-used');
   assert.equal(mismatch.npm, 'npm-name-not-used');
   assert.equal(mismatch.packageName, 'npm-name-not-used');
+
+  const tarball = byId(result.items, 'HUITianYi/dsh-whale-desktop-launcher');
+  assert.equal(tarball.installSpec, 'github:HUITianYi/dsh-whale-desktop-launcher');
+  assert.equal(tarball.installSpec.includes('.tgz'), false);
+
+  const treeTarball = byId(result.items, 'TianYa-DAO/dsh-wallpaper-engine#plugin');
+  assert.equal(
+    treeTarball.installSpec,
+    'github:TianYa-DAO/dsh-wallpaper-engine#path:/packages/dsh-wallpaper-engine',
+  );
 
   const deprecated = byId(result.items, 'example/old-loop');
   assert.equal(deprecated.isBundle, false);
@@ -241,10 +279,10 @@ test('locale picks Chinese or English copy and category labels', async () => {
   assert.equal(byId(zh.items, '13071301808/dsh-composer-expand').description, '输入框展开收起。');
   assert.equal(zh.categories[0].id, 'all');
   assert.equal(zh.categories[0].label, '全部');
-  assert.equal(zh.categories[0].count, 5);
+  assert.equal(zh.categories[0].count, 7);
   assert.equal(zh.categories[1].id, 'ui');
   assert.equal(zh.categories[1].label, 'UI 增强');
-  assert.equal(zh.categories[1].count, 4);
+  assert.equal(zh.categories[1].count, 6);
   assert.equal(zh.categories[2].id, 'workflow');
   assert.equal(zh.categories[2].label, '工作流与自动化');
   assert.equal(zh.categories[2].count, 1);
@@ -423,4 +461,118 @@ test('CACHE_VERSION 2 disk files are ignored', async () => {
   const result = await listMarketplace();
   assert.equal(byId(result.items, 'old/github-topic'), undefined);
   assert.equal(result.source, 'snapshot');
+});
+
+test('a still-fresh cache does not claim the online directory failed', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  mockFetch(async () => jsonResponse(LIVE_REGISTRY));
+  const { listMarketplace } = loadCatalog();
+  await listMarketplace();
+  const cached = await listMarketplace();
+  assert.equal(cached.source, 'cache');
+  assert.ok(cached.warning);
+  assert.equal(cached.warning.includes('无法在线更新'), false);
+});
+
+test('disk cache older than one hour is fetched again', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  fs.writeFileSync(cacheFile(), JSON.stringify({
+    version: 3,
+    fetchedAt: Date.now() - (60 * 60 * 1000) - 1,
+    registry: {
+      categories: { ui: { en: 'UI', zh: '界面' } },
+      plugins: [{
+        name: 'stale-disk',
+        owner: 'disk',
+        url: 'https://github.com/disk/stale-disk',
+        category: 'ui',
+        description: { en: 'Stale', zh: '过期' },
+        npm: 'stale-disk',
+        install: 'dsh plugin --profile web add stale-disk',
+        added: '2026-08-01',
+      }],
+    },
+  }));
+  const calls = mockFetch(async () => jsonResponse(LIVE_REGISTRY));
+  const { listMarketplace } = loadCatalog();
+  const result = await listMarketplace();
+  assert.equal(result.source, 'live');
+  assert.ok(byId(result.items, '13071301808/dsh-composer-expand'));
+  assert.equal(byId(result.items, 'disk/stale-disk'), undefined);
+  assert.equal(calls.length, 1);
+});
+
+test('a hung registry fetch aborts after 4s and uses the snapshot', async (t) => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  mockFetch(async (_url, options) => new Promise((_, reject) => {
+    options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    });
+  }));
+  const { listMarketplace } = loadCatalog();
+  const pending = listMarketplace({ refresh: true });
+  t.mock.timers.tick(4000);
+  const result = await pending;
+  assert.equal(result.source, 'snapshot');
+  assert.match(result.warning, /超时/);
+});
+
+test('last-token github: fallback is empty when the spec is not an allow-listed marketplace spec', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  mockFetch(async () => jsonResponse({
+    name: 'awesome-dsh-plugin',
+    url: 'https://awesome-dsh-plugin.com',
+    categories: { ui: { en: 'UI', zh: 'UI' } },
+    plugins: [{
+      name: 'bad-path',
+      owner: 'evil',
+      url: 'https://example.com/not-github',
+      category: 'ui',
+      description: { en: 'x', zh: 'x' },
+      npm: null,
+      stars: 0,
+      install: 'dsh plugin --profile web add github:evil/bad-path#path:/../etc',
+      added: '2026-08-18',
+    }, {
+      name: 'other-repo',
+      owner: 'evil',
+      url: 'https://example.com/not-github',
+      category: 'ui',
+      description: { en: 'x', zh: 'x' },
+      npm: null,
+      stars: 0,
+      install: 'dsh plugin --profile web add github:evil/other-repo',
+      added: '2026-08-18',
+    }],
+  }));
+  const { listMarketplace } = loadCatalog();
+  const result = await listMarketplace();
+  assert.equal(byId(result.items, 'evil/bad-path').installSpec, '');
+  assert.equal(byId(result.items, 'evil/other-repo').installSpec, '');
+});
+
+test('last-token npm fallback is empty when the row has no registry npm field', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  mockFetch(async () => jsonResponse({
+    name: 'awesome-dsh-plugin',
+    url: 'https://awesome-dsh-plugin.com',
+    categories: { ui: { en: 'UI', zh: 'UI' } },
+    plugins: [{
+      name: 'stray-npm',
+      owner: 'evil',
+      url: 'https://example.com/not-github',
+      category: 'ui',
+      description: { en: 'x', zh: 'x' },
+      npm: null,
+      stars: 0,
+      install: 'dsh plugin --profile web add lodash',
+      added: '2026-08-18',
+    }],
+  }));
+  const { listMarketplace } = loadCatalog();
+  const result = await listMarketplace();
+  assert.equal(byId(result.items, 'evil/stray-npm').installSpec, '');
 });

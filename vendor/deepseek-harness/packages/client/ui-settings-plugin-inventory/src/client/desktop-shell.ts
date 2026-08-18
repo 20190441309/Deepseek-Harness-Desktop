@@ -51,6 +51,8 @@ export type MarketplaceInstallResult = {
   allowBuilds?: string[]
   error?: string
   log?: string
+  /** False when the profile write committed and Harness did not start; do not retry the write. */
+  harnessStarted?: boolean
 }
 
 /** Progress line pushed while pnpm runs. */

@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { DROPPED } = require('./plugins');
+const { isValidPackageName } = require('../host/install-dsh-plugin-client');
+const { isAllowedMarketplaceSpec } = require('./marketplace-spec');
 
 const DEFAULT_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
 const CACHE_VERSION = 3;
@@ -9,7 +11,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 4000;
 const USER_AGENT = 'Deepseek-Harness-Desktop';
 const SNAPSHOT_PATH = path.join(__dirname, 'marketplace-registry-snapshot.json');
-const WARNING_CACHE = '插件目录无法在线更新，已使用本地缓存。';
+const WARNING_FRESH_CACHE = '正在使用一小时内的本地插件目录。';
 const WARNING_EMPTY = '无法加载插件目录。';
 
 let memoryRegistry = null;
@@ -63,6 +65,61 @@ function lastInstallToken(install) {
   return parts.length ? parts[parts.length - 1] : '';
 }
 
+function unquoteToken(value) {
+  const token = String(value || '').trim();
+  if (token.length >= 2) {
+    const start = token[0];
+    const end = token[token.length - 1];
+    if ((start === '"' && end === '"') || (start === "'" && end === "'")) {
+      return token.slice(1, -1);
+    }
+  }
+  return token;
+}
+
+function parseSourceUrl(url) {
+  const match = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\/tree\/[^/]+\/(.+?))?\/?$/i.exec(String(url || '').trim());
+  if (!match) {
+    return null;
+  }
+  const repo = match[1].replace(/\.git$/i, '');
+  const [owner, name] = repo.split('/');
+  if (!owner || !name || name.includes('#')) {
+    return null;
+  }
+  const subpath = match[2] || '';
+  if (subpath && (subpath.includes('..') || subpath.includes(':') || subpath.includes('\\'))) {
+    return null;
+  }
+  return { owner, repo: name, subpath };
+}
+
+function allowedFallbackSpec(spec, plugin) {
+  const item = { homepage: plugin?.url || '', npm: plugin?.npm || null };
+  return isAllowedMarketplaceSpec(spec, item) ? spec : '';
+}
+
+/**
+ * Resolve the CLI spec the way dsh-market `installTargetFor` does:
+ * a valid npm name, else github / #path: from the GitHub URL,
+ * else the last `install` token when `isAllowedMarketplaceSpec` accepts it.
+ * @param {object} plugin
+ * @returns {string}
+ */
+function resolveInstallSpec(plugin) {
+  const npm = typeof plugin?.npm === 'string' ? plugin.npm.trim() : '';
+  if (isValidPackageName(npm)) {
+    return npm;
+  }
+  const source = parseSourceUrl(plugin?.url);
+  if (source) {
+    return source.subpath
+      ? `github:${source.owner}/${source.repo}#path:/${source.subpath}`
+      : `github:${source.owner}/${source.repo}`;
+  }
+  return allowedFallbackSpec(unquoteToken(lastInstallToken(plugin?.install)), plugin);
+}
+
 function starCount(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -84,7 +141,7 @@ function mapPlugin(plugin, locale) {
     stars: starCount(plugin.stars),
     packageName: npm || '',
     homepage: plugin.url || '',
-    installSpec: lastInstallToken(plugin.install),
+    installSpec: resolveInstallSpec(plugin),
     isBundle: !deprecated,
     category: plugin.category || '',
     added: plugin.added,
@@ -153,6 +210,7 @@ function readDiskCache() {
     }
     return cache;
   } catch {
+    // Missing or invalid cache files are a cache miss, not a crash.
     return null;
   }
 }
@@ -173,6 +231,7 @@ function readSnapshot() {
     const registry = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
     return isValidRegistry(registry) ? registry : null;
   } catch {
+    // A missing or invalid packed snapshot is treated as empty, not fatal.
     return null;
   }
 }
@@ -254,7 +313,7 @@ function fallbackPayload(locale, error) {
 
 /**
  * List curated marketplace plugins from plugins.json.
- * @param {{ token?: string, refresh?: boolean, locale?: string }} options
+ * @param {{ refresh?: boolean, locale?: string }} options
  */
 async function listMarketplace(options = {}) {
   const locale = resolveLocale(options.locale);
@@ -263,7 +322,7 @@ async function listMarketplace(options = {}) {
       return toPayload(memoryRegistry, locale, {
         source: 'cache',
         fetchedAt: memoryFetchedAt,
-        warning: WARNING_CACHE,
+        warning: WARNING_FRESH_CACHE,
       });
     }
     const disk = readDiskCache();
@@ -272,7 +331,7 @@ async function listMarketplace(options = {}) {
       return toPayload(disk.registry, locale, {
         source: 'cache',
         fetchedAt: disk.fetchedAt,
-        warning: WARNING_CACHE,
+        warning: WARNING_FRESH_CACHE,
       });
     }
   }
@@ -327,6 +386,7 @@ async function resolveCommitSha(owner, repo, ref, token) {
     const sha = (await response.text()).trim();
     return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : '';
   } catch {
+    // GitHub SHA lookup failed (network, abort, or non-JSON); keep the floating ref.
     return '';
   } finally {
     clearTimeout(timer);
