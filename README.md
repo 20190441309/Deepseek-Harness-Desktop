@@ -79,9 +79,11 @@ npm start
 
 改界面请改 `vendor/deepseek-harness`，并遵守 [设计语言](docs/design-language.md) 和 [动效](docs/motion.md)。改完客户端源码后，在该目录执行 `pnpm run build:lib:client` 再重启桌面端。
 
+当前官方基线写在 `vendor/harness-upstream.json`，现为 `0.1.0-rc.7`（`dsh-v0.1.0-rc.7` / `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`）。npx 兜底是官方 `@deepseek-ai/dsh@0.1.0-rc.7`，不含标题栏、Git、右栏 surfaces 和底栏终端；那些只在源码启动和安装包路径里。
+
 ```powershell
 npm test              # 桌面壳单测
-npm run sync:harness  # 拉取官方 Harness
+npm run sync:harness -- --ref dsh-v0.1.0-rc.7 --sha 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
 npm run dist          # Windows 安装包
 npm run dist:mac      # macOS 安装包（须在 macOS 上）
 ```

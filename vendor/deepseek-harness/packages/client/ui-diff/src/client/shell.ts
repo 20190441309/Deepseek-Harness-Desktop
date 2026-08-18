@@ -108,6 +108,7 @@ export function readDiffShell(): DiffShellInjected {
 /**
  * Index (X) has a staged change.
  * @param xy - two-character porcelain status.
+ * @returns true when the index column is a staged status letter.
  */
 export function isStaged(xy: string): boolean {
   const x = xy[0]
@@ -117,6 +118,7 @@ export function isStaged(xy: string): boolean {
 /**
  * Worktree (Y) has an unstaged change.
  * @param xy - two-character porcelain status.
+ * @returns true when the worktree column is an unstaged status letter.
  */
 export function isUnstaged(xy: string): boolean {
   const y = xy[1]

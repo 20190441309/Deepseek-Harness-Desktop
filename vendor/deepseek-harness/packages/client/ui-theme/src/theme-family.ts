@@ -11,18 +11,26 @@ export const DEFAULT_FAMILY_ID = 'deepseek'
 /** Contrast slider default, matching a mid-range mix. */
 export const DEFAULT_CONTRAST = 46
 
-/** Glass opacity bounds and default (percent, integer). */
+/** Lowest glass opacity the settings slider accepts (percent). */
 export const MIN_GLASS_OPACITY = 40
+/** Highest glass opacity the settings slider accepts (percent). */
 export const MAX_GLASS_OPACITY = 100
+/** Default glass opacity (percent). */
 export const DEFAULT_GLASS_OPACITY = 80
+/** Glass opacity slider step (percent). */
 export const GLASS_OPACITY_STEP = 5
 
-/** Interface and code font-size bounds (px). */
+/** Smallest interface font size the settings slider accepts (px). */
 export const MIN_INTERFACE_FONT_SIZE = 12
+/** Largest interface font size the settings slider accepts (px). */
 export const MAX_INTERFACE_FONT_SIZE = 22
+/** Default interface font size (px). */
 export const DEFAULT_INTERFACE_FONT_SIZE = 16
+/** Smallest code font size the settings slider accepts (px). */
 export const MIN_CODE_FONT_SIZE = 10
+/** Largest code font size the settings slider accepts (px). */
 export const MAX_CODE_FONT_SIZE = 20
+/** Default code font size (px). */
 export const DEFAULT_CODE_FONT_SIZE = 13
 
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{6})$/

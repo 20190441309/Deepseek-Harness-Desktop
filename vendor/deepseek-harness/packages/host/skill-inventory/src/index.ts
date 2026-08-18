@@ -49,6 +49,7 @@ export class SkillInventoryGateway extends TypertRemoteService {
   /**
    * List every discovered skill, including non-user-invocable ones.
    * @param request - optional project cwd.
+   * @returns the catalog snapshot for Settings.
    */
   @Remote('list')
   async list(request: SkillInventoryScope): Promise<SkillInventorySnapshot> {
@@ -65,6 +66,7 @@ export class SkillInventoryGateway extends TypertRemoteService {
   /**
    * Load one skill body for the editor.
    * @param request - name and optional cwd.
+   * @returns the skill detail for the editor.
    */
   @Remote('get')
   async get(request: SkillInventoryGetRequest): Promise<SkillInventoryDetail> {

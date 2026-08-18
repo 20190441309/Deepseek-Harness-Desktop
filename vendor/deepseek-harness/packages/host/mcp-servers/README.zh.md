@@ -2,9 +2,9 @@
 
 [English](README.md) | 中文
 
-为 Settings 的 MCP 页提供 Host Remote `mcpServers`。`list` 把 [`dsh-mcp-servers-file`](../../mcp/mcp-servers-file/README.zh.md) 中的记录与 Loader 里模块名为 mcp-client 的存活行合并。受管行可写；组成配置行只读。`upsert`、`delete` 与 `setEnabled` 只写受管文档，并拒绝组成配置 id。`list` 中的密钥已被文件服务掩码。
+为 Settings 的 MCP 页提供 Host Remote `mcpServers`。`list` 把 [`dsh-mcp-servers-file`](../../mcp/mcp-servers-file/README.md) 中的记录与 Loader 里模块名为 mcp-client 的存活行合并。受管行可写；组成配置行只读。`upsert`、`delete` 与 `setEnabled` 只写受管文档，并拒绝组成配置 id。`list` 中的密钥已被文件服务掩码。
 
-该服务仅供 Remote 使用，不声明同进程 Cordis `Context` merge。Client 包通过 [`api-remotes`](../../api/remotes/README.zh.md) 消费。
+该服务仅供 Remote 使用，不声明同进程 Cordis `Context` merge。Client 包通过 [`api-remotes`](../../api/remotes/README.md) 消费。
 
 ## 模型体验
 

@@ -14,7 +14,19 @@ Each generated description is appended to the session log as a `vision/describe`
 
 ## Model Experience
 
-The main model never sees raw image bytes on a text-only route; it sees `【图片…】…【图片描述结束】` framed text blocks in place of each image, containing the vision model's description. The designated vision model receives one auxiliary request per new image (fixed Chinese system prompt demanding faithful transcription and layout description). Descriptions are generated once per attachment per session and replayed from the log afterwards, so token cost is one auxiliary call per image plus the description text carried in every subsequent main request.
+### Vision description substitution
+
+#### What the model sees
+
+The main text-only model receives framed `【图片…】…【图片描述结束】` description text in place of each image block. The designated vision model receives one auxiliary request per new image with a fixed Chinese system prompt demanding faithful transcription and layout description.
+
+#### Token effect
+
+One auxiliary vision call per new attachment per session, plus the description text carried in every subsequent main request. Later steps replay logged `vision/describe` events instead of re-describing.
+
+#### KV Cache effect
+
+Substituted description text becomes part of the assembled prefix; a new description or a change in which images are rewritten can break cache reuse from that token.
 
 ## Known Limitations and Deferred Work
 

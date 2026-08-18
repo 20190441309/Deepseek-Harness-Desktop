@@ -94,6 +94,7 @@ export function writeLayoutPersist(
 /**
  * Last open surfaces width, or the contract default.
  * @param store - target storage.
+ * @returns the persisted width, or the surfaces default.
  */
 export function lastSurfacesWidth(store: Storage | undefined = storage()): number {
   return readLayoutPersist(store)?.lastSurfaces ?? SURFACES_DEFAULT
@@ -102,6 +103,7 @@ export function lastSurfacesWidth(store: Storage | undefined = storage()): numbe
 /**
  * Last open drawer height, or the contract default.
  * @param store - target storage.
+ * @returns the persisted height, or the drawer default.
  */
 export function lastDrawerHeight(store: Storage | undefined = storage()): number {
   return readLayoutPersist(store)?.lastDrawer ?? TERMINAL_DRAWER_DEFAULT

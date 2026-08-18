@@ -6,10 +6,10 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { McpServersFile, type Config as McpServersFileConfig } from './service.ts'
+import { McpServersFile, type McpServersFileOptions } from './service.ts'
 
 /** Plugin configuration. Merges with the Zod `Config` schema below. */
-export interface Config extends McpServersFileConfig {}
+export interface Config extends McpServersFileOptions {}
 export type { ChildHandle, McpClientMounter, ResolvedSpec } from './service.ts'
 export { McpServersFile, defaultMounter, resolveSpec } from './service.ts'
 export type {

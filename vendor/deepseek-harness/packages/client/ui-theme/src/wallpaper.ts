@@ -2,10 +2,13 @@
 
 import type { ThemeTokens } from './theme-family.ts'
 
-/** Wallpaper blur / pixelate slider bounds (percent, integer). */
+/** Lowest wallpaper blur/pixelate the settings slider accepts (percent). */
 export const MIN_WALLPAPER_EFFECT = 0
+/** Highest wallpaper blur/pixelate the settings slider accepts (percent). */
 export const MAX_WALLPAPER_EFFECT = 100
+/** Default wallpaper blur/pixelate (percent). */
 export const DEFAULT_WALLPAPER_EFFECT = 0
+/** Wallpaper effect slider step (percent). */
 export const WALLPAPER_EFFECT_STEP = 1
 
 /** Longest data URL accepted in the Host section (keeps settings.yaml bounded). */

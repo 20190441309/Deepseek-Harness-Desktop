@@ -330,7 +330,7 @@ remove(id: string): Promise<void>
 setEnabled(id: string, enabled: boolean): Promise<void>
 ```
 
-Source: [`packages/mcp/mcp-servers-file/src/service.ts:102`](../../packages/mcp/mcp-servers-file/src/service.ts)
+Source: [`packages/mcp/mcp-servers-file/src/service.ts:109`](../../packages/mcp/mcp-servers-file/src/service.ts)
 
 <a id="cordis-events"></a>
 

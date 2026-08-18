@@ -65,11 +65,20 @@ function runGit(args: string[]): string {
   return result.stdout
 }
 
+function showManifest(ref: string, path: string): string | undefined {
+  const result = spawnSync('git', ['show', `${ref}:${path}`], { cwd: repoRoot, encoding: 'utf8' })
+  if (result.status !== 0) return undefined
+  return result.stdout
+}
+
 function readBaselineManifest(ref: string): ArchiveManifest {
   runGit(['cat-file', '-e', `${ref}^{commit}`])
-  const manifestEntry = runGit(['ls-tree', '--name-only', ref, '--', manifestRepoPath]).trim()
-  if (manifestEntry === '') return { version: 1, files: {} }
-  return parseArchiveManifest(runGit(['show', `${ref}:${manifestRepoPath}`]))
+  // Official checkouts keep the archive at repo root. A desktop prefix
+  // vendor lives at vendor/deepseek-harness/, so HEAD:.agents/... misses.
+  const text = showManifest(ref, manifestRepoPath)
+    ?? showManifest(ref, `vendor/deepseek-harness/${manifestRepoPath}`)
+  if (text === undefined) return { version: 1, files: {} }
+  return parseArchiveManifest(text)
 }
 
 let manifest: ArchiveManifest = { version: 1, files: {} }

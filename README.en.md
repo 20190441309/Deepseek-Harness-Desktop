@@ -50,9 +50,11 @@ The first `setup:harness` builds the vendored `vendor/deepseek-harness` — slow
 
 Edit the UI in `vendor/deepseek-harness`. Follow the [design language](docs/design-language.en.md) and [motion](docs/motion.en.md). After changing client sources, run `pnpm run build:lib:client` there and restart the desktop app.
 
+The current official baseline is `vendor/harness-upstream.json`: `0.1.0-rc.7` (`dsh-v0.1.0-rc.7` / `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`). The npx fallback is official `@deepseek-ai/dsh@0.1.0-rc.7` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths.
+
 ```powershell
 npm test              # desktop unit tests
-npm run sync:harness  # pull official Harness
+npm run sync:harness -- --ref dsh-v0.1.0-rc.7 --sha 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
 npm run dist          # Windows installer
 npm run dist:mac      # macOS installer (must run on macOS)
 ```

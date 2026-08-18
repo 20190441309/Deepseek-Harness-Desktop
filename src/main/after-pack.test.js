@@ -10,9 +10,26 @@ const {
   assertHarnessRuntime,
   collectFiles,
   deployCliEntries,
+  nodePtyPrebuildRelative,
   resolveDeployDir,
   resolveResourcesDir,
 } = require('../../scripts/after-pack');
+
+const RC7_PIN = { npm: '0.1.0-rc.7' };
+
+function writeRuntimeVersions(root, npm) {
+  fs.writeFileSync(path.join(root, 'package.json'), `${JSON.stringify({ version: npm })}\n`);
+  fs.mkdirSync(path.join(root, 'apps', 'cli'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apps', 'cli', 'package.json'), `${JSON.stringify({ version: npm })}\n`);
+}
+
+function writeNodePtyPrebuild(root, platform = process.platform, arch = process.arch) {
+  const relative = nodePtyPrebuildRelative(platform, arch);
+  const file = path.join(root, 'node_modules', 'node-pty', relative);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(path.join(root, 'node_modules', 'node-pty', 'package.json'), '{"name":"node-pty"}\n');
+  fs.writeFileSync(file, 'native');
+}
 
 function makeFixture(t) {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-test-'));
@@ -196,8 +213,10 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, content);
   }
+  writeRuntimeVersions(root, RC7_PIN.npm);
+  writeNodePtyPrebuild(root);
 
-  assert.doesNotThrow(() => assertHarnessRuntime(root));
+  assert.doesNotThrow(() => assertHarnessRuntime(root, RC7_PIN));
 });
 
 test('assertHarnessRuntime rejects a host missing MCP settings runtime', (t) => {
@@ -227,7 +246,7 @@ test('assertHarnessRuntime rejects a host missing MCP settings runtime', (t) => 
   }
 
   assert.throws(
-    () => assertHarnessRuntime(root),
+    () => assertHarnessRuntime(root, RC7_PIN),
     /dsh-mcp-servers-file/,
   );
 });
@@ -241,8 +260,87 @@ test('assertHarnessRuntime rejects stale deploy output before archiving', (t) =>
   fs.writeFileSync(path.join(root, 'apps', 'web', 'dist', 'index.html'), '<!doctype html>\n');
 
   assert.throws(
-    () => assertHarnessRuntime(root),
+    () => assertHarnessRuntime(root, RC7_PIN),
     /dsh-app-boot.*features\.js/,
+  );
+});
+
+test('assertHarnessRuntime rejects pin.npm mismatch', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-pin-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  writeRuntimeVersions(root, '0.1.0-rc.5');
+  writeNodePtyPrebuild(root);
+  assert.throws(
+    () => assertHarnessRuntime(root, { npm: '0.1.0-rc.7' }),
+    /0\.1\.0-rc\.7/,
+  );
+});
+
+test('assertHarnessRuntime rejects a missing node-pty prebuild', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-pty-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  writeRuntimeVersions(root, RC7_PIN.npm);
+  assert.throws(
+    () => assertHarnessRuntime(root, RC7_PIN),
+    /node-pty/,
   );
 });
 

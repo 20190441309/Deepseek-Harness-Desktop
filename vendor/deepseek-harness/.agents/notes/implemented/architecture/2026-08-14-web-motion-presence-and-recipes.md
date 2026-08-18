@@ -16,7 +16,7 @@ Dialogs, menus, settings, and in-place swaps mounted and unmounted on `open` wit
 
 **Primitives absorb the recipes; feature overlays reuse them.** `Modal`, `Menu`, `HoverCard`, `Tooltip`, `DisclosureRow`, and `OnboardingSurface` take the hook. Settings, `PopupSelect`, the slash `MenuView`, `ImageLightbox`, the composer `ModelSelect` menu, the `ContextMeter` panel, and the sidebar workspace session run (`GroupSessionRun`) do the same. The composer toolbar's four popovers — plus `MenuView`, permission `Menu`, `ModelSelect`, and `ContextMeter` — all use the `popover` recipe so they enter and leave on one timing. `FlipText` plays the `flip` recipe for 400ms (`--ds-motion-duration-flip` / `FLIP_TEXT_MS`) on the permission, model, and effort trigger labels when the chosen value replaces the previous string; that hold is independent of the 200ms Presence exit. A store that clears on close keeps a last-open snapshot for the exit frame. Toast keeps its own hold-and-fade. New dialogs, menus, and swaps use a primitive or the same hook and recipe; they do not add a motion library or animate `backdrop-filter` or large-panel size.
 
-The [web styling system](../../process/2026-07-19-web-styling-system.md) still owns the token-and-CSS-Modules framework. This note owns the overlay recipes, Presence, and the no-library rule.
+The [web styling system](../process/2026-07-19-web-styling-system.md) still owns the token-and-CSS-Modules framework. This note owns the overlay recipes, Presence, and the no-library rule.
 
 ## Alternatives considered
 

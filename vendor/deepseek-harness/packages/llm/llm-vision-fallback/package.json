@@ -1,8 +1,10 @@
 {
   "name": "@deepseek-ai/dsh-llm-vision-fallback",
   "description": "Designated vision model that describes images for text-only main models",
-  "version": "0.1.0-rc.5",
-  "private": true,
+  "version": "0.1.0-rc.7",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",

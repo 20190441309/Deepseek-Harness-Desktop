@@ -31,6 +31,7 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
 /**
  * True for Ctrl/Cmd+\\ (surfaces column).
  * @param event - keydown event.
+ * @returns true when the surfaces column shortcut fired.
  */
 export function isSurfacesShortcut(event: KeyboardEvent): boolean {
   if (!event.ctrlKey && !event.metaKey) return false
@@ -40,6 +41,7 @@ export function isSurfacesShortcut(event: KeyboardEvent): boolean {
 /**
  * True for Ctrl/Cmd+` (terminal drawer).
  * @param event - keydown event.
+ * @returns true when the terminal drawer shortcut fired.
  */
 export function isTerminalShortcut(event: KeyboardEvent): boolean {
   if (!event.ctrlKey && !event.metaKey) return false

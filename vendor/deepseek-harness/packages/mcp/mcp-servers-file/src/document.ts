@@ -28,6 +28,7 @@ export const EMPTY_DOCUMENT: McpServersDocument = Object.freeze({ servers: Objec
 /**
  * Return whether a record key names a secret that list views must mask.
  * @param key - env or header name.
+ * @returns true when list views must mask this key.
  */
 export function isSecretKey(key: string): boolean {
   return SECRET_KEY.test(key)
@@ -59,6 +60,7 @@ export function parseDocument(text: string): McpServersDocument {
 /**
  * Serialize a document to YAML with a trailing newline.
  * @param document - validated records.
+ * @returns YAML text ending in a newline.
  */
 export function serializeDocument(document: McpServersDocument): string {
   return stringifyYaml({ servers: document.servers.map(plainRecord) }, { lineWidth: 0 }).replace(/\s*$/, '\n')
@@ -70,6 +72,7 @@ export function serializeDocument(document: McpServersDocument): string {
  * complete spec.
  * @param document - current document.
  * @param upsert - incoming record.
+ * @returns the next document with the upserted record.
  */
 export function upsertRecord(document: McpServersDocument, upsert: McpServerUpsert): McpServersDocument {
   const incoming = parseRecord(upsert, 0)
@@ -101,6 +104,7 @@ export function removeRecord(document: McpServersDocument, id: string): McpServe
  * @param document - current document.
  * @param id - record id.
  * @param enabled - next enablement.
+ * @returns the next document with that record's enabled flag.
  */
 export function setRecordEnabled(document: McpServersDocument, id: string, enabled: boolean): McpServersDocument {
   if (!document.servers.some(server => server.id === id)) {
@@ -114,6 +118,7 @@ export function setRecordEnabled(document: McpServersDocument, id: string, enabl
 /**
  * Mask secret env and header values for a list/read response.
  * @param record - stored record.
+ * @returns the record with secret values replaced by the mask.
  */
 export function maskRecordSecrets(record: McpServerRecord): McpServerRecord {
   if (record.transport === 'stdio') {
@@ -127,6 +132,7 @@ export function maskRecordSecrets(record: McpServerRecord): McpServerRecord {
 /**
  * Project a managed record into the mcp-client Config the child plugin consumes.
  * @param record - enabled managed record.
+ * @returns the mcp-client Config for that record.
  */
 export function toClientConfig(record: McpServerRecord): McpClientConfig {
   if (record.transport === 'stdio') {

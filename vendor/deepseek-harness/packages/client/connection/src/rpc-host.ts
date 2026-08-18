@@ -66,6 +66,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Compose one shared-channel Fetch handler from its interceptor and fallback.
    * @param channel - shared channel mounted by Connection.
    * @param fallback - handler for endpoints not claimed by the interceptor.
+   * @param loopbackOnly - matcher for endpoints that must stay on loopback.
    * @returns Fetch handler that selects exactly one target for each request.
    */
   createSharedFetchHandler(

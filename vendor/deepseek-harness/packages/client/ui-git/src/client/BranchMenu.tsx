@@ -80,15 +80,12 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
     if (cwd === undefined) return
     void gitBranchList(cwd).then((result) => {
       if (cancelled) return
-      if (result.ok) setRefs(result.branches ?? [])
-      else {
-        setRefs(null)
-        onError(result.message ?? t('branch.error'), t('branch.error'))
-        setOpen(false)
-      }
+      // List failure keeps an empty open menu. Reporting it through onError
+      // mounts the Git toast over the titlebar trigger and covers the picker.
+      setRefs(result.ok ? result.branches ?? [] : [])
     })
     return () => { cancelled = true }
-  }, [open, cwd, gitBranchList, onError, t])
+  }, [open, cwd, gitBranchList])
 
   const normalizedQuery = query.trim().toLowerCase()
   const trimmedQuery = query.trim()

@@ -1,6 +1,6 @@
 - banner:
   - navigation "Session hierarchy":
-    - button "dsh-web-e2e-ws-GOwaou" [disabled]
+    - button "{{workspace}}" [disabled]
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"

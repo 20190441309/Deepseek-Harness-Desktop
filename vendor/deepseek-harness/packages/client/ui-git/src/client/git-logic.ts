@@ -665,6 +665,7 @@ export function summarizeGitActionResult(
  * @param result - commit/push/PR outcomes.
  * @param terms - provider wording.
  * @param isDefaultRef - whether the current ref is the default branch.
+ * @param canCreateChangeRequest - whether this provider exposes create-PR.
  * @returns the toast action, or none.
  */
 export function resolveCompletionCta(

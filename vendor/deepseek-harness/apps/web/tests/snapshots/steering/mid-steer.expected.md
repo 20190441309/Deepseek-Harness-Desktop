@@ -16,10 +16,6 @@
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
-- button "Context injection skill-catalog":
-  - img
-  - img
-  - text: Context injection skill-catalog
 - button "Think The user wants me to use the ask_user_question tool to ask them a specific question with the given parameters. Let me do exactly that.":
   - img
   - img
@@ -36,6 +32,8 @@
 - region "Ready to continue?":
   - text: Checkpoint
   - heading "Ready to continue?" [level=2]
+  - button "Collapse the question card" [expanded]:
+    - img
   - button "Dismiss all questions":
     - img
   - radiogroup:

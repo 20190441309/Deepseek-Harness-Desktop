@@ -73,7 +73,7 @@ test('assertDesktopForks throws when ui-titlebar is missing', (t) => {
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /ui-titlebar/);
 });
 
-test('assertDesktopForks accepts the current vendor tree at rc.5', () => {
+test('assertDesktopForks accepts the current vendor tree at rc.7', () => {
   const vendor = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
-  assertDesktopForks(vendor, '0.1.0-rc.5');
+  assertDesktopForks(vendor, '0.1.0-rc.7');
 });

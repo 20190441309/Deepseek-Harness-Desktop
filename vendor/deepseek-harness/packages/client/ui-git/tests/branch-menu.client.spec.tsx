@@ -177,6 +177,18 @@ describe('BranchMenu', () => {
     expect(b.gitSwitchBranch).toHaveBeenCalled()
   })
 
+  it('keeps the menu open when the branch list fails', async () => {
+    const b = mountMenu({
+      gitBranchList: vi.fn(async () => ({ ok: false, message: 'Git status is unavailable.' })),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: 'Create and checkout new branch…' })).toBeTruthy()
+    })
+    expect(b.onError).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Switch branch' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('disables the trigger while a stacked Git action holds the titlebar', () => {
     mountMenu({ disabled: true })
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(true)

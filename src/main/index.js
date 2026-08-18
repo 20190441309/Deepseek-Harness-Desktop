@@ -112,6 +112,7 @@ function reloadWithCleanup() {
 const SMOKE_SURFACES = 'right panel|surfaces|\u53f3\u4fa7\u680f';
 const SMOKE_BRANCH = 'switch branch|\u5207\u6362\u5206\u652f';
 const SMOKE_GIT = 'git actions|git \u64cd\u4f5c';
+const SMOKE_ONBOARDING = '^\u7ee7\u7eed$|^Continue$|^\u7a0d\u540e\u914d\u7f6e$|^Configure later$';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -167,6 +168,37 @@ async function pressEscape(wc) {
   await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
 }
 
+/** Dismiss rc.7 first-run onboarding so titlebar hit-testing can reach the chrome. */
+async function dismissFirstRunOnboarding(wc) {
+  const blocking = await waitUntil(() => wc.executeJavaScript(`(() => {
+    const root = document.getElementById('root');
+    return Boolean((root && root.inert) || document.querySelector('[role="dialog"]'));
+  })()`), 5_000);
+  if (!blocking) {
+    return true;
+  }
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    await wc.executeJavaScript(`(() => {
+      const match = new RegExp(${JSON.stringify(SMOKE_ONBOARDING)});
+      const button = Array.from(document.querySelectorAll('button')).find((el) =>
+        match.test((el.textContent || '').trim()) && !el.disabled);
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    const clear = await wc.executeJavaScript(`(() => {
+      const root = document.getElementById('root');
+      return Boolean(root && !root.inert) && !document.querySelector('[role="dialog"]');
+    })()`);
+    if (clear) {
+      return true;
+    }
+    await sleep(300);
+  }
+  return false;
+}
+
 /** Real-coordinate clicks after surfaces opens. Zero hits fail the smoke. */
 async function probeTitlebarHits(wc) {
   const hits = { surfaces: 0, branch: 0, git: 0 };
@@ -175,6 +207,9 @@ async function probeTitlebarHits(wc) {
     await wc.debugger.attach('1.3');
   }
   try {
+    if (!await dismissFirstRunOnboarding(wc)) {
+      return { hits, error: 'onboarding still open' };
+    }
     const surfaces = await waitUntil(() => titlebarButtonRect(wc, SMOKE_SURFACES), 30_000);
     if (!surfaces) {
       return { hits, error: 'surfaces toggle missing' };

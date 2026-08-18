@@ -13,6 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { DshManager } = require('./dsh');
+const { readPin } = require('../shared/harness-upstream');
 
 const EXPECTED_URL = 'http://127.0.0.1:3080';
 const CHILD_PID = 4242;
@@ -415,6 +416,22 @@ test('运行时失败后重新 start：新一次 ready 清除旧 failure', async
   assert.equal(h.manager.state, 'ready');
   assert.equal(h.manager.failure, null, 'ready 应清除 failure');
   assert.equal(h.manager.baseUrl, EXPECTED_URL);
+});
+
+test('npx fallback pins @deepseek-ai/dsh to pin.npm', () => {
+  const pin = readPin(path.join(__dirname, '..', '..'));
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => null,
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+    readPin: () => pin,
+  });
+  const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
+  assert.equal(launch.kind, 'npx');
+  assert.ok(launch.args.includes(`@deepseek-ai/dsh@${pin.npm}`));
+  assert.equal(launch.args.includes('@deepseek-ai/dsh'), false);
+  assert.equal(launch.args.some((arg) => String(arg).includes('@latest')), false);
 });
 
 test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (t) => {

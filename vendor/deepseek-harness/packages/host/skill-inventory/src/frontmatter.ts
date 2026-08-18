@@ -16,6 +16,7 @@ export interface SkillMarkdown {
 /**
  * Parse optional YAML frontmatter from a skill file.
  * @param text - file contents.
+ * @returns frontmatter data and the instruction body.
  */
 export function parseSkillMarkdown(text: string): SkillMarkdown {
   const match = FENCE.exec(text)
@@ -31,6 +32,7 @@ export function parseSkillMarkdown(text: string): SkillMarkdown {
  * Render a skill file, replacing Settings-owned frontmatter while preserving
  * fields owned by other producers.
  * @param fields - frontmatter updates, optional existing data, and body.
+ * @returns the serialized SKILL.md text.
  */
 export function renderSkillMarkdown(fields: {
   readonly name: string
@@ -55,6 +57,7 @@ export function renderSkillMarkdown(fields: {
 /**
  * Replace only invocation flags while retaining every other frontmatter field.
  * @param fields - existing frontmatter, invocation flags, and body.
+ * @returns the serialized SKILL.md text.
  */
 export function renderSkillInvocationMarkdown(fields: {
   readonly existingData: Readonly<Record<string, unknown>>

@@ -22,4 +22,4 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-Beyond the desktop-only close-window and Harness auto-restart rows, the General section has no built-in rows; each row appears only when its owning feature plugin is mounted.
+- Beyond the desktop-only close-window and Harness auto-restart rows, the General section has no built-in rows; each row appears only when its owning feature plugin is mounted.

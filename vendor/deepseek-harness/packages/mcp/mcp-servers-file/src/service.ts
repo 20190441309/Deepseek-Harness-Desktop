@@ -26,8 +26,8 @@ import type { ChildFiberPhase, McpServerRecord, McpServersDocument, McpServerUps
 
 export type { ChildFiberPhase } from './types.ts'
 
-/** Plugin configuration. */
-export interface Config {
+/** Plugin configuration fields used by the file service. */
+export interface McpServersFileOptions {
   /** Absolute or home-relative document path. Defaults to `$DSH_HOME/mcp-servers.yaml`. */
   path?: string
   /** Harness home used when `path` is omitted. */
@@ -63,8 +63,9 @@ declare module '@deepseek-ai/cordis' {
 /**
  * Resolve the on-disk document path.
  * @param config - plugin config.
+ * @returns the resolved filename, watch flag, and debounce.
  */
-export function resolveSpec(config: Config = {}): ResolvedSpec {
+export function resolveSpec(config: McpServersFileOptions = {}): ResolvedSpec {
   const filename = resolve(config.path ?? join(resolveDshHome(config.dshHome), 'mcp-servers.yaml'))
   return {
     filename,
@@ -88,6 +89,7 @@ const FIBER_PHASE = {
  * reject the parent Host startup.
  * @param ctx - parent context.
  * @param config - mcp-client config.
+ * @returns a handle that disposes the child fiber and reports its phase.
  */
 export function defaultMounter(ctx: Context, config: McpClientConfig): ChildHandle {
   const fork = ctx.plugin(mcpClient, config)
@@ -113,13 +115,14 @@ export class McpServersFile extends Service {
   private closed = false
   private selfWrite: string | undefined
   private ready: Promise<void> = Promise.resolve()
+  /** Resolved document path and watch policy for this instance. */
   readonly spec: ResolvedSpec
 
   /**
    * @param ctx - owning context.
    * @param config - document path and watch policy.
    */
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(ctx: Context, config: McpServersFileOptions = {}) {
     super(ctx, 'mcpServersFile')
     this.spec = resolveSpec(config)
   }

@@ -332,6 +332,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
   },
   {
+    key: 'mcpServersFile',
+    pkg: 'mcp-servers-file',
+    title: 'File-backed MCP server document',
+    mode: 'core',
+    consumers: ['mcp-client', 'host-mcp-servers'],
+    note: 'Owns mcp-servers.yaml and mounts one mcp-client child per enabled record; model-facing tools belong to those children.',
+  },
+  {
     key: 'agents',
     pkg: 'agent',
     title: 'Agent service',

@@ -8,6 +8,7 @@ const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 const { prependPath } = require('../shared/env-path');
 const { desktopInstallEnv } = require('./desktop-install-control');
+const { readPin } = require('../shared/harness-upstream');
 
 const PORT_SCAN_RANGE = 50;
 
@@ -426,6 +427,25 @@ function cancelledError(message = '启动已取消') {
   return error;
 }
 
+function defaultReadPin() {
+  const roots = [path.join(__dirname, '..', '..')];
+  try {
+    const { projectRoot } = require('./paths');
+    roots.unshift(projectRoot());
+  } catch {
+    // electron is unavailable outside the desktop process
+  }
+  let lastError;
+  for (const root of roots) {
+    try {
+      return readPin(root);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('vendor/harness-upstream.json is missing');
+}
+
 function failureRecord(phase, message, code, signal) {
   return {
     phase,
@@ -469,6 +489,11 @@ class DshManager extends EventEmitter {
       killTree: options.killTree || killTree,
       killOwnedListeners: options.killOwnedListeners || killOwnedListeners,
       buildLaunch: options.buildLaunch || ((config) => this.buildLaunch(config)),
+      sourceHarnessStatus: options.sourceHarnessStatus || sourceHarnessStatus,
+      resolveDshBin: options.resolveDshBin || resolveDshBin,
+      resolveNpx: options.resolveNpx || resolveNpx,
+      resolveNodeBin: options.resolveNodeBin || resolveNodeBin,
+      readPin: options.readPin || defaultReadPin,
     };
   }
 
@@ -529,9 +554,9 @@ class DshManager extends EventEmitter {
     const host = config.host || '127.0.0.1';
     const port = Number(config.port) || 3080;
     const workspace = config.workspace;
-    const nodeBin = resolveNodeBin(config);
-    const npxBin = resolveNpx(nodeBin);
-    const source = sourceHarnessStatus();
+    const nodeBin = this._deps.resolveNodeBin(config);
+    const npxBin = this._deps.resolveNpx(nodeBin);
+    const source = this._deps.sourceHarnessStatus();
     const args = ['web', '--host', host, '--port', String(port)];
 
     if (source.present) {
@@ -554,7 +579,7 @@ class DshManager extends EventEmitter {
       };
     }
 
-    const dshBin = resolveDshBin(config);
+    const dshBin = this._deps.resolveDshBin(config);
     if (dshBin) {
       return {
         command: dshBin,
@@ -568,12 +593,13 @@ class DshManager extends EventEmitter {
     }
 
     if (!npxBin) {
-      throw new Error('未找到 Node.js / npx。请安装 Node.js 18+ 并确保 npx 在 PATH 中。');
+      throw new Error('未找到 Node.js / npx。请安装 Node.js 22.19+ 或 24+ 并确保 npx 在 PATH 中。');
     }
 
+    const pin = this._deps.readPin();
     return {
       command: npxBin,
-      args: ['--yes', '@deepseek-ai/dsh', 'web', '--host', host, '--port', String(port)],
+      args: ['--yes', `@deepseek-ai/dsh@${pin.npm}`, 'web', '--host', host, '--port', String(port)],
       nodeBin,
       kind: 'npx',
       host,

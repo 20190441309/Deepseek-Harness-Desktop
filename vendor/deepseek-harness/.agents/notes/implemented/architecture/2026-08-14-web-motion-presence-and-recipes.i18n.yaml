@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.md
-2026-08-14-web-motion-presence-and-recipes.md: 14ec89126af63ce49f298f139abbd79e19c852fc
-2026-08-14-web-motion-presence-and-recipes.zh.md: 711147fa6891aac84bc3c4282525cf22ac28ba76
+2026-08-14-web-motion-presence-and-recipes.md: 996157833e2a4837c6c740a4277d65c887c03098
+2026-08-14-web-motion-presence-and-recipes.zh.md: a449d96da404b58b66cf5df11f31b83d166062d2

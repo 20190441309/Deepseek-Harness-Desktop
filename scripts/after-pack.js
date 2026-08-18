@@ -403,7 +403,44 @@ function resolveDeployDir(deployEnv) {
   return path.resolve(deployEnv);
 }
 
-function assertHarnessRuntime(harnessDest) {
+function nodePtyPrebuildRelative(platform = process.platform, arch = process.arch) {
+  const folder = `${platform}-${arch}`;
+  if (platform === 'win32') {
+    return path.join('prebuilds', folder, 'conpty.node');
+  }
+  return path.join('prebuilds', folder, 'pty.node');
+}
+
+function resolveNodePtyRoot(harnessDest) {
+  const direct = path.join(harnessDest, 'node_modules', 'node-pty');
+  if (fs.existsSync(path.join(direct, 'package.json'))) {
+    return direct;
+  }
+  throw new Error('安装包缺少 node-pty');
+}
+
+function assertHarnessVersions(harnessDest, pin) {
+  if (!pin || typeof pin.npm !== 'string' || pin.npm.trim() === '') {
+    throw new Error('assertHarnessRuntime requires pin.npm');
+  }
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(harnessDest, 'package.json'), 'utf8'));
+  const cliPkg = JSON.parse(fs.readFileSync(path.join(harnessDest, 'apps', 'cli', 'package.json'), 'utf8'));
+  if (rootPkg.version !== pin.npm || cliPkg.version !== pin.npm) {
+    throw new Error(
+      `安装包 Harness 版本 ${rootPkg.version}/${cliPkg.version} 与 pin.npm ${pin.npm} 不一致`,
+    );
+  }
+}
+
+function assertNodePtyPrebuild(harnessDest, platform = process.platform, arch = process.arch) {
+  const relative = nodePtyPrebuildRelative(platform, arch);
+  const native = path.join(resolveNodePtyRoot(harnessDest), relative);
+  if (!fs.existsSync(native)) {
+    throw new Error(`安装包缺少 node-pty prebuild：${relative}`);
+  }
+}
+
+function assertHarnessRuntime(harnessDest, pin) {
   const requiredFiles = [
     path.join('apps', 'cli', 'lib', 'bin.js'),
     path.join('apps', 'web', 'dist', 'index.html'),
@@ -460,6 +497,8 @@ function assertHarnessRuntime(harnessDest) {
   if (!conversation.includes('conversation.chat.user-actions')) {
     throw new Error('安装包的会话 UI 缺少用户消息 action slot');
   }
+  assertHarnessVersions(harnessDest, pin);
+  assertNodePtyPrebuild(harnessDest);
 }
 
 module.exports = async function afterPack(context) {
@@ -484,7 +523,13 @@ module.exports = async function afterPack(context) {
 
   const nodeDest = copyBundledNode(resources);
   const pnpmDest = copyBundledPnpm(projectDir, resources);
-  assertHarnessRuntime(harnessDest);
+  const pin = JSON.parse(fs.readFileSync(path.join(projectDir, 'vendor', 'harness-upstream.json'), 'utf8'));
+  fs.mkdirSync(path.join(resources, 'vendor'), { recursive: true });
+  fs.writeFileSync(
+    path.join(resources, 'vendor', 'harness-upstream.json'),
+    `${JSON.stringify(pin, null, 2)}\n`,
+  );
+  assertHarnessRuntime(harnessDest, pin);
 
   const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
   console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
@@ -509,3 +554,6 @@ module.exports.deployCliEntries = deployCliEntries;
 module.exports.resolveDeployDir = resolveDeployDir;
 module.exports.resolveResourcesDir = resolveResourcesDir;
 module.exports.assertHarnessRuntime = assertHarnessRuntime;
+module.exports.assertHarnessVersions = assertHarnessVersions;
+module.exports.assertNodePtyPrebuild = assertNodePtyPrebuild;
+module.exports.nodePtyPrebuildRelative = nodePtyPrebuildRelative;

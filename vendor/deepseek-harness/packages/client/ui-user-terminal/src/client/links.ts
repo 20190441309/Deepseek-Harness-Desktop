@@ -144,6 +144,7 @@ export function resolveOpenPath(rawPath: string, cwd: string): string {
  * True when the click is a T3-style modified activation (⌘ on macOS, Ctrl elsewhere).
  * @param event - pointer modifiers.
  * @param platform - `navigator.platform`; empty means never activate.
+ * @returns true when the modified click should open the link.
  */
 export function isTerminalLinkActivation(
   event: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>,
@@ -167,6 +168,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '0.0.0.0'])
  * True when `raw` is http(s) to an exact loopback hostname (any port/path).
  * Rejects prefix spoofs such as `http://127.0.0.1.evil`.
  * @param raw - candidate URL text.
+ * @returns true when the URL is loopback http(s).
  */
 export function isLoopbackHttpUrl(raw: string): boolean {
   try {
@@ -231,11 +233,13 @@ export interface WrappedTerminalLinkLine {
   segments: ReadonlyArray<WrappedTerminalLinkLineSegment>
 }
 
+/** One xterm buffer cell (1-based column and row). */
 export interface TerminalLinkBufferPosition {
   x: number
   y: number
 }
 
+/** Inclusive start/end cells of a wrapped terminal link. */
 export interface TerminalLinkBufferRange {
   start: TerminalLinkBufferPosition
   end: TerminalLinkBufferPosition
@@ -303,6 +307,7 @@ function resolveCharacterPosition(
  * Map a character-range match onto 1-based xterm buffer cells.
  * @param wrappedLine - rejoined line and its physical segments.
  * @param match - start/end in the logical string.
+ * @returns the inclusive xterm cell range.
  */
 export function resolveWrappedTerminalLinkRange(
   wrappedLine: WrappedTerminalLinkLine,
@@ -318,6 +323,7 @@ export function resolveWrappedTerminalLinkRange(
  * True when a wrapped match paints on this 1-based buffer row.
  * @param range - xterm cell range.
  * @param bufferLineNumber - row being queried.
+ * @returns true when the range covers that buffer row.
  */
 export function wrappedTerminalLinkRangeIntersectsBufferLine(
   range: TerminalLinkBufferRange,
@@ -330,6 +336,7 @@ export function wrappedTerminalLinkRangeIntersectsBufferLine(
  * Links on one buffer row after rejoining wraps.
  * @param bufferLineNumber - 1-based row.
  * @param getLine - 0-based buffer reader.
+ * @returns matches whose wrapped range intersects this row.
  */
 export function linksOnBufferLine(
   bufferLineNumber: number,

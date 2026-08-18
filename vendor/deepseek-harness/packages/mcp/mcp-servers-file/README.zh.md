@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-负责 `$DSH_HOME/mcp-servers.yaml`（或显式 `path`），并为每条已启用记录挂载一个 [`@deepseek-ai/dsh-mcp-client`](../mcp-client/README.zh.md) 子实例。文档是带 `servers` 数组的 YAML 对象；每条记录有唯一的 `id`、`serverName`、`enabled`，以及与 mcp-client Config 对齐的 stdio（`command`、`args`、`env`、`cwd`）或 Streamable HTTP（`url`、`headers`）字段。写入走 atomic-write 锁；监视器在外部编辑后重新挂载子实例。`mcpServersFile` 服务提供 `listManaged`、`upsert`、`remove` 与 `setEnabled`。`listManaged` 会掩码看起来像密钥的 env / header；upsert 里的空字符串或 `********` 会保留已存值。
+负责 `$DSH_HOME/mcp-servers.yaml`（或显式 `path`），并为每条已启用记录挂载一个 [`@deepseek-ai/dsh-mcp-client`](../mcp-client/README.md) 子实例。文档是带 `servers` 数组的 YAML 对象；每条记录有唯一的 `id`、`serverName`、`enabled`，以及与 mcp-client Config 对齐的 stdio（`command`、`args`、`env`、`cwd`）或 Streamable HTTP（`url`、`headers`）字段。写入走 atomic-write 锁；监视器在外部编辑后重新挂载子实例。`mcpServersFile` 服务提供 `listManaged`、`upsert`、`remove` 与 `setEnabled`。`listManaged` 会掩码看起来像密钥的 env / header；upsert 里的空字符串或 `********` 会保留已存值。
 
 ## 模型体验
 

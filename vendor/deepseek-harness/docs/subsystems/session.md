@@ -505,6 +505,11 @@ declare class Session {
    * already holds); the `Message` objects in it are SHARED and **deep-frozen**.
    * Their content reuses the already frozen durable event data, so the cache
    * needs no second deep clone and consumers still cannot mutate the log.
+   *
+   * The projected transcript is canonicalized (see {@link normalizeToolTranscript}):
+   * legacy or corrupted logs whose tool results were lost, duplicated, or
+   * misplaced yield a provider-valid transcript with deterministic synthetic
+   * error results; valid transcripts pass through unchanged.
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[];

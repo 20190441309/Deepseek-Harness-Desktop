@@ -13,6 +13,12 @@
     - button "插件":
       - img
       - text: 插件
+    - button "技能":
+      - img
+      - text: 技能
+    - button "MCP":
+      - img
+      - text: MCP
     - button "Agent 预设":
       - img
       - text: Agent 预设
