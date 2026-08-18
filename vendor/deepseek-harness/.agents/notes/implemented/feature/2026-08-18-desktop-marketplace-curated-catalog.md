@@ -43,3 +43,4 @@ There is no standalone marketplace window, no `IPC_ROLES.MARKETPLACE`, and no `s
 ## Related
 
 - [Right-panel and terminal work loops](2026-08-16-surfaces-terminal-work-loops.md)
+- [Host install_dsh_plugin control channel](2026-08-15-marketplace-draft-install.md)

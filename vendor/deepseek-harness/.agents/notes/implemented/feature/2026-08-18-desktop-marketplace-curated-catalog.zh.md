@@ -43,3 +43,4 @@ Status: implemented
 ## 相关
 
 - [右边栏与终端工作环](2026-08-16-surfaces-terminal-work-loops.md)
+- [Host install_dsh_plugin 控制通道](2026-08-15-marketplace-draft-install.md)
