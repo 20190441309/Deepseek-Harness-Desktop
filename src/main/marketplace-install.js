@@ -348,24 +348,32 @@ function hasLoadableEntry(packageName) {
   return isExistingFile(resolveExportFile(pkg, dir, '.'));
 }
 
-function installedPackageName(spec) {
-  if (isValidPackageName(spec)) {
-    return spec;
+function pluginNames(installed) {
+  return (installed?.plugins || []).map((row) => row.name).filter(Boolean);
+}
+
+function namesAddedByInstall(before, after) {
+  const previous = new Set(pluginNames(before));
+  return pluginNames(after).filter((name) => !previous.has(name));
+}
+
+function resolveInstalledNames(spec, before, after) {
+  const names = namesAddedByInstall(before, after);
+  if (names.length > 0) {
+    return names;
   }
-  const listed = listInstalledPlugins();
-  const match = (listed.plugins || []).find((row) => {
-    const value = String(row.spec || '');
-    return value === spec || value.startsWith(`${spec}#`) || spec.startsWith(`${value}#`);
-  });
-  if (match?.name) {
-    return match.name;
-  }
-  const parsed = /^github:([^/#]+)\/([^/#]+)/.exec(spec);
-  if (!parsed) {
-    return '';
-  }
-  const pkg = readJsonFile(path.join(packageInstallDir(parsed[2]), 'package.json'));
-  return typeof pkg?.name === 'string' ? pkg.name : '';
+  return isValidPackageName(spec) ? [spec] : [];
+}
+
+function loadableInstallFailure(added) {
+  return {
+    ok: false,
+    spec: added.spec,
+    error: '该包不是可加载的 dsh 插件',
+    needsAllowBuilds: false,
+    allowBuilds: [],
+    log: added.log || '',
+  };
 }
 
 async function pinInstallSpec(spec, token) {
@@ -466,25 +474,25 @@ async function installMarketplacePlugin(id, options = {}) {
     if (isDroppedInstall(plugin, spec)) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
+    const before = listInstalledPlugins();
     const added = await addPluginSpec(spec, options);
     if (!added.ok) {
       return added;
     }
-    const packageName = installedPackageName(added.spec);
-    if (packageName && hasLoadableEntry(packageName)) {
+    const names = resolveInstalledNames(added.spec, before, added.installed);
+    if (names.length === 0) {
+      return loadableInstallFailure(added);
+    }
+    if (names.every(hasLoadableEntry)) {
       return added;
     }
-    if (packageName) {
-      await pluginCommand(options)(['remove', packageName], options.onProgress);
+    const runner = pluginCommand(options);
+    for (const name of names) {
+      if (!hasLoadableEntry(name) && isValidPackageName(name)) {
+        await runner(['remove', name], options.onProgress);
+      }
     }
-    return {
-      ok: false,
-      spec: added.spec,
-      error: '该包不是可加载的 dsh 插件',
-      needsAllowBuilds: false,
-      allowBuilds: [],
-      log: added.log || '',
-    };
+    return loadableInstallFailure(added);
   });
 }
 

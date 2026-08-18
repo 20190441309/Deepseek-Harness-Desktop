@@ -59,15 +59,39 @@ function writeProfileDep(packageName, spec) {
   }, null, 2)}\n`);
 }
 
-function writeLoadablePlugin(packageName) {
+function writePlugin(packageName, manifest, files = {}) {
   const dir = path.join(profileDir(), 'node_modules', packageName);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
     name: packageName,
-    main: 'index.js',
-    dsh: { bundle: { patch: true } },
+    ...manifest,
   }, null, 2)}\n`);
-  fs.writeFileSync(path.join(dir, 'index.js'), 'module.exports = {}\n');
+  for (const [rel, body] of Object.entries(files)) {
+    const file = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, body);
+  }
+}
+
+function writeBundlePlugin(packageName) {
+  writePlugin(packageName, { dsh: { bundle: { patch: true } } });
+}
+
+function writeClientPlugin(packageName) {
+  writePlugin(packageName, {
+    dsh: { client: { platform: 'web', inject: [] } },
+    exports: { './client': { default: './lib/client.js' } },
+  }, { 'lib/client.js': 'export {}\n' });
+}
+
+function writeExportsPlugin(packageName) {
+  writePlugin(packageName, {
+    exports: { '.': { default: './lib/index.js' } },
+  }, { 'lib/index.js': 'module.exports = {}\n' });
+}
+
+function writeBarePlugin(packageName) {
+  writePlugin(packageName, {});
 }
 
 function writeDiskRegistry(plugins) {
@@ -205,7 +229,7 @@ test('installMarketplacePlugin rejects invalid allowBuilds before invoking the C
 
 test('installMarketplacePlugin installs a curated npm spec through the plugin runner', async () => {
   const { calls, runPlugin } = recordRunner(() => {
-    writeLoadablePlugin(NPM_SPEC);
+    writeBundlePlugin(NPM_SPEC);
   });
   const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
   assert.equal(result.ok, true);
@@ -214,9 +238,9 @@ test('installMarketplacePlugin installs a curated npm spec through the plugin ru
 });
 
 test('installMarketplacePlugin installs github:owner/repo through the plugin runner', async () => {
-  const { calls, runPlugin } = recordRunner((spec) => {
-    writeProfileDep('dsh-status-rotator', spec);
-    writeLoadablePlugin('dsh-status-rotator');
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep('@virex/dsh-status-rotator', 'git+https://github.com/01Virex/dsh-status-rotator.git');
+    writeClientPlugin('@virex/dsh-status-rotator');
   });
   const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin });
   assert.equal(result.ok, true);
@@ -224,9 +248,12 @@ test('installMarketplacePlugin installs github:owner/repo through the plugin run
 });
 
 test('installMarketplacePlugin allows a catalog #path: spec that Host installPlugin rejects', async () => {
-  const { calls, runPlugin } = recordRunner((spec) => {
-    writeProfileDep('dsh-aionui-panel', spec);
-    writeLoadablePlugin('dsh-aionui-panel');
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep(
+      'dsh-aionui-panel',
+      'git+https://github.com/DamonKoy/dsh-web-ui.git#path:/packages/dsh-aionui-panel',
+    );
+    writeExportsPlugin('dsh-aionui-panel');
   });
   const result = await installMarketplacePlugin(PATH_ID, { runPlugin });
   assert.equal(result.ok, true);
@@ -301,4 +328,29 @@ test('installMarketplacePlugin removes a package with no loadable dsh entry', as
   assert.equal(result.ok, false);
   assert.match(result.error, /可加载/);
   assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
+});
+
+test('installMarketplacePlugin removes a github package with no loadable dsh entry', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep('@virex/dsh-status-rotator', 'git+https://github.com/01Virex/dsh-status-rotator.git');
+    writeBarePlugin('@virex/dsh-status-rotator');
+  });
+  const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载/);
+  assert.deepEqual(calls, [['add', GITHUB_SPEC], ['remove', '@virex/dsh-status-rotator']]);
+});
+
+test('installMarketplacePlugin removes a #path: package with no loadable dsh entry', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep(
+      'dsh-aionui-panel',
+      'git+https://github.com/DamonKoy/dsh-web-ui.git#path:/packages/dsh-aionui-panel',
+    );
+    writeBarePlugin('dsh-aionui-panel');
+  });
+  const result = await installMarketplacePlugin(PATH_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载/);
+  assert.deepEqual(calls, [['add', PATH_SPEC], ['remove', 'dsh-aionui-panel']]);
 });
