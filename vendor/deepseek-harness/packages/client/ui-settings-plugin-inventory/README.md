@@ -18,4 +18,4 @@ None; this package neither assembles nor sends a provider request.
 
 - **One snapshot per Settings mount or retry** — the tab does not subscribe to Loader changes or automatically refetch after reconnect; switching tabs preserves the current snapshot, while reopening Settings obtains a new one.
 - **Read-only Loader view** — local search does not add provenance, current-browser activation diagnosis, grouping by source, or plugin mutation controls.
-- **Marketplace is desktop-only** — the tab is absent in a plain browser. Install closes Settings, opens a blank session, and prefills a composer draft; it does not send. Uninstall still calls the desktop shell, which forwards to `dsh plugin --profile web remove` and restarts the Host.
+- **Marketplace is desktop-only** — the tab is absent in a plain browser. Install confirms the catalog spec in a Modal, then calls the desktop shell by catalog id. Uninstall still calls the desktop shell, which forwards to `dsh plugin --profile web remove` and restarts the Host.

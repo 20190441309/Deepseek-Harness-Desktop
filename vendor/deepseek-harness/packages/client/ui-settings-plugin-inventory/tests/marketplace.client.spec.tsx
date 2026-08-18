@@ -57,12 +57,10 @@ function renderTab(overrides: Partial<MarketplaceSettingsTabProps> = {}) {
       warning: 'stale cache',
     })),
     listInstalled: vi.fn(async () => ({ plugins: [] })),
-    seedInstallDraft: vi.fn(async () => {}),
+    installMarketplacePlugin: vi.fn(async () => ({ ok: true })),
     uninstallPlugin: vi.fn(async () => ({ ok: true })),
     close: vi.fn(),
     openExternal: vi.fn(async () => true),
-    saveGithubToken: vi.fn(async () => {}),
-    hasGithubToken: vi.fn(async () => false),
     onProgress: vi.fn((handler: (payload: { line?: string }) => void) => {
       handler({ line: 'cloning' })
       handler({})
@@ -70,8 +68,8 @@ function renderTab(overrides: Partial<MarketplaceSettingsTabProps> = {}) {
     }),
     ...overrides,
   } as MarketplaceSettingsTabProps
-  render(<MarketplaceSettingsTab {...props} />)
-  return props
+  const view = render(<MarketplaceSettingsTab {...props} />)
+  return { props, ...view }
 }
 
 function openCard(repo: string) {
@@ -79,47 +77,91 @@ function openCard(repo: string) {
   return screen.getByRole('dialog', { name: repo })
 }
 
+function pickMenu(label: string, option: string) {
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  fireEvent.click(screen.getByRole('menuitem', { name: option }))
+}
+
+function dialogMask(name: string) {
+  const dialog = screen.getByRole('dialog', { name })
+  return dialog.parentElement?.querySelector('[data-dsh-motion-part="mask"]') as HTMLElement
+}
+
 describe('MarketplaceSettingsTab', () => {
-  it('filters by category, status, and search, then installs from the detail dialog', async () => {
-    const props = renderTab()
+  it('filters by category, status, and search, and has no token field', async () => {
+    renderTab()
     await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
     expect(screen.getByText('stale cache')).toBeTruthy()
     expect(screen.getByRole('tab', { name: /Workflow/ })).toBeTruthy()
     expect(screen.getByRole('tab', { name: new RegExp(en.marketOther) })).toBeTruthy()
     expect(screen.queryByRole('button', { name: en.marketInstall })).toBeNull()
+    expect(screen.queryByLabelText(/token/i)).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
 
     const categories = screen.getByRole('tablist', { name: en.marketCategories })
     fireEvent.click(within(categories).getByRole('tab', { name: /Workflow/ }))
     expect(screen.queryByText('awesome')).toBeNull()
     fireEvent.click(within(categories).getByRole('tab', { name: /All/ }))
-    fireEvent.change(screen.getByRole('combobox', { name: en.marketStatus }), { target: { value: 'installable' } })
+    pickMenu(en.marketStatus, en.marketInstallable)
     expect(screen.getByText('dsh-loop')).toBeTruthy()
     expect(screen.queryByText('awesome')).toBeNull()
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'missing' } })
     expect(screen.getByText(en.marketEmpty)).toBeTruthy()
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'loop' } })
+    expect(screen.getByText('dsh-loop')).toBeTruthy()
+  })
+
+  it('installs by catalog id from a confirm Modal that shows the install spec', async () => {
+    const pending = Promise.withResolvers<{ ok: boolean }>()
+    const installMarketplacePlugin = vi.fn(() => pending.promise)
+    const { props } = renderTab({ installMarketplacePlugin })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
 
     const detail = openCard('dsh-loop')
     expect(within(detail).getByText(ITEM.installSpec)).toBeTruthy()
     expect(within(detail).getByText('MIT')).toBeTruthy()
     expect(within(detail).getByText('2024-01-01')).toBeTruthy()
     fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
-    expect(props.close).toHaveBeenCalledOnce()
-    expect(props.seedInstallDraft).toHaveBeenCalledWith({ repo: 'dsh-loop', installSpec: 'github:owner/dsh-loop#abc' })
-    expect(screen.queryByRole('button', { name: en.marketCancel })).toBeNull()
+    expect(props.close).not.toHaveBeenCalled()
+    expect(props.installMarketplacePlugin).not.toHaveBeenCalled()
+
+    const confirm = screen.getByRole('dialog', { name: en.marketInstallTitle })
+    expect(within(confirm).getByText(ITEM.installSpec)).toBeTruthy()
+    fireEvent.click(within(confirm).getByRole('button', { name: en.marketInstall }))
+    await waitFor(() => {
+      expect(props.installMarketplacePlugin).toHaveBeenCalledWith('owner/dsh-loop')
+    })
+    expect(props.installMarketplacePlugin).toHaveBeenCalledTimes(1)
+    expect(props.close).not.toHaveBeenCalled()
+    expect(within(screen.getByRole('dialog', { name: en.marketInstallTitle })).getByText('cloning')).toBeTruthy()
+    await act(async () => { pending.resolve({ ok: true }) })
 
     fireEvent.click(within(detail).getByRole('button', { name: en.marketRepo }))
     expect(props.openExternal).toHaveBeenCalledWith(ITEM.homepage)
-    expect(within(detail).queryByRole('button', { name: en.marketInstall })).toBeTruthy()
     fireEvent.click(within(detail).getByRole('button', { name: en.marketClose }))
     expect(screen.queryByRole('dialog', { name: 'dsh-loop' })).toBeNull()
+  })
 
-    fireEvent.change(screen.getByLabelText(en.marketToken), { target: { value: '  ' } })
-    fireEvent.blur(screen.getByLabelText(en.marketToken))
-    expect(props.saveGithubToken).not.toHaveBeenCalled()
-    fireEvent.change(screen.getByLabelText(en.marketToken), { target: { value: 'ghp_test' } })
-    fireEvent.blur(screen.getByLabelText(en.marketToken))
-    await waitFor(() => { expect(props.saveGithubToken).toHaveBeenCalledWith('ghp_test') })
+  it('retries install with allowBuilds after a second confirm', async () => {
+    const installMarketplacePlugin = vi.fn()
+      .mockResolvedValueOnce({ ok: false, needsAllowBuilds: true, allowBuilds: ['@dsh-external/dsh-loop'] })
+      .mockResolvedValueOnce({ ok: true })
+    const { props } = renderTab({ installMarketplacePlugin })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    const detail = openCard('dsh-loop')
+    fireEvent.click(within(detail).getByRole('button', { name: en.marketInstall }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: en.marketInstallTitle })).getByRole('button', { name: en.marketInstall }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: en.marketAllowBuildsTitle })).toBeTruthy()
+    })
+    expect(screen.getByText(en.marketAllowBuildsBody.replace('{packages}', '@dsh-external/dsh-loop'))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.marketAllowBuildsOk }))
+    await waitFor(() => {
+      expect(props.installMarketplacePlugin).toHaveBeenNthCalledWith(2, 'owner/dsh-loop', {
+        allowBuilds: ['@dsh-external/dsh-loop'],
+      })
+    })
+    expect(props.close).not.toHaveBeenCalled()
   })
 
   it('sorts by stars and then by last push', async () => {
@@ -127,10 +169,10 @@ describe('MarketplaceSettingsTab', () => {
     await waitFor(() => { expect(screen.getByRole('button', { name: 'dsh-loop' })).toBeTruthy() })
     expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
       .toEqual(['owner/dsh-loop', 'owner/awesome'])
-    fireEvent.change(screen.getByRole('combobox', { name: en.marketSort }), { target: { value: 'new' } })
+    pickMenu(en.marketSort, en.marketSortNew)
     expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
       .toEqual(['owner/awesome', 'owner/dsh-loop'])
-    fireEvent.change(screen.getByRole('combobox', { name: en.marketSort }), { target: { value: 'hot' } })
+    pickMenu(en.marketSort, en.marketSortHot)
     expect([...document.querySelectorAll('[data-market-card]')].map(node => node.getAttribute('data-market-card')))
       .toEqual(['owner/dsh-loop', 'owner/awesome'])
   })
@@ -158,14 +200,14 @@ describe('MarketplaceSettingsTab', () => {
     expect(screen.getAllByRole('button', { name: 'dsh-obsidian-export' })).toHaveLength(1)
   })
 
-  it('closes the detail dialog from the backdrop', async () => {
+  it('closes the detail dialog from the backdrop without unmounting immediately', async () => {
     renderTab()
     await waitFor(() => { expect(screen.getByRole('button', { name: 'awesome' })).toBeTruthy() })
     const detail = openCard('awesome')
     expect(within(detail).getByText('—')).toBeTruthy()
     fireEvent.click(within(detail).getByText(en.marketNoDescription))
     expect(screen.getByRole('dialog', { name: 'awesome' })).toBeTruthy()
-    fireEvent.click(document.querySelector('[data-market-mask]') as Element)
+    fireEvent.click(dialogMask('awesome'))
     expect(screen.queryByRole('dialog', { name: 'awesome' })).toBeNull()
     openCard('awesome')
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -173,21 +215,22 @@ describe('MarketplaceSettingsTab', () => {
   })
 
   it('uninstalls a matched spec and reports a failure', async () => {
-    const props = renderTab({
+    const { props } = renderTab({
       listInstalled: vi.fn(async () => ({ plugins: [{ name: '@dsh-external/dsh-loop', spec: 'github:owner/dsh-loop#abc' }] })),
       uninstallPlugin: vi.fn(async () => ({ ok: false, error: 'busy' })),
-      hasGithubToken: vi.fn(async () => true),
     })
     await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
-    fireEvent.change(screen.getByRole('combobox', { name: en.marketStatus }), { target: { value: 'installed' } })
+    pickMenu(en.marketStatus, en.marketInstalled)
     const detail = openCard('dsh-loop')
     fireEvent.click(within(detail).getByRole('button', { name: en.marketRemove }))
-    fireEvent.click(screen.getByRole('button', { name: en.marketRemoveOk }))
+    const confirm = screen.getByRole('dialog', { name: en.marketRemoveTitle })
+    fireEvent.click(within(confirm).getByRole('button', { name: en.marketRemoveOk }))
     await waitFor(() => { expect(props.uninstallPlugin).toHaveBeenCalledWith('@dsh-external/dsh-loop') })
     await waitFor(() => { expect(screen.getByText('busy')).toBeTruthy() })
     fireEvent.click(screen.getByRole('button', { name: en.marketOk }))
+    expect(screen.queryByRole('dialog', { name: en.marketFailTitle })).toBeNull()
 
-    fireEvent.change(screen.getByRole('combobox', { name: en.marketStatus }), { target: { value: 'all' } })
+    pickMenu(en.marketStatus, en.marketStatusAll)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: en.marketRefresh }).hasAttribute('disabled')).toBe(false)
     })
@@ -245,5 +288,56 @@ describe('MarketplaceSettingsTab', () => {
       listInstalled: vi.fn(async () => ({ plugins: [{ name: 'loop', spec: 'github:owner/dsh-loop#abc' }] })),
     })
     await waitFor(() => { expect(screen.getByText(en.marketInstalled)).toBeTruthy() })
+  })
+
+  it('renders 60 cards first and appends 60 more, then resets on query or category change', async () => {
+    const items = Array.from({ length: 61 }, (_, index) => ({
+      ...ITEM,
+      id: `owner/plugin-${index}`,
+      repo: `plugin-${index}`,
+      stars: 61 - index,
+    }))
+    renderTab({
+      listMarketplace: vi.fn(async () => ({
+        items,
+        categories: [
+          { id: 'all', label: 'All', count: 61 },
+          { id: 'workflow', label: 'Workflow', count: 61 },
+        ],
+      })),
+    })
+    await waitFor(() => { expect(screen.getByRole('button', { name: 'plugin-0' })).toBeTruthy() })
+    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+    fireEvent.click(screen.getByRole('button', { name: en.marketShowMore }))
+    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(61)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'plugin' } })
+    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+    fireEvent.click(screen.getByRole('button', { name: en.marketShowMore }))
+    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(61)
+    fireEvent.click(within(screen.getByRole('tablist', { name: en.marketCategories })).getByRole('tab', { name: /Workflow/ }))
+    expect(document.querySelectorAll('[data-market-card]')).toHaveLength(60)
+  })
+
+  it('expands category chips from the default two-row clip', async () => {
+    renderTab()
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    const expand = screen.getByRole('button', { name: en.marketExpandCategories })
+    fireEvent.click(expand)
+    expect(screen.getByRole('button', { name: en.marketCollapseCategories })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.marketCollapseCategories }))
+    expect(screen.getByRole('button', { name: en.marketExpandCategories })).toBeTruthy()
+  })
+
+  it('reloads the catalog when t changes', async () => {
+    const listMarketplace = vi.fn(async () => ({
+      items: [ITEM],
+      categories: [{ id: 'all', label: 'All', count: 1 }],
+    }))
+    const { props, rerender } = renderTab({ listMarketplace })
+    await waitFor(() => { expect(screen.getByText('dsh-loop')).toBeTruthy() })
+    expect(listMarketplace).toHaveBeenCalledTimes(1)
+    const nextT = ((key: PluginInventoryLocaleKey): string => en[key]) as MarketplaceSettingsTabProps['t']
+    rerender(<MarketplaceSettingsTab {...props} t={nextT} />)
+    await waitFor(() => { expect(listMarketplace).toHaveBeenCalledTimes(2) })
   })
 })

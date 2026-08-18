@@ -57,19 +57,38 @@ export type MarketplaceProgress = {
   line?: string
 }
 
+/** Options for a catalog read. */
+export type MarketplaceListOptions = {
+  refresh?: boolean
+  locale?: 'zh' | 'en'
+}
+
+/** Options for a catalog-id install. */
+export type MarketplaceInstallOptions = {
+  allowBuilds?: string[]
+}
+
 /** The preload-exposed desktop API used by the marketplace tab. */
 export type DesktopShell = {
-  listMarketplace?: (options?: { refresh?: boolean }) => Promise<MarketplaceCatalog>
+  listMarketplace?: (options?: MarketplaceListOptions) => Promise<MarketplaceCatalog>
   refreshMarketplace?: () => Promise<MarketplaceCatalog>
   listInstalledPlugins?: () => Promise<InstalledPlugins>
-  installPlugin?: (spec: string, options?: { allowBuilds?: string[] }) => Promise<MarketplaceInstallResult>
+  installPlugin?: (spec: string, options?: MarketplaceInstallOptions) => Promise<MarketplaceInstallResult>
+  installMarketplacePlugin?: (id: string, options?: MarketplaceInstallOptions) => Promise<MarketplaceInstallResult>
   uninstallPlugin?: (name: string) => Promise<MarketplaceInstallResult>
   openExternal?: (url: string) => Promise<boolean>
   saveConfig?: (patch: { githubToken?: string }) => Promise<{ hasGithubToken?: boolean }>
   getConfig?: () => Promise<{ hasGithubToken?: boolean }>
   onPluginProgress?: (handler: (payload: MarketplaceProgress) => void) => () => void
-  /** Prefill a composer install draft from the standalone marketplace window. */
-  onSeedInstallDraft?: (handler: (item: { repo: string; installSpec: string }) => void) => () => void
+}
+
+/**
+ * Map a UI locale tag onto the catalog's `zh` | `en` pair.
+ * @param active - `ctx.locale.getSnapshot().active`, or any BCP 47 tag.
+ * @returns `zh` for zh-prefixed tags, otherwise `en`.
+ */
+export function catalogLocale(active: string): 'zh' | 'en' {
+  return active.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }
 
 /**

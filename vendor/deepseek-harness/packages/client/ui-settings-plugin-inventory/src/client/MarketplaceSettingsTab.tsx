@@ -1,32 +1,37 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { IconChevronDownOutline14, IconCloseOutline16, IconSearchOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button,
+  IconSearchOutline16,
+  Input,
+  Menu,
+  Modal,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   InstalledPlugins,
   MarketplaceCatalog,
+  MarketplaceInstallOptions,
   MarketplaceInstallResult,
   MarketplaceItem,
+  MarketplaceListOptions,
   MarketplaceProgress,
 } from './desktop-shell.ts'
-import type { InstallDraftItem } from './seed-install-draft.ts'
 import css from './MarketplaceSettingsTab.module.css'
+
+const PAGE_SIZE = 60
 
 /** Registration-side desktop callbacks used by the marketplace tab. */
 export interface MarketplaceSettingsTabInjected {
-  /** Read the cached or refreshed GitHub catalog. */
-  listMarketplace: (options?: { refresh?: boolean }) => Promise<MarketplaceCatalog>
+  /** Read the cached or refreshed catalog; apply supplies `locale`. */
+  listMarketplace: (options?: MarketplaceListOptions) => Promise<MarketplaceCatalog>
   /** Read web-profile installed packages. */
   listInstalled: () => Promise<InstalledPlugins>
-  /** Close Settings, open a blank session, and prefill an install request. Does not send. */
-  seedInstallDraft: (item: InstallDraftItem) => Promise<void>
+  /** Install one catalog row by id. The renderer sends no spec. */
+  installMarketplacePlugin: (id: string, options?: MarketplaceInstallOptions) => Promise<MarketplaceInstallResult>
   /** Remove one installed package from the web profile. */
   uninstallPlugin: (name: string) => Promise<MarketplaceInstallResult>
   /** Open a repository URL in the system browser. */
   openExternal: (url: string) => Promise<boolean>
-  /** Persist an optional GitHub token. */
-  saveGithubToken: (token: string) => Promise<void>
-  /** Whether a GitHub token is already stored. */
-  hasGithubToken: () => Promise<boolean>
   /** Subscribe to install log lines. */
   onProgress: (handler: (payload: MarketplaceProgress) => void) => () => void
 }
@@ -37,15 +42,15 @@ export type MarketplaceSettingsTabProps =
   & PropsLocale<'settings.pluginInventory'>
   & InjectFace<MarketplaceSettingsTabInjected>
 
-type DialogState = {
-  title: string
-  body: string
-  ok: string
-  log: string
-  resolve: (value: boolean) => void
-}
-
 type SortId = 'hot' | 'new'
+type StatusId = 'all' | 'installable' | 'installed'
+
+type ActionDialog =
+  | { kind: 'install-confirm'; item: MarketplaceItem }
+  | { kind: 'installing'; item: MarketplaceItem }
+  | { kind: 'allow-builds'; item: MarketplaceItem; allowBuilds: string[] }
+  | { kind: 'uninstall'; name: string }
+  | { kind: 'failure'; title: string; body: string }
 
 function installedName(item: MarketplaceItem, installed: Map<string, string>): string {
   if (item.packageName && installed.has(item.packageName)) return item.packageName
@@ -100,14 +105,11 @@ function sortItems(items: MarketplaceItem[], sort: SortId): MarketplaceItem[] {
 /** Desktop marketplace catalog inside Settings → Plugins. */
 export function MarketplaceSettingsTab({
   t,
-  close,
   listMarketplace,
   listInstalled,
-  seedInstallDraft,
+  installMarketplacePlugin,
   uninstallPlugin,
   openExternal,
-  saveGithubToken,
-  hasGithubToken,
   onProgress,
 }: MarketplaceSettingsTabProps): ReactNode {
   const [items, setItems] = useState<MarketplaceItem[]>([])
@@ -115,15 +117,17 @@ export function MarketplaceSettingsTab({
   const [installed, setInstalled] = useState<Map<string, string>>(new Map())
   const [warning, setWarning] = useState('')
   const [category, setCategory] = useState('all')
-  const [status, setStatus] = useState<'all' | 'installable' | 'installed'>('all')
+  const [status, setStatus] = useState<StatusId>('all')
   const [sort, setSort] = useState<SortId>('hot')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
-  const [tokenSaved, setTokenSaved] = useState(false)
-  const [token, setToken] = useState('')
   const [detail, setDetail] = useState<MarketplaceItem | null>(null)
-  const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [action, setAction] = useState<ActionDialog | null>(null)
   const [log, setLog] = useState('')
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false)
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE)
 
   const load = async (refresh = false): Promise<void> => {
     setBusy(true)
@@ -149,21 +153,15 @@ export function MarketplaceSettingsTab({
 
   useEffect(() => {
     void load(false)
-    void hasGithubToken().then(setTokenSaved)
     return onProgress((payload) => {
       const line = payload.line
       if (line) setLog(current => current ? `${current}\n${line}` : line)
     })
-  }, [listMarketplace, listInstalled, hasGithubToken, onProgress, t])
+  }, [listMarketplace, listInstalled, onProgress, t])
 
   useEffect(() => {
-    if (!detail) return
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !dialog) setDetail(null)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [detail, dialog])
+    setVisibleLimit(PAGE_SIZE)
+  }, [query, category])
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
@@ -178,40 +176,67 @@ export function MarketplaceSettingsTab({
     return sortItems(filtered, sort)
   }, [items, category, status, query, installed, sort])
 
-  const ask = (title: string, body: string, ok: string, extraLog = ''): Promise<boolean> => {
-    return new Promise((resolve) => {
-      setDialog({ title, body, ok, log: extraLog, resolve })
-    })
-  }
+  const paged = visible.slice(0, visibleLimit)
 
-  const closeDialog = (value: boolean): void => {
-    const current = dialog
-    setDialog(null)
-    current?.resolve(value)
-  }
-
-  const runInstall = (item: MarketplaceItem): void => {
-    close()
-    void seedInstallDraft({ repo: item.repo, installSpec: item.installSpec })
-  }
-
-  const runUninstall = async (name: string): Promise<void> => {
-    const confirmed = await ask(t('marketRemoveTitle'), t('marketRemoveBody').replace('{name}', name), t('marketRemoveOk'))
-    if (!confirmed) return
+  const runInstall = async (item: MarketplaceItem, allowBuilds?: string[]): Promise<void> => {
     setBusy(true)
-    const result = await uninstallPlugin(name)
-    if (!result.ok) await ask(t('marketFailTitle'), result.error || t('marketFail'), t('marketOk'), result.log ?? '')
+    setAction({ kind: 'installing', item })
+    const result = allowBuilds === undefined
+      ? await installMarketplacePlugin(item.id)
+      : await installMarketplacePlugin(item.id, { allowBuilds })
+    if (result.needsAllowBuilds && allowBuilds === undefined) {
+      setBusy(false)
+      setAction({ kind: 'allow-builds', item, allowBuilds: result.allowBuilds ?? [] })
+      return
+    }
+    if (!result.ok) {
+      setBusy(false)
+      setAction({
+        kind: 'failure',
+        title: t('marketFailTitle'),
+        body: result.error || t('marketFail'),
+      })
+      if (result.log) setLog(result.log)
+      return
+    }
+    setAction(null)
     setBusy(false)
     await load(false)
   }
 
-  const saveToken = async (): Promise<void> => {
-    const value = token.trim()
-    if (!value) return
-    await saveGithubToken(value)
-    setToken('')
-    setTokenSaved(true)
+  const runUninstall = async (name: string): Promise<void> => {
+    setBusy(true)
+    const result = await uninstallPlugin(name)
+    if (!result.ok) {
+      setBusy(false)
+      setAction({
+        kind: 'failure',
+        title: t('marketFailTitle'),
+        body: result.error || t('marketFail'),
+      })
+      if (result.log) setLog(result.log)
+      return
+    }
+    setAction(null)
+    setBusy(false)
+    await load(false)
   }
+
+  const closeAction = (): void => {
+    if (!busy) setAction(null)
+  }
+
+  const statusOptions = [
+    ['all', t('marketStatusAll')],
+    ['installable', t('marketInstallable')],
+    ['installed', t('marketInstalled')],
+  ] as const
+  const sortOptions = [
+    ['hot', t('marketSortHot')],
+    ['new', t('marketSortNew')],
+  ] as const
+  const statusLabel = statusOptions.find(([id]) => id === status)?.[1] ?? t('marketStatusAll')
+  const sortLabel = sortOptions.find(([id]) => id === sort)?.[1] ?? t('marketSortHot')
 
   const detailName = detail ? installedName(detail, installed) : ''
   const updated = formatDay(detail?.pushed || detail?.updated)
@@ -220,83 +245,119 @@ export function MarketplaceSettingsTab({
   return (
     <div className={css.section} aria-busy={busy}>
       <div className={css.toolbar}>
-        <label className={css.search}>
-          <IconSearchOutline16 aria-hidden="true" />
-          <span className={css.visuallyHidden}>{t('marketSearch')}</span>
-          <input
-            type="search"
-            value={query}
-            placeholder={t('marketSearch')}
-            aria-label={t('marketSearch')}
-            onChange={(event) => { setQuery(event.currentTarget.value) }}
-          />
-        </label>
-        <input
-          type="password"
-          className={css.token}
-          value={token}
-          placeholder={tokenSaved ? t('marketTokenSaved') : t('marketToken')}
-          aria-label={t('marketToken')}
-          onChange={(event) => { setToken(event.currentTarget.value) }}
-          onBlur={() => { void saveToken() }}
+        <Input
+          className={css.search}
+          type="search"
+          icon={<IconSearchOutline16 />}
+          value={query}
+          placeholder={t('marketSearch')}
+          aria-label={t('marketSearch')}
+          onChange={(event) => { setQuery(event.currentTarget.value) }}
         />
-        <button type="button" className={css.refresh} disabled={busy} onClick={() => { void load(true) }}>{t('marketRefresh')}</button>
+        <Button variant="outline" disabled={busy} onClick={() => { void load(true) }}>
+          {t('marketRefresh')}
+        </Button>
       </div>
-      <div className={css.tabs} role="tablist" aria-label={t('marketCategories')}>
-        {(categories ?? []).map(row => (
-          <button
-            key={row.id}
-            type="button"
-            role="tab"
-            className={css.tab}
-            aria-selected={category === row.id}
-            data-active={category === row.id ? 'true' : undefined}
-            onClick={() => { setCategory(row.id) }}
+      {(categories ?? []).length > 0 ? (
+        <div className={css.categoryRow}>
+          <div
+            className={css.tabs}
+            role="tablist"
+            aria-label={t('marketCategories')}
+            data-expanded={categoriesExpanded ? 'true' : undefined}
           >
-            {row.label}
-            <span>{row.count}</span>
-          </button>
-        ))}
-      </div>
+            {(categories ?? []).map(row => (
+              <button
+                key={row.id}
+                type="button"
+                role="tab"
+                className={css.tab}
+                aria-selected={category === row.id}
+                data-active={category === row.id ? 'true' : undefined}
+                onClick={() => { setCategory(row.id) }}
+              >
+                {row.label}
+                <span>{row.count}</span>
+              </button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setCategoriesExpanded(current => !current) }}
+          >
+            {categoriesExpanded ? t('marketCollapseCategories') : t('marketExpandCategories')}
+          </Button>
+        </div>
+      ) : null}
       <div className={css.controls}>
-        <label className={css.control}>
+        <span className={css.control}>
           <span>{t('marketStatus')}</span>
-          <span className={css.selectWrap}>
-            <select
-              aria-label={t('marketStatus')}
-              value={status}
-              onChange={(event) => { setStatus(event.currentTarget.value as typeof status) }}
-            >
-              <option value="all">{t('marketStatusAll')}</option>
-              <option value="installable">{t('marketInstallable')}</option>
-              <option value="installed">{t('marketInstalled')}</option>
-            </select>
-            <IconChevronDownOutline14 aria-hidden="true" />
-          </span>
-        </label>
-        <label className={css.control}>
+          <Menu
+            open={statusOpen}
+            onClose={() => { setStatusOpen(false) }}
+            items={statusOptions.map(([id, copy]) => ({ id, label: copy }))}
+            selectedId={status}
+            onSelect={(id) => {
+              setStatus(id as StatusId)
+              setStatusOpen(false)
+            }}
+            portal
+            anchor={(
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={t('marketStatus')}
+                aria-haspopup="menu"
+                aria-expanded={statusOpen}
+                onClick={() => {
+                  setStatusOpen(current => !current)
+                  setSortOpen(false)
+                }}
+              >
+                {statusLabel}
+              </Button>
+            )}
+          />
+        </span>
+        <span className={css.control}>
           <span>{t('marketSort')}</span>
-          <span className={css.selectWrap}>
-            <select
-              aria-label={t('marketSort')}
-              value={sort}
-              onChange={(event) => { setSort(event.currentTarget.value as SortId) }}
-            >
-              <option value="hot">{t('marketSortHot')}</option>
-              <option value="new">{t('marketSortNew')}</option>
-            </select>
-            <IconChevronDownOutline14 aria-hidden="true" />
-          </span>
-        </label>
+          <Menu
+            open={sortOpen}
+            onClose={() => { setSortOpen(false) }}
+            items={sortOptions.map(([id, copy]) => ({ id, label: copy }))}
+            selectedId={sort}
+            onSelect={(id) => {
+              setSort(id as SortId)
+              setSortOpen(false)
+            }}
+            portal
+            anchor={(
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={t('marketSort')}
+                aria-haspopup="menu"
+                aria-expanded={sortOpen}
+                onClick={() => {
+                  setSortOpen(current => !current)
+                  setStatusOpen(false)
+                }}
+              >
+                {sortLabel}
+              </Button>
+            )}
+          />
+        </span>
       </div>
       {warning ? <p className={css.banner} role="status">{warning}</p> : null}
       {busy && items.length === 0 ? <p className={css.status}>{t('marketLoading')}</p> : null}
       {!busy && visible.length === 0 && (items.length > 0 || !warning) ? <p className={css.status}>{t('marketEmpty')}</p> : null}
-      {visible.length > 0 ? (
+      {paged.length > 0 ? (
         <div className={css.masonry}>
           {[0, 1].map(column => (
             <ul key={column} className={css.masonryCol} data-market-col={column}>
-              {visible.filter((_, index) => index % 2 === column).map((item) => {
+              {paged.filter((_, index) => index % 2 === column).map((item) => {
                 const name = installedName(item, installed)
                 return (
                   <li key={item.id}>
@@ -323,17 +384,47 @@ export function MarketplaceSettingsTab({
           ))}
         </div>
       ) : null}
-      {detail ? (
-        <div className={css.dialog} role="presentation">
-          <div className={css.mask} data-market-mask="" onClick={() => { setDetail(null) }} />
-          <div className={css.sheet} role="dialog" aria-modal="true" aria-labelledby="dsh-market-detail-title">
-            <div className={css.sheetHead}>
-              <h3 id="dsh-market-detail-title">{detail.repo}</h3>
-              <button type="button" className={css.close} aria-label={t('marketClose')} onClick={() => { setDetail(null) }}>
-                <IconCloseOutline16 size={14} />
-              </button>
-            </div>
-            <p className={css.lead}>{detail.description || t('marketNoDescription')}</p>
+      {visible.length > visibleLimit ? (
+        <div className={css.more}>
+          <Button variant="outline" onClick={() => { setVisibleLimit(current => current + PAGE_SIZE) }}>
+            {t('marketShowMore')}
+          </Button>
+        </div>
+      ) : null}
+      <Modal
+        open={detail !== null}
+        onClose={() => { if (action === null) setDetail(null) }}
+        title={detail?.repo ?? ''}
+        closeLabel={t('marketClose')}
+        description={detail ? (detail.description || t('marketNoDescription')) : undefined}
+        footer={detail ? (
+          <>
+            {detail.isBundle && !detailName ? (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => { setAction({ kind: 'install-confirm', item: detail }) }}
+              >
+                {t('marketInstall')}
+              </Button>
+            ) : null}
+            {detailName ? (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => { setAction({ kind: 'uninstall', name: detailName }) }}
+              >
+                {t('marketRemove')}
+              </Button>
+            ) : null}
+            <Button variant="ghost" onClick={() => { void openExternal(detail.homepage) }}>
+              {t('marketRepo')}
+            </Button>
+          </>
+        ) : undefined}
+      >
+        {detail ? (
+          <>
             <dl className={css.meta}>
               <div><dt>{t('marketOwner')}</dt><dd>{detail.owner}</dd></div>
               <div><dt>{t('marketPackage')}</dt><dd>{detail.packageName || '—'}</dd></div>
@@ -352,35 +443,117 @@ export function MarketplaceSettingsTab({
                 {topics.map(topic => <span key={topic}>{topic}</span>)}
               </div>
             ) : null}
-            <div className={css.actions}>
-              {detail.isBundle && !detailName ? (
-                <button type="button" disabled={busy} onClick={() => { runInstall(detail) }}>
-                  {t('marketInstall')}
-                </button>
-              ) : null}
-              {detailName ? (
-                <button type="button" disabled={busy} onClick={() => { void runUninstall(detailName) }}>
-                  {t('marketRemove')}
-                </button>
-              ) : null}
-              <button type="button" onClick={() => { void openExternal(detail.homepage) }}>{t('marketRepo')}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {dialog ? (
-        <div className={css.confirm} role="dialog" aria-modal="true" aria-labelledby="dsh-market-dialog-title">
-          <div className={css.sheet}>
-            <h3 id="dsh-market-dialog-title">{dialog.title}</h3>
-            <p>{dialog.body}</p>
-            {dialog.log || log ? <pre>{dialog.log || log}</pre> : null}
-            <div className={css.actions}>
-              <button type="button" onClick={() => { closeDialog(false) }}>{t('marketCancel')}</button>
-              <button type="button" onClick={() => { closeDialog(true) }}>{dialog.ok}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Modal>
+      <Modal
+        open={action !== null}
+        onClose={closeAction}
+        title={actionTitle(action, t)}
+        closeLabel={t('marketClose')}
+        description={actionDescription(action, t)}
+        footer={actionFooter(action, busy, t, {
+          onCancel: closeAction,
+          onInstall: (item) => { void runInstall(item) },
+          onAllowBuilds: (item, allowBuilds) => { void runInstall(item, allowBuilds) },
+          onUninstall: (name) => { void runUninstall(name) },
+          onDismiss: closeAction,
+        })}
+      >
+        {action?.kind === 'install-confirm' || action?.kind === 'installing' ? (
+          <pre className={css.spec}>{action.item.installSpec}</pre>
+        ) : null}
+        {action?.kind === 'installing' || action?.kind === 'failure' ? (
+          log ? <pre className={css.log}>{log}</pre> : null
+        ) : null}
+      </Modal>
     </div>
   )
+}
+
+function actionTitle(
+  action: ActionDialog | null,
+  t: MarketplaceSettingsTabProps['t'],
+): string {
+  if (action === null) return ''
+  switch (action.kind) {
+    case 'install-confirm':
+    case 'installing':
+      return t('marketInstallTitle')
+    case 'allow-builds':
+      return t('marketAllowBuildsTitle')
+    case 'uninstall':
+      return t('marketRemoveTitle')
+    case 'failure':
+      return action.title
+  }
+}
+
+function actionDescription(
+  action: ActionDialog | null,
+  t: MarketplaceSettingsTabProps['t'],
+): string | undefined {
+  if (action === null) return undefined
+  switch (action.kind) {
+    case 'allow-builds':
+      return t('marketAllowBuildsBody').replace('{packages}', action.allowBuilds.join(', '))
+    case 'uninstall':
+      return t('marketRemoveBody').replace('{name}', action.name)
+    case 'failure':
+      return action.body
+    default:
+      return undefined
+  }
+}
+
+function actionFooter(
+  action: ActionDialog | null,
+  busy: boolean,
+  t: MarketplaceSettingsTabProps['t'],
+  handlers: {
+    onCancel: () => void
+    onInstall: (item: MarketplaceItem) => void
+    onAllowBuilds: (item: MarketplaceItem, allowBuilds: string[]) => void
+    onUninstall: (name: string) => void
+    onDismiss: () => void
+  },
+): ReactNode {
+  if (action === null) return undefined
+  switch (action.kind) {
+    case 'install-confirm':
+      return (
+        <>
+          <Button onClick={handlers.onCancel}>{t('marketCancel')}</Button>
+          <Button variant="primary" disabled={busy} onClick={() => { handlers.onInstall(action.item) }}>
+            {t('marketInstall')}
+          </Button>
+        </>
+      )
+    case 'installing':
+      return <Button variant="primary" disabled>{t('marketInstalling')}</Button>
+    case 'allow-builds':
+      return (
+        <>
+          <Button onClick={handlers.onCancel}>{t('marketCancel')}</Button>
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => { handlers.onAllowBuilds(action.item, action.allowBuilds) }}
+          >
+            {t('marketAllowBuildsOk')}
+          </Button>
+        </>
+      )
+    case 'uninstall':
+      return (
+        <>
+          <Button onClick={handlers.onCancel}>{t('marketCancel')}</Button>
+          <Button variant="primary" disabled={busy} onClick={() => { handlers.onUninstall(action.name) }}>
+            {t('marketRemoveOk')}
+          </Button>
+        </>
+      )
+    case 'failure':
+      return <Button variant="primary" onClick={handlers.onDismiss}>{t('marketOk')}</Button>
+  }
 }

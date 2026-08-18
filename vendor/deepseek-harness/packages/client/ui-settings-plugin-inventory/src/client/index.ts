@@ -3,10 +3,9 @@
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { desktopShell } from './desktop-shell.ts'
+import { catalogLocale, desktopShell } from './desktop-shell.ts'
 import { MarketplaceSettingsTab, type MarketplaceSettingsTabInjected } from './MarketplaceSettingsTab.tsx'
 import { PluginInventorySettingsTab, type PluginInventorySettingsTabInjected } from './PluginInventorySettingsTab.tsx'
-import { seedInstallDraft as writeInstallDraft } from './seed-install-draft.ts'
 import { en, zh, type PluginInventoryLocaleKey } from './locales.ts'
 
 export type { PluginInventorySettingsTabInjected, PluginInventorySettingsTabProps } from './PluginInventorySettingsTab.tsx'
@@ -50,36 +49,26 @@ export function apply(ctx: ClientContext): void {
   }, PluginInventorySettingsTab))
 
   const shell = desktopShell()
-  if (shell?.listMarketplace && shell.listInstalledPlugins && shell.installPlugin && shell.uninstallPlugin) {
-    // Destructure after the guard so closures below keep the narrowed function types.
-    const { listMarketplace, listInstalledPlugins, uninstallPlugin } = shell
-    ctx.inject(['sessions', 'workspaces', 'conversation'], (scope: ClientContext) => {
-      const draft = async (item: { repo: string; installSpec: string }): Promise<void> => {
-        await writeInstallDraft(scope, item, t('marketInstallDraft'))
-      }
-      const market: MarketplaceSettingsTabInjected = {
-        listMarketplace: options => listMarketplace(options),
-        listInstalled: () => listInstalledPlugins(),
-        seedInstallDraft: draft,
-        uninstallPlugin: name => uninstallPlugin(name),
-        openExternal: url => shell.openExternal?.(url) ?? Promise.resolve(false),
-        saveGithubToken: async (token) => { await shell.saveConfig?.({ githubToken: token }) },
-        hasGithubToken: async () => Boolean((await shell.getConfig?.())?.hasGithubToken),
-        onProgress: handler => shell.onPluginProgress?.(handler) ?? (() => {}),
-      }
-      scope.slots.inject('settings.plugins.tab', () => scope.slots.register({
-        name: 'settings.plugins.tab',
-        id: 'marketplace',
-        order: 5,
-        label: () => t('marketTab'),
-        locale: NS,
-        inject: () => market,
-      }, MarketplaceSettingsTab))
-      if (shell.onSeedInstallDraft) {
-        const subscribeSeed = shell.onSeedInstallDraft
-        // The handler contract returns void; seed drafts fire-and-forget through it.
-        scope.effect(() => subscribeSeed((item) => { void draft(item) }), 'ui-settings-plugin-inventory: seed-install-draft')
-      }
+  if (shell?.listMarketplace && shell.listInstalledPlugins && shell.installMarketplacePlugin && shell.uninstallPlugin) {
+    const { listMarketplace, listInstalledPlugins, installMarketplacePlugin, uninstallPlugin } = shell
+    const market = (): MarketplaceSettingsTabInjected => ({
+      listMarketplace: options => listMarketplace({
+        ...options,
+        locale: catalogLocale(ctx.locale.getSnapshot().active),
+      }),
+      listInstalled: () => listInstalledPlugins(),
+      installMarketplacePlugin: (id, options) => installMarketplacePlugin(id, options),
+      uninstallPlugin: name => uninstallPlugin(name),
+      openExternal: url => shell.openExternal?.(url) ?? Promise.resolve(false),
+      onProgress: handler => shell.onPluginProgress?.(handler) ?? (() => {}),
     })
+    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+      name: 'settings.plugins.tab',
+      id: 'marketplace',
+      order: 5,
+      label: () => t('marketTab'),
+      locale: NS,
+      inject: market,
+    }, MarketplaceSettingsTab))
   }
 }
