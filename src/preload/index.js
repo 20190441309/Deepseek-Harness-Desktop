@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const SHELL_ROLES = new Set(['boot', 'harness', 'marketplace']);
+const SHELL_ROLES = new Set(['boot', 'harness']);
 
 function shellRole(argv = process.argv) {
   const prefix = '--dshd-shell-role=';
@@ -54,20 +54,6 @@ function bootApi(renderer) {
   };
 }
 
-function marketplaceApi(renderer) {
-  return {
-    ...windowApi(renderer),
-    ...configApi(renderer),
-    openExternal: invoke(renderer, 'shell:open-external'),
-    listMarketplace: invoke(renderer, 'shell:list-marketplace'),
-    refreshMarketplace: invoke(renderer, 'shell:refresh-marketplace'),
-    listInstalledPlugins: invoke(renderer, 'shell:list-installed-plugins'),
-    uninstallPlugin: invoke(renderer, 'shell:uninstall-plugin'),
-    seedInstallDraft: invoke(renderer, 'shell:seed-install-draft'),
-    onPluginProgress: subscribe(renderer, 'shell:plugin-progress'),
-  };
-}
-
 function harnessApi(renderer) {
   return {
     ...windowApi(renderer),
@@ -83,11 +69,10 @@ function harnessApi(renderer) {
     refreshMarketplace: invoke(renderer, 'shell:refresh-marketplace'),
     listInstalledPlugins: invoke(renderer, 'shell:list-installed-plugins'),
     installPlugin: invoke(renderer, 'shell:install-plugin'),
+    installMarketplacePlugin: invoke(renderer, 'shell:install-marketplace-plugin'),
     uninstallPlugin: invoke(renderer, 'shell:uninstall-plugin'),
-    seedInstallDraft: invoke(renderer, 'shell:seed-install-draft'),
     openMarketplace: invoke(renderer, 'shell:open-marketplace'),
     onPluginProgress: subscribe(renderer, 'shell:plugin-progress'),
-    onSeedInstallDraft: subscribe(renderer, 'shell:seed-install-draft'),
     gitStatus: invoke(renderer, 'shell:git-status'),
     gitFetchForStatus: invoke(renderer, 'shell:git-fetch-status'),
     gitReadPullRequest: invoke(renderer, 'shell:git-pull-request'),
@@ -136,7 +121,6 @@ function harnessApi(renderer) {
 
 function buildShellApi(role, renderer) {
   if (role === 'boot') return bootApi(renderer);
-  if (role === 'marketplace') return marketplaceApi(renderer);
   if (role === 'harness') return harnessApi(renderer);
   return null;
 }
