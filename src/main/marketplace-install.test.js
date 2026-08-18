@@ -1,7 +1,130 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-marketplace-install-'));
+const electronPath = require.resolve('electron');
+require.cache[electronPath] = {
+  id: electronPath,
+  filename: electronPath,
+  loaded: true,
+  exports: {
+    app: {
+      isPackaged: false,
+      getPath() {
+        return userData;
+      },
+    },
+  },
+};
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  throw new Error('network disabled in marketplace-install tests');
+};
+
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
-const { installPlugin, uninstallPlugin } = require('./marketplace-install');
+const {
+  installPlugin,
+  uninstallPlugin,
+  installMarketplacePlugin,
+} = require('./marketplace-install');
+
+const NPM_ID = '13071301808/dsh-composer-expand';
+const GITHUB_ID = '01Virex/dsh-status-rotator';
+const PATH_ID = 'DamonKoy/dsh-web-ui#dsh-aionui-panel';
+const DROPPED_ID = 'omdsh-dev/dsh-genui';
+const NPM_SPEC = 'dsh-composer-expand';
+const GITHUB_SPEC = 'github:01Virex/dsh-status-rotator';
+const PATH_SPEC = 'github:DamonKoy/dsh-web-ui#path:/packages/dsh-aionui-panel';
+
+let dshHomeDir = '';
+
+function cacheFile() {
+  return path.join(userData, 'marketplace-cache.json');
+}
+
+function profileDir() {
+  return path.join(dshHomeDir, 'profiles', 'web');
+}
+
+function writeProfileDep(packageName, spec) {
+  const dir = profileDir();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
+    name: 'web',
+    dependencies: { [packageName]: spec },
+  }, null, 2)}\n`);
+}
+
+function writeLoadablePlugin(packageName) {
+  const dir = path.join(profileDir(), 'node_modules', packageName);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
+    name: packageName,
+    main: 'index.js',
+    dsh: { bundle: { patch: true } },
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, 'index.js'), 'module.exports = {}\n');
+}
+
+function writeDiskRegistry(plugins) {
+  fs.writeFileSync(cacheFile(), `${JSON.stringify({
+    version: 3,
+    fetchedAt: Date.now(),
+    registry: { plugins },
+  }, null, 2)}\n`);
+}
+
+function githubRow(owner, name, url, installToken) {
+  return {
+    owner,
+    name,
+    url,
+    category: 'ui',
+    description: { en: name, zh: name },
+    npm: null,
+    stars: 0,
+    install: `dsh plugin --profile web add ${installToken}`,
+    added: '2026-08-18',
+  };
+}
+
+function recordRunner(onAdd) {
+  const calls = [];
+  return {
+    calls,
+    runPlugin: async (args) => {
+      calls.push(args.slice());
+      if (args[0] === 'add' && typeof onAdd === 'function') {
+        onAdd(args[1]);
+      }
+      return { ok: true, code: 0, log: '', needsAllowBuilds: false, allowBuilds: [] };
+    },
+  };
+}
+
+test.beforeEach(() => {
+  dshHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  process.env.DSH_HOME = dshHomeDir;
+});
+
+test.afterEach(() => {
+  delete process.env.DSH_HOME;
+  fs.rmSync(dshHomeDir, { recursive: true, force: true });
+  try {
+    fs.unlinkSync(cacheFile());
+  } catch {
+    // no cache this test
+  }
+});
+
+test.after(() => {
+  globalThis.fetch = originalFetch;
+  fs.rmSync(userData, { recursive: true, force: true });
+});
 
 test('parseAllowBuilds reads ignored build script names', () => {
   const keys = parseAllowBuilds(`
@@ -36,6 +159,14 @@ test('installPlugin rejects non-github specs before invoking the CLI', async () 
   assert.match(result.error, /github:owner\/repo/);
 });
 
+test('installPlugin rejects a catalog #path: spec before invoking the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installPlugin(PATH_SPEC, { allowBuilds: [], runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /github:owner\/repo/);
+  assert.equal(calls.length, 0);
+});
+
 test('installPlugin rejects invalid allowBuilds before invoking the CLI', async () => {
   const result = await installPlugin('github:owner/repo', { allowBuilds: ['../prepare'] });
   assert.equal(result.ok, false);
@@ -46,4 +177,128 @@ test('uninstallPlugin rejects shell syntax before invoking the CLI', async () =>
   const result = await uninstallPlugin('safe-package & calc.exe');
   assert.equal(result.ok, false);
   assert.match(result.error, /包名/);
+});
+
+test('installMarketplacePlugin rejects an unknown catalog id before invoking the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin('missing/plugin', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /未收录/);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin rejects a DROPPED catalog plugin before invoking the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin(DROPPED_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /退役|下架|不再/);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin rejects invalid allowBuilds before invoking the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin(NPM_ID, { allowBuilds: ['../prepare'], runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /allowBuilds/);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin installs a curated npm spec through the plugin runner', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeLoadablePlugin(NPM_SPEC);
+  });
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', NPM_SPEC]]);
+  assert.equal(result.spec, NPM_SPEC);
+});
+
+test('installMarketplacePlugin installs github:owner/repo through the plugin runner', async () => {
+  const { calls, runPlugin } = recordRunner((spec) => {
+    writeProfileDep('dsh-status-rotator', spec);
+    writeLoadablePlugin('dsh-status-rotator');
+  });
+  const result = await installMarketplacePlugin(GITHUB_ID, { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', GITHUB_SPEC]]);
+});
+
+test('installMarketplacePlugin allows a catalog #path: spec that Host installPlugin rejects', async () => {
+  const { calls, runPlugin } = recordRunner((spec) => {
+    writeProfileDep('dsh-aionui-panel', spec);
+    writeLoadablePlugin('dsh-aionui-panel');
+  });
+  const result = await installMarketplacePlugin(PATH_ID, { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', PATH_SPEC]]);
+});
+
+test('installMarketplacePlugin rejects #path: specs with .. or backslash', async () => {
+  writeDiskRegistry([
+    githubRow(
+      'evil',
+      'dotdot',
+      'https://github.com/evil/dotdot',
+      'github:evil/dotdot#path:/packages/../../../tmp',
+    ),
+    githubRow(
+      'evil',
+      'backslash',
+      'https://github.com/evil/backslash',
+      'github:evil/backslash#path:/packages\\windows',
+    ),
+  ]);
+  const { calls, runPlugin } = recordRunner();
+  const dotdot = await installMarketplacePlugin('evil/dotdot', { runPlugin });
+  const backslash = await installMarketplacePlugin('evil/backslash', { runPlugin });
+  assert.equal(dotdot.ok, false);
+  assert.equal(backslash.ok, false);
+  assert.doesNotMatch(dotdot.error, /未收录/);
+  assert.doesNotMatch(backslash.error, /未收录/);
+  assert.equal(calls.length, 0);
+});
+
+test('installMarketplacePlugin and uninstallPlugin share an in-flight mutex', async () => {
+  let releaseAdd;
+  let addStarted;
+  const started = new Promise((resolve) => {
+    addStarted = resolve;
+  });
+  const first = installMarketplacePlugin(NPM_ID, {
+    runPlugin: () => {
+      addStarted();
+      return new Promise((resolve) => {
+        releaseAdd = resolve;
+      });
+    },
+  });
+  await started;
+  const uninstallCalls = [];
+  const busyUninstall = await uninstallPlugin(NPM_SPEC, {
+    runPlugin: async (args) => {
+      uninstallCalls.push(args.slice());
+      return { ok: true, code: 0, log: '', needsAllowBuilds: false, allowBuilds: [] };
+    },
+  });
+  const busyInstall = await installPlugin(GITHUB_SPEC, {
+    runPlugin: async () => {
+      throw new Error('installPlugin should not run while marketplace install is in flight');
+    },
+  });
+  assert.equal(busyUninstall.ok, false);
+  assert.equal(busyUninstall.error, '已有插件正在安装或卸载，请稍后再试');
+  assert.equal(busyInstall.ok, false);
+  assert.equal(busyInstall.error, '已有插件正在安装或卸载，请稍后再试');
+  assert.equal(uninstallCalls.length, 0);
+  releaseAdd({ ok: false, code: 1, log: '', needsAllowBuilds: false, allowBuilds: [] });
+  const firstResult = await first;
+  assert.equal(firstResult.ok, false);
+});
+
+test('installMarketplacePlugin removes a package with no loadable dsh entry', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载/);
+  assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
 });
