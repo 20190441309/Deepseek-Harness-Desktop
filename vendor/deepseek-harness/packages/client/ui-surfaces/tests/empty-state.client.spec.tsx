@@ -51,4 +51,13 @@ describe('EmptyState', () => {
     expect(onOpen).not.toHaveBeenCalled()
     expect(diff.getAttribute('title')).toBe('Diff is only available in Git repositories.')
   })
+
+  it('puts every card in a stretching grid cell, including disabled Browser and Diff', () => {
+    render(<EmptyState onOpen={vi.fn()} t={t} browserAvailable={false} diffAvailable={false} />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons).toHaveLength(5)
+    for (const button of buttons) {
+      expect(button.closest('[data-surfaces-card-cell]')).toBeTruthy()
+    }
+  })
 })

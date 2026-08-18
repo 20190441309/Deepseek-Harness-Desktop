@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react'
+import { Fragment, type ComponentType, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconAgentPresetOutline16,
@@ -78,10 +78,13 @@ export function EmptyState({
                 <span className={css.cardDescription}>{t(card.description)}</span>
               </button>
             )
-            if (available) return <div key={card.kind}>{button}</div>
+            const cell = (
+              <div className={css.cardWrap} data-surfaces-card-cell>{button}</div>
+            )
+            if (available) return <Fragment key={card.kind}>{cell}</Fragment>
             return (
               <Tooltip key={card.kind} label={reason ?? ''} side="top">
-                <div className={css.cardWrap}>{button}</div>
+                {cell}
               </Tooltip>
             )
           })}
