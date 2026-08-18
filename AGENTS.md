@@ -11,7 +11,7 @@ Any UI, layout, or frontend change must follow the official `dsh web` visual lan
 - Token / CSS Modules mechanics: [vendor/deepseek-harness/docs/web-styling.md](vendor/deepseek-harness/docs/web-styling.md)
 - Client plugin rules: [vendor/deepseek-harness/packages/client/AGENTS.md](vendor/deepseek-harness/packages/client/AGENTS.md)
 
-Reuse `ui-primitives` and `--dsw-alias-*` tokens. The boot page consumes official font/motion tokens from [src/shared/dsh-webui-tokens.css](src/shared/dsh-webui-tokens.css) plus the `--boot-*` table in [src/renderer/boot-tokens.css](src/renderer/boot-tokens.css). `src/renderer/marketplace/marketplace.css` still carries a parallel palette; do not copy those hex values.
+Reuse `ui-primitives` and `--dsw-alias-*` tokens. The boot page consumes official font/motion tokens from [src/shared/dsh-webui-tokens.css](src/shared/dsh-webui-tokens.css) plus the `--boot-*` table in [src/renderer/boot-tokens.css](src/renderer/boot-tokens.css).
 
 Harness-internal work also follows [vendor/deepseek-harness/AGENTS.md](vendor/deepseek-harness/AGENTS.md).
 

@@ -47,7 +47,7 @@ macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applica
 - **文件与终端** — `Ctrl+\` 打开右栏（Files / Diff / Browser / Agents）；`` Ctrl+` `` 打开底栏终端，选区可送进对话。
 - **模型** — 第三方思考强度、识图兜底；最新一条用户消息可改完再发。
 - **外观** — 浅色 / 深色主题、背景图、毛玻璃。
-- **扩展** — 设置里管理 MCP、技能和插件。插件市场来自 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin)。
+- **扩展** — 设置里管理 MCP、技能和插件。插件市场是 [awesome-dsh-plugin](https://awesome-dsh-plugin.com/) 精选目录，在设置页一键安装，没有独立窗口。
 - **桌面** — 关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。
 
 `Ctrl+,` 打开设置。

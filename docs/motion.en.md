@@ -138,8 +138,6 @@ These do not use a `motion.css` recipe. Do not spread them onto new Web UI overl
 | Desktop boot page | Mark / copy `rise` (8px + fade, staggered 0 / 80 / 120 / 160ms); stamp `pulse` 1.2s; reticle `spin` 1.05s; log lines `fade`. Durations use official tokens; reduced motion stops all of them | [`boot.css`](../src/renderer/boot.css). The instrument look must not spread; see [Desktop boot page](design-language.en.md#desktop-boot-page) |
 | Closing overlay | Local 0.85s infinite spin; does not read `--ds-motion-*` and has no reduced-motion branch | [`closing-overlay.js`](../src/main/closing-overlay.js) |
 
-The plugin marketplace page has no enter/exit recipe. When you touch it, follow official tokens and the recipes in this file; do not copy its parallel palette.
-
 ## Adding motion
 
 | Need | Use |

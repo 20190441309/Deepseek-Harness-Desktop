@@ -138,8 +138,6 @@ composer 上四个浮层共用此时长：加号斜杠菜单、权限 `Menu`、�
 | 桌面启动页 | 标志 / 文案 `rise`（8px + fade，错开 0 / 80 / 120 / 160ms）；盖章 `pulse` 1.2s；瞄准环 `spin` 1.05s；日志行 `fade`。时长走官方 token；减弱动效时全部停 | [`boot.css`](../src/renderer/boot.css)。仪器风不得扩散，见 [桌面启动页](design-language.md#桌面启动页) |
 | 关闭遮罩 | 本地 0.85s 无限旋转；不读 `--ds-motion-*`，也没有减弱动效分支 | [`closing-overlay.js`](../src/main/closing-overlay.js) |
 
-插件市场页没有进出场 recipe。改到它时跟官方 token 与本文件的 recipe，不要抄它的平行色板。
-
 ## 如何新增
 
 | 要做的事 | 用法 |
