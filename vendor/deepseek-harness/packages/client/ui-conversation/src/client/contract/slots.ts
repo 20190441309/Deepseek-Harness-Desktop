@@ -82,6 +82,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the view.
      */
     'conversation.chat.empty': { kind: 'list'; scope: 'session' }
+    /**
+     * One Chat Node row in the transcript, keyed on `ChatNode.kind`. ChatView
+     * is the render site: it passes `ChatNodeOwnerProps` plus that Node, the
+     * Context key as `hookContext`, and a JsonBlock `fallback` for unknown
+     * kinds. A registrant occupies one kind (`key: 'user'`, `'tool-call'`,
+     * `'workflow-run'`, …) and receives that kind's `node` plus the injected
+     * turn-data hook. Registering the same key replaces that kind's renderer.
+     * No registration for a kind keeps the JsonBlock fallback.
+     */
     'conversation.chat.node': {
       kind: 'keyed'
       scope: 'session'

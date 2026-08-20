@@ -153,7 +153,7 @@ function bench(over?: BenchOptions) {
     useSessions: bindSnapshotSelector(createSnapshotStore({
       ids: over?.agentPreset === undefined ? [] : [SID],
       byId: over?.agentPreset === undefined ? {} : {
-        [SID]: { id: SID, displayTitle: 'room', running: false, blank: false, agentPreset: over.agentPreset },
+        [SID]: { id: SID, displayTitle: 'room', running: false, blank: false, updatedAt: 0, agentPreset: over.agentPreset },
       },
       current: undefined, phase: 'ready',
       subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
@@ -1274,7 +1274,9 @@ describe('composer $skill trigger', () => {
       expect(listDir).not.toHaveBeenCalled()
       expect(view.queryByRole('menuitem')).toBeNull()
     } finally {
-      ;(window as Window & { shell?: { listDir: typeof listDir } }).shell = previous
+      const typed = window as Window & { shell?: { listDir: typeof listDir } }
+      if (previous === undefined) delete typed.shell
+      else typed.shell = previous
     }
   })
 

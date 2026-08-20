@@ -2,9 +2,9 @@
  * wrapOpenPath: takeover, fallthrough, disposer restore, wrapper chain.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { wrapOpenPath } from '../src/client/openpath-intercept.ts'
+import { wrapOpenPath, type OpenPathService } from '../src/client/openpath-intercept.ts'
 
-function service(openPath: (path: string) => Promise<void>) {
+function service(openPath: OpenPathService['openPath']): OpenPathService {
   return { openPath }
 }
 

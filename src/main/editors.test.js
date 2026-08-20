@@ -19,6 +19,11 @@ function makeTempDir() {
   return dir;
 }
 
+/** Production authority returns realpath, so macOS `/var` fixtures must compare against `/private/var`. */
+function canonical(p) {
+  return fs.realpathSync(path.resolve(p));
+}
+
 function fakeExecFile(available) {
   return (file, args, _opts, cb) => {
     const candidate = file === 'where.exe' ? args[0] : String(args[1] || '');
@@ -76,7 +81,7 @@ test('openInEditor vscode spawns code --goto with a fake spawn', async () => {
     assert.equal(result.ok, true);
     assert.equal(spawned.length, 1);
     assert.equal(spawned[0].command, 'code');
-    assert.deepEqual(spawned[0].args, ['--goto', `${path.join(cwd, 'app.ts')}:12:4`]);
+    assert.deepEqual(spawned[0].args, ['--goto', `${path.join(canonical(cwd), 'app.ts')}:12:4`]);
   } finally {
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -135,7 +140,7 @@ test('openWithSystemDefault uses resolveInside and shell.openPath, not git openW
       },
     );
     assert.equal(result.ok, true);
-    assert.deepEqual(opened, [path.join(cwd, 'note.md')]);
+    assert.deepEqual(opened, [path.join(canonical(cwd), 'note.md')]);
     const escaped = await openWithSystemDefault(
       { cwd, relativePath: '../outside.txt' },
       { shell: { async openPath() { return ''; } } },

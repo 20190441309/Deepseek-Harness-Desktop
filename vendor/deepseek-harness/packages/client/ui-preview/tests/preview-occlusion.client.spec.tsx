@@ -32,11 +32,12 @@ function mount(): {
 } {
   const previewHide = vi.fn(async () => {})
   const previewShow = vi.fn(async () => {})
+  const sessionId = 'session-occluded' as SessionId
   const props = {
-    sessionId: 'session-occluded' as SessionId,
+    sessionId,
     useSession: neverHook,
     useSessions: (sel: (s: { current: SessionId; byId: Record<string, { cwd?: string }> }) => unknown) =>
-      sel({ current: props.sessionId, byId: { [props.sessionId]: {} } }),
+      sel({ current: sessionId, byId: { [sessionId]: {} } }),
     useWorkspaces: neverHook,
     useProjection: neverHook,
     active: true,

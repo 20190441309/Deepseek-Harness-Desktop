@@ -15,7 +15,7 @@ vendor/deepseek-harness/**/src/*.d.ts.map
 dist/
 dist-release/
 out/
-release/
+/release/
 *.log
 .DS_Store
 Thumbs.db
@@ -28,7 +28,7 @@ Thumbs.db
 .pack-v2/
 .pack-tmp*/
 .pack-v*/
-release*/
+/release*/
 /resources/
 .worktrees/
 apps/mobile/.expo/

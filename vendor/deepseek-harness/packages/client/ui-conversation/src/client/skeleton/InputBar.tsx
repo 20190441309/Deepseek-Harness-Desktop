@@ -7,7 +7,7 @@
  * (running/removed/promptError) are self-selected via useSession. */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from 'react'
+import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconPlusOutline16, IconWarningOutline16, Menu, Toast, Tooltip,

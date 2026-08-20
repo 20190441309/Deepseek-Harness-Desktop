@@ -130,7 +130,7 @@ describe('browser recording', () => {
     expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 800, 600)
     expect(fillRect).toHaveBeenCalledWith(0, 0, 800, 600)
 
-    await stopBrowserRecording('pv-1', recordingBridge())
+    await stopBrowserRecording('pv-1')
     expect(previewStopRecording).toHaveBeenCalled()
     expect(previewSaveRecording).toHaveBeenCalledWith('pv-1', expect.objectContaining({
       mimeType: expect.stringContaining('webm'),

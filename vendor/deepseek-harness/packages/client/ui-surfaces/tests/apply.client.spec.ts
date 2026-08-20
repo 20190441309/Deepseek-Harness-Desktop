@@ -36,7 +36,7 @@ async function bench(opts: { current?: string; cwd?: string } = {}) {
   const slots = ctx.get('slots') as SlotRegistry
   const declaration = declare(slots)
   const layout = { openSurfaces: vi.fn() }
-  const originalOpen = vi.fn(async (_path: string) => {})
+  const originalOpen = vi.fn(async (_path: string, _options?: { line?: number }) => {})
   const workspaces = { openPath: originalOpen }
   ctx.provide('layout', layout)
   ctx.provide('locale', new LocaleRuntime(ctx))

@@ -21,7 +21,7 @@ const RESPONSIVE_ID = 'responsive'
 const RAIL_DIRECTIONS: readonly {
   readonly direction: BrowserViewportResizeDirection
   readonly labelKey: PreviewKey
-  readonly className: string
+  readonly className: string | undefined
 }[] = [
   { direction: 'west', labelKey: 'viewportRailWest', className: css.railWest },
   { direction: 'east', labelKey: 'viewportRailEast', className: css.railEast },

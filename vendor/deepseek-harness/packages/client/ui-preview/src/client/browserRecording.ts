@@ -386,7 +386,7 @@ const finalizeBrowserRecording = async (
       if (!saved?.ok) {
         throw new Error(saved?.message ?? 'save recording failed')
       }
-      return { ok: true, path: saved.path }
+      return saved.path === undefined ? { ok: true } : { ok: true, path: saved.path }
     } catch (cause) {
       throw new BrowserRecordingOperationError({
         operation: 'save-artifact',

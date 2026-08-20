@@ -399,9 +399,9 @@ describe('ChatView', () => {
     const slotCalls: string[] = []
     const h = makeHarness({ nodes: [] })
     const inner = h.props.renderSlot
-    h.props.renderSlot = ((key, owner, opts) => {
+    h.props.renderSlot = ((key: string, owner: object) => {
       slotCalls.push(key)
-      return inner(key, owner, opts)
+      return inner(key as never, owner as never)
     }) as typeof inner
     const view = render(<h.ChatView {...h.props} />)
     expect(slotCalls).toContain('conversation.chat.empty')
@@ -412,9 +412,9 @@ describe('ChatView', () => {
     const slotCalls: string[] = []
     const h = makeHarness({ nodes: [user(1, 'hello')] })
     const inner = h.props.renderSlot
-    h.props.renderSlot = ((key, owner, opts) => {
+    h.props.renderSlot = ((key: string, owner: object) => {
       slotCalls.push(key)
-      return inner(key, owner, opts)
+      return inner(key as never, owner as never)
     }) as typeof inner
     render(<h.ChatView {...h.props} />)
     expect(slotCalls).not.toContain('conversation.chat.empty')

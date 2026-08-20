@@ -63,8 +63,9 @@ export interface IWorkspaces {
   /**
    * Open a filesystem path with the Host operating system's default application.
    * @param path - absolute or host-resolvable path.
+   * @param options - optional jump-to-line; desktop surfaces intercept consumes it and the Host RPC ignores it.
    */
-  openPath(path: string): Promise<void>
+  openPath(path: string, options?: { line?: number }): Promise<void>
   /**
    * Rename a Workspace.
    * @param workspaceId - target workspace.

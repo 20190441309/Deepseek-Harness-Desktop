@@ -117,7 +117,7 @@ describe('installFileEditorDismissal', () => {
   })
 
   it('still dismisses when setSelectionRange is absent', () => {
-    const { root, textarea, outside } = mountPreview()
+    const { root, outside } = mountPreview()
     const editor = { blur: vi.fn() }
     const onDismiss = vi.fn()
     const uninstall = installFileEditorDismissal({

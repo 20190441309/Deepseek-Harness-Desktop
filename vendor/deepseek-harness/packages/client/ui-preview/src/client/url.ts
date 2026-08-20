@@ -65,10 +65,9 @@ export class PreviewUrlNormalizationError extends Error {
     cause?: unknown
   }) {
     const protocolBit = init.protocol === undefined ? '' : `: ${init.protocol}`
-    super(
-      `Invalid preview URL (${init.reason}${protocolBit}; input length ${init.inputLength}).`,
-      init.cause === undefined ? undefined : { cause: init.cause },
-    )
+    const message = `Invalid preview URL (${init.reason}${protocolBit}; input length ${init.inputLength}).`
+    if (init.cause === undefined) super(message)
+    else super(message, { cause: init.cause })
     this.name = 'PreviewUrlNormalizationError'
     this.reason = init.reason
     this.inputLength = init.inputLength
@@ -104,10 +103,11 @@ export function normalizePreviewUrl(rawUrl: string): string {
   try {
     parsed = new URL(candidate)
   } catch (cause) {
+    const protocol = previewUrlProtocol(candidate)
     throw new PreviewUrlNormalizationError({
       inputLength: rawUrl.length,
       reason: 'parse',
-      protocol: previewUrlProtocol(candidate),
+      ...(protocol === undefined ? {} : { protocol }),
       cause,
     })
   }

@@ -25,6 +25,13 @@ import css from './MarkdownText.module.css'
 
 export type { MarkdownCodeLabels, MarkdownFileMentions } from './render.tsx'
 
+function markdownContext(
+  fields: Omit<MarkdownRenderContext, 'onTaskChecked'>,
+  onTaskChecked: ((markerOffset: number, checked: boolean) => void) | undefined,
+): MarkdownRenderContext {
+  return onTaskChecked === undefined ? fields : { ...fields, onTaskChecked }
+}
+
 /** One settled full render: parse with math, resolve references, append the footnote section. */
 function renderSettled(
   text: string,
@@ -35,7 +42,7 @@ function renderSettled(
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
   collectReferenceTargets(root.children, targets)
-  const context: MarkdownRenderContext = {
+  const context = markdownContext({
     streaming: false,
     codeLabels,
     fileMentions,
@@ -43,8 +50,7 @@ function renderSettled(
     footnoteOrder: [],
     footnoteCounts: new Map(),
     source: text,
-    onTaskChecked,
-  }
+  }, onTaskChecked)
   const blocks = wrapBlockChildren(
     renderBlocks(root.children.map((node, index) => ({ node, key: index })), context),
     false,
@@ -107,7 +113,7 @@ class StreamingRenderer {
     }
     collectReferenceTargets(tail.map(block => block.node), frameTargets)
     if (newlyFrozen.length > 0) {
-      const frozenContext: MarkdownRenderContext = {
+      const frozenContext = markdownContext({
         streaming: true,
         codeLabels: this.codeLabels,
         fileMentions: undefined,
@@ -115,8 +121,7 @@ class StreamingRenderer {
         footnoteOrder: this.frozenFootnoteOrder,
         footnoteCounts: this.frozenFootnoteCounts,
         source: text,
-        onTaskChecked: this.onTaskChecked,
-      }
+      }, this.onTaskChecked)
       // Separator newlines are cached alongside the elements so the
       // assembled children match the settled pipeline's block wrapping.
       const batch = [...this.frozenElements]
@@ -127,7 +132,7 @@ class StreamingRenderer {
       this.frozenElements = batch
       this.frozenCount = frozen.length
     }
-    const tailContext: MarkdownRenderContext = {
+    const tailContext = markdownContext({
       streaming: true,
       codeLabels: this.codeLabels,
       fileMentions: undefined,
@@ -135,8 +140,7 @@ class StreamingRenderer {
       footnoteOrder: [...this.frozenFootnoteOrder],
       footnoteCounts: new Map(this.frozenFootnoteCounts),
       source: text,
-      onTaskChecked: this.onTaskChecked,
-    }
+    }, this.onTaskChecked)
     const children = [...this.frozenElements]
     for (const element of renderBlocks(tail, tailContext)) {
       if (children.length > 0) children.push('\n')

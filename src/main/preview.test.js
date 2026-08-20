@@ -1030,7 +1030,7 @@ test('openPictureInPicture creates an isolated alwaysOnTop window and hides the 
     assert.equal(view.visible, false);
     assert.equal(win.showInactiveCalls, 1);
     assert.match(win.loadURLs[0], /^data:text\/html;charset=utf-8,/);
-    assert.deepEqual(win.alwaysOnTopCalls, [[true, 'normal']]);
+    assert.deepEqual(win.alwaysOnTopCalls, [[true, process.platform === 'darwin' ? 'floating' : 'normal']]);
     assert.deepEqual(win.aspectRatioCalls, [0, 1280 / 720]);
     assert.deepEqual(win.contentSizeCalls, [[523, 294, false]]);
     assert.equal(view.webContents.jpegQualities.at(-1), 80);

@@ -191,7 +191,7 @@ describe('StatsLine', () => {
     return {
       useSession: bindSnapshotSelector(source),
       useProjection: projections(values),
-      useStatsLine: (sel: (value: boolean) => boolean) => sel(true),
+      useStatsLine: sel => sel(true),
       t: tEn,
     }
   }

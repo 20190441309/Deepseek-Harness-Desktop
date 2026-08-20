@@ -5,7 +5,7 @@ import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PreviewPanelProps } from '../src/client/PreviewPanel.tsx'
 import { PreviewPanel } from '../src/client/PreviewPanel.tsx'
 import { en, zh } from '../src/client/locales.ts'
-import type { PreviewNavState, PreviewResult } from '../src/client/shell.ts'
+import type { PreviewBounds, PreviewNavState, PreviewPickScreenshot, PreviewResult } from '../src/client/shell.ts'
 
 const t: PreviewPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('preview must not read this hook') }) as never
@@ -44,10 +44,12 @@ function mount(opts: {
     canGoBack: true,
     canGoForward: true,
   })))
-  const previewNavigate = vi.fn(async () => ({ ok: true, id: 'pv-1', url: 'http://127.0.0.1:3000' }))
-  const previewResize = vi.fn(async () => {})
+  const previewNavigate = vi.fn(async (): Promise<PreviewResult> => ({
+    ok: true, id: 'pv-1', url: 'http://127.0.0.1:3000',
+  }))
+  const previewResize = vi.fn(async (_id: string, _bounds: PreviewBounds) => {})
   const previewHide = vi.fn(async () => {})
-  const previewShow = vi.fn(async () => {})
+  const previewShow = vi.fn(async (_id: string, _bounds?: PreviewBounds) => {})
   const previewDiscover = vi.fn(opts.discover ?? (async () => []))
   const openExternal = vi.fn(async () => {})
   const previewClose = vi.fn(async () => {})
@@ -985,7 +987,12 @@ describe('PreviewPanel', () => {
           comment: 'nudge',
           elements: [{ element: { selector: '#save' } }],
         },
-        screenshot: { dataUrl: 'data:image/png;base64,abc' },
+        screenshot: {
+          dataUrl: 'data:image/png;base64,abc',
+          width: 1,
+          height: 1,
+          cropRect: { x: 0, y: 0, width: 1, height: 1 },
+        } satisfies PreviewPickScreenshot,
       }),
     })
     await openGuest(b)
@@ -1009,7 +1016,12 @@ describe('PreviewPanel', () => {
           comment: '',
           elements: [{ element: { selector: '#save' } }],
         },
-        screenshot: { dataUrl: 'data:image/png;base64,abc' },
+        screenshot: {
+          dataUrl: 'data:image/png;base64,abc',
+          width: 1,
+          height: 1,
+          cropRect: { x: 0, y: 0, width: 1, height: 1 },
+        } satisfies PreviewPickScreenshot,
       }),
     })
     await openGuest(b)
@@ -1026,7 +1038,12 @@ describe('PreviewPanel', () => {
       previewPickElement: async () => ({
         ok: true,
         annotation: { comment: 'nudge', elements: [{ element: { selector: '' } }] },
-        screenshot: { dataUrl: 'data:image/png;base64,abc' },
+        screenshot: {
+          dataUrl: 'data:image/png;base64,abc',
+          width: 1,
+          height: 1,
+          cropRect: { x: 0, y: 0, width: 1, height: 1 },
+        } satisfies PreviewPickScreenshot,
       }),
     })
     await openGuest(b)
