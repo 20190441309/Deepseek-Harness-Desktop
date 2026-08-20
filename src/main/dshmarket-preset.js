@@ -31,6 +31,23 @@ function profileListsBundle(profileDir) {
   }
 }
 
+function dependencyPackageJson(root, name) {
+  return path.join(root, 'node_modules', ...String(name).split('/'), 'package.json');
+}
+
+function missingRuntimeDependencies(sourceDir) {
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, 'package.json'), 'utf8'));
+  } catch {
+    return ['package.json'];
+  }
+  const deps = pkg.dependencies && typeof pkg.dependencies === 'object'
+    ? Object.keys(pkg.dependencies)
+    : [];
+  return deps.filter((name) => !fs.existsSync(dependencyPackageJson(sourceDir, name)));
+}
+
 function linkIntoProfileModules(destDir, profileDir) {
   const linked = path.join(profileDir, 'node_modules', DSHMARKET_PACKAGE);
   if (fs.existsSync(linked) && !fs.lstatSync(linked).isSymbolicLink()) {
@@ -46,6 +63,9 @@ function linkIntoProfileModules(destDir, profileDir) {
 /**
  * Copy the bundled dshmarket package into the web profile and register it
  * through a managed cordis.patch.yml insert. Does not call `dsh plugin add`.
+ * Missing `package.json` or a declared dependency without `node_modules/<name>`
+ * returns `{ ok: false }` and strips the managed insert so Loader does not
+ * mount a broken copy. The caller logs that and continues Harness start.
  * @param {{ sourceDir?: string, profileDir?: string }} [options]
  */
 function ensureDshMarketPlugin(options = {}) {
@@ -55,11 +75,20 @@ function ensureDshMarketPlugin(options = {}) {
   }
   const profileDir = options.profileDir || webProfileDir();
   const destDir = path.join(profileDir, 'desktop-plugins', DSHMARKET_PACKAGE);
+  const patchFile = path.join(profileDir, 'cordis.patch.yml');
+  const missing = missingRuntimeDependencies(sourceDir);
+  if (missing.length) {
+    stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
+    return {
+      ok: false,
+      added: false,
+      error: `missing-source:node_modules:${missing.join(',')}`,
+    };
+  }
   const existed = fs.existsSync(path.join(destDir, 'package.json'));
   fs.mkdirSync(destDir, { recursive: true });
   fs.cpSync(sourceDir, destDir, { recursive: true, force: true });
   linkIntoProfileModules(destDir, profileDir);
-  const patchFile = path.join(profileDir, 'cordis.patch.yml');
   if (profileListsBundle(profileDir)) {
     stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
     return { ok: true, added: false, destDir };

@@ -57,6 +57,52 @@ const DEV_ONLY_NAMES = new Set([
   'lint-staged',
 ]);
 
+function dependencyPackageJson(root, name) {
+  return path.join(root, 'node_modules', ...String(name).split('/'), 'package.json');
+}
+
+function missingPluginDependencies(packageDir) {
+  const pkgFile = path.join(packageDir, 'package.json');
+  if (!fs.existsSync(pkgFile)) {
+    return ['package.json'];
+  }
+  const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+  const deps = pkg.dependencies && typeof pkg.dependencies === 'object'
+    ? Object.keys(pkg.dependencies)
+    : [];
+  return deps.filter((name) => !fs.existsSync(dependencyPackageJson(packageDir, name)));
+}
+
+/**
+ * extraResources from a plugin directory drops that directory's node_modules.
+ * Copy vendor/<name>/node_modules into the packaged tree when a declared
+ * dependency is still missing.
+ */
+function restoreVendoredPluginNodeModules(projectDir, resources, packageName) {
+  const srcNm = path.join(projectDir, 'vendor', packageName, 'node_modules');
+  const destPkg = path.join(resources, 'vendor', packageName);
+  if (!fs.existsSync(path.join(destPkg, 'package.json'))) {
+    return { restored: false, reason: 'missing-dest-package' };
+  }
+  if (!fs.existsSync(srcNm)) {
+    return { restored: false, reason: 'missing-source-node-modules' };
+  }
+  const missing = missingPluginDependencies(destPkg);
+  if (missing.length === 0) {
+    return { restored: false, reason: 'already-present' };
+  }
+  fs.cpSync(srcNm, path.join(destPkg, 'node_modules'), { recursive: true, force: true });
+  return { restored: true, missing };
+}
+
+function assertVendoredPluginRuntimeDeps(resources, packageName) {
+  const destPkg = path.join(resources, 'vendor', packageName);
+  const missing = missingPluginDependencies(destPkg);
+  if (missing.length) {
+    throw new Error(`packaged ${packageName} is missing node_modules: ${missing.join(', ')}`);
+  }
+}
+
 function longPath(target) {
   const abs = path.resolve(target);
   if (process.platform !== 'win32' || abs.length < 240) {
@@ -504,6 +550,8 @@ function assertHarnessRuntime(harnessDest, pin) {
 module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
   const resources = resolveResourcesDir(context);
+  restoreVendoredPluginNodeModules(projectDir, resources, 'dshmarket');
+  assertVendoredPluginRuntimeDeps(resources, 'dshmarket');
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();
@@ -556,4 +604,6 @@ module.exports.resolveResourcesDir = resolveResourcesDir;
 module.exports.assertHarnessRuntime = assertHarnessRuntime;
 module.exports.assertHarnessVersions = assertHarnessVersions;
 module.exports.assertNodePtyPrebuild = assertNodePtyPrebuild;
+module.exports.assertVendoredPluginRuntimeDeps = assertVendoredPluginRuntimeDeps;
 module.exports.nodePtyPrebuildRelative = nodePtyPrebuildRelative;
+module.exports.restoreVendoredPluginNodeModules = restoreVendoredPluginNodeModules;

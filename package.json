@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Chisa",
   "license": "MIT",
@@ -50,8 +50,11 @@
     ],
     "extraResources": [
       {
-        "from": "vendor/dshmarket",
-        "to": "vendor/dshmarket"
+        "from": "vendor",
+        "to": "vendor",
+        "filter": [
+          "dshmarket/**"
+        ]
       }
     ],
     "extraMetadata": {

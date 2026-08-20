@@ -46,20 +46,22 @@ macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applica
 - **Git** — 标题栏切分支、提交、推送、开变更请求。
 - **文件与终端** — `Ctrl+\` 打开右栏（Files / Diff / Browser / Agents）；`` Ctrl+` `` 打开底栏终端，选区可送进对话。
 - **模型** — 第三方思考强度、识图兜底；最新一条用户消息可改完再发。
-- **外观** — 浅色 / 深色主题、背景图、毛玻璃。
-- **扩展** — 设置里管理 MCP、技能和插件。插件市场是随应用内置的 [dsh-market](https://github.com/dsh-market/dsh-market)（`dshmarket`），没有独立窗口。
-- **桌面** — 关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。
+- **外观** — 浅色 / 深色主题。壁纸在外观里选或点「浏览」打开图库（分类、搜索、收藏，确认后按窗口比例裁切）；毛玻璃和像素化也在外观里调。
+- **扩展** — 设置里管理 MCP、技能和插件。市场是随应用内置的 [dsh-market](https://github.com/dsh-market/dsh-market)（`dshmarket`），没有独立窗口。
+- **桌面** — 关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。用户插件把启动弄挂时，启动页可以跳过它们。
 
 `Ctrl+,` 打开设置。
 
-<p align="center">
-  <img src="assets/screenshot-surfaces.jpg" alt="对话与右栏" width="48%" />
-  <img src="assets/screenshot-wallpaper.jpg" alt="背景图" width="48%" />
-</p>
-<p align="center">
-  <img src="assets/screenshot-themes.jpg" alt="主题库" width="48%" />
-  <img src="assets/screenshot-appearance.jpg" alt="外观设置" width="48%" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="对话与右栏" /></td>
+    <td align="center" width="50%"><img src="assets/screenshot-wallpaper.jpg" alt="背景图" /></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="assets/screenshot-themes.jpg" alt="主题库" /></td>
+    <td align="center" width="50%"><img src="assets/screenshot-appearance.jpg" alt="外观设置" /></td>
+  </tr>
+</table>
 
 ## 从源码运行
 

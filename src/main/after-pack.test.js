@@ -8,11 +8,13 @@ const path = require('node:path');
 
 const {
   assertHarnessRuntime,
+  assertVendoredPluginRuntimeDeps,
   collectFiles,
   deployCliEntries,
   nodePtyPrebuildRelative,
   resolveDeployDir,
   resolveResourcesDir,
+  restoreVendoredPluginNodeModules,
 } = require('../../scripts/after-pack');
 
 const RC7_PIN = { npm: '0.1.0-rc.7' };
@@ -380,5 +382,48 @@ test('resolveResourcesDir uses the unpacked resources folder on Windows', () => 
       appOutDir: path.join('dist', 'win-unpacked'),
     }),
     path.join('dist', 'win-unpacked', 'resources'),
+  );
+});
+
+test('restoreVendoredPluginNodeModules copies dropped plugin node_modules', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-nm-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const projectDir = path.join(workspace, 'project');
+  const resources = path.join(workspace, 'resources');
+  const srcNm = path.join(projectDir, 'vendor', 'dshmarket', 'node_modules', 'undici');
+  const destPkg = path.join(resources, 'vendor', 'dshmarket');
+  fs.mkdirSync(srcNm, { recursive: true });
+  fs.mkdirSync(destPkg, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectDir, 'vendor', 'dshmarket', 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { undici: '7.29.0' } })}\n`,
+  );
+  fs.writeFileSync(path.join(srcNm, 'package.json'), '{"name":"undici"}\n');
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { undici: '7.29.0' } })}\n`,
+  );
+
+  const result = restoreVendoredPluginNodeModules(projectDir, resources, 'dshmarket');
+  assert.equal(result.restored, true);
+  assertVendoredPluginRuntimeDeps(resources, 'dshmarket');
+  assert.equal(
+    fs.existsSync(path.join(destPkg, 'node_modules', 'undici', 'package.json')),
+    true,
+  );
+});
+
+test('assertVendoredPluginRuntimeDeps rejects a packaged plugin without its dependencies', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-missing-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const destPkg = path.join(workspace, 'vendor', 'dshmarket');
+  fs.mkdirSync(destPkg, { recursive: true });
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { undici: '7.29.0' } })}\n`,
+  );
+  assert.throws(
+    () => assertVendoredPluginRuntimeDeps(workspace, 'dshmarket'),
+    /undici/,
   );
 });

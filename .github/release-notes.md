@@ -1,29 +1,19 @@
-## 0.2.4
+## 0.2.5
 
-当前请用这一版。[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动失败已撤回，不要再装。v0.2.1 与 v0.2.2 从未发出安装包。
+当前请用这一版。0.2.4 安装包里预置的插件市场缺运行时依赖，部分用户一打开就是 `dsh 进程结束（code 1）`。请改装 0.2.5。
+
+[v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动失败已撤回，不要再装。v0.2.1 与 v0.2.2 从未发出安装包。
 
 ### 安装包
 
-- Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.4.exe`
-- macOS Apple Silicon（arm64）：`Deepseek-Harness-Desktop-0.2.4-mac-arm64.dmg`（未签名：下载后右键 → 打开；或执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`）
+- Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.5.exe`
+- macOS Apple Silicon（arm64）：`Deepseek-Harness-Desktop-0.2.5-mac-arm64.dmg`（未签名：下载后右键 → 打开；或执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`）
 - Intel Mac 与 Linux 仍请从源码运行
 
-### 相对 0.2.3 的新能力
+### 相对 0.2.4 的修复
 
-- 插件市场改为随应用内置的 `dshmarket`，没有独立市场窗口，也不再往对话预填安装草稿
-- 外观「浏览」打开壁纸图库窗口：分类、搜索、收藏、确认后按窗口比例裁切
-- 手机远程改用独立 Web 客户端（扫码配对）；中继必须是 HTTPS
-- 用户插件树把 Harness 起挂时，启动页可跳过用户插件恢复
-- 终端：ghostty VT、Windows ConPTY 兼容、Pierre 调色板、斜杠命令跟随
-- 右边栏 Files 工作循环（搜索 / 保存 / 跳转）接到官方逻辑
-- 浏览器预览：画中画、缩放、设备工具栏与录制
-- 审批面板与输入框可以拉开高度；标题栏拥挤时继续折叠
-- 内置 Harness 钉在 `0.1.0-rc.7`
+- 安装包带上预置 `dshmarket` 的运行时依赖（`undici`、`js-yaml`），插件市场可以离线装进 web profile
+- 这些依赖若仍缺失，桌面不再把残缺市场插件写进 profile，Harness 还能启动（设置里暂时没有市场）
+- 打包结束时若安装包里的 `dshmarket` 仍缺已声明依赖，构建直接失败
 
-### 本版修复
-
-- macOS 工作区路径按 realpath 比较，编辑器单测不再因 `/var` → `/private/var` 失败
-- macOS 画中画窗口 `alwaysOnTop` 级别与实现一致（`floating`）
-- 官方 client 类型检查通过，安装包 CI 能跑完 `pnpm run build`
-- 根目录 `.gitignore` 不再误忽略 `vendor/deepseek-harness/scripts/release/`
-- Windows 构建成功即可发版；tag 必须与 `package.json` 一致
+0.2.4 的功能说明仍适用：内置插件市场、壁纸图库、用户插件树恢复、终端与 Files 工作循环、浏览器预览。内置 Harness 仍钉在 `0.1.0-rc.7`。

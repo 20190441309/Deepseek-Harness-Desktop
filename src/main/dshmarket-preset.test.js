@@ -144,6 +144,61 @@ test('ensureDshMarketPlugin fails closed when the bundled package is missing', (
   }
 });
 
+test('ensureDshMarketPlugin copies bundled node_modules with the package', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshmarket-src-')));
+  try {
+    const pkgFile = path.join(source, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+    pkg.dependencies = { undici: '7.29.0' };
+    fs.writeFileSync(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+    fs.mkdirSync(path.join(source, 'node_modules', 'undici'), { recursive: true });
+    fs.writeFileSync(path.join(source, 'node_modules', 'undici', 'package.json'), '{"name":"undici"}\n', 'utf8');
+    const profileDir = path.join(home, 'profiles', 'web');
+    const result = ensureDshMarketPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    const dest = path.join(profileDir, 'desktop-plugins', 'dshmarket', 'node_modules', 'undici', 'package.json');
+    assert.equal(fs.existsSync(dest), true);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('ensureDshMarketPlugin fails closed and strips the insert when runtime deps are missing', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshmarket-src-')));
+  try {
+    const pkgFile = path.join(source, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+    pkg.dependencies = { undici: '7.29.0' };
+    fs.writeFileSync(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+      DSHMARKET_BEGIN,
+      '- insert:',
+      '    - id: dsh-market',
+      '      name: "dshmarket"',
+      DSHMARKET_END,
+      '',
+    ].join('\n'), 'utf8');
+    const dest = path.join(profileDir, 'desktop-plugins', 'dshmarket', 'lib');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'index.js'), 'export const name = "kept"\n', 'utf8');
+    const result = ensureDshMarketPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /missing-source:node_modules:undici/);
+    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
+    assert.equal(patch.includes(DSHMARKET_BEGIN), false);
+    assert.equal(patch.includes('id: dsh-market'), false);
+    assert.equal(fs.readFileSync(path.join(dest, 'index.js'), 'utf8'), 'export const name = "kept"\n');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
 test('repo vendors published dshmarket for offline profile copy', () => {
   const root = path.join(__dirname, '..', '..', 'vendor', 'dshmarket');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -152,4 +207,24 @@ test('repo vendors published dshmarket for offline profile copy', () => {
   assert.equal(fs.existsSync(path.join(root, 'client', 'client.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'lib', 'index.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'cordis.patch.yml')), true);
+  for (const name of Object.keys(pkg.dependencies || {})) {
+    assert.equal(
+      fs.existsSync(path.join(root, 'node_modules', ...name.split('/'), 'package.json')),
+      true,
+      `vendored dshmarket is missing node_modules/${name}`,
+    );
+  }
+});
+
+test('dshmarket extraResources is nested under vendor so electron-builder keeps node_modules', () => {
+  const extra = require('../../package.json').build.extraResources;
+  const market = extra.find((entry) => (
+    entry
+    && entry.from === 'vendor'
+    && entry.to === 'vendor'
+    && Array.isArray(entry.filter)
+    && entry.filter.includes('dshmarket/**')
+  ));
+  assert.ok(market, 'dshmarket extraResources must copy from vendor with filter dshmarket/**');
+  assert.equal(extra.some((entry) => entry && entry.from === 'vendor/dshmarket'), false);
 });

@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-**Deepseek-Harness-Desktop 把已发布的 `dshmarket` 1.14.0 包放在 `vendor/dshmarket`。** `dsh.start()` 之前，`ensureDshMarketPlugin` 把该目录复制到 web profile 的 `desktop-plugins/dshmarket`；若 `node_modules/dshmarket` 还不是真实目录，则建立指向该副本的 junction；并 upsert 托管的 `cordis.patch.yml` 插入块（`id: dsh-market`，`name: dshmarket`）。不执行 `dsh plugin add`。缺少打包的 `package.json` 只记日志，不中止 Harness 启动。若 profile 的 `dsh.profile.bundles` 已含 `dshmarket`，仍刷新 `desktop-plugins` 副本，并去掉托管插入块，避免 Loader 看到两行 `dsh-market`。
+**Deepseek-Harness-Desktop 把已发布的 `dshmarket` 1.14.0 包放在 `vendor/dshmarket`，并带上运行时 `node_modules`（`undici`、`js-yaml`）。** electron-builder `extraResources` 用 `{ from: "vendor", to: "vendor", filter: ["dshmarket/**"] }` 复制，使插件自己的 `node_modules` 不是拷贝根（根在 `vendor/dshmarket` 时会丢掉该目录的 `node_modules`）。`afterPack` 在已打包树仍缺已声明依赖时，从仓库补回 `vendor/dshmarket/node_modules`，仍缺失则打包失败。`dsh.start()` 之前，`ensureDshMarketPlugin` 把该目录复制到 web profile 的 `desktop-plugins/dshmarket`；若 `node_modules/dshmarket` 还不是真实目录，则建立指向该副本的 junction；并 upsert 托管的 `cordis.patch.yml` 插入块（`id: dsh-market`，`name: dshmarket`）。不执行 `dsh plugin add`。缺少打包的 `package.json`，或已声明依赖没有 `node_modules/<name>`，只记日志、去掉托管插入块，不中止 Harness 启动，也不覆盖已有 profile 副本。若 profile 的 `dsh.profile.bundles` 已含 `dshmarket`，仍刷新 `desktop-plugins` 副本，并去掉托管插入块，避免 Loader 看到两行 `dsh-market`。
 
 **不再有自研市场标签页。** `ui-settings-plugin-inventory` 只注册插件列表（`id: 'all'`）。市场界面是 `dshmarket` 的 `settings.section`（id `market`），即 `MarketSection` 加上 Harness 源上的 `/dsh-market/*`。
 
@@ -24,6 +24,7 @@ Status: implemented
 - **自研标签页和 `dshmarket` 分区并存** —— 设置里出现两个市场。
 - **首次启动执行 `dsh plugin add dshmarket`** —— 依赖 npm，add 失败则设置里没有市场。
 - **把 `dshmarket` 写进官方 web profile 模板** —— 只有库存 bundle 列表会带上它，用户自管的列表不会。
+- **extraResources 从 `vendor/dshmarket` 拷贝** —— electron-builder 把该目录的 `node_modules` 当成拷贝根 `node_modules` 丢掉，打包后的 `lib/net.js` 无法 `import 'undici'`。
 
 ## 后果
 
@@ -31,7 +32,7 @@ Status: implemented
 
 ## 测试
 
-`src/main/dshmarket-preset.test.js` 钉住复制加托管插入、刷新副本、`dsh.profile.bundles` 已含 `dshmarket` 时跳过并去掉插入块、不替换真实 `node_modules/dshmarket` 目录、缺少打包 `package.json` 失败、以及仓库内 1.14.0 树。`src/main/harness-controller.test.js` 钉住预置发生在桌面安装插件之后、`dsh.start()` 之前，以及预置失败仍启动 Harness。`src/main/window-marketplace.test.js` 钉住 `openMarketplace` 注入 `settings.section` id `market`，且不加载 `marketplace/index.html`。`ui-settings-plugin-inventory` 的 `browser-plugin.client.spec.tsx` 钉住存在 `window.shell` 时也不注册 `marketplace` 标签。
+`src/main/dshmarket-preset.test.js` 钉住复制加托管插入、刷新副本、`dsh.profile.bundles` 已含 `dshmarket` 时跳过并去掉插入块、不替换真实 `node_modules/dshmarket` 目录、缺少打包 `package.json` 或运行时 `node_modules/<dep>` 时失败、复制随包 `node_modules`、从 `vendor` 用 `dshmarket/**` 做嵌套 `extraResources`，以及仓库内含已声明依赖的 1.14.0 树。`src/main/after-pack.test.js` 钉住补回被丢掉的插件 `node_modules`，以及打包树仍缺依赖时拒绝。`src/main/harness-controller.test.js` 钉住预置发生在桌面安装插件之后、`dsh.start()` 之前，以及预置失败仍启动 Harness。`src/main/window-marketplace.test.js` 钉住 `openMarketplace` 注入 `settings.section` id `market`，且不加载 `marketplace/index.html`。`ui-settings-plugin-inventory` 的 `browser-plugin.client.spec.tsx` 钉住存在 `window.shell` 时也不注册 `marketplace` 标签。
 
 ## 相关
 
