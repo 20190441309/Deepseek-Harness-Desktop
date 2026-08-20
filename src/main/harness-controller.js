@@ -45,6 +45,8 @@ class HarnessController extends EventEmitter {
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
     this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
       || (async () => ({ ok: true, added: false }));
+    this.ensureDshbotPlugin = options.ensureDshbotPlugin
+      || (async () => ({ ok: true, added: false }));
     this.ensureWorkspace = options.ensureWorkspace;
     this.setTimer = options.setTimer || setTimeout;
     this.clearTimer = options.clearTimer || clearTimeout;
@@ -415,6 +417,15 @@ class HarnessController extends EventEmitter {
       }
     } catch (error) {
       this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
+    }
+    try {
+      const dshbot = await this.ensureDshbotPlugin();
+      this.assertOperationCurrent(generation);
+      if (dshbot && dshbot.ok === false) {
+        this.dsh.log(`预置 dshbot 失败：${dshbot.error || 'unknown'}`, 'app');
+      }
+    } catch (error) {
+      this.dsh.log(`预置 dshbot 失败：${errorMessage(error)}`, 'app');
     }
     const startOptions = {
       ...target,

@@ -122,6 +122,8 @@ const PRIVILEGED_METHODS = new Set([
   'mcpServers/upsert',
   'mcpServers/delete',
   'mcpServers/setEnabled',
+  'mcpServers/retry',
+  'mcpServers/authorize',
   'skillInventory/list',
   'skillInventory/get',
   'skillInventory/create',

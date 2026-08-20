@@ -903,6 +903,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'mounter', description: 'child factory.' }],
       },
       {
+        signature: 'useAuthorizeHttp(authorizeHttp: (url: string) => Promise<McpOAuthTokens>): void',
+        description: 'Replace HTTP OAuth. Tests call this before authorize.',
+        parameters: [{ name: 'authorizeHttp', description: 'returns tokens for one MCP endpoint URL.' }],
+      },
+      {
         signature: 'start(): () => void',
         description: 'Load the document, mount enabled servers, and optionally watch.',
         parameters: [],
@@ -952,6 +957,17 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'setEnabled(id: string, enabled: boolean): Promise<void>',
         description: 'Enable or disable one managed record.',
         parameters: [{ name: 'id', description: 'record id.' }, { name: 'enabled', description: 'next enablement.' }],
+      },
+      {
+        signature: 'remount(id: string): Promise<void>',
+        description: 'Dispose and remount one managed child without rewriting the document. Settings Refresh uses this after the connection supervisor has given up.',
+        parameters: [{ name: 'id', description: 'record id.' }],
+      },
+      {
+        signature: 'async authorize(id: string): Promise<void>',
+        description: 'Run HTTP OAuth for one managed server, persist `Authorization`, and remount.',
+        parameters: [{ name: 'id', description: 'record id.' }],
+        returns: 'after the bearer is stored and the child is remounted.',
       },
     ],
   },
@@ -3007,7 +3023,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateAgentOptions',
-    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: SessionOrigin;\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
     name: 'CreateGoalRequest',
@@ -3019,7 +3035,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateSessionOptions',
-    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
+    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: SessionOrigin;\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
   {
     name: 'CredentialInfo',
@@ -3475,7 +3491,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'McpClientStatus',
-    declaration: 'export interface McpClientStatus {\n    readonly health: McpConnectionHealth;\n    readonly lastError?: string;\n}',
+    declaration: 'export interface McpClientStatus {\n    readonly health: McpConnectionHealth;\n    readonly lastError?: string;\n    readonly tools?: readonly string[];\n}',
   },
   {
     name: 'McpConnectionHealth',
@@ -3484,6 +3500,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'McpHttpServerRecord',
     declaration: 'export interface McpHttpServerRecord extends McpServerRecordBase {\n    readonly transport: \'streamable-http\';\n    readonly url: string;\n    readonly headers?: Readonly<Record<string, string>>;\n}',
+  },
+  {
+    name: 'McpOAuthTokens',
+    declaration: 'export interface McpOAuthTokens {\n    readonly access_token: string;\n    readonly refresh_token?: string;\n    readonly token_type?: string;\n    readonly expires_in?: number;\n}',
   },
   {
     name: 'McpReconnectRecord',
@@ -3947,7 +3967,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionHeader',
-    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly origin?: SessionOrigin;\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
   },
   {
     name: 'SessionId',
@@ -3972,6 +3992,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionLogSnapshot',
     declaration: 'export interface SessionLogSnapshot {\n    session: SessionHeader;\n    events: SessionEvent[];\n}',
+  },
+  {
+    name: 'SessionOrigin',
+    declaration: 'export type SessionOrigin = \'subagent\' | \'dshbot\';',
   },
   {
     name: 'SessionPersistenceRevision',

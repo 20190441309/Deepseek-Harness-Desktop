@@ -63,7 +63,12 @@ function providePresentation(ctx: Context): PresentationCapture {
 }
 
 /** Boot the plugin over fake slash/connection faces; returns the captured source and its ctx. */
-async function bench(list: ListFn, addressed?: SessionId, invoke?: InvokeFn) {
+async function bench(
+  list: ListFn,
+  addressed?: SessionId,
+  invoke?: InvokeFn,
+  sessionById: Record<string, { agentPreset?: string }> = {},
+) {
   const ctx = new Context()
   let captured: InputTriggerSource | undefined
   ctx.provide('inputTriggers', { registerSource: (src: InputTriggerSource) => { captured = src; return () => {} } })
@@ -73,6 +78,9 @@ async function bench(list: ListFn, addressed?: SessionId, invoke?: InvokeFn) {
     subagentAddress: (id: SessionId) => id === addressed
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
+    list: {
+      getSnapshot: () => ({ byId: sessionById }),
+    },
   })
   new TestRemote(ctx)
   providePresentation(ctx)
@@ -180,6 +188,14 @@ describe('candidates: sessionId addressing', () => {
       { name: 'commit-helper', description: 'commit flow' },
       { name: 'code-review', description: 'review flow' },
     ])
+  })
+
+  it('returns no candidates in a dshbot-room session', async () => {
+    const { list, payloads } = countingList()
+    const { source } = await bench(list, undefined, undefined, { s1: { agentPreset: 'dshbot-room' } })
+    await expect(source.candidates(proj('s1'), req('co'))).resolves.toEqual([])
+    expect(payloads).toEqual([])
+    expect(source.lexicon!(proj('s1'))).toEqual([])
   })
 
   it('rejects on a failed result (the slash shell owns the menu-side fold)', async () => {

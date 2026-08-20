@@ -137,6 +137,7 @@ composer 上四个浮层共用此时长：加号斜杠菜单、权限 `Menu`、�
 | Toast | 160ms 滑入，停留 3s，再 1s 淡出；组件自己计时卸载 | `Toast.tsx` / `Toast.module.css`。输入栏附件上限、模型选择失败等 |
 | 桌面启动页 | 标志 / 文案 `rise`（8px + fade，错开 0 / 80 / 120 / 160ms）；盖章 `pulse` 1.2s；瞄准环 `spin` 1.05s；日志行 `fade`。时长走官方 token；减弱动效时全部停 | [`boot.css`](../src/renderer/boot.css)。仪器风不得扩散，见 [桌面启动页](design-language.md#桌面启动页) |
 | 关闭遮罩 | 本地 0.85s 无限旋转；不读 `--ds-motion-*`，也没有减弱动效分支 | [`closing-overlay.js`](../src/main/closing-overlay.js) |
+| dshbot 机器人头像 | 思考时用同命令数路径连续压扁/鼓边/拉长/侧倾（软泥）；眼白眨眼与瞳孔只动 `transform`；上传图 `scale` 脉冲。缓动走 `--ds-ease-in-out`，减弱动效全停 | [`vendor/dshbot/client/client.js`](../vendor/dshbot/client/client.js)。不得扩散到官方 Web UI 弹层 |
 
 ## 如何新增
 

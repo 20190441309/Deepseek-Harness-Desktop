@@ -1,6 +1,6 @@
 /** Cordis dynamic-plugin cards, inventory panel, business-view host, and `@pluginId` source. */
 
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -33,7 +33,7 @@ export type { CordisKey } from './locales.ts'
 
 /** Required services for the two Tool cards, panel, Remote lifecycle, and Slash source. */
 export const inject = [
-  'slots', 'locale', 'inputTriggers', 'remote', 'remote.dynamicCordisRunner', 'dynamicCordisRunner',
+  'slots', 'locale', 'inputTriggers', 'remote', 'remote.dynamicCordisRunner', 'dynamicCordisRunner', 'sessions',
 ]
 
 /** Mount every Cordis browser surface over the shared Host inventory. */
@@ -142,8 +142,12 @@ export function apply(ctx: ClientContext): void {
     }, CordisActionRow)
   })
 
-  const rowsOf = (sessionId: SessionId, query: string) => inventory.getSnapshot().rows
-    .filter(row => row.agentId === sessionId && String(row.pluginId).includes(query))
+  const rowsOf = (sessionId: SessionId, query: string) => {
+    const sessions = ctx.get('sessions') as ISessions | undefined
+    if (sessions?.list.getSnapshot().byId[sessionId]?.agentPreset === 'dshbot-room') return []
+    return inventory.getSnapshot().rows
+      .filter(row => row.agentId === sessionId && String(row.pluginId).includes(query))
+  }
   const source: InputTriggerSource = {
     trigger: '@',
     name: 'cordis',

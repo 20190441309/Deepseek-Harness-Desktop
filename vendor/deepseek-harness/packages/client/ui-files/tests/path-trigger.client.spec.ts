@@ -6,12 +6,15 @@ import type { ListDirResult } from '../src/client/shell.ts'
 
 const session: ClientSessionContext = { sessionId: 's1' as SessionId }
 
-function sessionsWith(cwd: string | undefined) {
+function sessionsWith(cwd: string | undefined, extra?: { agentPreset?: string }) {
   return {
     list: {
       getSnapshot: () => ({
         byId: {
-          [session.sessionId]: cwd === undefined ? {} : { cwd },
+          [session.sessionId]: {
+            ...(cwd === undefined ? {} : { cwd }),
+            ...(extra?.agentPreset === undefined ? {} : { agentPreset: extra.agentPreset }),
+          },
         },
       }),
     },
@@ -87,6 +90,16 @@ describe('createPathTriggerSource', () => {
   it('returns no candidates when the session cwd is empty', async () => {
     const listDir = vi.fn(srcTree)
     const source = createPathTriggerSource({ sessions: sessionsWith(''), listDir })
+    await expect(source.candidates(session, request('src'))).resolves.toEqual([])
+    expect(listDir).not.toHaveBeenCalled()
+  })
+
+  it('returns no candidates in a dshbot-room session', async () => {
+    const listDir = vi.fn(srcTree)
+    const source = createPathTriggerSource({
+      sessions: sessionsWith('/tmp/proj', { agentPreset: 'dshbot-room' }),
+      listDir,
+    })
     await expect(source.candidates(session, request('src'))).resolves.toEqual([])
     expect(listDir).not.toHaveBeenCalled()
   })

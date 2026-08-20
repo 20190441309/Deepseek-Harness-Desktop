@@ -55,6 +55,7 @@ describe('apply', () => {
     expect(t('skill')).toBe('Skills')
     expect(t('subagent')).toBe('Subagents')
     expect(t('path')).toBe('Files')
+    expect(t('dshbot')).toBe('Members')
     expect(t('loading')).toBe('Loading…')
   })
 

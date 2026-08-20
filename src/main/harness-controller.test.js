@@ -239,6 +239,40 @@ test('logs and continues when the dshmarket preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
 });
 
+test('awaits the dshbot preset after dshmarket and before Harness start', async () => {
+  const order = [];
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => {
+      order.push('desktop-install');
+      return { ok: true };
+    },
+    ensureDshMarketPlugin: async () => {
+      order.push('dshmarket');
+      return { ok: true, added: true };
+    },
+    ensureDshbotPlugin: async () => {
+      order.push('dshbot');
+      return { ok: true, added: true };
+    },
+  });
+  const origStart = f.dsh.start.bind(f.dsh);
+  f.dsh.start = async (options) => {
+    order.push('start');
+    return origStart(options);
+  };
+  await f.controller.start();
+  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'dshbot', 'start']);
+});
+
+test('logs and continues when the dshbot preset fails', async () => {
+  const f = fixture({
+    ensureDshbotPlugin: async () => ({ ok: false, error: 'offline' }),
+  });
+  await f.controller.start();
+  assert.equal(f.dsh.startCalls, 1);
+  assert.ok(f.dsh.logs.some((line) => /dshbot/.test(line) && /offline/.test(line)));
+});
+
 test('plugin-tree startup failure retries once with the official template overlay', async () => {
   const first = Object.assign(new Error('dsh exited'), { pluginTree: true });
   const f = fixture({

@@ -306,7 +306,11 @@ export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
 })
 
 /** Injected-context keyed Chat renderer. */
-export const ContextMessageNodeView = memo(function ContextMessageNodeView({ node, t }: ChatNodeViewProps<'context'>) {
+export const ContextMessageNodeView = memo(function ContextMessageNodeView({
+  node, t, useSessions, sessionId,
+}: ChatNodeViewProps<'context'>) {
+  const hide = useSessions(s => s.byId[sessionId]?.agentPreset === 'dshbot-room')
+  if (hide) return null
   const data = node.data
   return (
     <ContextInjectionRow

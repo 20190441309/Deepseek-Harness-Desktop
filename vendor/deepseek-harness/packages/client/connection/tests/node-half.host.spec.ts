@@ -196,7 +196,7 @@ describe('connection node half', () => {
       'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
       'credentials.describe', 'credentials.set', 'credentials.unset',
       'llm.discoverModels',
-      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled', 'mcpServers/retry', 'mcpServers/authorize',
       'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
       'skillInventory/delete', 'skillInventory/setInvocation',
       // A composition names the plugins a session runs: reading one is
@@ -216,7 +216,7 @@ describe('connection node half', () => {
     await routes[0]!.handler(fakeRequest({ host: 'harness.example' }), read.response)
     expect(read.state.status).not.toBe(403)
     for (const method of [
-      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+      'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled', 'mcpServers/retry', 'mcpServers/authorize',
       'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
       'skillInventory/delete', 'skillInventory/setInvocation',
     ]) {
@@ -553,7 +553,7 @@ describe('connection node half over a real HTTP server', () => {
         // Carries a draft credential and turns the host into a fetcher for a
         // URL the caller picked: an anonymous LAN caller must not reach it.
         'llm.discoverModels',
-        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled', 'mcpServers/retry', 'mcpServers/authorize',
         'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
         'skillInventory/delete', 'skillInventory/setInvocation',
         'agentPreset.read', 'agentPreset.copy', 'agentPreset.openDocument', 'agentPreset.remove',
@@ -574,7 +574,7 @@ describe('connection node half over a real HTTP server', () => {
       // Loopback reaches everything, configuration included.
       for (const method of [
         'settings.describe',
-        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled',
+        'mcpServers/list', 'mcpServers/upsert', 'mcpServers/delete', 'mcpServers/setEnabled', 'mcpServers/retry', 'mcpServers/authorize',
         'skillInventory/list', 'skillInventory/get', 'skillInventory/create', 'skillInventory/update',
         'skillInventory/delete', 'skillInventory/setInvocation',
       ]) {

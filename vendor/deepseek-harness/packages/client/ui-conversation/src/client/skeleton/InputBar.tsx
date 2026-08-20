@@ -65,9 +65,9 @@ export function InputBar({
   const running = useSession(s => s.running) ?? false
   const subagent = useSession(s => s.subagent) ?? null
   const removed = useSession(s => s.removed) ?? false
-  const hideModelSeat = useSessions(s => (
-    sessionId !== undefined && s.byId[sessionId]?.agentPreset === 'dshbot-room'
-  ))
+  const sessionRow = useSessions(s => (sessionId === undefined ? undefined : s.byId[sessionId]))
+  const hideModelSeat = sessionRow?.origin === 'dshbot' || sessionRow?.agentPreset === 'dshbot-room'
+  const hideRoomChrome = sessionRow?.agentPreset === 'dshbot-room'
   // Plan mode swaps the textarea placeholder (the projection is the folded
   // host value; owner-prop placeholders — hero, session-unavailable — win).
   const planActive = useProjection('plan', plan => plan !== undefined && (plan.pending ? !plan.active : plan.active))
@@ -283,7 +283,7 @@ export function InputBar({
   }
 
   const refreshSkillMenu = (text: string, caret: number): void => {
-    if (typeof listSkillNames !== 'function') {
+    if (hideRoomChrome || typeof listSkillNames !== 'function') {
       setSkillMenu(null)
       return
     }
@@ -855,30 +855,32 @@ export function InputBar({
         </div>
         <div className={css.row}>
           <div className={css.tools}>
-            <Tooltip label={t('input.commands')} side="top" delayMs={500}>
-              <button
-                type="button"
-                className={css.add}
-                aria-label={t('input.commands')}
-                aria-haspopup="listbox"
-                aria-expanded={commandMenuOpen}
-                disabled={locked || toggleCommandMenu === undefined}
-                onMouseDown={keepFocus}
-                onClick={onToggleCommandMenu}
-              >
-                <IconPlusOutline16 size={14} />
-              </button>
-            </Tooltip>
+            {!hideRoomChrome && (
+              <Tooltip label={t('input.commands')} side="top" delayMs={500}>
+                <button
+                  type="button"
+                  className={css.add}
+                  aria-label={t('input.commands')}
+                  aria-haspopup="listbox"
+                  aria-expanded={commandMenuOpen}
+                  disabled={locked || toggleCommandMenu === undefined}
+                  onMouseDown={keepFocus}
+                  onClick={onToggleCommandMenu}
+                >
+                  <IconPlusOutline16 size={14} />
+                </button>
+              </Tooltip>
+            )}
             <div className={css.modes}>
               {accessSelect}
-              {renderSlot('conversation.input.plan', { locked })}
+              {!hideRoomChrome && renderSlot('conversation.input.plan', { locked })}
             </div>
             {leftItems}
           </div>
           <div className={css.trailing}>
             {rightItems}
             {!hideModelSeat && renderSlot('conversation.input.model', { locked: modelSeatLocked })}
-            <ContextMeter useProjection={useProjection} t={t} />
+            {!hideRoomChrome && <ContextMeter useProjection={useProjection} t={t} />}
             {interruptible && (
               <Tooltip label={t('input.stop')} side="top" delayMs={500}>
                 <button

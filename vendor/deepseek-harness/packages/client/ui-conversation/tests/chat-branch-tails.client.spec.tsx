@@ -11,8 +11,9 @@ import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type {
-  ChatConversationViewNode, ConversationNode,
+  ChatConversationViewNode, ConversationNode, SessionId, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNodeViewProps } from '../src/client/contract/slots.ts'
 import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,
@@ -47,6 +48,7 @@ const RETRY_ID = 'retry-fixture' as Extract<ConversationNode, { kind: 'model-ret
 interface MessageItemProps {
   readonly node: ConversationNode
   readonly t: ChatNodeViewProps['t']
+  readonly agentPreset?: string
 }
 
 /** The user renderer's slot seat, stubbed inert: no plugin mounted on the seat. */
@@ -57,7 +59,7 @@ const stubSessionProvider = (() => null) as unknown as
   React.ComponentProps<typeof UserMessageNodeView>['SessionProvider']
 
 /** Legacy-node fixture adapter for the independently registered renderers. */
-function MessageItem({ node, t: translate }: MessageItemProps) {
+function MessageItem({ node, t: translate, agentPreset }: MessageItemProps) {
   const kind = node.kind === 'assistant' ? 'assistant-step' : node.kind
   const viewNode: ChatConversationViewNode = {
     key: `fixture:${node.kind}:${node.seq}`,
@@ -69,7 +71,19 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
     visibility: 'visible',
     data: node.kind === 'model-retry' ? { attempts: [node], current: node } : node,
   }
-  const props = { node: viewNode, t: translate } as ChatNodeViewProps
+  const sid = 's1' as SessionId
+  const useSessions = bindSnapshotSelector(createSnapshotStore<SessionListState>({
+    ids: [sid],
+    byId: {
+      [sid]: {
+        id: sid, displayTitle: 'room', running: false, blank: false, updatedAt: 0,
+        ...(agentPreset === undefined ? {} : { agentPreset }),
+      },
+    },
+    current: undefined, phase: 'ready',
+    subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+  }))
+  const props = { node: viewNode, t: translate, sessionId: sid, useSessions } as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
       return (
@@ -400,6 +414,21 @@ describe('MessageItem arms', () => {
 
     fireEvent.keyDown(disclosure, { key: ' ' })
     expect(disclosure.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('renders no context injection row in a dshbot-room session', () => {
+    const view = render(
+      <MessageItem t={t} agentPreset="dshbot-room" node={{
+        kind: 'context',
+        seq: 3,
+        content: [{ type: 'text', text: 'line one' }],
+        source: { kind: 'plugin', plugin: 'fixture', empty: {}, list: [] },
+        provenance: { role: 'inject', label: 'fixture' },
+        form: null,
+      } as never}
+      />,
+    )
+    expect(view.queryByRole('button', { name: /上下文注入/ })).toBeNull()
   })
 
   it('the instructions form names the files it reconciled above their text', () => {

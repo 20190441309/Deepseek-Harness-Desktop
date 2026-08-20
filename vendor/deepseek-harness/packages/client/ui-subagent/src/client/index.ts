@@ -63,6 +63,7 @@ export function apply(ctx: ClientContext): void {
   // not the conversation snapshot — the list store is the zero-RPC candidate feed.
   const childLabels = (session: ClientSessionContext, query: string): string[] => {
     const { byId } = sessions.list.getSnapshot()
+    if (byId[session.sessionId]?.agentPreset === 'dshbot-room') return []
     return Object.values(byId)
       .filter(child => child.parentId === session.sessionId && child.running && child.displayTitle.includes(query))
       .map(child => child.displayTitle)

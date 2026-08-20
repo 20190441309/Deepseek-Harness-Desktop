@@ -7,7 +7,7 @@ import type { ListDirResult } from './shell.ts'
 /** Session list face the path source reads `cwd` from. */
 export interface PathTriggerSessions {
   list: {
-    getSnapshot(): { byId: Record<string, { cwd?: string } | undefined> }
+    getSnapshot(): { byId: Record<string, { cwd?: string; agentPreset?: string } | undefined> }
   }
 }
 
@@ -58,7 +58,9 @@ export function createPathTriggerSource(deps: {
     order: 1,
     async candidates(session, req) {
       if (req.signal.aborted) return []
-      const cwd = deps.sessions.list.getSnapshot().byId[session.sessionId]?.cwd
+      const row = deps.sessions.list.getSnapshot().byId[session.sessionId]
+      if (row?.agentPreset === 'dshbot-room') return []
+      const cwd = row?.cwd
       if (cwd === undefined || cwd === '') return []
       const entries = await walkProjectFiles(cwd, deps.listDir, req.signal)
       if (req.signal.aborted) return []

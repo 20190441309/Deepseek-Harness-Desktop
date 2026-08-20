@@ -582,6 +582,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkflowResultInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   ChildFiberPhase: 'mounted mcp-client child lifecycle phase is owned by packages/mcp/mcp-servers-file/src/types.ts',
   McpClientMounter: 'service-local child mount factory is owned by packages/mcp/mcp-servers-file/src/service.ts',
+  McpOAuthTokens: 'HTTP OAuth token response is owned by packages/mcp/mcp-servers-file/src/oauth.ts',
   McpClientStatus: 'mcp-client connection status snapshot is owned by packages/mcp/mcp-client/src/status.ts',
   McpServerRecord: 'managed MCP server record is owned by packages/mcp/mcp-servers-file/src/types.ts',
   McpServerUpsert: 'managed MCP server upsert input is owned by packages/mcp/mcp-servers-file/src/types.ts',

@@ -149,7 +149,7 @@ function emptyWorkspaces() {
   return bindSnapshotSelector(store)
 }
 
-function makeHarness(init?: Partial<ConversationSnapshot>) {
+function makeHarness(init?: Partial<ConversationSnapshot>, sessionRow?: { agentPreset?: string }) {
   const { set, source } = makeSource(init)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => void>()
@@ -274,7 +274,19 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const props: ChatViewSlotProps = {
     sessionId: SID,
     useSession: bindSnapshotSelector(source),
-    useSessions: emptySessions(),
+    useSessions: sessionRow?.agentPreset === undefined
+      ? emptySessions()
+      : bindSnapshotSelector(createSnapshotStore({
+        ids: [SID],
+        byId: {
+          [SID]: {
+            id: SID, displayTitle: 'room', running: false, blank: false, updatedAt: 0,
+            agentPreset: sessionRow.agentPreset,
+          },
+        },
+        current: undefined, phase: 'ready',
+        subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+      })),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),
     useInput: (() => { throw new Error('unused') }),
@@ -910,6 +922,40 @@ describe('ChatView', () => {
     expect(view.getByTestId('tool-seat-r1')).toBeTruthy()
     expect(h.toolOwners[0]?.block).toMatchObject({ callId: 'r1', argsRaw: '{"command":"cmd-r1"}' })
     expect(view.getByRole('status').textContent).toBe('Deep diving...')
+  })
+
+  it('skips Deep diving status in a dshbot-room session', () => {
+    const h = makeHarness({ runningCalls: [runningCall('r1')], running: true }, { agentPreset: 'dshbot-room' })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.queryByRole('status')).toBeNull()
+  })
+
+  it('hides context injection rows in a dshbot-room session', () => {
+    const h = makeHarness({
+      nodes: [{
+        kind: 'context', seq: 1, time: 1_000, content: [], source: null,
+        provenance: { role: 'inject', label: 'fixture' },
+        form: null,
+      } as ConversationNode],
+    }, { agentPreset: 'dshbot-room' })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.queryByRole('button', { name: /上下文注入/ })).toBeNull()
+  })
+
+  it('hides turn-tail chrome in a dshbot-room session', () => {
+    const h = makeHarness({
+      nodes: [
+        user(1, 'hi'),
+        assistant(2, 'mid-turn text'),
+        assistant(16, 'final answer'),
+        toolResult(18, 'trailing'),
+      ],
+      turnTimings: new Map([[1, { startTime: 1_000, endTime: 20_000 }]]),
+      turnEnds: new Map([[1, 20]]),
+    }, { agentPreset: 'dshbot-room' })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.queryByText(/用时/)).toBeNull()
+    expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
   })
 
   it('keeps the Tool renderer mounted when a running call settles into log order', () => {

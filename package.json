@@ -55,6 +55,10 @@
         "filter": [
           "dshmarket/**"
         ]
+      },
+      {
+        "from": "vendor/dshbot",
+        "to": "vendor/dshbot"
       }
     ],
     "extraMetadata": {

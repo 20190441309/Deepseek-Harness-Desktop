@@ -6,6 +6,7 @@ const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin } = require('./plugins');
 const { ensureDshMarketPlugin } = require('./dshmarket-preset');
+const { ensureDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
@@ -68,6 +69,7 @@ const harness = new HarnessController({
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
   ensureDshMarketPlugin,
+  ensureDshbotPlugin,
   healDanglingBundles,
   saveConfig,
   appVersion: app.getVersion(),

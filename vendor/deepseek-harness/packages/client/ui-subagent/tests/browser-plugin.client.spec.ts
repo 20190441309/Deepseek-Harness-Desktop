@@ -214,6 +214,15 @@ describe('candidates', () => {
     const source = await bench(FAMILY)
     await expect(source.candidates(proj('childless'), req(''))).resolves.toEqual([])
   })
+
+  it('returns no candidates in a dshbot-room session', async () => {
+    const source = await bench([
+      summary({ id: sid('parent'), displayTitle: 'parent', running: true, agentPreset: 'dshbot-room' }),
+      summary({ id: sid('c1'), parentId: sid('parent'), displayTitle: 'worker-1', running: true }),
+    ])
+    await expect(source.candidates(proj('parent'), req(''))).resolves.toEqual([])
+    expect(source.lexicon!(proj('parent'))).toEqual([])
+  })
 })
 
 describe('lexicon', () => {

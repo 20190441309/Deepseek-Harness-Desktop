@@ -39,6 +39,7 @@ interface BenchOptions {
   commands?: (payload: { sessionId: SessionId }) => Promise<{ commands: CommandDescriptor[] }>
   execute?: (payload: { sessionId: SessionId; line: string }) => Promise<ExecuteValue>
   addressed?: SessionId
+  roomSessionIds?: SessionId[]
 }
 
 /**
@@ -106,6 +107,13 @@ async function bench(opts: BenchOptions = {}) {
     subagentAddress: (id: SessionId) => id === opts.addressed
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
+    list: {
+      getSnapshot: () => ({
+        byId: Object.fromEntries(
+          (opts.roomSessionIds ?? []).map(id => [id, { agentPreset: 'dshbot-room' }]),
+        ),
+      }),
+    },
   })
   const forwarded = new Map<string, Array<(...args: never[]) => void>>()
   ctx.provide('remote', {
@@ -216,6 +224,14 @@ describe('candidates', () => {
     const list = await source.candidates(proj('s1'), req('g'))
     expect(listCalls).toEqual([{ sessionId: sid('s1') }])
     expect(list).toEqual([{ name: 'goal', description: 'leadingInput kind', hint: 'goal text' }])
+  })
+
+  it('returns no candidates in a dshbot-room session', async () => {
+    const { source, listCalls } = await bench({ roomSessionIds: [sid('s1')] })
+    await expect(source.candidates(proj('s1'), req(''))).resolves.toEqual([])
+    expect(listCalls).toEqual([])
+    expect(source.matchSpace!(proj('s1'), '/goal')).toBeUndefined()
+    await expect(source.matchEnter!(proj('s1'), '/goal', new AbortController().signal)).resolves.toBeUndefined()
   })
 
   it('matches case-insensitive subsequences and ranks prefixes, boundaries, adjacency, gaps, then source order', async () => {

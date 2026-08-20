@@ -94,6 +94,8 @@ interface BenchOptions {
   listSkillNames?: (query: string) => readonly string[]
   /** Session list row preset; rooms hide the composer model seat. */
   agentPreset?: string
+  /** Session origin; dshbot 1:1 bots also hide the model seat. */
+  origin?: 'dshbot' | 'subagent'
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
@@ -151,9 +153,13 @@ function bench(over?: BenchOptions) {
     SessionProvider: ({ children }) => children(SID),
     useSession: bindSnapshotSelector(session),
     useSessions: bindSnapshotSelector(createSnapshotStore({
-      ids: over?.agentPreset === undefined ? [] : [SID],
-      byId: over?.agentPreset === undefined ? {} : {
-        [SID]: { id: SID, displayTitle: 'room', running: false, blank: false, updatedAt: 0, agentPreset: over.agentPreset },
+      ids: over?.agentPreset === undefined && over?.origin === undefined ? [] : [SID],
+      byId: over?.agentPreset === undefined && over?.origin === undefined ? {} : {
+        [SID]: {
+          id: SID, displayTitle: 'room', running: false, blank: false, updatedAt: 0,
+          ...(over?.agentPreset === undefined ? {} : { agentPreset: over.agentPreset }),
+          ...(over?.origin === undefined ? {} : { origin: over.origin }),
+        },
       },
       current: undefined, phase: 'ready',
       subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
@@ -1303,6 +1309,14 @@ describe('composer $skill trigger', () => {
     typeDraft(textarea, '$fo')
     expect(view.queryByRole('menuitem')).toBeNull()
   })
+
+  it('does not open a $ skill menu in a dshbot-room session', () => {
+    const listSkillNames = vi.fn((query: string) => query === 'fo' ? ['foo-skill'] : [])
+    const { textarea, view } = bench({ agentPreset: 'dshbot-room', listSkillNames })
+    typeDraft(textarea, '$fo')
+    expect(listSkillNames).not.toHaveBeenCalled()
+    expect(view.queryByRole('menuitem', { name: 'foo-skill' })).toBeNull()
+  })
 })
 
 describe('insertText (scoped event body)', () => {
@@ -1515,9 +1529,22 @@ describe('command launcher chrome and control seats', () => {
       planEntry: <i data-testid="plan-entry" />,
       modelEntry: <i data-testid="model-entry" />,
     })
+    expect(slotCalls.map(call => call.key)).toEqual([])
+    expect(view.queryByTestId('plan-entry')).toBeNull()
+    expect(view.queryByTestId('model-entry')).toBeNull()
+    expect(view.queryByLabelText('命令')).toBeNull()
+  })
+
+  it('skips the model seat when the session origin is dshbot', () => {
+    const { view, slotCalls } = bench({
+      origin: 'dshbot',
+      planEntry: <i data-testid="plan-entry" />,
+      modelEntry: <i data-testid="model-entry" />,
+    })
     expect(slotCalls.map(call => call.key)).toEqual(['conversation.input.plan'])
     expect(view.getByTestId('plan-entry')).toBeTruthy()
     expect(view.queryByTestId('model-entry')).toBeNull()
+    expect(view.getByLabelText('命令')).toBeTruthy()
   })
 
   it('a registered entry fills its seat and receives the locked owner prop', () => {

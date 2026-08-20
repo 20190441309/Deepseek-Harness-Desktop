@@ -241,6 +241,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
 
   /** Menu candidates: host catalog + contribution availability, then position filtering and fuzzy name ranking. */
   private async candidates(session: ClientSessionContext, req: CandidateRequest): Promise<readonly InputTriggerCandidate[]> {
+    if (this.isDshbotRoom(session)) return []
     const list = await this.directory.ensureReady(session.sessionId, req.signal)
     const rows: InputTriggerCandidate[] = []
     const seen = new Set<string>()
@@ -289,6 +290,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
 
   /** Decision table, space column: hot-key sync check; only host leadingInput claims. */
   private matchSpace(session: ClientSessionContext, token: string): PickOutcome {
+    if (this.isDshbotRoom(session)) return undefined
     if (!token.startsWith('/')) return undefined
     const name = token.slice(1)
     if (this.live.contributions.has(name)) return undefined // popup kinds never claim on space
@@ -304,6 +306,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
    * args-tolerant.
    */
   private async matchEnter(session: ClientSessionContext, line: string, signal: AbortSignal): Promise<PickOutcome> {
+    if (this.isDshbotRoom(session)) return undefined
     const trimmed = line.trim()
     if (!trimmed.startsWith('/')) return undefined
     const ws = trimmed.search(/\s/)
@@ -450,5 +453,9 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     const sessions = this.ctx.get('sessions')
     if (sessions === undefined) throw new Error('ui-commands: sessions service unavailable')
     return sessions
+  }
+
+  private isDshbotRoom(session: ClientSessionContext): boolean {
+    return this.sessions().list.getSnapshot().byId[session.sessionId]?.agentPreset === 'dshbot-room'
   }
 }
