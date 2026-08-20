@@ -13,6 +13,8 @@ vendor/deepseek-harness/**/src/*.d.ts.map
 # them a fresh checkout cannot typecheck or build the client packages.
 !vendor/deepseek-harness/**/src/css-modules.d.ts
 dist/
+!vendor/dshmarket/node_modules/**/dist/
+!vendor/dshmarket/node_modules/**/dist/**
 dist-release/
 out/
 /release/

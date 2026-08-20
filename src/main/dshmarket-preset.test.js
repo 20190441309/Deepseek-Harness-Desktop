@@ -199,7 +199,32 @@ test('ensureDshMarketPlugin fails closed and strips the insert when runtime deps
   }
 });
 
-test('repo vendors published dshmarket for offline profile copy', () => {
+test('ensureDshMarketPlugin fails closed when a dependency export file is missing', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshmarket-src-')));
+  try {
+    const pkgFile = path.join(source, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+    pkg.dependencies = { 'js-yaml': '4.1.1' };
+    fs.writeFileSync(pkgFile, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+    const yamlDir = path.join(source, 'node_modules', 'js-yaml');
+    fs.mkdirSync(yamlDir, { recursive: true });
+    fs.writeFileSync(path.join(yamlDir, 'package.json'), `${JSON.stringify({
+      name: 'js-yaml',
+      exports: { '.': { import: './dist/js-yaml.mjs', require: './index.js' } },
+    })}\n`, 'utf8');
+    fs.writeFileSync(path.join(yamlDir, 'index.js'), 'module.exports = {}\n', 'utf8');
+    const profileDir = path.join(home, 'profiles', 'web');
+    const result = ensureDshMarketPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /js-yaml\.mjs/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('repo vendors published dshmarket package source', () => {
   const root = path.join(__dirname, '..', '..', 'vendor', 'dshmarket');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'dshmarket');
@@ -207,13 +232,18 @@ test('repo vendors published dshmarket for offline profile copy', () => {
   assert.equal(fs.existsSync(path.join(root, 'client', 'client.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'lib', 'index.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'cordis.patch.yml')), true);
-  for (const name of Object.keys(pkg.dependencies || {})) {
-    assert.equal(
-      fs.existsSync(path.join(root, 'node_modules', ...name.split('/'), 'package.json')),
-      true,
-      `vendored dshmarket is missing node_modules/${name}`,
-    );
-  }
+  assert.ok(pkg.dependencies && pkg.dependencies.undici && pkg.dependencies['js-yaml']);
+});
+
+test('gitignore does not ignore dshmarket js-yaml dist', () => {
+  const { spawnSync } = require('node:child_process');
+  const root = path.join(__dirname, '..', '..');
+  const result = spawnSync(
+    'git',
+    ['check-ignore', '-q', 'vendor/dshmarket/node_modules/js-yaml/dist/js-yaml.mjs'],
+    { cwd: root, windowsHide: true },
+  );
+  assert.equal(result.status, 1, 'js-yaml dist must not match the repo dist/ ignore');
 });
 
 test('dshmarket extraResources is nested under vendor so electron-builder keeps node_modules', () => {

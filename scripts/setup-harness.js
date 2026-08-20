@@ -36,4 +36,11 @@ if (!fs.existsSync(path.join(vendor, 'package.json'))) {
 
 run(process.execPath, [pnpm, 'install', '--frozen-lockfile'], vendor);
 run(process.execPath, [pnpm, 'run', 'build'], vendor);
+
+const { installPluginRuntimeDeps } = require('./after-pack');
+const dshmarket = path.join(root, 'vendor', 'dshmarket');
+if (fs.existsSync(path.join(dshmarket, 'package.json'))) {
+  installPluginRuntimeDeps(dshmarket, { skipIfComplete: true });
+}
+
 console.log(`官方源码已就绪：${vendor}`);

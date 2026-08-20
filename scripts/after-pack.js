@@ -1,6 +1,7 @@
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { missingRuntimeFiles } = require('../src/main/plugin-runtime-files');
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -57,26 +58,36 @@ const DEV_ONLY_NAMES = new Set([
   'lint-staged',
 ]);
 
-function dependencyPackageJson(root, name) {
-  return path.join(root, 'node_modules', ...String(name).split('/'), 'package.json');
+function missingPluginDependencies(packageDir) {
+  return missingRuntimeFiles(packageDir);
 }
 
-function missingPluginDependencies(packageDir) {
-  const pkgFile = path.join(packageDir, 'package.json');
-  if (!fs.existsSync(pkgFile)) {
-    return ['package.json'];
+function defaultNpmInstall(packageDir) {
+  const nm = path.join(packageDir, 'node_modules');
+  if (fs.existsSync(nm)) {
+    fs.rmSync(nm, { recursive: true, force: true });
   }
-  const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
-  const deps = pkg.dependencies && typeof pkg.dependencies === 'object'
-    ? Object.keys(pkg.dependencies)
-    : [];
-  return deps.filter((name) => !fs.existsSync(dependencyPackageJson(packageDir, name)));
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const lockFile = path.join(packageDir, 'package-lock.json');
+  const args = fs.existsSync(lockFile)
+    ? ['ci', '--omit=dev', '--ignore-scripts', '--no-fund', '--no-audit']
+    : ['install', '--omit=dev', '--ignore-scripts', '--no-fund', '--no-audit'];
+  const result = spawnSync(npmCmd, args, {
+    cwd: packageDir,
+    stdio: 'inherit',
+    env: process.env,
+    windowsHide: true,
+    shell: process.platform === 'win32',
+  });
+  if (result.status !== 0) {
+    throw new Error(`${npmCmd} ${args.join(' ')} failed in ${packageDir} (status ${result.status})`);
+  }
 }
 
 /**
  * extraResources from a plugin directory drops that directory's node_modules.
  * Copy vendor/<name>/node_modules into the packaged tree when a declared
- * dependency is still missing.
+ * dependency or its export file is still missing.
  */
 function restoreVendoredPluginNodeModules(projectDir, resources, packageName) {
   const srcNm = path.join(projectDir, 'vendor', packageName, 'node_modules');
@@ -93,6 +104,25 @@ function restoreVendoredPluginNodeModules(projectDir, resources, packageName) {
   }
   fs.cpSync(srcNm, path.join(destPkg, 'node_modules'), { recursive: true, force: true });
   return { restored: true, missing };
+}
+
+/**
+ * Git-tracked plugin node_modules can omit export files (repo dist/ ignore).
+ * Wipe and npm-install from package.json when the packaged tree is incomplete.
+ * @param {string} packageDir
+ * @param {{ run?: (dir: string) => void, skipIfComplete?: boolean }} [options]
+ */
+function installPluginRuntimeDeps(packageDir, options = {}) {
+  if (!fs.existsSync(path.join(packageDir, 'package.json'))) {
+    return { installed: false, reason: 'missing-package' };
+  }
+  const missing = missingPluginDependencies(packageDir);
+  if (options.skipIfComplete && missing.length === 0) {
+    return { installed: false, reason: 'already-present' };
+  }
+  const run = options.run || defaultNpmInstall;
+  run(packageDir);
+  return { installed: true, missing };
 }
 
 function assertVendoredPluginRuntimeDeps(resources, packageName) {
@@ -551,6 +581,7 @@ module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
   const resources = resolveResourcesDir(context);
   restoreVendoredPluginNodeModules(projectDir, resources, 'dshmarket');
+  installPluginRuntimeDeps(path.join(resources, 'vendor', 'dshmarket'), { skipIfComplete: true });
   assertVendoredPluginRuntimeDeps(resources, 'dshmarket');
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
@@ -605,5 +636,6 @@ module.exports.assertHarnessRuntime = assertHarnessRuntime;
 module.exports.assertHarnessVersions = assertHarnessVersions;
 module.exports.assertNodePtyPrebuild = assertNodePtyPrebuild;
 module.exports.assertVendoredPluginRuntimeDeps = assertVendoredPluginRuntimeDeps;
+module.exports.installPluginRuntimeDeps = installPluginRuntimeDeps;
 module.exports.nodePtyPrebuildRelative = nodePtyPrebuildRelative;
 module.exports.restoreVendoredPluginNodeModules = restoreVendoredPluginNodeModules;

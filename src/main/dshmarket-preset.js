@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { missingRuntimeFiles } = require('./plugin-runtime-files');
 const { webProfileDir, upsertManagedBlock, stripBlockFromFile } = require('./plugins');
 
 const DSHMARKET_PACKAGE = 'dshmarket';
@@ -31,21 +32,8 @@ function profileListsBundle(profileDir) {
   }
 }
 
-function dependencyPackageJson(root, name) {
-  return path.join(root, 'node_modules', ...String(name).split('/'), 'package.json');
-}
-
 function missingRuntimeDependencies(sourceDir) {
-  let pkg;
-  try {
-    pkg = JSON.parse(fs.readFileSync(path.join(sourceDir, 'package.json'), 'utf8'));
-  } catch {
-    return ['package.json'];
-  }
-  const deps = pkg.dependencies && typeof pkg.dependencies === 'object'
-    ? Object.keys(pkg.dependencies)
-    : [];
-  return deps.filter((name) => !fs.existsSync(dependencyPackageJson(sourceDir, name)));
+  return missingRuntimeFiles(sourceDir);
 }
 
 function linkIntoProfileModules(destDir, profileDir) {
@@ -63,7 +51,7 @@ function linkIntoProfileModules(destDir, profileDir) {
 /**
  * Copy the bundled dshmarket package into the web profile and register it
  * through a managed cordis.patch.yml insert. Does not call `dsh plugin add`.
- * Missing `package.json` or a declared dependency without `node_modules/<name>`
+ * Missing `package.json`, a declared dependency, or a dependency export file
  * returns `{ ok: false }` and strips the managed insert so Loader does not
  * mount a broken copy. The caller logs that and continues Harness start.
  * @param {{ sourceDir?: string, profileDir?: string }} [options]

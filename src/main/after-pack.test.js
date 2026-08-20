@@ -15,6 +15,7 @@ const {
   resolveDeployDir,
   resolveResourcesDir,
   restoreVendoredPluginNodeModules,
+  installPluginRuntimeDeps,
 } = require('../../scripts/after-pack');
 
 const RC7_PIN = { npm: '0.1.0-rc.7' };
@@ -426,4 +427,111 @@ test('assertVendoredPluginRuntimeDeps rejects a packaged plugin without its depe
     () => assertVendoredPluginRuntimeDeps(workspace, 'dshmarket'),
     /undici/,
   );
+});
+
+test('assertVendoredPluginRuntimeDeps rejects a dependency whose export file is missing', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-export-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const destPkg = path.join(workspace, 'vendor', 'dshmarket');
+  const yamlDir = path.join(destPkg, 'node_modules', 'js-yaml');
+  fs.mkdirSync(yamlDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { 'js-yaml': '4.1.1' } })}\n`,
+  );
+  fs.writeFileSync(path.join(yamlDir, 'package.json'), `${JSON.stringify({
+    name: 'js-yaml',
+    exports: { '.': { import: './dist/js-yaml.mjs', require: './index.js' } },
+  })}\n`);
+  fs.writeFileSync(path.join(yamlDir, 'index.js'), 'module.exports = {}\n');
+  assert.throws(
+    () => assertVendoredPluginRuntimeDeps(workspace, 'dshmarket'),
+    /js-yaml\.mjs/,
+  );
+});
+
+test('installPluginRuntimeDeps runs npm install when export files are missing', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-npm-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const destPkg = path.join(workspace, 'vendor', 'dshmarket');
+  const yamlDir = path.join(destPkg, 'node_modules', 'js-yaml');
+  fs.mkdirSync(yamlDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { 'js-yaml': '4.1.1' } })}\n`,
+  );
+  fs.writeFileSync(path.join(yamlDir, 'package.json'), `${JSON.stringify({
+    name: 'js-yaml',
+    exports: { '.': { import: './dist/js-yaml.mjs' } },
+  })}\n`);
+  let ran = '';
+  const result = installPluginRuntimeDeps(destPkg, {
+    skipIfComplete: true,
+    run: (dir) => {
+      ran = dir;
+      fs.mkdirSync(path.join(dir, 'node_modules', 'js-yaml', 'dist'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'node_modules', 'js-yaml', 'dist', 'js-yaml.mjs'),
+        'export default {}\n',
+      );
+    },
+  });
+  assert.equal(result.installed, true);
+  assert.equal(ran, destPkg);
+  assertVendoredPluginRuntimeDeps(workspace, 'dshmarket');
+});
+
+test('assertVendoredPluginRuntimeDeps accepts a hoisted nested dependency', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-hoist-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const destPkg = path.join(workspace, 'vendor', 'dshmarket');
+  const yamlDir = path.join(destPkg, 'node_modules', 'js-yaml');
+  const argparseDir = path.join(destPkg, 'node_modules', 'argparse');
+  fs.mkdirSync(path.join(yamlDir, 'dist'), { recursive: true });
+  fs.mkdirSync(argparseDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { 'js-yaml': '4.1.1' } })}\n`,
+  );
+  fs.writeFileSync(path.join(yamlDir, 'package.json'), `${JSON.stringify({
+    name: 'js-yaml',
+    exports: { '.': { import: './dist/js-yaml.mjs' } },
+    dependencies: { argparse: '2.0.1' },
+  })}\n`);
+  fs.writeFileSync(path.join(yamlDir, 'dist', 'js-yaml.mjs'), 'export default {}\n');
+  fs.writeFileSync(
+    path.join(argparseDir, 'package.json'),
+    `${JSON.stringify({ name: 'argparse', main: './index.js' })}\n`,
+  );
+  fs.writeFileSync(path.join(argparseDir, 'index.js'), 'module.exports = {}\n');
+  assert.doesNotThrow(() => assertVendoredPluginRuntimeDeps(workspace, 'dshmarket'));
+});
+
+test('installPluginRuntimeDeps skipIfComplete does not run npm when export files exist', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-plugin-skip-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const destPkg = path.join(workspace, 'vendor', 'dshmarket');
+  const yamlDir = path.join(destPkg, 'node_modules', 'js-yaml', 'dist');
+  fs.mkdirSync(yamlDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(destPkg, 'package.json'),
+    `${JSON.stringify({ name: 'dshmarket', dependencies: { 'js-yaml': '4.1.1' } })}\n`,
+  );
+  fs.writeFileSync(
+    path.join(destPkg, 'node_modules', 'js-yaml', 'package.json'),
+    `${JSON.stringify({
+      name: 'js-yaml',
+      exports: { '.': { import: './dist/js-yaml.mjs' } },
+    })}\n`,
+  );
+  fs.writeFileSync(path.join(yamlDir, 'js-yaml.mjs'), 'export default {}\n');
+  let ran = false;
+  const result = installPluginRuntimeDeps(destPkg, {
+    skipIfComplete: true,
+    run: () => {
+      ran = true;
+    },
+  });
+  assert.equal(result.installed, false);
+  assert.equal(ran, false);
 });

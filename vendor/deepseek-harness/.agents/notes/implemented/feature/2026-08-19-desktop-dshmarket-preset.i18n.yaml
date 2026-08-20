@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-19-desktop-dshmarket-preset.md
-2026-08-19-desktop-dshmarket-preset.md: 4354bc627cdcf212c1885bba51cd817e41d81a16
-2026-08-19-desktop-dshmarket-preset.zh.md: 6c0ff1f2c99fe64a430353e060b660f353a6966a
+2026-08-19-desktop-dshmarket-preset.md: 7b76a2df4e9130c0468758e7587c74334a449457
+2026-08-19-desktop-dshmarket-preset.zh.md: 65df92e68d300ede9f7d54aef5a2845c1ed3624c
