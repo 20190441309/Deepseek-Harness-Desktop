@@ -532,22 +532,50 @@
 
 .effortOptions {
   display: grid;
-  grid-template-columns: repeat(3, max-content);
-  gap: 8px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
 }
 
 .effortOption {
+  box-sizing: border-box;
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
   cursor: pointer;
+  user-select: none;
+}
+
+.effortOption:hover:not(:has(input:disabled)):not(:has(input:checked)) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.effortOption:has(input:checked) {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.effortOption:has(input:focus-visible) {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
 }
 
 .effortOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
   margin: 0;
+  appearance: none;
 }
 
 .effortOption:has(input:disabled) {

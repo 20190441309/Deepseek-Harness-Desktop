@@ -98,6 +98,9 @@
   cursor: col-resize;
   z-index: 2;
   touch-action: none;
+  /* The strip crosses the caption band's top 48px; without the hole that
+     segment would drag the window instead of resizing the column. */
+  -webkit-app-region: no-drag;
   /* Rides the same curve as the tracks so the pill stays on the moving
      border during collapse/expand; paused while dragging (frame rule). */
   transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
@@ -151,6 +154,19 @@
   border-color: var(--dsw-alias-border-l3);
 }
 
+/* First grid child so column paint order keeps this band behind Session log,
+   Git, surface tabs, and window controls. Electron collects the rectangle as
+   the sole caption drag region, including the sidebar logo row; later
+   no-drag boxes punch holes. */
+.captionDrag {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: start;
+  height: 48px;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
 .overlayLayer {
   position: absolute;
   inset: 0;
@@ -160,6 +176,9 @@
 
 .overlayLayer > * {
   pointer-events: auto;
+  /* Entries can float over the caption band; drag regions are geometric, so
+     each interactive entry must punch its own hole. */
+  -webkit-app-region: no-drag;
 }
 
 /* Shared titlebar band over the details column only. Height comes from the
@@ -194,6 +213,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: 100%;
   height: 32px;
   margin-top: 12px;
   margin-right: var(--dshd-wco-controls, 8px);
@@ -250,6 +271,8 @@
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
   cursor: pointer;
+  /* Close-on-tap must win over the caption band it covers. */
+  -webkit-app-region: no-drag;
 }
 
 .frame[data-phone] .sidebarCol {
@@ -272,9 +295,13 @@
   );
 }
 
+/* Open drawers overlap the caption band (the phone grid keeps column 2 at
+   x = 0); the hole applies only while open so the closed, translated drawer
+   cannot subtract a band segment. */
 .frame[data-phone-sidebar] .sidebarCol {
   pointer-events: auto;
   transform: none;
+  -webkit-app-region: no-drag;
 }
 
 .frame[data-phone] .detailsCol {
@@ -292,6 +319,7 @@
 .frame[data-phone-details] .detailsCol {
   pointer-events: auto;
   transform: none;
+  -webkit-app-region: no-drag;
 }
 
 @media (prefers-reduced-motion: reduce) {

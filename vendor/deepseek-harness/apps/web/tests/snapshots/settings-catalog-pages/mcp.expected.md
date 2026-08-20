@@ -7,6 +7,9 @@
     - button "Appearance":
       - img
       - text: Appearance
+    - button "Interface":
+      - img
+      - text: Interface
     - button "Models":
       - img
       - text: Models

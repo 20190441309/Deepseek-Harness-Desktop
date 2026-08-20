@@ -5,7 +5,7 @@ const { projectRoot } = require('./paths');
 const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
 
-const REMOTE_FEATURE_ENABLED = false;
+const REMOTE_FEATURE_ENABLED = true;
 
 const DEFAULTS = {
   workspace: '',
@@ -30,6 +30,12 @@ const DEFAULTS = {
   harnessAutoRestart: true,
   harnessRestartMaxAttempts: 3,
   harnessRestartBaseDelayMs: 1000,
+  pluginRecovery: {
+    skipUserPlugins: false,
+    reason: '',
+    at: '',
+    appVersion: '',
+  },
 };
 
 function isPlainObject(value) {
@@ -136,6 +142,19 @@ function normalizeHarnessRecovery(config) {
   return next;
 }
 
+function normalizePluginRecovery(config) {
+  const value = isPlainObject(config.pluginRecovery) ? config.pluginRecovery : {};
+  return {
+    ...config,
+    pluginRecovery: {
+      skipUserPlugins: value.skipUserPlugins === true,
+      reason: typeof value.reason === 'string' ? value.reason.slice(0, 500) : '',
+      at: typeof value.at === 'string' ? value.at.slice(0, 80) : '',
+      appVersion: typeof value.appVersion === 'string' ? value.appVersion.slice(0, 80) : '',
+    },
+  };
+}
+
 function configPath() {
   return path.join(app.getPath('userData'), 'config.json');
 }
@@ -188,7 +207,7 @@ function loadConfig() {
     remoteRelayToken: typeof creds.remoteRelayToken === 'string' ? creds.remoteRelayToken : '',
     remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
-  config = normalizeRemoteConfig(normalizeHarnessRecovery(config));
+  config = normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery(config)));
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -202,7 +221,7 @@ function loadConfig() {
 
 function saveConfig(next) {
   const current = loadConfig();
-  const merged = normalizeRemoteConfig(normalizeHarnessRecovery({ ...current, ...next }));
+  const merged = normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery({ ...current, ...next })));
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
   }
@@ -252,6 +271,7 @@ module.exports = {
   defaultWorkspace,
   configPath,
   normalizeHarnessRecovery,
+  normalizePluginRecovery,
   normalizeRendererConfigPatch,
   normalizeRelayOrigin,
   normalizeRemoteConfig,

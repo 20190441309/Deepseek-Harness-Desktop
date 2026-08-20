@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
+import type { InterfaceSectionComponentProps } from '../src/client/InterfaceSection.tsx'
+import { InterfaceSection } from '../src/client/InterfaceSection.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import type { TriggerContentProps } from '../src/client/chrome.tsx'
 import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
@@ -62,6 +64,23 @@ describe('GeneralSection', () => {
     const { renderSlot } = mount()
     expect(renderSlot).toHaveBeenCalledWith('settings.general.item', {})
     expect(screen.getByTestId('slot-settings.general.item')).toBeTruthy()
+  })
+})
+
+describe('InterfaceSection', () => {
+  function mount() {
+    const renderSlot = vi.fn(
+      ((key: string) => <div data-testid={`slot-${key}`} />) as InterfaceSectionComponentProps['renderSlot'],
+    )
+    const props: InterfaceSectionComponentProps = { ...kit, renderSlot, close: vi.fn() }
+    const view = render(<InterfaceSection {...props} />)
+    return { view, renderSlot }
+  }
+
+  it('renders the item slot as the section body', () => {
+    const { renderSlot } = mount()
+    expect(renderSlot).toHaveBeenCalledWith('settings.interface.item', {})
+    expect(screen.getByTestId('slot-settings.interface.item')).toBeTruthy()
   })
 })
 

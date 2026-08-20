@@ -3,8 +3,11 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '../src/client/index.ts'
 import { GitActionsControl } from '../src/client/GitActionsControl.tsx'
+import { GitChromeRow } from '../src/client/GitChromeRow.tsx'
+import type { GitChromeRowInjected } from '../src/client/GitChromeRow.tsx'
 import type { GitActionsInjected } from '../src/client/GitActionsControl.tsx'
 
 function declare(slots: SlotRegistry): () => void {
@@ -12,8 +15,15 @@ function declare(slots: SlotRegistry): () => void {
     name: 'root',
     children: {
       'shell.titlebar.trailing': { kind: 'list', scope: 'root' },
+      'settings.interface.item': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
+}
+
+function provideSettings(ctx: Context): void {
+  ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
+  ctx.provide('remote', { $on: () => () => {} })
+  ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
 }
 
 async function bench() {
@@ -22,6 +32,7 @@ async function bench() {
   const slots = ctx.get('slots') as SlotRegistry
   const declaration = declare(slots)
   ctx.provide('locale', new LocaleRuntime(ctx))
+  provideSettings(ctx)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   return { ctx, slots, declaration, fiber }
@@ -29,7 +40,7 @@ async function bench() {
 
 describe('ui-git apply', () => {
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale'])
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'settingsScope'])
   })
 
   it('injects git actions into shell.titlebar.trailing at order 20', async () => {
@@ -37,8 +48,16 @@ describe('ui-git apply', () => {
     const entry = b.slots.entries('shell.titlebar.trailing')[0]
     expect(entry?.component).toBe(GitActionsControl)
     expect(entry?.options).toMatchObject({ id: 'git-actions', order: 20 })
+    const chrome = b.slots.entries('settings.interface.item')[0]
+    expect(chrome?.component).toBe(GitChromeRow)
+    expect(chrome?.options).toMatchObject({ id: 'titlebar-git', order: 20 })
+    const chromeInjected = (chrome?.inject as unknown as () => GitChromeRowInjected)()
+    expect(chromeInjected.hooks.titlebarGit.getSnapshot()).toBe(true)
+    chromeInjected.setTitlebarGit(false)
+    expect(chromeInjected.hooks.titlebarGit.getSnapshot()).toBe(false)
     await b.fiber.dispose()
     expect(b.slots.entries('shell.titlebar.trailing')).toHaveLength(0)
+    expect(b.slots.entries('settings.interface.item')).toHaveLength(0)
   })
 
   it('re-registers after the declaring titlebar slot collapses and returns', async () => {

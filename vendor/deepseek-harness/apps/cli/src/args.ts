@@ -23,6 +23,8 @@ interface ProfileInvocation {
   profile: string
   /** Extra patch-list overlays applied after the profile's own layer, in argv order. */
   patches: string[]
+  /** Omit profile/home user layers and use the shipped bundle template. */
+  skipUserPlugins: boolean
   /** Everything after the launcher's own flags, verbatim, for injected app plugins. */
   args: string[]
 }
@@ -34,6 +36,8 @@ interface DumpConfigInvocation {
   /** Omit the profile's user layer and --patch overlays; print bundle layers only. */
   defaultOnly: boolean
   patches: string[]
+  /** Whether the dump uses the shipped template instead of user layers. */
+  skipUserPlugins: boolean
 }
 
 /** Manage a profile's plugins: forward `args` to pnpm inside the profile directory. */
@@ -52,6 +56,7 @@ interface BootOptions {
   patch?: string[]
   dumpConfig?: boolean
   dumpDefaultConfig?: boolean
+  skipUserPlugins?: boolean
 }
 
 /**
@@ -82,9 +87,10 @@ Examples:
  */
 function resolveBoot(program: Command, profile: string, options: BootOptions, args: string[]): DshInvocation {
   const patches = options.patch ?? []
+  const skipUserPlugins = options.skipUserPlugins === true
   if (patches.includes('')) program.error('error: --patch needs a path')
   if (options.dumpConfig !== true && options.dumpDefaultConfig !== true) {
-    return { mode: 'profile', profile, patches, args }
+    return { mode: 'profile', profile, patches, args, skipUserPlugins }
   }
   if (options.dumpConfig === true && options.dumpDefaultConfig === true) {
     program.error('error: --dump-config and --dump-default-config are mutually exclusive')
@@ -99,7 +105,10 @@ function resolveBoot(program: Command, profile: string, options: BootOptions, ar
   if (defaultOnly && patches.length > 0) {
     program.error('error: --dump-default-config prints the bundle layers and takes no --patch')
   }
-  return { mode: 'dump-config', profile, defaultOnly, patches }
+  if (defaultOnly && skipUserPlugins) {
+    program.error('error: --dump-default-config and --skip-user-plugins are mutually exclusive')
+  }
+  return { mode: 'dump-config', profile, defaultOnly, patches, skipUserPlugins }
 }
 
 /**
@@ -132,6 +141,7 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
     .option('--patch <path>', 'extra patch-list overlay applied after the profile layer (repeatable)', collect)
     .option('--dump-config', 'print the composed profile tree and exit')
     .option('--dump-default-config', 'print the profile tree without its user layer or --patch overlays and exit')
+    .option('--skip-user-plugins', 'boot the shipped bundle template without profile or home user patches')
     .action((args: string[], options: BootOptions & { profile?: string }) => {
       // With the app owning -h, the launcher's own help is what a bare
       // `dsh -h` (no profile to hand it to) must print.
@@ -148,8 +158,9 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
   const rejectParentOptions = (command: string): void => {
     const parent = program.opts<BootOptions & { profile?: string }>()
     if (parent.profile !== undefined || parent.patch !== undefined
-      || parent.dumpConfig !== undefined || parent.dumpDefaultConfig !== undefined) {
-      program.error(`error: ${command} takes none of parent --profile, --patch, --dump-config, or --dump-default-config`)
+      || parent.dumpConfig !== undefined || parent.dumpDefaultConfig !== undefined
+      || parent.skipUserPlugins !== undefined) {
+      program.error(`error: ${command} takes none of parent --profile, --patch, --dump-config, --dump-default-config, or --skip-user-plugins`)
     }
   }
 
@@ -163,6 +174,7 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
     .option('--patch <path>', 'extra patch-list overlay applied after the profile layer (repeatable)', collect)
     .option('--dump-config', 'print the composed web-profile tree (with the user layer and any --patch) and exit')
     .option('--dump-default-config', 'print the web profile\'s bundle layers (no user layer) and exit')
+    .option('--skip-user-plugins', 'boot the shipped bundle template without profile or home user patches')
     .action((args: string[], options: BootOptions) => {
       rejectParentOptions('web')
       resolved = resolveBoot(web, 'web', options, args)

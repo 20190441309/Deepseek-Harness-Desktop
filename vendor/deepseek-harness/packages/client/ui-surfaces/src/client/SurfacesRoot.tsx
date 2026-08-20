@@ -51,6 +51,8 @@ function renderOccupant(
     case 'file':
       return renderSlot('surfaces.file', {
         relativePath: surface.relativePath,
+        revealLine: surface.revealLine,
+        revealRequestId: surface.revealRequestId,
         active,
         onDirtyChange,
         readBuffer,

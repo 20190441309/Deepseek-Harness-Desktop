@@ -13,16 +13,59 @@
   padding: 8px 16px 0;
 }
 
-.path {
+.crumbs {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
   margin: 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
   overflow: hidden;
+}
+
+.crumb {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+}
+
+.crumbLabel {
+  max-width: 10em;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.crumbFile {
+  color: var(--dsw-alias-label-primary);
+}
+
+.crumbSep {
+  flex: none;
+  margin: 0 4px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.iconButton {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
 .body {
@@ -59,6 +102,10 @@
   white-space: pre;
   overflow: auto;
   resize: none;
+}
+
+.wrap {
+  white-space: pre-wrap;
 }
 
 .editor:focus {

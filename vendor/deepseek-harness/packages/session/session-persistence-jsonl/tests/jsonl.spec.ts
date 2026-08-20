@@ -942,6 +942,22 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     expect(scanLog(Buffer.from(log)).meta.agentPreset).toBe('minimal')
   })
 
+  it('round-trips dshbot origin', () => {
+    const line = toHeaderLine({
+      version: 0,
+      id: SessionId('bot'),
+      createdAt: 1,
+      origin: 'dshbot',
+      delegationDepth: 0,
+    })
+    expect(scanLog(Buffer.from(`${JSON.stringify(line)}\n`)).meta.origin).toBe('dshbot')
+  })
+
+  it('rejects a session header whose origin is not a known classification', () => {
+    const log = '{"type":"session","version":0,"id":"bad-origin","createdAt":1,"delegationDepth":0,"origin":"fork"}\n'
+    expect(() => scanLog(Buffer.from(log))).toThrow(/session header/)
+  })
+
   it('rejects a session header whose agentPreset is not a string', () => {
     const log = '{"type":"session","version":0,"id":"bad-preset","createdAt":1,"delegationDepth":0,"agentPreset":7}\n'
 

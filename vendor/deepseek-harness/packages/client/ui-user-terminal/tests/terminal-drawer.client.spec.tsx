@@ -5,10 +5,11 @@ import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-// xterm needs a real layout to fit; the pane integration is asserted against
+// Ghostty needs a real layout to fit; the pane integration is asserted against
 // a scripted fake that records writes, data handlers, and disposal.
-const xtermState = vi.hoisted(() => ({ instances: [] as Array<{
+const ghosttyState = vi.hoisted(() => ({ instances: [] as Array<{
   writes: string[]
+  resets: string[]
   dataHandlers: Array<(data: string) => void>
   selectionHandlers: Array<() => void>
   selection: string
@@ -17,88 +18,112 @@ const xtermState = vi.hoisted(() => ({ instances: [] as Array<{
   rows: number
   fontFamily: string
   fontSize: number
-  lineHeight: number
+  themeWrites: unknown[]
   focusCalls: number
+  scrollToBottomCalls: number
+  atBottom: boolean
+  options: {
+    onData: (data: string) => void
+    onResize: (cols: number, rows: number) => void
+    onSelectionChange: () => void
+    onCopy: (text: string) => void
+    beforeKey: (event: KeyboardEvent) => boolean
+    onLinkActivate: (text: string, event: MouseEvent) => void
+    font?: { family?: string, size?: number }
+    theme?: unknown
+  }
   getSelection: () => string
   hasSelection: () => boolean
   clearSelection: () => void
   focus: () => void
   scrollToBottom: () => void
-  onSelectionChange: (handler: () => void) => { dispose: () => void }
-  registerLinkProvider: (provider: { provideLinks: (y: number, cb: (links: unknown) => void) => void }) => { dispose: () => void }
-  linkProvider?: { provideLinks: (y: number, cb: (links: unknown) => void) => void }
-  buffer: { active: { getLine: (index: number) => { translateToString: (trim?: boolean) => string } | undefined } }
-}> , throwFit: false, cols: 80, rows: 24 }))
+  isAtBottom: () => boolean
+  fit: () => boolean
+  write: (data: string) => void
+  resetAndWrite: (data: string) => void
+  setTheme: (theme: unknown) => void
+}>, throwFit: false, cols: 80, rows: 24, delayMs: 0, createError: null as unknown }))
 
-vi.mock('@xterm/xterm', () => {
-  class FakeTerminal {
+vi.mock('../src/client/ghostty/surface.ts', () => {
+  class FakeGhosttySurface {
     cols = 80
     rows = 24
     writes: string[] = []
+    resets: string[] = []
     dataHandlers: Array<(data: string) => void> = []
     selectionHandlers: Array<() => void> = []
     selection = ''
     disposed = false
     fontFamily = ''
     fontSize = 0
-    lineHeight = 0
+    themeWrites: unknown[] = []
     focusCalls = 0
-    constructor(options: { fontFamily?: string; fontSize?: number; lineHeight?: number } = {}) {
-      this.fontFamily = options.fontFamily ?? ''
-      this.fontSize = options.fontSize ?? 0
-      this.lineHeight = options.lineHeight ?? 0
-      this.cols = xtermState.cols
-      this.rows = xtermState.rows
+    scrollToBottomCalls = 0
+    atBottom = true
+    options: (typeof ghosttyState)['instances'][number]['options']
+    constructor(options: (typeof ghosttyState)['instances'][number]['options']) {
+      this.options = options
+      this.fontFamily = options.font?.family ?? ''
+      this.fontSize = options.font?.size ?? 0
+      this.themeWrites = options.theme === undefined ? [] : [options.theme]
+      this.cols = ghosttyState.cols
+      this.rows = ghosttyState.rows
+      this.dataHandlers.push(options.onData)
+      this.selectionHandlers.push(options.onSelectionChange)
+      options.onSelectionChange()
     }
-    loadAddon(): void {}
-    open(): void { xtermState.instances.push(this as never) }
+    static async create(_mount: HTMLElement, options: FakeGhosttySurface['options']): Promise<FakeGhosttySurface> {
+      if (ghosttyState.createError !== null) {
+        const error = ghosttyState.createError
+        ghosttyState.createError = null
+        throw error
+      }
+      if (ghosttyState.delayMs > 0) {
+        await new Promise<void>(resolve => { window.setTimeout(resolve, ghosttyState.delayMs) })
+      }
+      const surface = new FakeGhosttySurface(options)
+      ghosttyState.instances.push(surface as never)
+      return surface
+    }
     write(data: string): void { this.writes.push(data) }
-    focus(): void { this.focusCalls += 1 }
-    scrollToBottom(): void {}
-    onData(handler: (data: string) => void): { dispose: () => void } {
-      this.dataHandlers.push(handler)
-      return { dispose: () => {} }
+    resetAndWrite(data: string): void {
+      this.resets.push(data)
+      this.writes.push(data)
     }
+    setTheme(theme: unknown): void { this.themeWrites.push(theme) }
+    fit(): boolean {
+      if (ghosttyState.throwFit) return false
+      if (this.cols <= 0 || this.rows <= 0) return false
+      this.options.onResize(this.cols, this.rows)
+      if (this.atBottom) this.scrollToBottom()
+      return true
+    }
+    focus(): void { this.focusCalls += 1 }
+    scrollToBottom(): void { this.scrollToBottomCalls += 1 }
+    isAtBottom(): boolean { return this.atBottom }
     getSelection(): string { return this.selection }
     hasSelection(): boolean { return this.selection.length > 0 }
     clearSelection(): void { this.selection = '' }
-    onSelectionChange(handler: () => void): { dispose: () => void } {
-      this.selectionHandlers.push(handler)
-      return { dispose: () => {} }
-    }
-    linkProvider: { provideLinks: (_y: number, cb: (links: unknown) => void) => void } | undefined
-    buffer = {
-      active: {
-        getLine: (index: number) => {
-          if (index === 0) return { translateToString: () => 'see http://127.0.0.1:5173 and src/app.ts' }
-          if (index === 1) return { translateToString: () => 'hello' }
-          return undefined
-        },
-      },
-    }
-    registerLinkProvider(provider: { provideLinks: (y: number, cb: (links: unknown) => void) => void }): { dispose: () => void } {
-      this.linkProvider = provider
-      return { dispose: () => { this.linkProvider = undefined } }
-    }
     dispose(): void { this.disposed = true }
   }
-  return { Terminal: FakeTerminal }
+  return {
+    GhosttyTerminalSurface: FakeGhosttySurface,
+    DEFAULT_TERMINAL_FONT_SIZE: 12,
+    DEFAULT_TERMINAL_FONT_FAMILY:
+      '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ' +
+      '"Symbols Nerd Font Mono", "Symbols Nerd Font", "JetBrainsMono Nerd Font", ' +
+      '"JetBrainsMono NF", "FiraCode Nerd Font", "Hack Nerd Font", "MesloLGS NF", ' +
+      '"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace',
+  }
 })
-
-vi.mock('@xterm/addon-fit', () => ({
-  FitAddon: class {
-    fit(): void {
-      if (xtermState.throwFit) throw new Error('hidden')
-    }
-  },
-}))
 
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TerminalDrawerProps } from '../src/client/TerminalDrawer.tsx'
 import { TerminalDrawer } from '../src/client/TerminalDrawer.tsx'
+import { TerminalPane } from '../src/client/TerminalPane.tsx'
 import type { TerminalSurfaceProps } from '../src/client/TerminalSurface.tsx'
 import { TerminalSurface } from '../src/client/TerminalSurface.tsx'
-import { createTerminalSessionStore, MAX_TERMINALS_PER_GROUP } from '../src/client/stores.ts'
+import { createTerminalSessionStore, DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS, MAX_TERMINALS_PER_GROUP, type TerminalSessionRecord } from '../src/client/stores.ts'
 import { clampDrawerHeight, maxDrawerHeight, TERMINAL_DRAWER_MIN } from '../src/client/height.ts'
 import { FIT_SETTLE_MS, PTY_RESIZE_DEBOUNCE_MS } from '../src/client/fit.ts'
 import { en, zh } from '../src/client/locales.ts'
@@ -229,10 +254,12 @@ function mount(opts: {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  xtermState.instances.length = 0
-  xtermState.throwFit = false
-  xtermState.cols = 80
-  xtermState.rows = 24
+  ghosttyState.instances.length = 0
+  ghosttyState.throwFit = false
+  ghosttyState.cols = 80
+  ghosttyState.rows = 24
+  ghosttyState.delayMs = 0
+  ghosttyState.createError = null
 })
 
 describe('clampDrawerHeight', () => {
@@ -328,7 +355,11 @@ describe('TerminalDrawer', () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    const term = xtermState.instances.at(-1)!
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     term.selection = 'http://127.0.0.1:5173\n'
     for (const handler of term.selectionHandlers) handler()
     fireEvent.click(await screen.findByRole('button', { name: 'Copy' }))
@@ -337,13 +368,34 @@ describe('TerminalDrawer', () => {
     expect(b.openLocalUrl).toHaveBeenCalledWith('http://127.0.0.1:5173')
     fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
     expect(b.mentionTerminal).toHaveBeenCalledWith(SID, 'http://127.0.0.1:5173')
+    term.options.onCopy('copied-bytes')
+    expect(b.writeClipboard).toHaveBeenCalledWith('copied-bytes')
+    expect(term.options.beforeKey(new KeyboardEvent('keydown', { key: 'a' }))).toBe(true)
+    expect(term.options.beforeKey(new KeyboardEvent('keydown', {
+      key: 'l', ctrlKey: true, bubbles: true, cancelable: true,
+    }))).toBe(false)
+    expect(b.ptyWrite).toHaveBeenCalledWith('pty-1', '\u000c')
+    expect(term.options.beforeKey(new KeyboardEvent('keydown', {
+      key: 'ArrowLeft', ctrlKey: true, bubbles: true, cancelable: true,
+    }))).toBe(false)
+    expect(b.ptyWrite).toHaveBeenCalledWith('pty-1', '\u001bb')
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    expect(term.options.beforeKey(new KeyboardEvent('keydown', {
+      key: 'Backspace', metaKey: true, bubbles: true, cancelable: true,
+    }))).toBe(false)
+    expect(b.ptyWrite).toHaveBeenCalledWith('pty-1', '\u0015')
+    platform.mockRestore()
   })
 
   it('opens a non-loopback URL from the selection bar in the system browser', async () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    const term = xtermState.instances.at(-1)!
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     term.selection = 'https://example.com/docs\n'
     for (const handler of term.selectionHandlers) handler()
     fireEvent.click(await screen.findByRole('button', { name: 'Open link' }))
@@ -355,7 +407,11 @@ describe('TerminalDrawer', () => {
     const b = mount({ cwd: '/work', sessionId: null })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    const term = xtermState.instances.at(-1)!
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     term.selection = 'ls\n'
     for (const handler of term.selectionHandlers) handler()
     const add = await screen.findByRole('button', { name: 'Add to chat' })
@@ -364,20 +420,20 @@ describe('TerminalDrawer', () => {
     expect(b.mentionTerminal).not.toHaveBeenCalled()
   })
 
-  it('activates a Ctrl-clicked terminal URL through the link provider', async () => {
+  it('activates a Ctrl-clicked terminal URL through the Ghostty link callback', async () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    const term = xtermState.instances.at(-1)!
-    let links: Array<{ activate: (event: MouseEvent, text: string) => void; text: string }> | undefined
-    term.linkProvider?.provideLinks(1, (next) => { links = next as typeof links })
-    expect(links?.length).toBeGreaterThan(0)
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
-    links![0]!.activate({ ctrlKey: true, metaKey: false } as MouseEvent, links![0]!.text)
-    expect(b.openLocalUrl).toHaveBeenCalled()
-    links![0]!.activate({ ctrlKey: false, metaKey: false } as MouseEvent, links![0]!.text)
-    term.linkProvider?.provideLinks(2, (next) => { expect(next).toBeUndefined() })
-    term.linkProvider?.provideLinks(99, (next) => { expect(next).toBeUndefined() })
+    term.options.onLinkActivate('http://127.0.0.1:5173', { ctrlKey: true, metaKey: false } as MouseEvent)
+    expect(b.openLocalUrl).toHaveBeenCalledWith('http://127.0.0.1:5173')
+    term.options.onLinkActivate('http://127.0.0.1:5173', { ctrlKey: false, metaKey: false } as MouseEvent)
+    expect(b.openLocalUrl).toHaveBeenCalledTimes(1)
   })
 
   it('does not register its own Ctrl+` listener; the titlebar toggle owns the shortcut', () => {
@@ -404,7 +460,7 @@ describe('TerminalDrawer', () => {
     expect(instance.getSnapshot().sessions[0]?.buffer).toBe('hello')
     expect(surfaceInstance.getSnapshot().sessions).toHaveLength(0)
     await waitFor(() => {
-      expect(xtermState.instances.every(term => term.writes.join('') === 'hello')).toBe(true)
+      expect(ghosttyState.instances.every(term => term.writes.join('') === 'hello')).toBe(true)
     })
   })
 
@@ -469,12 +525,16 @@ describe('TerminalDrawer', () => {
     expect(screen.queryByRole('log', { name: 'pty-1' })).toBeNull()
   })
 
-  it('forwards xterm input to the PTY and does not nest a button around the pane', async () => {
+  it('forwards Ghostty input to the PTY and does not nest a button around the pane', async () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     const log = await screen.findByRole('log', { name: 'pty-1' })
     expect(log.closest('button')).toBeNull()
-    const term = xtermState.instances.at(-1)!
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     for (const handler of term.dataHandlers) handler('ls\r')
     expect(b.ptyWrite).toHaveBeenCalledWith('pty-1', 'ls\r')
   })
@@ -505,16 +565,55 @@ describe('TerminalDrawer', () => {
     expect(b.instance.getSnapshot().sessions).toHaveLength(0)
   })
 
-  it('constructs xterm with a resolved monospace family and 1.2 line height', async () => {
+  it('constructs Ghostty with a resolved monospace family', async () => {
     mount({ cwd: '/work' })
     expect(screen.getByRole('button', { name: 'Split left/right' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Split top/bottom' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    const term = xtermState.instances.at(-1)!
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
     expect(term.fontFamily.includes('var(')).toBe(false)
     expect(term.fontFamily.length).toBeGreaterThan(0)
-    expect(term.lineHeight).toBe(1.2)
+    expect(term.themeWrites.length).toBeGreaterThanOrEqual(2)
+    document.documentElement.classList.add('dark')
+    await waitFor(() => expect(term.themeWrites.length).toBeGreaterThanOrEqual(3))
+    document.documentElement.classList.remove('dark')
+    document.body.setAttribute('data-ds-dark-theme', '')
+    await waitFor(() => expect(term.themeWrites.length).toBeGreaterThanOrEqual(4))
+    document.body.removeAttribute('data-ds-dark-theme')
+  })
+
+  it('writes Ghostty init failure copy onto the mount', async () => {
+    ghosttyState.createError = new Error('wasm-down')
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await waitFor(() => {
+      expect(screen.getByRole('log', { name: 'pty-1' }).textContent).toContain('wasm-down')
+    })
+    expect(b.ptyWrite).not.toHaveBeenCalled()
+  })
+
+  it('uses Ghostty fallback copy when create rejects a non-Error', async () => {
+    ghosttyState.createError = 'nope'
+    mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await waitFor(() => {
+      expect(screen.getByRole('log', { name: 'pty-1' }).textContent).toContain(
+        'Unable to initialize libghostty-vt',
+      )
+    })
+  })
+
+  it('does not answer ConPTY DA from the pane; Ghostty owns device attributes', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    await waitFor(() => expect(ghosttyState.instances.at(-1)).toBeTruthy())
+    expect(b.ptyWrite).not.toHaveBeenCalledWith('pty-1', '\x1b[?61;4c')
   })
 
   it('shows a session list after a second PTY and can activate or close a row', async () => {
@@ -566,48 +665,78 @@ describe('TerminalDrawer', () => {
     const b = mount({ cwd: '/work' })
     await waitFor(() => expect(b.ptyCreate).toHaveBeenCalledTimes(1))
     await screen.findByRole('log', { name: 'pty-1' })
-    expect(b.instance.getSnapshot().sessions[0]?.cols).toBe(80)
-    expect(b.instance.getSnapshot().sessions[0]?.rows).toBe(24)
+    expect(b.instance.getSnapshot().sessions[0]?.cols).toBe(DEFAULT_TERMINAL_COLS)
+    expect(b.instance.getSnapshot().sessions[0]?.rows).toBe(DEFAULT_TERMINAL_ROWS)
   })
 
-  it('does not resize the PTY while the xterm host has no used box', async () => {
+  it('forwards Ghostty onResize like TerminalViewport', async () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
-    expect(b.ptyResize).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('log', { name: 'pty-1' }))
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
+    term.options.onResize(80, 24)
+    expect(b.ptyResize).toHaveBeenCalledWith('pty-1', 80, 24)
   })
 
-  it('debounces PTY resize until after the host has a used box', async () => {
-    const observers: Array<() => void> = []
-    vi.stubGlobal('ResizeObserver', class {
-      cb: ResizeObserverCallback
-      constructor(cb: ResizeObserverCallback) { this.cb = cb }
-      observe(el: Element) {
-        Object.defineProperty(el, 'clientHeight', { configurable: true, value: 200 })
-        Object.defineProperty(el, 'clientWidth', { configurable: true, value: 800 })
-        const run = () => { this.cb([] as never, this as never) }
-        observers.push(run)
-        run()
-      }
-      disconnect() {}
-      unobserve() {}
-    })
-    const fonts = new EventTarget()
-    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts })
+  it('resizes the PTY from Ghostty fit once the host has a used box', async () => {
     const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await waitFor(() => expect(b.ptyCreate).toHaveBeenCalledTimes(1))
+    const log = await screen.findByRole('log', { name: 'pty-1' })
+    Object.defineProperty(log, 'clientWidth', { configurable: true, value: 800 })
+    Object.defineProperty(log, 'clientHeight', { configurable: true, value: 200 })
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
+    term.fit()
+    expect(b.ptyResize).toHaveBeenCalledWith('pty-1', 80, 24)
+    const resizes = b.ptyResize.mock.calls.length
+    term.fit()
+    expect(b.ptyResize.mock.calls.length).toBeGreaterThanOrEqual(resizes)
+  })
+
+  it('keeps the scrollback position on the settle fit unless the viewport was at the bottom', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await waitFor(() => expect(b.ptyCreate).toHaveBeenCalledTimes(1))
     await screen.findByRole('log', { name: 'pty-1' })
-    await waitFor(() => {
-      expect(b.ptyResize).toHaveBeenCalledWith('pty-1', 80, 24)
-    }, { timeout: FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 250 })
-    const resizes = b.ptyResize.mock.calls.length
-    fonts.dispatchEvent(new Event('loadingdone'))
-    for (const run of observers) run()
-    await new Promise(resolve => {
-      window.setTimeout(resolve, FIT_SETTLE_MS + PTY_RESIZE_DEBOUNCE_MS + 50)
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
     })
-    expect(b.ptyResize.mock.calls.length).toBe(resizes)
+    term.atBottom = true
+    term.fit()
+    expect(term.scrollToBottomCalls).toBeGreaterThan(0)
+    const followsAtBottom = term.scrollToBottomCalls
+    term.atBottom = false
+    term.fit()
+    expect(term.scrollToBottomCalls).toBe(followsAtBottom)
+    term.atBottom = true
+    term.fit()
+    expect(term.scrollToBottomCalls).toBeGreaterThan(followsAtBottom)
+  })
+
+  it('does not follow output on the settle fit when Ghostty is not at the bottom', async () => {
+    mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
+    const before = term.scrollToBottomCalls
+    term.atBottom = false
+    await new Promise(resolve => {
+      window.setTimeout(resolve, FIT_SETTLE_MS + 20)
+    })
+    expect(term.scrollToBottomCalls).toBe(before)
   })
 
   it('replays the PTY buffer when a pane remounts', async () => {
@@ -623,15 +752,16 @@ describe('TerminalDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Group 1$/ }))
     await screen.findByRole('log', { name: 'pty-1' })
     await waitFor(() => {
-      expect(xtermState.instances.some(term => term.writes.join('').includes('hello-seed'))).toBe(true)
+      expect(ghosttyState.instances.some(term => term.resets.join('').includes('hello-seed'))).toBe(true)
     })
   })
 
-  it('opens xterm when ResizeObserver is missing', async () => {
+  it('opens Ghostty when ResizeObserver is missing', async () => {
     vi.stubGlobal('ResizeObserver', undefined)
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     await screen.findByRole('log', { name: 'pty-1' })
+    await waitFor(() => expect(ghosttyState.instances.at(-1)).toBeTruthy())
     expect(b.ptyResize).not.toHaveBeenCalled()
   })
 
@@ -642,13 +772,13 @@ describe('TerminalDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Split top/bottom' }))
     await screen.findByRole('log', { name: 'pty-2' })
     await waitFor(() => {
-      expect(xtermState.instances[1]?.focusCalls).toBeGreaterThan(0)
+      expect(ghosttyState.instances[1]?.focusCalls).toBeGreaterThan(0)
     })
-    const firstFocus = xtermState.instances[0]!.focusCalls
+    const firstFocus = ghosttyState.instances[0]!.focusCalls
     fireEvent.click(screen.getByRole('button', { name: /^Terminal 1$/ }))
     expect(b.instance.getSnapshot().activeId).toBe('pty-1')
     await waitFor(() => {
-      expect(xtermState.instances[0]!.focusCalls).toBeGreaterThan(firstFocus)
+      expect(ghosttyState.instances[0]!.focusCalls).toBeGreaterThan(firstFocus)
     })
   })
 
@@ -675,7 +805,7 @@ describe('TerminalDrawer', () => {
       disconnect() {}
       unobserve() {}
     })
-    xtermState.throwFit = true
+    ghosttyState.throwFit = true
     const throwing = mount({ cwd: '/work' })
     await waitFor(() => expect(throwing.ptyCreate).toHaveBeenCalledTimes(1))
     await screen.findByRole('log', { name: 'pty-1' })
@@ -684,9 +814,9 @@ describe('TerminalDrawer', () => {
     })
     expect(throwing.ptyResize).not.toHaveBeenCalled()
     cleanup()
-    xtermState.throwFit = false
-    xtermState.cols = 0
-    xtermState.rows = 0
+    ghosttyState.throwFit = false
+    ghosttyState.cols = 0
+    ghosttyState.rows = 0
     const empty = mount({ cwd: '/work' })
     await waitFor(() => expect(empty.ptyCreate).toHaveBeenCalledTimes(1))
     await screen.findByRole('log', { name: 'pty-1' })
@@ -725,6 +855,76 @@ describe('TerminalDrawer', () => {
   })
 })
 
+describe('TerminalPane', () => {
+  function renderPane(overrides: { active?: boolean, session?: TerminalSessionRecord } = {}) {
+    return render(
+      <TerminalPane
+        id="pty-1"
+        session={overrides.session}
+        active={overrides.active ?? true}
+        onActivate={() => {}}
+        onData={() => {}}
+        onResize={() => {}}
+        sessionId={SID}
+        cwd="/work"
+        mentionTerminal={() => {}}
+        writeClipboard={async () => {}}
+        openWorkspacePath={() => {}}
+        openLocalUrl={() => {}}
+        openExternal={() => {}}
+        t={t}
+      />,
+    )
+  }
+
+  it('does not steal focus when created inactive', async () => {
+    renderPane({ active: false })
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
+    await new Promise<void>(resolve => { window.requestAnimationFrame(() => { resolve() }) })
+    expect(term.focusCalls).toBe(0)
+  })
+
+  it('seeds Ghostty with resetAndWrite like the adapter', async () => {
+    const session: TerminalSessionRecord = {
+      id: 'pty-1', cwd: '/work', cols: 80, rows: 24, buffer: 'seed-bytes',
+    }
+    const view = renderPane({ session })
+    await waitFor(() => {
+      expect(ghosttyState.instances.some(term => term.resets.includes('seed-bytes'))).toBe(true)
+    })
+    view.rerender(
+      <TerminalPane
+        id="pty-1"
+        session={{ id: 'pty-1', cwd: '/work', cols: 80, rows: 24, buffer: 'x' }}
+        active
+        onActivate={() => {}}
+        onData={() => {}}
+        onResize={() => {}}
+        sessionId={SID}
+        cwd="/work"
+        mentionTerminal={() => {}}
+        writeClipboard={async () => {}}
+        openWorkspacePath={() => {}}
+        openLocalUrl={() => {}}
+        openExternal={() => {}}
+        t={t}
+      />,
+    )
+  })
+
+  it('disposes a surface that finishes after unmount', async () => {
+    ghosttyState.delayMs = 20
+    const view = renderPane()
+    view.unmount()
+    await new Promise<void>(resolve => { window.setTimeout(resolve, 40) })
+    expect(ghosttyState.instances.at(-1)?.disposed).toBe(true)
+  })
+})
+
 describe('ui-user-terminal production imports', () => {
   it('does not import another plugin src/client from production code', () => {
     const dir = join(process.cwd(), 'packages/client/ui-user-terminal/src/client')
@@ -735,12 +935,37 @@ describe('ui-user-terminal production imports', () => {
     }
   })
 
-  it('does not stretch the xterm screen to 100% independently of FitAddon', () => {
+  it('does not stretch a Ghostty canvas with xterm screen CSS', () => {
     const css = readFileSync(
       join(process.cwd(), 'packages/client/ui-user-terminal/src/client/TerminalWorkspace.module.css'),
       'utf8',
     )
-    expect(css).not.toMatch(/xterm-screen[\s\S]{0,80}width:\s*100%/)
-    expect(css).not.toMatch(/xterm-viewport[\s\S]{0,80}width:\s*100%/)
+    expect(css).not.toMatch(/xterm-screen/)
+    expect(css).not.toMatch(/xterm-viewport/)
+  })
+
+  it('keeps the workspace transparent and paints an opaque terminal pane', () => {
+    const terminalCss = readFileSync(
+      join(process.cwd(), 'packages/client/ui-user-terminal/src/client/TerminalWorkspace.module.css'),
+      'utf8',
+    )
+    expect(terminalCss).toMatch(/\.root\s*{[\s\S]{0,220}background:\s*transparent/)
+    expect(terminalCss).toMatch(/\.paneTerminal\s*{[\s\S]{0,280}background:\s*var\(--dsw-alias-terminal-pane\)/)
+    expect(terminalCss).not.toMatch(/backdrop-filter/)
+    expect(terminalCss).not.toMatch(/\.paneTerminal\s*{[\s\S]{0,320}--dsw-alias-bg-layer-2/)
+    expect(terminalCss).toMatch(new RegExp(['t', '3', '-ghostty-canvas'].join('')))
+    expect(terminalCss).not.toMatch(/canvas[\s\S]{0,120}background:/)
+  })
+
+  it('never restyles TUI rows; Ghostty paints cells on the opaque well', () => {
+    const terminalCss = readFileSync(
+      join(process.cwd(), 'packages/client/ui-user-terminal/src/client/TerminalWorkspace.module.css'),
+      'utf8',
+    )
+    expect(terminalCss).not.toMatch(/xterm-bg-257/)
+    expect(terminalCss).not.toMatch(/xterm-bold[^{]*\{[^}]*background/)
+    expect(terminalCss).not.toMatch(/data-dsh-tui-selected/)
+    expect(terminalCss).not.toMatch(/dsh-tui-selected-bar/)
+    expect(terminalCss).toMatch(/\.paneTerminalWrap\s*\{[^}]*isolation:\s*isolate/)
   })
 })

@@ -1299,6 +1299,15 @@ describe('SessionStore', () => {
     })
   })
 
+  it('accepts dshbot origin on a top-level session header', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('bot-contact'), {
+      meta: { origin: 'dshbot' },
+    })
+    expect(session.header.origin).toBe('dshbot')
+  })
+
   it('rejects non-JSON and invalid scalar session metadata', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -1313,7 +1322,7 @@ describe('SessionStore', () => {
       { meta: { seedLength: '1' }, error: /seedLength must be a non-negative safe integer/ },
       { meta: { seedLength: 0.5 }, error: /seedLength must be a non-negative safe integer/ },
       { meta: { seedLength: -1 }, error: /seedLength must be a non-negative safe integer/ },
-      { meta: { origin: 'fork' }, error: /origin must be "subagent"/ },
+      { meta: { origin: 'fork' }, error: /origin must be "subagent" or "dshbot"/ },
       { meta: { delegationDepth: '1' }, error: /delegationDepth must be a non-negative safe integer/ },
       { meta: { delegationDepth: 0.5 }, error: /delegationDepth must be a non-negative safe integer/ },
       { meta: { delegationDepth: -1 }, error: /delegationDepth must be a non-negative safe integer/ },
@@ -1710,7 +1719,7 @@ describe('todo/write event', () => {
   })
 
   it('is NOT a surface event: it produces no derived message and joins no surface node', () => {
-    const session = Session.create(SessionId('t3'))
+    const session = Session.create(SessionId('sid'))
     session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'q' }], source: { kind: 'user' },
     }), { surfaceOp: 'append' })

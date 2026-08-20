@@ -1,8 +1,13 @@
 /** Wrap `workspaces.openPath` so desktop file opens land in surfaces. */
 
+/** Optional jump-to-line carried beside a workspace path. */
+export interface OpenPathOptions {
+  line?: number
+}
+
 /** Minimal workspaces face the interceptor replaces. */
 export interface OpenPathService {
-  openPath(path: string): Promise<void>
+  openPath(path: string, options?: OpenPathOptions): Promise<void>
 }
 
 /** Live facts the interceptor reads on each open. */
@@ -13,9 +18,14 @@ export interface OpenPathInterceptDeps {
   currentSessionId(): string | undefined
   /**
    * Open `path` in the surfaces column.
-   * @returns false to fall through to the original `openPath`.
+   * @returns false to fall through to the original `openPath`. May be async
+   *   when a desktop preview IPC must settle before the interceptor returns.
    */
-  openInSurfaces(path: string, sessionId: string): boolean
+  openInSurfaces(
+    path: string,
+    sessionId: string,
+    options?: OpenPathOptions,
+  ): boolean | Promise<boolean>
 }
 
 /**
@@ -30,11 +40,17 @@ export interface OpenPathInterceptDeps {
 export function wrapOpenPath(workspaces: OpenPathService, deps: OpenPathInterceptDeps): () => void {
   // oxlint-disable-next-line typescript/unbound-method -- identity-preserving reference required by the wrap/restore contract
   const previous = workspaces.openPath
-  const wrapped = async function openPathIntercept(path: string): Promise<void> {
+  const wrapped = async function openPathIntercept(
+    path: string,
+    options?: OpenPathOptions,
+  ): Promise<void> {
     if (!deps.takeoverEnabled()) return previous.call(workspaces, path)
     const sessionId = deps.currentSessionId()
     if (sessionId === undefined) return previous.call(workspaces, path)
-    if (!deps.openInSurfaces(path, sessionId)) return previous.call(workspaces, path)
+    const accepted = options === undefined
+      ? await deps.openInSurfaces(path, sessionId)
+      : await deps.openInSurfaces(path, sessionId, options)
+    if (!accepted) return previous.call(workspaces, path)
   }
   workspaces.openPath = wrapped
   return () => {

@@ -372,6 +372,11 @@ export function ChatView({
               {t('chat.loadError', { message: openError.message, code: openError.code })}
             </div>
           )}
+          {order.length === 0 && !running && (
+            <div className={css.empty} data-chat-empty="">
+              {renderSlot('conversation.chat.empty', {})}
+            </div>
+          )}
           {hasMore && (
             <div className={css.older}>
               <button type="button" disabled={loadingOlder} onClick={loadOlderAnchored}>

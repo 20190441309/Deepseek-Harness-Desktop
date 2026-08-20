@@ -18,6 +18,45 @@ import { homePatchPath, prepareProfile, PROFILE_ROOT_FILENAME } from './profile-
 
 const NAME = 'dsh'
 
+export interface DumpConfigOptions {
+  defaultOnly: boolean
+  patches: readonly string[]
+  skipUserPlugins?: boolean
+}
+
+/** Build the same labeled layers that runDumpConfig prints, without I/O to stdout. */
+export function dumpConfigLayers(profile: string, options: DumpConfigOptions): {
+  root: string
+  layers: ConfigDumpLayer[]
+} {
+  const skipUserPlugins = options.skipUserPlugins === true
+  const loaded = prepareProfile(profile, {
+    userLayer: !options.defaultOnly && !skipUserPlugins,
+    bundles: skipUserPlugins ? 'template' : 'manifest',
+  })
+  const layers: ConfigDumpLayer[] = loaded.layers.map(layer => ({
+    label: layer.packageName,
+    patches: layer.patches,
+  }))
+  if (!options.defaultOnly) {
+    if (!skipUserPlugins && existsSync(loaded.patchPath)) {
+      layers.push({ label: loaded.patchPath, patches: loaded.patches })
+    }
+    if (!skipUserPlugins) {
+      const homePatchFile = homePatchPath()
+      const homePatches = loadOptionalPatches(NAME, homePatchFile)
+      if (homePatches !== undefined) {
+        layers.push({ label: homePatchFile, patches: homePatches })
+      }
+    }
+    for (const file of options.patches) {
+      const absolute = resolve(file)
+      layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) })
+    }
+  }
+  return { root: join(loaded.dir, PROFILE_ROOT_FILENAME), layers }
+}
+
 /* v8 ignore start -- built-bin acceptance drives this boot-free dispatch */
 /**
  * Print a profile composition with comments naming each source file and patch layer.
@@ -27,27 +66,13 @@ const NAME = 'dsh'
  * never parsed).
  * @param patches - `--patch` overlay paths, in argv order.
  */
-export function runDumpConfig(profile: string, defaultOnly: boolean, patches: readonly string[]): void {
-  const loaded = prepareProfile(profile, !defaultOnly)
-  const layers: ConfigDumpLayer[] = loaded.layers.map(layer => ({
-    label: layer.packageName,
-    patches: layer.patches,
-  }))
-  if (!defaultOnly) {
-    if (existsSync(loaded.patchPath)) {
-      layers.push({ label: loaded.patchPath, patches: loaded.patches })
-    }
-    const homePatchFile = homePatchPath()
-    const homePatches = loadOptionalPatches(NAME, homePatchFile)
-    if (homePatches !== undefined) {
-      layers.push({ label: homePatchFile, patches: homePatches })
-    }
-    for (const file of patches) {
-      const absolute = resolve(file)
-      layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) })
-    }
-  }
-  // The dump anchors on the same empty root file the boot includes.
-  process.stdout.write(renderConfigDump(NAME, join(loaded.dir, PROFILE_ROOT_FILENAME), layers))
+export function runDumpConfig(
+  profile: string,
+  defaultOnly: boolean,
+  patches: readonly string[],
+  skipUserPlugins = false,
+): void {
+  const composed = dumpConfigLayers(profile, { defaultOnly, patches, skipUserPlugins })
+  process.stdout.write(renderConfigDump(NAME, composed.root, composed.layers))
 }
 /* v8 ignore stop */

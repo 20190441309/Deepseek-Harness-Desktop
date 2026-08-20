@@ -66,6 +66,7 @@
    render stays static. */
 .railIn .iconButton,
 .railIn .newSession,
+.railIn .tabList,
 .railIn .regionArea {
   animation: rail-in 150ms var(--ds-ease-in-out) backwards;
 }
@@ -87,12 +88,14 @@
 
 /* Logo row (figma pad (4,8,4,8)): expanded keeps the panel toggle at the
    right edge; the rail gives every control the same base left anchor before
-   the shared entry translation is applied. */
+   the shared entry translation is applied. space-between plus a max-content
+   wordmark leaves the gap inside AppFrame's caption band instead of filling
+   it with the New Session shortcut's no-drag hole. */
 .logoRow {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   height: 60px;
   padding: 8px 0 8px 4px;
@@ -113,8 +116,8 @@
    emphasis only). A button only in behavior (New Session shortcut): the
    pointer cursor is the sole affordance — no hover chrome on the mark. */
 .brand {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  width: max-content;
   display: inline-flex;
   align-items: center;
   overflow: hidden;
@@ -123,6 +126,7 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .iconButton {
@@ -138,6 +142,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--dsw-alias-label-secondary);
+  -webkit-app-region: no-drag;
 }
 
 .iconButton:hover {
@@ -222,6 +227,63 @@
   max-width: 0;
 }
 
+.tabList {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px 8px;
+}
+
+.collapsed .tabList {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  -webkit-app-region: no-drag;
+}
+
+.tab:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tabActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tabLabel {
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.collapsed .tab {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-primary);
+}
+
 /* Region seat: always mounted so the foot never moves. Its trailing margin
    cancels the wide shell inset so the nested scrollbar can sit at the sidebar
    edge; the browser restores that inset inside its own rows. */
@@ -278,6 +340,7 @@
   .fading > *,
   .railIn .iconButton,
   .railIn .newSession,
+  .railIn .tabList,
   .railIn .footArea,
   .railIn .regionArea {
     transition: none;

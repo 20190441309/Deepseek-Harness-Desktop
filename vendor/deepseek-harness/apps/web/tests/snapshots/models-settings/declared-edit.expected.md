@@ -7,12 +7,21 @@
     - button "外观":
       - img
       - text: 外观
+    - button "界面设置":
+      - img
+      - text: 界面设置
     - button "模型":
       - img
       - text: 模型
     - button "插件":
       - img
       - text: 插件
+    - button "技能":
+      - img
+      - text: 技能
+    - button "MCP":
+      - img
+      - text: MCP
     - button "Agent 预设":
       - img
       - text: Agent 预设
@@ -70,16 +79,20 @@
           - button "删除模型 1"
           - group "思考强度":
             - text: 思考强度
-            - checkbox "Low 1"
-            - text: Low
-            - checkbox "Medium 1"
-            - text: Medium
-            - checkbox "High 1"
-            - text: High
-            - checkbox "Very High 1"
-            - text: Very High
-            - checkbox "Extreme 1"
-            - text: Extreme
+            - checkbox "关闭 1"
+            - text: 关闭
+            - checkbox "极低 1"
+            - text: 极低
+            - checkbox "低 1"
+            - text: 低
+            - checkbox "中 1"
+            - text: 中
+            - checkbox "高 1"
+            - text: 高
+            - checkbox "很高 1"
+            - text: 很高
+            - checkbox "最大 1"
+            - text: 最大
           - button "添加模型"
       - button "取消"
       - button "保存"

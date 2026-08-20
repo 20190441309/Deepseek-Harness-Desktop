@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JsonBlock, MarkdownText, MessageText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { cjkFriendlyStrong } from '../src/markdown/cjkFriendlyStrong.ts'
 import { mathCompatibility } from '../src/markdown/mathCompatibility.ts'
@@ -478,6 +478,26 @@ describe('MarkdownText', () => {
     expect(live.container.querySelectorAll('.katex')).toHaveLength(1)
     expect(live.container.querySelectorAll('.katex-display')).toHaveLength(1)
     expect(live.container.querySelector('.katex-error')).toBeNull()
+  })
+
+  it('keeps task checkboxes disabled without onTaskChecked', () => {
+    const { container } = render(<MarkdownText text={'- [ ] pending\n- [x] done'} />)
+    const boxes = [...container.querySelectorAll('input[type="checkbox"]')]
+    expect(boxes).toHaveLength(2)
+    for (const box of boxes) {
+      expect((box as HTMLInputElement).disabled).toBe(true)
+      expect(box.getAttribute('data-task-offset')).toBeNull()
+    }
+  })
+
+  it('enables task checkboxes with data-task-offset when onTaskChecked is set', () => {
+    const onTaskChecked = vi.fn()
+    render(<MarkdownText text="- [ ] milk" onTaskChecked={onTaskChecked} />)
+    const box = screen.getByRole('checkbox')
+    expect((box as HTMLInputElement).disabled).toBe(false)
+    expect(box.getAttribute('data-task-offset')).toBe('2')
+    fireEvent.click(box)
+    expect(onTaskChecked).toHaveBeenCalledWith(2, true)
   })
 })
 

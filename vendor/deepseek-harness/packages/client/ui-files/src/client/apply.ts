@@ -2,10 +2,13 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-surfaces/client'
+import type { InputTriggerServiceContract } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import { serializeComposerFileLink } from './composerMention.ts'
 import { appendToDraft } from './draft.ts'
 import { FilePreview } from './FilePreview.tsx'
 import { FilesPanel } from './FilesPanel.tsx'
 import { en, NS, zh, type FilesKey } from './locales.ts'
+import { createPathTriggerSource } from './pathTrigger.ts'
 import { readFilesShell, type FilesShellInjected } from './shell.ts'
 
 export type { FilesPanelProps } from './FilesPanel.tsx'
@@ -32,7 +35,10 @@ export function apply(ctx: ClientContext): void {
   const injected = (): FilesShellInjected => ({
     ...readFilesShell(),
     mentionFile: (sessionId, relativePath) => {
-      appendToDraft(ctx, sessionId, `\`@${relativePath}\``)
+      appendToDraft(ctx, sessionId, serializeComposerFileLink(relativePath))
+    },
+    appendComposerText: (sessionId, text) => {
+      appendToDraft(ctx, sessionId, text)
     },
   })
 
@@ -47,4 +53,12 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: injected,
   }, FilePreview))
+
+  ctx.inject(['inputTriggers', 'sessions'], (scope: ClientContext) => {
+    const inputTriggers = scope.get('inputTriggers') as InputTriggerServiceContract
+    return inputTriggers.registerSource(createPathTriggerSource({
+      sessions: scope.sessions,
+      listDir: readFilesShell().listDir,
+    }))
+  })
 }

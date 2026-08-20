@@ -7,10 +7,8 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject, NS } from '../src/client/index.ts'
-import { MarketplaceSettingsTab } from '../src/client/MarketplaceSettingsTab.tsx'
 import { PluginInventorySettingsTab } from '../src/client/PluginInventorySettingsTab.tsx'
 import type { PluginInventorySettingsTabInjected } from '../src/client/PluginInventorySettingsTab.tsx'
-import type { MarketplaceSettingsTabInjected } from '../src/client/MarketplaceSettingsTab.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
 afterEach(cleanup)
@@ -103,66 +101,12 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     await b.ctx.fiber.dispose()
   })
 
-  it('registers the marketplace tab only when the desktop shell can install by catalog id', async () => {
+  it('does not register a cloned marketplace tab when the desktop shell is present', async () => {
     const b = await bench()
     declare(b.slots)
-    const shell = marketplaceShell()
-    ;(window as Window & { shell?: unknown }).shell = shell
-    await b.ctx.plugin({ inject: [...inject], apply }).await()
-    const tabs = b.slots.entries('settings.plugins.tab')
-    expect(tabs.map(entry => entry.options.id)).toEqual(['marketplace', 'all'])
-    expect(tabs.find(entry => entry.options.id === 'marketplace')?.options.order).toBe(5)
-    const market = tabs.find(entry => entry.options.id === 'marketplace')!
-    expect(market.component).toBe(MarketplaceSettingsTab)
-    expect(resolveSlotLabel(market.options.label)).toBe('插件市场')
-    const injected = (market.inject as () => MarketplaceSettingsTabInjected)()
-    expect('seedInstallDraft' in injected).toBe(false)
-    expect('saveGithubToken' in injected).toBe(false)
-    expect('hasGithubToken' in injected).toBe(false)
-    await expect(injected.listMarketplace({ refresh: true })).resolves.toEqual({ items: [] })
-    expect(shell.listMarketplace).toHaveBeenCalledWith({ refresh: true, locale: 'zh' })
-    await expect(injected.listInstalled()).resolves.toEqual({ plugins: [] })
-    await expect(injected.installMarketplacePlugin('owner/loop')).resolves.toEqual({ ok: true })
-    expect(shell.installMarketplacePlugin).toHaveBeenCalledWith('owner/loop', undefined)
-    await expect(injected.uninstallPlugin('pkg')).resolves.toEqual({ ok: true })
-    await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
-    expect(injected.onProgress(() => {})).toEqual(expect.any(Function))
-    delete (window as Window & { shell?: unknown }).shell
-    await b.ctx.fiber.dispose()
-  })
-
-  it('does not register the marketplace tab for the Host github install path alone', async () => {
-    const b = await bench()
-    declare(b.slots)
-    ;(window as Window & { shell?: unknown }).shell = {
-      listMarketplace: vi.fn(async () => ({ items: [] })),
-      listInstalledPlugins: vi.fn(async () => ({ plugins: [] })),
-      installPlugin: vi.fn(async () => ({ ok: true })),
-      uninstallPlugin: vi.fn(async () => ({ ok: true })),
-    }
+    ;(window as Window & { shell?: unknown }).shell = marketplaceShell()
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     expect(b.slots.entries('settings.plugins.tab').map(entry => entry.options.id)).toEqual(['all'])
-    delete (window as Window & { shell?: unknown }).shell
-    await b.ctx.fiber.dispose()
-  })
-
-  it('forwards optional desktop shell methods when they exist', async () => {
-    const b = await bench()
-    declare(b.slots)
-    const off = vi.fn()
-    const shell = marketplaceShell({
-      openExternal: vi.fn(async () => true),
-      onPluginProgress: vi.fn(() => off),
-    })
-    ;(window as Window & { shell?: unknown }).shell = shell
-    await b.ctx.plugin({ inject: [...inject], apply }).await()
-    const market = b.slots.entries('settings.plugins.tab').find(entry => entry.options.id === 'marketplace')!
-    const injected = (market.inject as () => MarketplaceSettingsTabInjected)()
-    await expect(injected.openExternal('https://example.com')).resolves.toBe(true)
-    expect(injected.onProgress(() => {})).toBe(off)
-    b.locale.setLocale('en')
-    await injected.listMarketplace()
-    expect(shell.listMarketplace).toHaveBeenCalledWith({ locale: 'en' })
     delete (window as Window & { shell?: unknown }).shell
     await b.ctx.fiber.dispose()
   })

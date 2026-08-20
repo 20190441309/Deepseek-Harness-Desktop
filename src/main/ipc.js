@@ -1,4 +1,6 @@
+const fs = require('node:fs');
 const { ipcMain, dialog, app, shell, nativeTheme } = require('electron');
+const { formatBootLogDump, saveBootLog } = require('./boot-log-dump');
 const {
   REMOTE_FEATURE_ENABLED,
   loadConfig,
@@ -13,10 +15,12 @@ const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
+const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
+const { listAvailableEditors, openInEditor, revealInFolder, openWithSystemDefault } = require('./editors');
 const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
 
 const BOOT_ONLY = [IPC_ROLES.BOOT];
@@ -59,14 +63,35 @@ function sendPluginProgress(event, payload) {
 
 const HARNESS_DOWN_AFTER_ADD = '插件已写入 web profile，但 Harness 没有起来。请从现有入口重启，不要再安装一次。';
 const HARNESS_DOWN_AFTER_REMOVE = '插件已从 web profile 移除，但 Harness 没有起来。请从现有入口重启，不要再卸载一次。';
+const WALLPAPER_CATALOG_KINDS = new Set(['bing', 'wallhaven', 'catalog']);
 
-async function restartAfterProfileWrite(event, result, startHarness, downError) {
+function finiteNumber(value) {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function wallpaperCatalogQuery(query = {}) {
+  return {
+    kind: WALLPAPER_CATALOG_KINDS.has(query.kind) ? query.kind : undefined,
+    year: finiteNumber(query.year),
+    url: typeof query.url === 'string' ? query.url : undefined,
+    q: typeof query.q === 'string' ? query.q : undefined,
+    categories: typeof query.categories === 'string' ? query.categories : undefined,
+    page: finiteNumber(query.page),
+  };
+}
+
+async function restartAfterProfileWrite(event, result, startHarness, downError, harness, clearPluginSkip = false) {
   if (result.ok !== true || typeof startHarness !== 'function') {
     return result;
   }
   sendPluginProgress(event, { phase: 'restart', line: '正在重启 Harness' });
   try {
-    await startHarness();
+    if (clearPluginSkip && harness && typeof harness.retryFullPlugins === 'function') {
+      await harness.retryFullPlugins();
+    } else {
+      await startHarness();
+    }
   } catch {
     // startHarness threw after the profile write committed. Return ok so the UI does not retry the write.
     return { ...result, ok: true, harnessStarted: false, error: downError };
@@ -126,13 +151,35 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   });
 
   handle('shell:restart', BOOT_ONLY, async () => {
-    await startHarness();
+    await (harness ? harness.retryFullPlugins() : startHarness());
+    return harness ? harness.snapshot() : dsh.snapshot();
+  });
+
+  handle('shell:retry-full-plugins', ALL_SURFACES, async () => {
+    await (harness ? harness.retryFullPlugins() : startHarness());
     return harness ? harness.snapshot() : dsh.snapshot();
   });
 
   handle('shell:cancel-restart', BOOT_ONLY, () => (
     harness ? harness.cancelRecovery() : dsh.snapshot()
   ));
+
+  handle('shell:save-boot-log', BOOT_ONLY, async () => {
+    const snapshot = harness ? harness.snapshot() : dsh.snapshot();
+    const dump = formatBootLogDump({
+      version: currentVersion(),
+      savedAt: new Date().toISOString(),
+      snapshot,
+      logs: Array.isArray(dsh.logs) ? dsh.logs : [],
+    });
+    return saveBootLog({
+      dialog,
+      browserWindow: getMainWindow(),
+      dump,
+      writeFile: fs.promises.writeFile,
+      defaultDirectory: app.getPath('downloads'),
+    });
+  });
 
   handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
 
@@ -150,6 +197,15 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
       refresh: true,
       locale: options?.locale,
     });
+  });
+
+  handle('shell:list-wallpaper-catalog', HARNESS_ONLY, async (_event, query = {}) => (
+    listWallpaperCatalog(wallpaperCatalogQuery(query))
+  ));
+
+  handle('shell:download-wallpaper', HARNESS_ONLY, async (_event, url) => {
+    if (typeof url !== 'string') return { error: '壁纸地址无效' };
+    return downloadWallpaper(url);
   });
 
   handle('shell:list-installed-plugins', HARNESS_ONLY, () => listInstalledPlugins());
@@ -178,7 +234,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     const result = await uninstallPlugin(name, {
       onProgress: (payload) => sendPluginProgress(event, payload),
     });
-    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_REMOVE);
+    return restartAfterProfileWrite(event, result, startHarness, HARNESS_DOWN_AFTER_REMOVE, harness, true);
   });
 
   handle('shell:open-marketplace', HARNESS_ONLY, () => openMarketplace());
@@ -208,6 +264,12 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   handle('shell:read-file', HARNESS_ONLY, (_event, cwd, relativePath) => readFile(cwd, relativePath));
   handle('shell:read-file-media', HARNESS_ONLY, (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));
   handle('shell:write-file', HARNESS_ONLY, (_event, cwd, relativePath, text) => writeFile(cwd, relativePath, text));
+  handle('shell:list-editors', HARNESS_ONLY, () => listAvailableEditors());
+  handle('shell:open-in-editor', HARNESS_ONLY, (_event, input) => openInEditor(input));
+  handle('shell:show-item-in-folder', HARNESS_ONLY, (_event, cwd, relativePath) => revealInFolder(cwd, relativePath));
+  handle('shell:open-with-default', HARNESS_ONLY, (_event, cwd, relativePath) => (
+    openWithSystemDefault({ cwd, relativePath })
+  ));
   handle('shell:git-stage', HARNESS_ONLY, (_event, cwd, relativePath) => gitStage(cwd, relativePath));
   handle('shell:git-unstage', HARNESS_ONLY, (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
   handle('shell:git-discard', HARNESS_ONLY, (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));

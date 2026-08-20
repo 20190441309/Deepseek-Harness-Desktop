@@ -51,4 +51,18 @@ describe('createAppearanceRowStore', () => {
     expect(store.getSnapshot().preference).toBe('dark')
     expect(store.getSnapshot().revision).toBe(3)
   })
+
+  it('mirrors wallpaperSources and wallpaperFavorites', () => {
+    const store = createAppearanceRowStore().create()
+    const favorite = {
+      id: 'bing-1',
+      sourceId: 'bing',
+      title: 'Lake',
+      thumbUrl: 'https://example.com/t.jpg',
+      imageUrl: 'https://example.com/i.jpg',
+    }
+    store.actions.sync(snap({ wallpaperSources: [], wallpaperFavorites: [favorite] }), 0)
+    expect(store.getSnapshot().wallpaperSources).toEqual([])
+    expect(store.getSnapshot().wallpaperFavorites).toEqual([favorite])
+  })
 })

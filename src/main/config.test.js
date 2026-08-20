@@ -86,21 +86,26 @@ test('renderer config patch only accepts safe typed fields', () => {
   }
 });
 
-test('remote stays disabled while its UI feature is frozen', () => {
-  assert.equal(REMOTE_FEATURE_ENABLED, false);
-  const saved = saveConfig({
+test('remote can be enabled and HTTP relay origins stay discarded', () => {
+  assert.equal(REMOTE_FEATURE_ENABLED, true);
+  const httpRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
     remoteRelayUrl: 'http://relay.example:8787/path',
     remoteRelayToken: 'a'.repeat(32),
   });
-  assert.equal(saved.remoteEnabled, false);
-  assert.equal(saved.remoteMode, 'lan');
-  assert.equal(saved.remoteRelayUrl, '');
-  const loaded = loadConfig();
-  assert.equal(loaded.remoteEnabled, false);
-  assert.equal(loaded.remoteMode, 'lan');
-  assert.equal(loaded.remoteRelayUrl, '');
+  assert.equal(httpRelay.remoteEnabled, true);
+  assert.equal(httpRelay.remoteMode, 'lan');
+  assert.equal(httpRelay.remoteRelayUrl, '');
+  const httpsRelay = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remoteRelayUrl: 'https://relay.example/path',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(httpsRelay.remoteEnabled, true);
+  assert.equal(httpsRelay.remoteMode, 'relay');
+  assert.equal(httpsRelay.remoteRelayUrl, 'https://relay.example');
 });
 
 test('saveConfig persists normalized recovery settings', () => {

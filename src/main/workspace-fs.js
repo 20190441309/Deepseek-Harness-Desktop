@@ -1,9 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const { loadWorkspaceAuthority } = require('./workspace-authority');
 
-const MAX_READ_BYTES = 512 * 1024;
-const MAX_WRITE_BYTES = 512 * 1024;
+const MAX_READ_BYTES = 1024 * 1024;
+const MAX_WRITE_BYTES = 1024 * 1024;
 
 const IMAGE_MIME = {
   png: 'image/png',
@@ -41,6 +42,21 @@ function fail(message) {
   return { ok: false, message };
 }
 
+function entryRelativePath(relativePath, name) {
+  const base = relativePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  return base ? `${base}/${name}` : name;
+}
+
+function isGitIgnored(cwd, relPath) {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['-C', cwd, 'check-ignore', '--no-index', '-q', relPath], {
+      windowsHide: true,
+    });
+    child.on('error', () => resolve({ ignored: false, gitMissing: true }));
+    child.on('close', (code) => resolve({ ignored: code === 0, gitMissing: false }));
+  });
+}
+
 async function listDir(cwd, relativePath) {
   const target = resolveInside(cwd, relativePath);
   if (!target) return fail('Path is outside the workspace.');
@@ -50,10 +66,24 @@ async function listDir(cwd, relativePath) {
   } catch (error) {
     return fail(error.message || 'Could not list directory.');
   }
-  const entries = names.map((entry) => ({
-    name: entry.name,
-    kind: entry.isDirectory() ? 'directory' : 'file',
-  }));
+  const entries = [];
+  let gitMissing = false;
+  for (const entry of names) {
+    if (entry.name === '.git') continue;
+    if (!gitMissing) {
+      const rel = entryRelativePath(relativePath, entry.name);
+      const { ignored, gitMissing: missing } = await isGitIgnored(cwd, rel);
+      if (missing) {
+        gitMissing = true;
+      } else if (ignored) {
+        continue;
+      }
+    }
+    entries.push({
+      name: entry.name,
+      kind: entry.isDirectory() ? 'directory' : 'file',
+    });
+  }
   entries.sort((left, right) => {
     if (left.kind !== right.kind) return left.kind === 'directory' ? -1 : 1;
     return left.name.localeCompare(right.name);
@@ -153,14 +183,16 @@ async function writeFile(cwd, relativePath, text) {
   }
   const target = resolveInside(cwd, relativePath);
   if (!target) return fail('Path is outside the workspace.');
-  let stat;
   try {
-    stat = await fs.promises.stat(target);
+    const stat = await fs.promises.stat(target);
+    if (!stat.isFile()) return fail('Not a file.');
   } catch (error) {
-    return fail(error.message || 'Could not write file.');
+    if (error.code !== 'ENOENT') {
+      return fail(error.message || 'Could not write file.');
+    }
   }
-  if (!stat.isFile()) return fail('Not a file.');
   try {
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
     await fs.promises.writeFile(target, text, 'utf8');
   } catch (error) {
     return fail(error.message || 'Could not write file.');

@@ -55,6 +55,7 @@ class ResizeObserverStub {
 }
 
 let frameWidth = 1920
+let initialWindowWidth: number | undefined
 let trailingClusterWidth = 0
 let orientationLandscape = true
 const orientationListeners = new Set<(ev: MediaQueryListEvent) => void>()
@@ -71,7 +72,7 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 }
 
 function mountFrame() {
-  window.innerWidth = frameWidth // first-render viewport source before the observer fires
+  window.innerWidth = initialWindowWidth ?? frameWidth // first-render viewport source before the observer fires
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
@@ -146,6 +147,7 @@ function drag(handle: Element, fromX: number, toX: number): void {
 beforeEach(() => {
   localStorage.clear()
   frameWidth = 1920
+  initialWindowWidth = undefined
   trailingClusterWidth = 0
   observerInstances.clear()
   fireResize = null
@@ -335,6 +337,14 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 360])
   })
 
+  it('recovers a zero first-render window width from the measured frame', () => {
+    initialWindowWidth = 0
+    const { frame, instance } = mountFrame()
+    act(() => { vi.advanceTimersByTime(20) })
+    act(() => { instance.actions.openSurfaces() })
+    expect(surfacesTrack(frame)).toBe(540)
+  })
+
   it('drag handles disappear for collapsed columns', () => {
     const { frame, instance } = mountFrame()
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
@@ -380,12 +390,14 @@ describe('AppFrame', () => {
     const { frame, instance } = mountFrame()
     expect(frame.style.gridTemplateRows.startsWith('auto minmax(0, 1fr)')).toBe(true)
     expect(frame.querySelector('[data-titlebar-row]')).toBeTruthy()
+    expect(frame.firstElementChild?.getAttribute('data-dshd-caption')).toBe('band')
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     const trailing = frame.querySelector('[data-titlebar-trailing]')!
     expect(trailing.hasAttribute('data-titlebar-trailing-over-surfaces')).toBe(true)
     act(() => { instance.actions.openSurfaces() })
     expect(frame.hasAttribute('data-surfaces-inset')).toBe(false)
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(false)
+    expect(frame.querySelector('[data-dshd-caption="band"]')).toBeTruthy()
     expect(trailing.hasAttribute('data-titlebar-trailing-over-surfaces')).toBe(false)
     act(() => { instance.actions.closeSurfaces() })
     expect(frame.hasAttribute('data-surfaces-collapsed')).toBe(true)

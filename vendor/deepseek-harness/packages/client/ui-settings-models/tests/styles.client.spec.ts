@@ -84,6 +84,15 @@ describe('ModelsSection theme styles', () => {
     expect(bare).toEqual([])
   })
 
+  it('lays thinking intensities as wrapping equal chips, not a three-column checkbox grid', () => {
+    const options = block('.effortOptions')
+    expect(options).toMatch(/auto-fit/)
+    expect(options).not.toMatch(/repeat\(3/)
+    const chip = block('.effortOption')
+    expect(chip).toContain('height: 28px')
+    expect(chip).toContain('border-radius: 14px')
+  })
+
   it('never falls back to a literal colour', () => {
     // A token that resolves is never the problem; an undeclared one takes this
     // branch, and a literal here is a single colour for both themes.

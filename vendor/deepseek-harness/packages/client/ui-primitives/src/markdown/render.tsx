@@ -133,6 +133,13 @@ export interface MarkdownRenderContext {
   readonly footnoteOrder: string[]
   /** References rendered per identifier; drives the section's back-reference count. */
   readonly footnoteCounts: Map<string, number>
+  /** Source markdown used to recover GFM task `[` offsets when `onTaskChecked` is set. */
+  readonly source?: string
+  /**
+   * File-preview task toggle. Omitted keeps checkboxes disabled so conversation
+   * DOM fixtures stay unchanged. Enabled only when the `[` offset is known.
+   */
+  readonly onTaskChecked?: (markerOffset: number, checked: boolean) => void
 }
 
 /**
@@ -352,6 +359,14 @@ function renderList(node: Md.List, key: Key, context: MarkdownRenderContext): Re
   )
 }
 
+function findTaskListMarkerOffset(markdown: string, listItemStart: number): number | undefined {
+  const firstLineEnd = markdown.indexOf('\n', listItemStart)
+  const firstLine = markdown.slice(listItemStart, firstLineEnd === -1 ? markdown.length : firstLineEnd)
+  const match = /^(?:\s*(?:[-+*]|\d+[.)])\s+)(\[[ xX]\])/.exec(firstLine)
+  if (match?.[1] === undefined) return undefined
+  return listItemStart + firstLine.indexOf(match[1])
+}
+
 function renderListItem(
   item: Md.ListItem,
   loose: boolean,
@@ -361,7 +376,26 @@ function renderListItem(
   const entries = renderBlockEntries(item.children, context)
   const task = typeof item.checked === 'boolean'
   if (task) {
-    const checkbox = <input key="task-checkbox" type="checkbox" checked={item.checked === true} disabled />
+    const start = item.position?.start.offset
+    const onTaskChecked = context.onTaskChecked
+    const offset = onTaskChecked !== undefined
+      && context.source !== undefined
+      && typeof start === 'number'
+      ? findTaskListMarkerOffset(context.source, start)
+      : undefined
+    const interactive = offset !== undefined && onTaskChecked !== undefined
+    const checkbox = interactive && offset !== undefined && onTaskChecked !== undefined
+      ? (
+        <input
+          key="task-checkbox"
+          type="checkbox"
+          checked={item.checked === true}
+          disabled={false}
+          data-task-offset={offset}
+          onChange={event => { onTaskChecked(offset, event.currentTarget.checked) }}
+        />
+      )
+      : <input key="task-checkbox" type="checkbox" checked={item.checked === true} disabled />
     const head = entries[0]
     if (head !== undefined && 'paragraph' in head) {
       head.paragraph = head.paragraph.length > 0 ? [checkbox, ' ', ...head.paragraph] : [checkbox]

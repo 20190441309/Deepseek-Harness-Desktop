@@ -456,6 +456,31 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
+  it('skips saving the default when persistDefault is false', async () => {
+    const { ctx, sessionId } = await harness()
+    const saved: unknown[] = []
+    const api = createApiProxy(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      saveDefaultModelSelection: (selection) => {
+        saved.push(selection)
+        return Promise.resolve()
+      },
+      cwd: '/tmp',
+    })
+
+    expectValue(await api.sessions.selectModel(request({
+      sessionId,
+      provider: 'deepseek-official',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'max',
+      persistDefault: false,
+    })))
+    expect(saved).toEqual([])
+    expect(expectValue(await api.sessions.models(request({ sessionId }))).current)
+      .toEqual({ provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max' })
+    await ctx.fiber.dispose()
+  })
+
   it('refuses a prompt no adapter can route, and reports it on the directory', async () => {
     const { ctx, sessionId } = await harness()
     const api = createApiProxy(ctx, {

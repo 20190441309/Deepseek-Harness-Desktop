@@ -49,6 +49,7 @@ function bench(current: SessionId | undefined) {
   const props = {
     useSessions: useSessionsStub(list),
     useSessionLogDownload,
+    useTitlebarAction: (sel: (value: boolean) => boolean) => sel(true),
     request,
     dismiss,
     t: (key: keyof typeof en): string => en[key],
@@ -117,6 +118,7 @@ describe('Session export titlebar action', () => {
     b.view.rerender(<SessionLogDownloadHeaderAction {...({
       useSessions: useSessionsStub(sessionList(SID)),
       useSessionLogDownload,
+      useTitlebarAction: (sel: (value: boolean) => boolean) => sel(true),
       request: (sessionId: SessionId) => controller.download(sessionId),
       dismiss: (sessionId: SessionId) => { controller.dismiss(sessionId) },
       t: (key: keyof typeof en): string => en[key],
@@ -140,5 +142,16 @@ describe('Session export titlebar action', () => {
     const button = b.view.getByRole('button', { name: 'Session log' })
     expect(button.textContent).not.toContain('Session log')
     expect(button.querySelector('svg')).not.toBeNull()
+  })
+
+  it('keeps the download dialog after Interface settings hide the button', async () => {
+    const b = bench(SID)
+    b.view.rerender(<SessionLogDownloadHeaderAction {...({
+      ...b.props,
+      useTitlebarAction: (sel: (value: boolean) => boolean) => sel(false),
+    } as unknown as SessionLogDownloadDialogProps)} />)
+    expect(b.view.queryByRole('button', { name: 'Session log' })).toBeNull()
+    await b.props.request(SID)
+    expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
   })
 })

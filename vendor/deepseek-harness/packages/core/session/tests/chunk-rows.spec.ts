@@ -19,7 +19,7 @@ function chunkEvent(seq: number, time: number, chunk: StreamChunk, turn = 1, ste
 /** Sequential delta events (contiguous seqs, fixed 10ms gaps) of one kind. */
 function deltaRun(kind: 'text-delta' | 'reasoning-delta', count: number, seq0 = 0, index = 0): SessionEvent[] {
   return Array.from({ length: count }, (_, k) =>
-    chunkEvent(seq0 + k, 1000 + 10 * k, { type: kind, index, text: `t${k}` }))
+    chunkEvent(seq0 + k, 1000 + 10 * k, { type: kind, index, text: `x${k}` }))
 }
 
 /** Decode a packed record list back to a flat event list. */
@@ -36,7 +36,7 @@ describe('packChunkRuns', () => {
     expect(row.type).toBe('text-chunks')
     expect(row.seq0).toBe(0)
     expect(row.time0).toBe(1000)
-    expect(row.data).toMatchObject({ turn: 1, step: 1, index: 0, dt: [10, 10, 10, 10], texts: ['t0', 't1', 't2', 't3', 't4'] })
+    expect(row.data).toMatchObject({ turn: 1, step: 1, index: 0, dt: [10, 10, 10, 10], texts: ['x0', 'x1', 'x2', 'x3', 'x4'] })
     expect(decodeAll(packed)).toStrictEqual(events)
   })
 

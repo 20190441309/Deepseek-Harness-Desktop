@@ -63,6 +63,10 @@ export interface AppearanceSectionInjected {
   setWallpaper: (
     patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>,
   ) => void
+  /** Persist desktop wallpaper source preferences. */
+  setWallpaperSources?: (
+    patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>,
+  ) => void
   /** Persist typography extras. */
   setTypography: (
     patch: Partial<Pick<ThemeSettings,
@@ -90,6 +94,7 @@ export function AppearanceSection({
   previewTheme,
   setGlassOpacity,
   setWallpaper,
+  setWallpaperSources,
   setTypography,
 }: AppearanceSectionComponentProps) {
   const preference = useStore(s => s.preference)
@@ -102,6 +107,7 @@ export function AppearanceSection({
   const wallpaperImage = useStore(s => s.wallpaperImage)
   const wallpaperBlur = useStore(s => s.wallpaperBlur)
   const wallpaperPixelate = useStore(s => s.wallpaperPixelate)
+  const wallpaperSources = useStore(s => s.wallpaperSources)
   const fontFamilySans = useStore(s => s.fontFamilySans)
   const fontFamilyCode = useStore(s => s.fontFamilyCode)
   const fontSizeInterface = useStore(s => s.fontSizeInterface)
@@ -141,8 +147,10 @@ export function AppearanceSection({
         wallpaperBlur={wallpaperBlur}
         wallpaperPixelate={wallpaperPixelate}
         glassOpacity={glassOpacity}
+        wallpaperSources={wallpaperSources}
         t={t}
         setWallpaper={setWallpaper}
+        {...(setWallpaperSources === undefined ? {} : { setWallpaperSources })}
       />
 
       <section className={css.block} aria-labelledby="appearance-glass-heading">

@@ -275,6 +275,54 @@ describe('WorkspaceRuntime', () => {
     await expect(workspaces.connectWorkspace(wid('alpha'))).resolves.toBe('s-fresh-2')
   })
 
+  it('connectWorkspace does not reuse a blank dshbot or subagent member', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [workspace('alpha', [sid('s-room'), sid('s-child')])] as never[],
+    }))
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        {
+          sessionId: sid('s-room'), updatedAt: 1, running: false, blank: true,
+          cwd: '/w/alpha', origin: 'dshbot',
+        },
+        {
+          sessionId: sid('s-child'), updatedAt: 2, running: false, blank: true,
+          cwd: '/w/alpha', origin: 'subagent',
+        },
+      ] as never[],
+    }))
+    await Promise.all([workspaces.refresh(), sessions.refresh()])
+    await Promise.resolve()
+    api.onCreate = () => Promise.resolve(ok({ sessionId: sid('s-fresh') }))
+    await expect(workspaces.connectWorkspace(wid('alpha'))).resolves.toBe('s-fresh')
+    expect(api.callsOf('session.create')).toEqual([{ workspaceId: 'alpha' }])
+  })
+
+  it('connectNoDirectory does not reuse a scratch blank stamped origin dshbot', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onWorkspaceList = () => Promise.resolve(ok({ items: [] as never[] }))
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        {
+          sessionId: sid('s-room'), updatedAt: 1, running: false, blank: true,
+          cwd: '/scratch', origin: 'dshbot',
+        },
+      ] as never[],
+    }))
+    await Promise.all([workspaces.refresh(), sessions.refresh()])
+    await Promise.resolve()
+    api.onCreate = payload => Promise.resolve(ok({ sessionId: sid('s-fresh'), payload }))
+    await expect(workspaces.connectNoDirectory()).resolves.toBe('s-fresh')
+    expect(api.callsOf('session.create')).toEqual([{ cwd: '/scratch' }])
+  })
+
   it('connectNoDirectory reuses a non-member scratch blank and creates otherwise', async () => {
     const ctx = new Context()
     const api = new FakeApiClient()

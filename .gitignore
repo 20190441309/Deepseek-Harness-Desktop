@@ -1,4 +1,6 @@
 node_modules/
+!vendor/dshmarket/node_modules/
+!vendor/dshmarket/node_modules/**
 vendor/deepseek-harness/node_modules/
 vendor/deepseek-harness/apps/web/dist/
 # host-side tsc emits declaration/map artifacts beside the sources; keep the

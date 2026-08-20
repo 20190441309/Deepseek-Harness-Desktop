@@ -242,6 +242,16 @@ test('installMarketplacePlugin installs a curated npm spec through the plugin ru
   assert.equal(result.spec, NPM_SPEC);
 });
 
+test('installMarketplacePlugin rolls back a dependency when no loadable entry is discoverable', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep(NPM_SPEC, 'workspace:*');
+  });
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /可加载|插件/);
+  assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
+});
+
 test('installMarketplacePlugin installs github:owner/repo through the plugin runner', async () => {
   const { calls, runPlugin } = recordRunner(() => {
     writeProfileDep('@virex/dsh-status-rotator', 'git+https://github.com/01Virex/dsh-status-rotator.git');

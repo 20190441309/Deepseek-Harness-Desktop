@@ -48,6 +48,7 @@
   top: auto;
   left: auto;
   z-index: 1100;
+  -webkit-app-region: no-drag;
 }
 
 /* Open above the anchor (empty-state workspace chip: figma 122:9481). */

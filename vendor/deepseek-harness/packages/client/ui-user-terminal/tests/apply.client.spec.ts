@@ -78,6 +78,8 @@ describe('ui-user-terminal apply', () => {
     expect(setDraft).toHaveBeenCalledWith('```terminal\nls\n```')
     injected.openWorkspacePath('/tmp/proj/a.ts')
     expect(openPath).toHaveBeenCalledWith('/tmp/proj/a.ts')
+    injected.openWorkspacePath('/tmp/proj/src/a.ts', { line: 10 })
+    expect(openPath).toHaveBeenCalledWith('/tmp/proj/src/a.ts', { line: 10 })
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota')
     })

@@ -11,6 +11,7 @@ import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtim
 import { filterEntries } from '../src/client/filter.ts'
 import { FileTree, joinRel } from '../src/client/FileTree.tsx'
 import { FilePreview } from '../src/client/FilePreview.tsx'
+import { resolveCenteredFileLineScrollTop } from '../src/client/fileLineReveal.ts'
 import type { FilesPanelProps } from '../src/client/FilesPanel.tsx'
 import { FilesPanel } from '../src/client/FilesPanel.tsx'
 import { en } from '../src/client/locales.ts'
@@ -66,6 +67,8 @@ function listDirFake(cwd: string, relativePath: string): Promise<ListDirResult> 
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  localStorage.clear()
+  delete (window as Window & { shell?: unknown }).shell
 })
 
 describe('filterEntries', () => {
@@ -113,6 +116,72 @@ describe('FileTree', () => {
     expect(onCopyAbsolute).toHaveBeenCalledWith('README.md')
     fireEvent.contextMenu(screen.getByRole('button', { name: /README.md/ }))
     fireEvent.keyDown(document, { key: 'Escape' })
+  })
+
+  it('includes Show in folder on files and directories', () => {
+    const onShowInFolder = vi.fn()
+    const onOpenInEditor = vi.fn()
+    const onOpenWithSystemDefault = vi.fn()
+    const entries = FAKE_ROOT.map(entry => ({ ...entry, path: joinRel('', entry.name) }))
+    render(
+      <FileTree
+        entries={entries}
+        childrenByPath={{}}
+        expanded={new Set()}
+        onToggle={() => {}}
+        onOpenFile={() => {}}
+        onShowInFolder={onShowInFolder}
+        onOpenInEditor={onOpenInEditor}
+        onOpenWithSystemDefault={onOpenWithSystemDefault}
+        editors={[{ id: 'vscode', label: 'VS Code' }]}
+        showInFolderLabel="在文件夹中显示"
+        openWithSystemDefaultLabel="系统默认程序"
+      />,
+    )
+    fireEvent.contextMenu(screen.getByRole('button', { name: /README.md/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '在文件夹中显示' }))
+    expect(onShowInFolder).toHaveBeenCalledWith('README.md')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /README.md/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'VS Code' }))
+    expect(onOpenInEditor).toHaveBeenCalledWith('vscode', 'README.md')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /README.md/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '系统默认程序' }))
+    expect(onOpenWithSystemDefault).toHaveBeenCalledWith('README.md')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /src/ }))
+    expect(screen.getByRole('menuitem', { name: '在文件夹中显示' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'VS Code' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '系统默认程序' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: '在文件夹中显示' }))
+    expect(onShowInFolder).toHaveBeenCalledWith('src')
+  })
+
+  it('tags file rows for mention drag and ignores click while dragging', () => {
+    const onOpenFile = vi.fn()
+    const entries = FAKE_ROOT.map(entry => ({ ...entry, path: joinRel('', entry.name) }))
+    render(
+      <FileTree
+        entries={entries}
+        childrenByPath={{}}
+        expanded={new Set()}
+        onToggle={() => {}}
+        onOpenFile={onOpenFile}
+      />,
+    )
+    const fileRow = screen.getByRole('button', { name: /README.md/ })
+    const dirRow = screen.getByRole('button', { name: /src/ })
+    expect(fileRow.getAttribute('draggable')).toBe('true')
+    expect(fileRow.getAttribute('data-item-path')).toBe('README.md')
+    expect(dirRow.getAttribute('draggable')).not.toBe('true')
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => ''),
+    }
+    fireEvent.dragStart(fileRow, { dataTransfer })
+    fireEvent.click(fileRow)
+    expect(onOpenFile).not.toHaveBeenCalled()
+    fireEvent.dragEnd(fileRow)
+    fireEvent.click(fileRow)
+    expect(onOpenFile).toHaveBeenCalledWith('README.md')
   })
 
   it('skips the context menu when copy actions are absent', () => {
@@ -269,6 +338,36 @@ describe('FilesPanel', () => {
       vi.advanceTimersByTime(1200)
     })
     vi.useRealTimers()
+  })
+
+  it('copies a markdown mention from the context menu', async () => {
+    vi.mocked(writeClipboard).mockClear()
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={() => {}}
+        listDir={listDirFake}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /README.md/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy mention' }))
+    await waitFor(() => {
+      expect(writeClipboard).toHaveBeenCalledWith('[README.md](README.md)')
+    })
   })
 
   it('shows the empty-cwd message when no workspace is attached', () => {
@@ -583,10 +682,10 @@ describe('FilesPanel', () => {
     expect(screen.getByText('index.ts')).toBeTruthy()
   })
 
-  it('reports when the search walk hits the depth budget', async () => {
+  it('walks nested directories with no depth cap during search', async () => {
     const deepList: FilesPanelProps['listDir'] = async (_cwd, relativePath) => {
       const depth = relativePath === '' ? 0 : relativePath.split('/').length
-      if (depth >= 12) return { ok: true, entries: [{ name: 'leaf.txt', kind: 'file' }] }
+      if (depth >= 10) return { ok: true, entries: [{ name: 'leaf.ts', kind: 'file' }] }
       return { ok: true, entries: [{ name: `d${depth}`, kind: 'directory' }] }
     }
     render(
@@ -611,7 +710,46 @@ describe('FilesPanel', () => {
       expect(screen.getByText('d0')).toBeTruthy()
     })
     fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'leaf' } })
-    expect(await screen.findByText('Search stopped early (depth or directory limit).')).toBeTruthy()
+    expect(await screen.findByText('leaf.ts')).toBeTruthy()
+    expect(screen.queryByText('Search stopped early (depth or directory limit).')).toBeNull()
+  })
+
+  it('shows picker rows for index that call openFile', async () => {
+    const openFile = vi.fn()
+    const listDir: FilesPanelProps['listDir'] = async (_cwd, relativePath) => {
+      if (relativePath === '') return { ok: true, entries: [{ name: 'apps', kind: 'directory' }] }
+      if (relativePath === 'apps') return { ok: true, entries: [{ name: 'web', kind: 'directory' }] }
+      if (relativePath === 'apps/web') return { ok: true, entries: [{ name: 'src', kind: 'directory' }] }
+      if (relativePath === 'apps/web/src') {
+        return { ok: true, entries: [{ name: 'index.ts', kind: 'file' }] }
+      }
+      return { ok: true, entries: [] }
+    }
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={openFile}
+        listDir={listDir}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('apps')).toBeTruthy()
+    })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'index' } })
+    expect(await screen.findByText('apps/web/src/index.ts')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /apps\/web\/src\/index\.ts/ }))
+    expect(openFile).toHaveBeenCalledWith('apps/web/src/index.ts')
   })
 })
 
@@ -667,6 +805,7 @@ describe('FilePreview', () => {
         t={t}
       />,
     )
+    fireEvent.click(await screen.findByRole('button', { name: 'Rendered' }))
     expect(await screen.findByText('Hello')).toBeTruthy()
     rerender(
       <FilePreview
@@ -747,7 +886,8 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('File is too large; showing the beginning.')).toBeTruthy()
-    expect(screen.getByText('src/a.ts')).toBeTruthy()
+    expect(screen.getByText('proj')).toBeTruthy()
+    expect(screen.getByText('src')).toBeTruthy()
     expect(screen.queryByRole('heading')).toBeNull()
     expect(screen.getByText('const x = 1')).toBeTruthy()
     rerender(
@@ -1116,7 +1256,6 @@ describe('FilePreview', () => {
         t={t}
       />,
     )
-    fireEvent.click(await screen.findByRole('button', { name: 'Source' }))
     const editor = await screen.findByLabelText('note.md')
     fireEvent.change(editor, { target: { value: '# Saved' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -1568,7 +1707,6 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('gone')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
     expect((await screen.findByLabelText('note.md') as HTMLTextAreaElement).value).toBe('# edited')
   })
 
@@ -1631,7 +1769,6 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('File is too large; showing the beginning.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
     expect((await screen.findByLabelText('note.md') as HTMLTextAreaElement).value).toBe('# edited')
   })
 
@@ -1694,7 +1831,6 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('A workspace is required to browse files.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
     expect((await screen.findByLabelText('note.md') as HTMLTextAreaElement).value).toBe('# edited')
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)
   })
@@ -1856,5 +1992,593 @@ describe('FilePreview', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
     })
     expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('autosaves the latest draft after 500ms', async () => {
+    const writeFile = vi.fn(async () => ({ ok: true as const }))
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'x', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fireEvent.change(editor, { target: { value: 'latest text' } })
+    expect(writeFile).not.toHaveBeenCalled()
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(writeFile).toHaveBeenCalledWith('/tmp/proj', 'a.ts', 'latest text')
+  })
+
+  it('does not write a dirty draft when unmounted before autosave', async () => {
+    const writeFile = vi.fn(async () => ({ ok: true as const }))
+    const { unmount } = render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'x', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    fireEvent.change(editor, { target: { value: 'discarded' } })
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('does not write a discarded draft after a conflict', async () => {
+    let disk = 'v1'
+    const writeFile = vi.fn(async (_cwd: string, _path: string, text: string) => {
+      disk = text
+      return { ok: true as const }
+    })
+    const { unmount } = render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: disk, binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    fireEvent.change(editor, { target: { value: 'mine' } })
+    disk = 'theirs'
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('The file changed on disk. Save again to overwrite.')).toBeTruthy()
+    expect(writeFile).not.toHaveBeenCalled()
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('shows the Source/Rendered toggle for mdx files', async () => {
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="notes.mdx"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: '# Notes', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    expect(await screen.findByRole('button', { name: 'Rendered' })).toBeTruthy()
+    expect(await screen.findByLabelText('notes.mdx')).toBeTruthy()
+  })
+
+  it('toggles word wrap to pre-wrap on the editor', async () => {
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'line', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    fireEvent.click(screen.getByRole('button', { name: 'Word wrap' }))
+    expect(localStorage.getItem('dshd.fileWordWrap')).toBe('1')
+    expect(
+      editor.className.split(/\s+/).some(name => /wrap/i.test(name))
+      || getComputedStyle(editor).whiteSpace === 'pre-wrap',
+    ).toBe(true)
+  })
+
+  it('updates the draft when a rendered markdown task checkbox is clicked', async () => {
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="todo.md"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: '- [ ] milk', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Rendered' }))
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
+    expect((await screen.findByLabelText('todo.md') as HTMLTextAreaElement).value).toBe('- [x] milk')
+  })
+
+  it('shows project and directory crumbs in the toolbar', async () => {
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="src/a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'x', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    expect(await screen.findByLabelText('src/a.ts')).toBeTruthy()
+    const toolbar = document.querySelector('[data-file-preview]')?.firstElementChild
+    expect(toolbar?.textContent).toContain('proj')
+    expect(toolbar?.textContent).toContain('src')
+  })
+
+  it('opens an html file in the preview browser from the toolbar', async () => {
+    const previewWorkspaceFile = vi.fn(async () => ({
+      ok: true as const,
+      url: 'http://127.0.0.1:9/tok/index.html',
+    }))
+    ;(window as Window & { shell?: unknown }).shell = { previewWorkspaceFile }
+    const events: unknown[] = []
+    const onOpen = (event: Event): void => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    try {
+      render(
+        <FilePreview
+          sessionId={SID}
+          relativePath="index.html"
+          active
+          onDirtyChange={() => {}}
+          registerSave={() => {}}
+          readBuffer={() => undefined}
+          writeBuffer={() => {}}
+          useSession={neverHook}
+          useSessions={sel => sel(sessionList('/tmp/proj'))}
+          useWorkspaces={neverHook}
+          useProjection={neverHook}
+          useInput={neverHook}
+          inputActions={undefined}
+          listDir={async () => ({ ok: false })}
+          readFile={async () => ({ ok: true, text: '<p>hi</p>', binary: false })}
+          readFileMedia={async () => ({ ok: false })}
+          mentionFile={() => {}}
+          writeFile={async () => ({ ok: true })}
+          t={t}
+        />,
+      )
+      fireEvent.click(await screen.findByRole('button', { name: 'Open in browser' }))
+      await waitFor(() => {
+        expect(previewWorkspaceFile).toHaveBeenCalledWith({
+          cwd: '/tmp/proj',
+          relativePath: 'index.html',
+        })
+        expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:9/tok/index.html' }])
+      })
+      expect(sessionStorage.getItem('dshd-pending-preview-url')).toBe(
+        'http://127.0.0.1:9/tok/index.html',
+      )
+    } finally {
+      window.removeEventListener('dshd-open-surface', onOpen)
+      sessionStorage.removeItem('dshd-pending-preview-url')
+    }
+  })
+
+  it('opens a pdf file in the preview browser from the toolbar', async () => {
+    const previewWorkspaceFile = vi.fn(async () => ({
+      ok: true as const,
+      url: 'http://127.0.0.1:9/tok/doc.pdf',
+    }))
+    ;(window as Window & { shell?: unknown }).shell = { previewWorkspaceFile }
+    const events: unknown[] = []
+    const onOpen = (event: Event): void => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    try {
+      render(
+        <FilePreview
+          sessionId={SID}
+          relativePath="doc.pdf"
+          active
+          onDirtyChange={() => {}}
+          registerSave={() => {}}
+          readBuffer={() => undefined}
+          writeBuffer={() => {}}
+          useSession={neverHook}
+          useSessions={sel => sel(sessionList('/tmp/proj'))}
+          useWorkspaces={neverHook}
+          useProjection={neverHook}
+          useInput={neverHook}
+          inputActions={undefined}
+          listDir={async () => ({ ok: false })}
+          readFile={async () => ({ ok: true, text: '%PDF-1.4', binary: false })}
+          readFileMedia={async () => ({ ok: false })}
+          mentionFile={() => {}}
+          writeFile={async () => ({ ok: true })}
+          t={t}
+        />,
+      )
+      fireEvent.click(await screen.findByRole('button', { name: 'Open in browser' }))
+      await waitFor(() => {
+        expect(previewWorkspaceFile).toHaveBeenCalledWith({
+          cwd: '/tmp/proj',
+          relativePath: 'doc.pdf',
+        })
+        expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:9/tok/doc.pdf' }])
+      })
+      expect(sessionStorage.getItem('dshd-pending-preview-url')).toBe(
+        'http://127.0.0.1:9/tok/doc.pdf',
+      )
+    } finally {
+      window.removeEventListener('dshd-open-surface', onOpen)
+      sessionStorage.removeItem('dshd-pending-preview-url')
+    }
+  })
+
+  it('scrolls the source textarea to a centered reveal line', async () => {
+    const rect = {
+      x: 0,
+      y: 100,
+      width: 200,
+      height: 40,
+      top: 100,
+      right: 200,
+      bottom: 140,
+      left: 0,
+      toJSON: () => ({}),
+    }
+    const originalRect = HTMLTextAreaElement.prototype.getBoundingClientRect
+    HTMLTextAreaElement.prototype.getBoundingClientRect = () => rect
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() { return 40 },
+    })
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return 2_000 },
+    })
+    const originalGetComputedStyle = window.getComputedStyle.bind(window)
+    const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+      const style = originalGetComputedStyle(element)
+      if (!(element instanceof HTMLTextAreaElement)) return style
+      return new Proxy(style, {
+        get(target, prop, receiver) {
+          if (prop === 'lineHeight') return '20px'
+          return Reflect.get(target, prop, receiver)
+        },
+      })
+    })
+    try {
+      render(
+        <FilePreview
+          sessionId={SID}
+          relativePath="a.ts"
+          active
+          revealLine={3}
+          revealRequestId={1}
+          onDirtyChange={() => {}}
+          registerSave={() => {}}
+          readBuffer={() => undefined}
+          writeBuffer={() => {}}
+          useSession={neverHook}
+          useSessions={sel => sel(sessionList('/tmp/proj'))}
+          useWorkspaces={neverHook}
+          useProjection={neverHook}
+          useInput={neverHook}
+          inputActions={undefined}
+          listDir={async () => ({ ok: false })}
+          readFile={async () => ({ ok: true, text: 'one\ntwo\nthree', binary: false })}
+          readFileMedia={async () => ({ ok: false })}
+          mentionFile={() => {}}
+          writeFile={async () => ({ ok: true })}
+          t={t}
+        />,
+      )
+      const textarea = await screen.findByLabelText('a.ts') as HTMLTextAreaElement
+      expect(textarea.value).toBe('one\ntwo\nthree')
+      const expected = resolveCenteredFileLineScrollTop({
+        scrollTop: 0,
+        scrollHeight: 2_000,
+        viewportTop: 100,
+        viewportHeight: 40,
+        fileTop: 0,
+        estimatedLine: { top: (3 - 1) * 20, height: 20 },
+      })
+      expect(textarea.scrollTop).toBe(expected)
+    } finally {
+      HTMLTextAreaElement.prototype.getBoundingClientRect = originalRect
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'clientHeight')
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+      styleSpy.mockRestore()
+    }
+  })
+
+  it('re-jumps from a scrolled textarea using fileTop 0', async () => {
+    const rect = {
+      x: 0,
+      y: 100,
+      width: 200,
+      height: 40,
+      top: 100,
+      right: 200,
+      bottom: 140,
+      left: 0,
+      toJSON: () => ({}),
+    }
+    const originalRect = HTMLTextAreaElement.prototype.getBoundingClientRect
+    HTMLTextAreaElement.prototype.getBoundingClientRect = () => rect
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() { return 40 },
+    })
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return 2_000 },
+    })
+    const originalGetComputedStyle = window.getComputedStyle.bind(window)
+    const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+      const style = originalGetComputedStyle(element)
+      if (!(element instanceof HTMLTextAreaElement)) return style
+      return new Proxy(style, {
+        get(target, prop, receiver) {
+          if (prop === 'lineHeight') return '20px'
+          return Reflect.get(target, prop, receiver)
+        },
+      })
+    })
+    const preview = (revealRequestId: number) => (
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        revealLine={3}
+        revealRequestId={revealRequestId}
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'one\ntwo\nthree', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />
+    )
+    try {
+      const view = render(preview(1))
+      const textarea = await screen.findByLabelText('a.ts') as HTMLTextAreaElement
+      act(() => { textarea.scrollTop = 200 })
+      expect(textarea.scrollTop).toBe(200)
+      view.rerender(preview(2))
+      const expected = resolveCenteredFileLineScrollTop({
+        scrollTop: 200,
+        scrollHeight: 2_000,
+        viewportTop: 100,
+        viewportHeight: 40,
+        fileTop: 0,
+        estimatedLine: { top: (3 - 1) * 20, height: 20 },
+      })
+      const accumulated = resolveCenteredFileLineScrollTop({
+        scrollTop: 200,
+        scrollHeight: 2_000,
+        viewportTop: 100,
+        viewportHeight: 40,
+        fileTop: 200,
+        estimatedLine: { top: (3 - 1) * 20, height: 20 },
+      })
+      expect(accumulated).not.toBe(expected)
+      await waitFor(() => {
+        expect(textarea.scrollTop).toBe(expected)
+      })
+    } finally {
+      HTMLTextAreaElement.prototype.getBoundingClientRect = originalRect
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'clientHeight')
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+      styleSpy.mockRestore()
+    }
+  })
+
+  it('switches markdown from rendered to source for a line reveal', async () => {
+    localStorage.setItem('dshd.renderMarkdown', '1')
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="note.md"
+        active
+        revealLine={2}
+        revealRequestId={1}
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: '# Hello\nsecond', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    const textarea = await screen.findByLabelText('note.md') as HTMLTextAreaElement
+    expect(textarea.value).toBe('# Hello\nsecond')
+    expect(screen.queryByRole('heading', { name: 'Hello' })).toBeNull()
+  })
+
+  it('adds a selected line range to the composer as a fenced file comment', async () => {
+    const appendComposerText = vi.fn()
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="src/a.ts"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={() => {}}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'one\ntwo\nthree', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        appendComposerText={appendComposerText}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('src/a.ts') as HTMLTextAreaElement
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
+    editor.focus()
+    editor.setSelectionRange(0, 8)
+    fireEvent.select(editor)
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
+    editor.setSelectionRange(0, 0)
+    fireEvent.select(editor)
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
+    editor.setSelectionRange(0, 8)
+    fireEvent.select(editor)
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Add to chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    expect(appendComposerText).toHaveBeenCalledTimes(1)
+    const payload = appendComposerText.mock.calls[0]?.[1] as string
+    expect(appendComposerText.mock.calls[0]?.[0]).toBe(SID)
+    expect(payload).toContain('L1 to L2')
+    expect(payload).toContain('`src/a.ts`')
+    expect(payload).toContain('```text')
+    expect(payload).toContain('one\ntwo')
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
   })
 })

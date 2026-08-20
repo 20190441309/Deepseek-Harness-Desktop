@@ -4,7 +4,7 @@ Status: implemented
 
 English | [中文](2026-07-31-web-workspace-file-links.zh.md)
 
-> Scope: the produced-files row a finished turn ends with, the file-path link that reads as one, and the Host opener preferring the default browser for documents a browser renders. Not in scope, by decision: serving workspace files over HTTP, and previews for a client that is not on the Host machine.
+> Scope: the produced-files row a finished turn ends with, the file-path link that reads as one, and the Host opener preferring the default browser for documents a browser renders. Not in scope for `dsh web`, by decision: serving workspace files over HTTP from the harness origin, and previews for a client that is not on the Host machine.
 
 ## Problem
 
@@ -29,7 +29,7 @@ Two distinct defects sat behind that. The transcript never said what a turn had 
 - **`Content-Security-Policy: sandbox` over that same-origin serving** — closes the hole by taking the document's origin away, which measurably breaks the pages this feature exists to show: the reported artifact throws `SecurityError` on load, and because an uncaught exception aborts the rest of its `<script>`, every listener declared after that line — theme toggle, mobile menu, model tabs — never binds. Two of the four artifacts in the reporting user's workspace were dead pages under it, and they still rendered perfectly, so the breakage was invisible.
 - **Linkifying paths in the assistant's closing message** — the shape a user asks for ("put the link at the end"), but it makes rendering depend on the model spelling a path recognizably. The tool calls already carry `locations` as structured fact, so the produced-files row consumes that instead.
 - **Horizontal chip scrolling** — keeps every file in the DOM but makes the hidden tail undiscoverable, adds a nested horizontal gesture to the transcript, and provides no exact account of what is out of view. One measured line with a stable remainder preserves the answer's vertical rhythm and keeps the omission explicit.
-- **An embedded WebView in the desktop shell** — the strongest isolation available, since the preview then runs in a container the product owns rather than in the user's browser. It belongs to the desktop shell's own design, not to this surface, and is recorded here as the direction a future preview capability should take.
+- **An embedded WebView in the desktop shell** — the strongest isolation available, since the preview then runs in a container the product owns rather than in the user's browser. Desktop conversation and `openPath` html/svg opens use that guest through a token-prefixed `127.0.0.1` static server ([conversation links into Files and Browser](2026-08-19-conversation-surface-links.md)). This web note still rejects serving workspace files from the harness origin.
 
 ## Consequences
 

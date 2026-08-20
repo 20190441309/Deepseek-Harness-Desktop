@@ -11,6 +11,11 @@ import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ApprovalComposerInjected } from '../src/client/contract/slots.ts'
+import type { BeamRowInjected } from '../src/client/settings/BeamRow.tsx'
+import type { ResizeRowInjected } from '../src/client/settings/ResizeRow.tsx'
+import type { StatsLineRowInjected } from '../src/client/settings/StatsLineRow.tsx'
+import type { ViewTabsRowInjected } from '../src/client/settings/ViewTabsRow.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
 // the shipped Chinese copy, so they state the browser they assume.
@@ -39,6 +44,7 @@ async function bench() {
     'conversation': { kind: 'single', scope: 'session-maybe' },
     'details': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
+    'settings.interface.item': { kind: 'list', scope: 'root' },
   }, (_p: { renderSlot?: unknown }) => null)
 
   const feature = await runtime.mount({ inject: [...inject], apply })
@@ -69,6 +75,7 @@ describe('apply wiring', () => {
     const nodeSlot = b.slots.spec('conversation.chat.node')
     expect(nodeSlot).toMatchObject({ kind: 'keyed', scope: 'session' })
     expect(nodeSlot?.inject?.hooks?.turnData).toBeTypeOf('function')
+    expect(b.slots.spec('conversation.chat.empty')).toEqual({ kind: 'list', scope: 'session' })
     await b.runtime.dispose()
   })
 
@@ -117,6 +124,32 @@ describe('apply wiring', () => {
     expect(b.slots.spec('conversation.hero.workspace')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('conversation.hero.agentPreset')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.entries('settings.general.item').map(entry => entry.options.id)).toEqual(['composer-enter'])
+    expect(b.slots.entries('settings.interface.item').map(entry => entry.options.id)).toEqual([
+      'composer-beam', 'composer-resize', 'stats-line', 'view-tabs',
+    ])
+    const beam = b.slots.entries('settings.interface.item')[0]
+    const beamInjected = (beam?.inject as unknown as () => BeamRowInjected)()
+    expect(beamInjected.hooks.composerBeam.getSnapshot()).toBe(true)
+    beamInjected.setComposerBeam(false)
+    expect(beamInjected.hooks.composerBeam.getSnapshot()).toBe(false)
+    const resize = b.slots.entries('settings.interface.item')[1]
+    const resizeInjected = (resize?.inject as unknown as () => ResizeRowInjected)()
+    expect(resizeInjected.hooks.composerResize.getSnapshot()).toBe(false)
+    resizeInjected.setComposerResize(true)
+    expect(resizeInjected.hooks.composerResize.getSnapshot()).toBe(true)
+    const approval = b.slots.entries('conversation.composer')[0]
+    const approvalInjected = (approval?.inject as unknown as () => ApprovalComposerInjected)()
+    expect(approvalInjected.hooks.composerResize).toBe(resizeInjected.hooks.composerResize)
+    const stats = b.slots.entries('settings.interface.item')[2]
+    const statsInjected = (stats?.inject as unknown as () => StatsLineRowInjected)()
+    expect(statsInjected.hooks.statsLine.getSnapshot()).toBe(true)
+    statsInjected.setStatsLine(false)
+    expect(statsInjected.hooks.statsLine.getSnapshot()).toBe(false)
+    const tabs = b.slots.entries('settings.interface.item')[3]
+    const tabsInjected = (tabs?.inject as unknown as () => ViewTabsRowInjected)()
+    expect(tabsInjected.hooks.viewTabs.getSnapshot()).toBe(true)
+    tabsInjected.setViewTabs(false)
+    expect(tabsInjected.hooks.viewTabs.getSnapshot()).toBe(false)
     await b.runtime.dispose()
   })
 
@@ -143,6 +176,7 @@ describe('apply wiring', () => {
     expect(b.slots.spec('conversation.chat.node')).toBeUndefined()
     expect(b.slots.entries('details')).toHaveLength(0)
     expect(b.slots.entries('settings.general.item')).toHaveLength(0)
+    expect(b.slots.entries('settings.interface.item')).toHaveLength(0)
     expect(b.runtime.ctx.get('conversation')).toBeUndefined()
     await b.runtime.dispose()
   })

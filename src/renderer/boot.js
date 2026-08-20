@@ -6,6 +6,7 @@ const actionsEl = document.getElementById('actions');
 const logEl = document.getElementById('log');
 const retryEl = document.getElementById('retry');
 const cancelRestartEl = document.getElementById('cancel-restart');
+const saveLogEl = document.getElementById('save-log');
 const stampEl = document.getElementById('stamp');
 const stampCodeEl = document.getElementById('stamp-code');
 
@@ -36,6 +37,7 @@ const STAMPS = {
 let latestSnapshot = null;
 let countdownTimer = null;
 let pluginBoot = null;
+let logSaveNotice = '';
 
 function invoke(method, ...args) {
   try {
@@ -91,10 +93,11 @@ function recoveryText(snapshot) {
 }
 
 function refreshCountdown() {
-  if (!latestSnapshot) {
+  if (!latestSnapshot && !logSaveNotice) {
     return;
   }
-  const text = recoveryText(latestSnapshot);
+  const recovery = latestSnapshot ? recoveryText(latestSnapshot) : '';
+  const text = [recovery, logSaveNotice].filter(Boolean).join(' ');
   recoveryEl.textContent = text;
   recoveryEl.hidden = !text;
 }
@@ -131,6 +134,18 @@ function applyPluginBootCopy(payload) {
   hintEl.textContent = '运行时已就绪，正在装载客户端插件。';
 }
 
+function applyPluginRecoveryCopy(snapshot) {
+  if (snapshot?.pluginRecovery?.skipUserPlugins !== true) return false;
+  const copy = globalThis.BootRecovery?.skipStartingCopy?.();
+  if (!copy) return false;
+  statusEl.textContent = copy.status;
+  statusEl.className = 'status ready';
+  hintEl.textContent = copy.hint;
+  document.body.dataset.state = 'starting';
+  renderStamp('starting');
+  return true;
+}
+
 function renderPluginBoot(payload) {
   pluginBoot = payload;
   if (!payload || payload.settled) {
@@ -153,23 +168,36 @@ function renderState(snapshot) {
   document.body.dataset.state = state;
   renderStamp(state);
 
-  statusEl.textContent = state === 'error'
-    ? (runtimeFailure ? 'Harness 意外退出' : 'Harness 启动失败')
-    : LABELS[state] || LABELS.starting;
-  statusEl.className = `status ${state}`;
-  hintEl.textContent = runtimeFailure
-    ? '桌面端已返回恢复页面，失效的 Web UI 和手机 Remote 已停止使用旧进程。'
-    : (HINTS[state] || HINTS.starting);
+  const usingOfficialRecovery = state === 'starting' && applyPluginRecoveryCopy(snapshot);
+
+  if (!usingOfficialRecovery) {
+    statusEl.textContent = state === 'error'
+      ? (runtimeFailure ? 'Harness 意外退出' : 'Harness 启动失败')
+      : LABELS[state] || LABELS.starting;
+    statusEl.className = `status ${state}`;
+    hintEl.textContent = runtimeFailure
+      ? '桌面端已返回恢复页面，失效的 Web UI 和手机 Remote 已停止使用旧进程。'
+      : (HINTS[state] || HINTS.starting);
+  }
 
   failureEl.textContent = state === 'error' ? (failure?.message || snapshot?.error || '') : '';
   failureEl.hidden = !failureEl.textContent;
+
+  const canAct = state === 'error' || recoveryScheduled || recoveryBusy;
+  if (!canAct) {
+    logSaveNotice = '';
+  }
   refreshCountdown();
   manageCountdown(snapshot);
 
-  const canAct = state === 'error' || recoveryScheduled || recoveryBusy;
   actionsEl.hidden = !canAct;
-  retryEl.textContent = runtimeFailure ? '立即重启' : '重试';
+  retryEl.textContent = globalThis.BootRecovery?.retryActionLabel
+    ? globalThis.BootRecovery.retryActionLabel(runtimeFailure)
+    : (runtimeFailure ? '立即重启' : '重试');
   retryEl.disabled = recoveryBusy;
+  saveLogEl.textContent = globalThis.BootRecovery?.downloadLogLabel
+    ? globalThis.BootRecovery.downloadLogLabel()
+    : '下载日志';
   cancelRestartEl.hidden = !recoveryScheduled;
   cancelRestartEl.disabled = recoveryBusy;
 
@@ -183,15 +211,17 @@ function renderState(snapshot) {
   }
 }
 
-const LOG_ERROR_PATTERN = /ERR_[A-Z0-9_]+|Cannot find (?:package|module)|Error \[/;
-
 function visibleLogs(logs, state) {
   const lines = Array.isArray(logs) ? logs.map((line) => String(line ?? '')) : [];
   const tail = lines.slice(-8);
   if (state !== 'error') {
     return tail;
   }
-  const important = lines.filter((line) => LOG_ERROR_PATTERN.test(line));
+  const important = lines.filter((line) => (
+    globalThis.BootRecovery?.isImportantBootLog
+      ? globalThis.BootRecovery.isImportantBootLog(line)
+      : /ERR_[A-Z0-9_]+|Cannot find (?:package|module)|Error \[/.test(line)
+  ));
   const merged = [];
   const seen = new Set();
   for (const line of [...important, ...tail]) {
@@ -213,6 +243,7 @@ function appendLog(line) {
 }
 
 retryEl.addEventListener('click', () => {
+  logSaveNotice = '';
   retryEl.disabled = true;
   cancelRestartEl.hidden = true;
   renderState({ state: 'starting', recovery: { status: 'inactive' } });
@@ -242,6 +273,25 @@ cancelRestartEl.addEventListener('click', () => {
       recoveryEl.textContent = `取消失败：${error.message || String(error)}`;
       recoveryEl.hidden = false;
       cancelRestartEl.disabled = false;
+    });
+});
+
+saveLogEl.addEventListener('click', () => {
+  invoke('saveBootLog')
+    .then((result) => {
+      if (!result || result.canceled) {
+        return;
+      }
+      if (result.ok) {
+        logSaveNotice = `日志已保存：${result.path}`;
+      } else {
+        logSaveNotice = `保存日志失败：${result.error || '未知错误'}`;
+      }
+      refreshCountdown();
+    })
+    .catch((error) => {
+      logSaveNotice = `保存日志失败：${error.message || String(error)}`;
+      refreshCountdown();
     });
 });
 

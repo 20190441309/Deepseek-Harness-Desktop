@@ -14,6 +14,9 @@ export const WALLPAPER_EFFECT_STEP = 1
 /** Longest data URL accepted in the Host section (keeps settings.yaml bounded). */
 export const MAX_WALLPAPER_DATA_URL_CHARS = 1_800_000
 
+/** Maximum local or proxied wallpaper file size before decoding. */
+export const MAX_WALLPAPER_FILE_BYTES = 12 * 1024 * 1024
+
 /** Longest source edge kept when encoding a picked file. */
 export const MAX_WALLPAPER_EDGE = 1920
 
@@ -162,6 +165,7 @@ export function downscaleWallpaper(dataUrl: string): Promise<string | null> {
  * @returns a data URL, or null when the file is not a usable wallpaper.
  */
 export async function encodeWallpaperFile(file: File): Promise<string | null> {
+  if (file.size > MAX_WALLPAPER_FILE_BYTES) return null
   const named = /\.(png|jpe?g|webp|gif)$/i.test(file.name)
   if (!ALLOWED_TYPES.has(file.type) && !named) return null
   let raw: string
@@ -175,6 +179,82 @@ export async function encodeWallpaperFile(file: File): Promise<string | null> {
   const next = resized ?? (isWallpaperDataUrl(raw) ? raw : null)
   if (next === null || next.length > MAX_WALLPAPER_DATA_URL_CHARS) return null
   return next
+}
+
+/** Pixel rectangle passed to CanvasRenderingContext2D.drawImage. */
+export interface WallpaperCropRect {
+  sx: number
+  sy: number
+  sw: number
+  sh: number
+}
+
+/** Calculate a centered, zoomed cover crop for a source image. */
+export function wallpaperCropRect(
+  width: number,
+  height: number,
+  aspect: number,
+  zoom: number,
+  panX: number,
+  panY: number,
+): WallpaperCropRect {
+  const safeWidth = Math.max(1, width)
+  const safeHeight = Math.max(1, height)
+  const safeAspect = Math.max(0.25, aspect || 1)
+  const coverWidth = safeWidth / safeHeight >= safeAspect ? safeHeight * safeAspect : safeWidth
+  const coverHeight = safeWidth / safeHeight >= safeAspect ? safeHeight : safeWidth / safeAspect
+  const safeZoom = Math.max(1, zoom || 1)
+  const sw = Math.max(1, Math.min(safeWidth, coverWidth / safeZoom))
+  const sh = Math.max(1, Math.min(safeHeight, coverHeight / safeZoom))
+  const maxX = Math.max(0, safeWidth - sw)
+  const maxY = Math.max(0, safeHeight - sh)
+  return {
+    sx: Math.round(maxX * Math.min(1, Math.max(0, panX))),
+    sy: Math.round(maxY * Math.min(1, Math.max(0, panY))),
+    sw: Math.round(sw),
+    sh: Math.round(sh),
+  }
+}
+
+/** Crop a data URL in a bounded browser canvas; decode or canvas failures fail closed. */
+export function cropWallpaper(dataUrl: string, rect: WallpaperCropRect): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!isWallpaperDataUrl(dataUrl) || typeof Image === 'undefined' || typeof document === 'undefined') {
+      resolve(null)
+      return
+    }
+    const image = new Image()
+    let settled = false
+    const finish = (value: string | null): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      image.onload = null
+      image.onerror = null
+      resolve(value)
+    }
+    const timer = setTimeout(() => { finish(null) }, 1000)
+    image.onload = (): void => {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, rect.sw)
+      canvas.height = Math.max(1, rect.sh)
+      const context = canvas.getContext('2d')
+      if (context === null) {
+        finish(null)
+        return
+      }
+      try {
+        context.drawImage(image, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, canvas.width, canvas.height)
+        const result = canvas.toDataURL('image/jpeg', 0.82)
+        finish(isWallpaperDataUrl(result) && result.length <= MAX_WALLPAPER_DATA_URL_CHARS ? result : null)
+      } catch {
+        finish(null)
+      }
+    }
+    image.onerror = () => { finish(null) }
+    image.src = dataUrl
+    if (image.complete) image.onload(new Event('load') as unknown as Event)
+  })
 }
 
 /**
@@ -210,6 +290,8 @@ export function wallpaperCanvasSolidity(solidity: number): number {
  * the sidebar sits halfway between the uncapped canvas curve and glass so
  * glass 100% fully opaques the rail, and raised surfaces keep the full
  * glass solidity. A 100% mix stores the solid color, not a color-mix.
+ * The terminal pane stays the opaque canvas fallback (or a family's solid
+ * `--dsw-alias-bg-base`) so TUI SGR does not sit on wallpaper glass.
  * @param tokens - current alias tokens (may be empty for DeepSeek).
  * @param mode - resolved half, picks the sheet fallbacks.
  * @param solidity - percent of the solid fill kept (the user's glass opacity).
@@ -239,6 +321,9 @@ export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark'
       ? solid
       : `color-mix(in srgb, ${solid} ${percent}%, transparent)`
   }
+  const pane = tokens['--dsw-alias-bg-base']
+  next['--dsw-alias-terminal-pane'] =
+    pane !== undefined && !pane.includes('color-mix') ? pane : base
   return next
 }
 

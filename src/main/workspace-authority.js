@@ -180,6 +180,15 @@ function dshHome() {
 }
 
 /**
+ * Host-owned cwd used by sessions that are not attached to a Workspace.
+ * @param {string} [homeDir] - harness home; defaults to `$DSH_HOME` or `~/.dsh`.
+ * @returns {string} the no-workspace scratch directory.
+ */
+function scratchWorkspacePath(homeDir = dshHome()) {
+  return path.join(homeDir, 'no-workspace');
+}
+
+/**
  * Paths persisted by `dsh-workspace` under `$DSH_HOME/storages/workspace.json`.
  * Missing, unreadable, or malformed files yield an empty list rather than
  * disabling the boot workspace.
@@ -223,15 +232,19 @@ function readHarnessRegisteredWorkspacePaths(homeDir = dshHome()) {
 
 /**
  * Lazy production authority bound to the configured boot workspace plus the
- * harness-registered workspace paths. Outside Electron (node:test) without
- * an injected authority this yields a null root, which disables the
- * capability rather than crashing the test process.
+ * harness-registered workspace paths. PTY callers may also opt into the
+ * Host-owned no-workspace scratch directory; filesystem and Git callers keep
+ * the stricter default. Outside Electron (node:test) without an injected
+ * authority this yields a null root, which disables the capability rather
+ * than crashing the test process.
+ * @param {{ allowScratchCwd?: boolean }} [options]
  */
-function loadWorkspaceAuthority() {
+function loadWorkspaceAuthority(options = {}) {
   try {
     const { loadConfig } = require('./config');
     return createWorkspaceAuthority({
       workspace: loadConfig().workspace,
+      extraWorkspaces: options.allowScratchCwd ? [scratchWorkspacePath()] : [],
       listRegisteredWorkspaces: () => readHarnessRegisteredWorkspacePaths(),
     });
   } catch {
@@ -243,4 +256,5 @@ module.exports = {
   createWorkspaceAuthority,
   loadWorkspaceAuthority,
   readHarnessRegisteredWorkspacePaths,
+  scratchWorkspacePath,
 };

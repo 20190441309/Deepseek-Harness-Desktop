@@ -4,7 +4,7 @@
   "mode": "mild",
   "format": ["typescript", "tsx"],
   "pattern": "**/*.{ts,tsx}",
-  "ignore": ["**/tests/**", "**/tsdown.config.ts"],
+  "ignore": ["**/tests/**", "**/tsdown.config.ts", "**/ui-user-terminal/src/client/ghostty/**"],
   "ignorePattern": [
     "(?s)/\\* jscpd:ignore-start \\*/.*?/\\* jscpd:ignore-end \\*/"
   ],

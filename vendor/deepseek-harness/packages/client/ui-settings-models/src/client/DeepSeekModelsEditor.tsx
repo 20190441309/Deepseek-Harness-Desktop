@@ -74,7 +74,7 @@ export interface DeepSeekModelsValidationFailure {
   index: number
   /** Message key owned by the Models settings section. */
   key: 'modelIdRequired' | 'modelIdDuplicate' | 'modelNameInvalid' | 'modelContextInvalid'
-  | 'modelMaxTokensInvalid'
+  | 'modelMaxTokensInvalid' | 'effortOffAlone'
 }
 
 /** Convert a schema-validated catalog value into records without dropping hidden fields. */
@@ -117,6 +117,16 @@ export function validateDeepSeekModels(value: unknown): DeepSeekModelsValidation
     if (maxTokens !== undefined
       && (typeof maxTokens !== 'number' || !Number.isInteger(maxTokens) || maxTokens <= 0)) {
       return { index, key: 'modelMaxTokensInvalid' }
+    }
+    const efforts = model['reasoningEfforts']
+    if (efforts !== undefined && efforts !== false && typeof efforts === 'object'
+      && efforts !== null && !Array.isArray(efforts)) {
+      const keys = Object.keys(efforts)
+      // Catalog resolution refuses a dict that offers only Off: that is neither
+      // a thinking model nor `reasoningEfforts: false`.
+      if (keys.length > 0 && keys.every(key => key === 'off')) {
+        return { index, key: 'effortOffAlone' }
+      }
     }
   }
   return undefined

@@ -8,11 +8,41 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const {
   ensureDesktopInstallPlugin,
+  healDanglingBundles,
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
   LEGACY_DESKTOP_INSTALL_BEGIN,
   LEGACY_DESKTOP_INSTALL_END,
 } = require('./plugins');
+
+test('healDanglingBundles removes only unresolved user bundles and preserves dependencies', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const install = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-install-'));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    const installPackage = path.join(install, 'apps', 'cli', 'package.json');
+    const installed = path.join(install, 'apps', 'cli', 'node_modules', 'from-install');
+    fs.mkdirSync(path.dirname(installPackage), { recursive: true });
+    fs.mkdirSync(installed, { recursive: true });
+    fs.writeFileSync(installPackage, '{}\n', 'utf8');
+    fs.writeFileSync(path.join(installed, 'package.json'), '{"name":"from-install"}\n', 'utf8');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({
+      dependencies: { 'from-install': '1.0.0', ghost: '1.0.0' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'from-install', 'ghost'] } },
+    }, null, 2)}\n`, 'utf8');
+
+    const result = healDanglingBundles({ profileDir, installAnchor: installPackage });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.removed, ['ghost']);
+    const manifest = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'));
+    assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', 'from-install']);
+    assert.equal(manifest.dependencies.ghost, '1.0.0');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(install, { recursive: true, force: true });
+  }
+});
 
 function sourceDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-host-'));

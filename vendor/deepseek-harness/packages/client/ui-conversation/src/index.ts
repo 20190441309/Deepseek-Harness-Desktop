@@ -5,8 +5,11 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { CONVERSATION_SETTINGS_NAMESPACE, ConversationSettingsSchema } from './submission-settings.ts'
 
 export {
-  BUSY_ENTER_BEHAVIORS, BUSY_ENTER_FIELD, CONVERSATION_SETTINGS_NAMESPACE,
-  DEFAULT_BUSY_ENTER_BEHAVIOR, type BusyEnterBehavior, type ConversationSettings,
+  BUSY_ENTER_BEHAVIORS, BUSY_ENTER_FIELD, COMPOSER_BEAM_FIELD, COMPOSER_RESIZE_FIELD,
+  CONVERSATION_SETTINGS_NAMESPACE, STATS_LINE_FIELD, VIEW_TABS_FIELD,
+  DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE,
+  DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
+  type BusyEnterBehavior, type ConversationSettings,
 } from './submission-settings.ts'
 
 /**

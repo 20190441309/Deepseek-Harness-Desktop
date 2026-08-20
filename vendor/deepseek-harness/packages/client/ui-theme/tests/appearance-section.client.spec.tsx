@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Appearance section: color-scheme tiles, two-ball library, editor, glass, type. */
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createSnapshotStore, type SessionListState, type WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -10,21 +10,60 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@deepseek-ai/dsh-client-ui-primitives')>()
   return { ...actual, writeClipboard: vi.fn(async () => true) }
 })
+vi.mock('../src/wallpaper.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/wallpaper.ts')>()
+  return { ...actual, cropWallpaper: vi.fn() }
+})
 import { AppearanceSection } from '../src/client/AppearanceSection.tsx'
+import { cropWallpaper } from '../src/wallpaper.ts'
 import type { AppearanceSectionComponentProps } from '../src/client/AppearanceSection.tsx'
 import { createAppearanceRowStore } from '../src/client/settings-store.ts'
 import type { AppearanceSyncSnapshot } from '../src/client/settings-store.ts'
 import { listThemeFamilies } from '../src/builtin-families.ts'
 import { serializeThemeFamily, type ThemeFamily } from '../src/theme-family.ts'
-import { DEFAULT_THEME_SETTINGS, type ThemePreference } from '../src/theme-settings.ts'
+import { DEFAULT_THEME_SETTINGS, type ThemePreference, type WallpaperSource } from '../src/theme-settings.ts'
 import { zh } from '../src/client/locales.ts'
+import type { WallpaperShell } from '../src/client/wallpaper-shell.ts'
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  Reflect.deleteProperty(window, 'shell')
 })
 
 const COPY = zh
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const PNG_BYTES = Uint8Array.from(atob(PNG.split(',')[1]!), char => char.charCodeAt(0))
+const CROPPED = 'data:image/jpeg;base64,Y3JvcA=='
+
+beforeEach(() => {
+  vi.mocked(cropWallpaper).mockReset()
+  vi.mocked(cropWallpaper).mockResolvedValue(CROPPED)
+})
+
+async function pickWallpaperFile(
+  view: ReturnType<typeof mount>,
+  file: File,
+): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: COPY['wallpaper.choose'] }))
+  const input = view.container.querySelector(
+    'input[accept="image/png,image/jpeg,image/webp,image/gif"]',
+  ) as HTMLInputElement
+  await act(async () => {
+    fireEvent.change(input, { target: { files: [file] } })
+  })
+}
+
+function loadCropPreview(): HTMLElement {
+  const crop = screen.getByRole('dialog', { name: COPY['wallpaper.crop'] })
+  const img = crop.querySelector('img')
+  if (img) {
+    Object.defineProperty(img, 'naturalWidth', { value: 1920, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1080, configurable: true })
+    fireEvent.load(img)
+  }
+  return crop
+}
 
 function emptySessions() {
   const store = createSnapshotStore<SessionListState>(
@@ -70,7 +109,11 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
   }
 }
 
-function mount(preference: ThemePreference = 'system', overrides: Partial<AppearanceSyncSnapshot> = {}) {
+function mount(
+  preference: ThemePreference = 'system',
+  overrides: Partial<AppearanceSyncSnapshot> = {},
+  wallpaper?: Pick<WallpaperShell, 'listWallpaperCatalog' | 'downloadWallpaper'>,
+) {
   const store = createAppearanceRowStore().create()
   store.actions.sync(snap({ preference, ...overrides }), 0)
   const setTheme = vi.fn()
@@ -80,6 +123,10 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
   const setGlassOpacity = vi.fn()
   const setWallpaper = vi.fn()
   const setTypography = vi.fn()
+  const setWallpaperSources = vi.fn()
+  if (wallpaper !== undefined) {
+    Object.defineProperty(window, 'shell', { configurable: true, value: wallpaper })
+  }
   const props: AppearanceSectionComponentProps = {
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
@@ -94,9 +141,13 @@ function mount(preference: ThemePreference = 'system', overrides: Partial<Appear
     setGlassOpacity,
     setWallpaper,
     setTypography,
+    ...(wallpaper !== undefined ? { setWallpaperSources } : {}),
   }
   const view = render(<AppearanceSection {...props} />)
-  return { store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setWallpaper, setTypography, ...view }
+  return {
+    store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setWallpaper,
+    setTypography, setWallpaperSources, ...view,
+  }
 }
 
 const cube = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}$`) })
@@ -308,10 +359,9 @@ describe('AppearanceSection', () => {
   })
 
   it('hints that high glass opacity covers a set wallpaper', () => {
-    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-    const b = mount('system', { wallpaperImage: png, glassOpacity: 80 })
+    const b = mount('system', { wallpaperImage: PNG, glassOpacity: 80 })
     expect(screen.queryByText(COPY['wallpaper.glassHint'])).toBeNull()
-    act(() => { b.store.actions.sync(snap({ wallpaperImage: png, glassOpacity: 100 }), 1) })
+    act(() => { b.store.actions.sync(snap({ wallpaperImage: PNG, glassOpacity: 100 }), 1) })
     expect(screen.getByText(COPY['wallpaper.glassHint'])).toBeDefined()
     expect(screen.getByText(COPY['wallpaper.description'])).toBeDefined()
     expect(screen.getByText(COPY['glass.description'])).toBeDefined()
@@ -327,9 +377,8 @@ describe('AppearanceSection', () => {
     })
     expect(b.setWallpaper).not.toHaveBeenCalled()
 
-    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
     act(() => {
-      b.store.actions.sync(snap({ wallpaperImage: png, wallpaperBlur: 20, wallpaperPixelate: 10 }), 1)
+      b.store.actions.sync(snap({ wallpaperImage: PNG, wallpaperBlur: 20, wallpaperPixelate: 10 }), 1)
     })
     expect(screen.getByRole('img', { name: '背景图' })).toBeDefined()
     fireEvent.change(screen.getByRole('slider', { name: '毛玻璃程度' }), { target: { value: '40' } })
@@ -342,24 +391,98 @@ describe('AppearanceSection', () => {
     expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperBlur: 0, wallpaperPixelate: 0 })
   })
 
-  it('encodes a picked wallpaper file and ignores a rejected file', async () => {
-    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-    const bytes = Uint8Array.from(atob(png.split(',')[1]!), char => char.charCodeAt(0))
+  it('opens crop for a local pick and persists cropWallpaper output', async () => {
     const b = mount('system')
-    fireEvent.click(screen.getByRole('button', { name: '选择图片' }))
-    const input = b.container.querySelector('input[accept="image/png,image/jpeg,image/webp,image/gif"]') as HTMLInputElement
-    const file = new File([bytes], 'dot.png', { type: 'image/png' })
-    await act(async () => {
-      fireEvent.change(input, { target: { files: [file] } })
+    await pickWallpaperFile(b, new File([PNG_BYTES], 'dot.png', { type: 'image/png' }))
+    await vi.waitFor(() => {
+      expect(screen.getByRole('dialog', { name: COPY['wallpaper.crop'] })).toBeDefined()
     })
-    await vi.waitFor(() => { expect(b.setWallpaper).toHaveBeenCalled() })
-    const wallpaperPatch = b.setWallpaper.mock.calls[0]![0] as { wallpaperImage: string }
-    expect(wallpaperPatch.wallpaperImage).toMatch(/^data:image\//)
+    expect(b.setWallpaper).not.toHaveBeenCalled()
+    const crop = loadCropPreview()
+    fireEvent.click(within(crop).getByRole('button', { name: COPY['wallpaper.use'] }))
+    await vi.waitFor(() => {
+      expect(b.setWallpaper).toHaveBeenCalledWith({ wallpaperImage: CROPPED })
+    })
+  })
 
-    const bad = new File(['nope'], 'notes.txt', { type: 'text/plain' })
-    await act(async () => {
-      fireEvent.change(input, { target: { files: [bad] } })
+  it('does not persist a local pick when crop is cancelled', async () => {
+    const b = mount('system')
+    await pickWallpaperFile(b, new File([PNG_BYTES], 'dot.png', { type: 'image/png' }))
+    const crop = await screen.findByRole('dialog', { name: COPY['wallpaper.crop'] })
+    fireEvent.click(within(crop).getByRole('button', { name: COPY['editor.cancel'] }))
+    expect(b.setWallpaper).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unreadable local file without opening crop', async () => {
+    const b = mount('system')
+    await pickWallpaperFile(b, new File(['nope'], 'notes.txt', { type: 'text/plain' }))
+    expect(screen.getByText(COPY['wallpaper.invalidImage'])).toBeDefined()
+    expect(screen.queryByRole('dialog', { name: COPY['wallpaper.crop'] })).toBeNull()
+    expect(b.setWallpaper).not.toHaveBeenCalled()
+  })
+
+  it('reopens crop from the stored wallpaper data URL', () => {
+    const b = mount('system', { wallpaperImage: PNG })
+    fireEvent.click(screen.getByRole('button', { name: COPY['wallpaper.crop'] }))
+    const crop = screen.getByRole('dialog', { name: COPY['wallpaper.crop'] })
+    expect(crop.querySelector('img')?.getAttribute('src')).toBe(PNG)
+    expect(b.setWallpaper).not.toHaveBeenCalled()
+  })
+
+  it('keeps wallpaper sources off Appearance when the desktop gallery is available', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({ items: [] }))
+    const downloadWallpaper = vi.fn(async () => ({ dataUrl: 'data:image/png;base64,xx' }))
+    mount('system', {}, { listWallpaperCatalog, downloadWallpaper })
+    expect(screen.getByRole('button', { name: '浏览图库' })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: '图源' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '图库来源' })).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByText('Bing 每日壁纸')).toBeNull()
+    expect(screen.queryByLabelText('壁纸目录地址')).toBeNull()
+    expect(screen.queryByRole('button', { name: '新增图源' })).toBeNull()
+  })
+
+  it('adds, edits, and deletes a catalog source inside the gallery window', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({ items: [] }))
+    const downloadWallpaper = vi.fn(async () => ({ dataUrl: 'data:image/png;base64,xx' }))
+    const b = mount('system', {}, { listWallpaperCatalog, downloadWallpaper })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('dialog', { name: '浏览图库' })
+    fireEvent.click(screen.getByRole('button', { name: '图源' }))
+    expect(screen.getByRole('button', { name: '返回图库' })).toBeDefined()
+    expect(screen.getAllByText('必应').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Wallhaven').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '新增图源' }))
+    const addDialog = screen.getByRole('dialog', { name: '新增图源' })
+    fireEvent.change(within(addDialog).getByLabelText('类型'), { target: { value: 'catalog' } })
+    fireEvent.change(within(addDialog).getByLabelText('显示名'), { target: { value: '我的' } })
+    fireEvent.change(within(addDialog).getByLabelText('HTTPS 目录地址'), {
+      target: { value: 'https://example.com/pack.json' },
     })
-    expect(b.setWallpaper).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(addDialog).getByRole('button', { name: '保存' }))
+    expect(b.setWallpaperSources).toHaveBeenCalledWith(expect.objectContaining({
+      wallpaperSources: expect.arrayContaining([
+        expect.objectContaining({ kind: 'catalog', url: 'https://example.com/pack.json', name: '我的' }),
+      ]),
+    }))
+    const added = b.setWallpaperSources.mock.calls[0]![0] as { wallpaperSources: WallpaperSource[] }
+    act(() => { b.store.actions.sync(snap({ wallpaperSources: added.wallpaperSources }), 1) })
+    fireEvent.click(within(screen.getByText('我的').parentElement!).getByRole('button', { name: '编辑' }))
+    const editDialog = screen.getByRole('dialog', { name: '编辑图源' })
+    fireEvent.change(within(editDialog).getByLabelText('显示名'), { target: { value: '新目录' } })
+    fireEvent.click(within(editDialog).getByRole('button', { name: '保存' }))
+    expect(b.setWallpaperSources).toHaveBeenLastCalledWith(expect.objectContaining({
+      wallpaperSources: expect.arrayContaining([
+        expect.objectContaining({ kind: 'catalog', name: '新目录' }),
+      ]),
+    }))
+    const edited = b.setWallpaperSources.mock.calls.at(-1)![0] as { wallpaperSources: WallpaperSource[] }
+    act(() => { b.store.actions.sync(snap({ wallpaperSources: edited.wallpaperSources }), 2) })
+    fireEvent.click(within(screen.getByText('新目录').parentElement!).getByRole('button', { name: '删除' }))
+    expect(b.setWallpaperSources).toHaveBeenLastCalledWith(expect.objectContaining({
+      wallpaperSources: expect.not.arrayContaining([
+        expect.objectContaining({ kind: 'catalog' }),
+      ]),
+    }))
   })
 })

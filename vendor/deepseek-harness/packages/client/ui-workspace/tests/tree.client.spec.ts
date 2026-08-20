@@ -141,6 +141,20 @@ describe('deriveGroups', () => {
     ).items[0]).toMatchObject({ id: parent.id, runningSubagentCount: 2 })
   })
 
+  it('hides dshbot-origin sessions from the workspace browser', () => {
+    const ordinary = summary('ordinary', 1)
+    const bot = { ...summary('bot', 2), origin: 'dshbot' as const }
+    const sessions = { ...list(ordinary, bot), current: ordinary.id }
+    const groups = deriveGroups(
+      sessions,
+      [workspace('first', ['ordinary', 'bot'])],
+      noArchive,
+      view(['first']),
+    )
+    expect(groups[0]!.sessions.map(node => node.id)).toEqual([ordinary.id])
+    expect(deriveFlat(sessions, noArchive).map(node => node.id)).toEqual([ordinary.id])
+  })
+
   it('ignores fork lineage and sorts every ungrouped session as a top-level row', () => {
     const parent = summary('parent', 1)
     const oldChild = { ...summary('old-child', 10), parentId: parent.id }

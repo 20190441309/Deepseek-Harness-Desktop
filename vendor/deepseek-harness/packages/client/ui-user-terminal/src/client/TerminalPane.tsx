@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { FIT_SETTLE_MS, hostHasFitSize, PTY_RESIZE_DEBOUNCE_MS } from './fit.ts'
+import { FIT_SETTLE_MS } from './fit.ts'
 import { sessionBuffer, type TerminalSessionRecord } from './stores.ts'
 import {
   activateTerminalTarget,
   extractTerminalLinks,
   isTerminalLinkActivation,
-  linksOnBufferLine,
   type TerminalLinkMatch,
 } from './links.ts'
 import { NS } from './locales.ts'
 import { normalizeSelection } from './selection.ts'
 import type { TerminalShellInjected } from './shell.ts'
-import { readXtermFont, readXtermTheme } from './terminal-theme.ts'
+import { readXtermFont, terminalFontOptions, terminalThemeFromApp } from './terminal-theme.ts'
+import { GhosttyTerminalSurface } from './ghostty/surface.ts'
+import {
+  isTerminalClearShortcut,
+  terminalDeleteShortcutData,
+  terminalNavigationShortcutData,
+} from './ghostty/terminalKeyShortcuts.ts'
 import css from './TerminalWorkspace.module.css'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 
@@ -22,7 +25,7 @@ export interface TerminalPaneProps {
   id: string
   /** Session record whose replay buffer seeds and backfills the terminal. */
   session?: TerminalSessionRecord | undefined
-  /** True when this pane is the shell's active session; xterm is focused then. */
+  /** True when this pane is the shell's active session; the surface is focused then. */
   active: boolean
   /** Mark this pane's session active without moving DOM focus onto the chrome. */
   onActivate: () => void
@@ -42,34 +45,21 @@ export interface TerminalPaneProps {
   t: PropsLocale<typeof NS>['t']
 }
 
-interface XtermLink {
-  range: { start: { x: number; y: number }; end: { x: number; y: number } }
-  text: string
-  activate: (event: MouseEvent, text: string) => void
-}
-
-interface XtermBufferLine {
-  isWrapped?: boolean
-  translateToString: (trimRight?: boolean) => string
-}
-
 /**
- * One interactive pane: an xterm instance over a PTY. The store's replay
- * buffer seeds the terminal on mount and backfills it incrementally, so a
- * remount (drawer/surface switch) never loses output; live output flows
- * straight from the PTY data listener into xterm and the buffer together.
- * FitAddon runs only after the host has a used box, then debounces PTY
- * resize. The active pane is focused. Selection offers Copy / Add to chat /
- * Open; ⌘/Ctrl-click activates links.
+ * One interactive pane: Ghostty Canvas surface over a PTY. The
+ * store's replay buffer seeds the terminal with `resetAndWrite` (PTY writer
+ * detached) and backfills incrementally. Ghostty owns fit,
+ * 150 ms PTY resize debounce, bold-as-700, and the engine ANSI palette.
  * @param props - pane identity, replay buffer, PTY callbacks, and work-loop injects.
- * @returns the xterm host element and the selection action bar.
+ * @returns the Ghostty host element and the selection action bar.
  */
 export function TerminalPane({
-  id, session, active, onActivate, onData, onResize, sessionId, cwd,
+  id, session, active, onActivate, onResize, sessionId, cwd,
   mentionTerminal, writeClipboard, openWorkspacePath, openLocalUrl, openExternal, t,
+  onData,
 }: TerminalPaneProps): ReactNode {
   const hostRef = useRef<HTMLDivElement | null>(null)
-  const termRef = useRef<Terminal | null>(null)
+  const termRef = useRef<GhosttyTerminalSurface | null>(null)
   /** Bytes of the replay buffer already written to the current terminal. */
   const writtenRef = useRef(0)
   const callbacksRef = useRef({
@@ -79,105 +69,105 @@ export function TerminalPane({
     onData, onResize, onActivate, cwd, mentionTerminal, writeClipboard, openWorkspacePath, openLocalUrl, openExternal,
   }
   const [selection, setSelection] = useState('')
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+  const activeRef = useRef(active)
+  activeRef.current = active
 
   useEffect(() => {
     const host = hostRef.current
     /* v8 ignore next -- the host ref is attached on the div this effect reads. */
     if (host === null) return
+    let cancelled = false
+    let teardown: (() => void) | undefined
     const font = readXtermFont(host)
-    const term = new Terminal({
-      fontFamily: font.fontFamily,
-      fontSize: font.fontSize,
-      lineHeight: font.lineHeight,
-      cursorBlink: true,
-      cursorStyle: 'bar',
-      scrollback: 2000,
-      allowProposedApi: false,
-      theme: readXtermTheme(host),
-    })
-    const fit = new FitAddon()
-    term.loadAddon(fit)
-    term.open(host)
-    const seed = sessionBuffer(session)
-    if (seed.length > 0) term.write(seed)
-    writtenRef.current = seed.length
-    const disposeData = term.onData((bytes) => { callbacksRef.current.onData(bytes) })
-    const disposeSelection = term.onSelectionChange(() => {
-      setSelection(normalizeSelection(term.getSelection()))
-    })
-    const disposeLinks = term.registerLinkProvider({
-      provideLinks(bufferLineNumber: number, callback: (links: XtermLink[] | undefined) => void) {
-        const matches = linksOnBufferLine(
-          bufferLineNumber,
-          index => term.buffer.active.getLine(index) as XtermBufferLine | undefined,
-        )
-        if (matches.length === 0) {
-          callback(undefined)
-          return
-        }
-        callback(matches.map((match) => ({
-          text: match.text,
-          range: match.range,
-          activate: (event, linkText) => {
-            if (!isTerminalLinkActivation(event)) return
-            activateTerminalTarget(linkText, callbacksRef.current.cwd, callbacksRef.current)
-          },
-        })))
-      },
-    })
-    let raf = 0
-    let settleTimer = 0
-    let resizeTimer = 0
-    let pending: { cols: number; rows: number } | undefined
-    let notified: { cols: number; rows: number } | undefined
-    const notifyPty = (): void => {
-      /* v8 ignore next -- the timer is only armed after pending is assigned. */
-      if (pending === undefined) return
-      if (notified !== undefined && notified.cols === pending.cols && notified.rows === pending.rows) return
-      notified = pending
-      callbacksRef.current.onResize(pending.cols, pending.rows)
+    const setupFont = terminalFontOptions(font.fontFamily, font.fontSize)
+    function handleBeforeKey(event: KeyboardEvent): boolean {
+      const navigationData = terminalNavigationShortcutData(event)
+      if (navigationData !== null) {
+        event.preventDefault()
+        event.stopPropagation()
+        callbacksRef.current.onData(navigationData)
+        return false
+      }
+      const deleteData = terminalDeleteShortcutData(event)
+      if (deleteData !== null) {
+        event.preventDefault()
+        event.stopPropagation()
+        callbacksRef.current.onData(deleteData)
+        return false
+      }
+      if (!isTerminalClearShortcut(event)) return true
+      event.preventDefault()
+      event.stopPropagation()
+      callbacksRef.current.onData('\u000c')
+      return false
     }
-    const fitNow = (): void => {
-      if (!hostHasFitSize(host)) return
-      try {
-        fit.fit()
-      } catch {
-        // FitAddon throws when the host is display:none; skip until it is shown.
+    void GhosttyTerminalSurface.create(host, {
+      theme: terminalThemeFromApp(host),
+      font: setupFont,
+      onData: (bytes) => { callbacksRef.current.onData(bytes) },
+      onResize: (cols, rows) => { callbacksRef.current.onResize(cols, rows) },
+      onSelectionChange: () => {
+        setSelection(normalizeSelection(termRef.current?.getSelection() ?? ''))
+      },
+      onCopy: (text) => { void callbacksRef.current.writeClipboard(text) },
+      beforeKey: (event) => handleBeforeKey(event),
+      onLinkActivate: (text, event) => {
+        if (!isTerminalLinkActivation(event)) return
+        activateTerminalTarget(text, callbacksRef.current.cwd, callbacksRef.current)
+      },
+    }).then((terminal) => {
+      if (cancelled) {
+        terminal.dispose()
         return
       }
-      const cols = term.cols
-      const rows = term.rows
-      if (cols <= 0 || rows <= 0) return
-      pending = { cols, rows }
-      window.clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(notifyPty, PTY_RESIZE_DEBOUNCE_MS)
-      term.scrollToBottom()
-    }
-    fitNow()
-    raf = requestAnimationFrame(fitNow)
-    settleTimer = window.setTimeout(fitNow, FIT_SETTLE_MS)
-    const observer = typeof ResizeObserver === 'undefined'
-      ? undefined
-      : new ResizeObserver(() => {
-        cancelAnimationFrame(raf)
-        raf = requestAnimationFrame(fitNow)
+      terminal.setTheme(terminalThemeFromApp(host))
+      termRef.current = terminal
+      const seed = sessionBuffer(sessionRef.current)
+      if (seed.length > 0) terminal.resetAndWrite(seed)
+      writtenRef.current = seed.length
+      if (activeRef.current) window.requestAnimationFrame(() => { terminal.focus() })
+      const applyTheme = (): void => {
+        terminal.setTheme(terminalThemeFromApp(host))
+      }
+      const themeObserver = new MutationObserver(applyTheme)
+      themeObserver.observe(host.ownerDocument.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style'],
       })
-    observer?.observe(host)
-    const fonts = host.ownerDocument.fonts
-    fonts?.addEventListener('loadingdone', fitNow)
-    termRef.current = term
+      themeObserver.observe(host.ownerDocument.body, {
+        attributes: true,
+        attributeFilter: ['data-ds-dark-theme'],
+      })
+      const fitTimer = window.setTimeout(() => {
+        const activeTerminal = termRef.current
+        /* v8 ignore next -- teardown clears this timer when it nulls termRef. */
+        if (activeTerminal === null) return
+        const wasAtBottom = activeTerminal.isAtBottom()
+        activeTerminal.fit()
+        if (wasAtBottom) activeTerminal.scrollToBottom()
+      }, FIT_SETTLE_MS)
+      teardown = () => {
+        window.clearTimeout(fitTimer)
+        themeObserver.disconnect()
+        /* v8 ignore next -- a replaced surface already cleared this ref. */
+        if (termRef.current === terminal) termRef.current = null
+        terminal.dispose()
+        writtenRef.current = 0
+      }
+      /* v8 ignore next -- unmount during the create then() after teardown is assigned. */
+      if (cancelled) teardown()
+    }).catch((error: unknown) => {
+      /* v8 ignore next -- cancelled create failures are dropped like Ghostty. */
+      if (cancelled) return
+      const message =
+        error instanceof Error ? error.message : 'Unable to initialize libghostty-vt'
+      host.textContent = `${message} — close and reopen the terminal to retry.`
+    })
     return () => {
-      observer?.disconnect()
-      cancelAnimationFrame(raf)
-      window.clearTimeout(settleTimer)
-      window.clearTimeout(resizeTimer)
-      fonts?.removeEventListener('loadingdone', fitNow)
-      disposeData.dispose()
-      disposeSelection.dispose()
-      disposeLinks.dispose()
-      term.dispose()
-      termRef.current = null
-      writtenRef.current = 0
+      cancelled = true
+      teardown?.()
     }
     // The terminal instance is per-pane: rebuild when the pane id changes.
   }, [id])
@@ -212,7 +202,7 @@ export function TerminalPane({
     <div className={css.paneTerminalWrap}>
       <div
         ref={hostRef}
-        className={css.paneTerminal}
+        className={`${css.paneTerminal} thread-terminal-drawer`}
         data-terminal-pane={id}
         role="log"
         aria-label={id}

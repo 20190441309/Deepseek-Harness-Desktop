@@ -30,7 +30,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const inject = ['slots', 'layout', 'locale']
 
 interface WorkspacesFace {
-  openPath?: (path: string) => Promise<void>
+  openPath?: (path: string, options?: { line?: number }) => Promise<void>
 }
 
 function layoutFace(ctx: ClientContext): Pick<TerminalShellInjected, 'toggleTerminalDrawer' | 'setTerminalDrawer'> {
@@ -55,9 +55,10 @@ function workflowFace(ctx: ClientContext): Pick<
       if (clipboard === undefined) return
       await clipboard.writeText(text)
     },
-    openWorkspacePath: (absolutePath) => {
+    openWorkspacePath: (absolutePath, options) => {
       const workspaces = ctx.get('workspaces') as WorkspacesFace | undefined
-      void workspaces?.openPath?.(absolutePath)
+      if (options === undefined) void workspaces?.openPath?.(absolutePath)
+      else void workspaces?.openPath?.(absolutePath, options)
     },
     openLocalUrl: (url) => {
       try {

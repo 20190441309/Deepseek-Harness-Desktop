@@ -27,28 +27,6 @@ const PLUGIN_BOOT_PROBE = `(() => {
   };
 })()`;
 
-const MARKETPLACE_TAB_SCRIPT = `
-      (() => {
-        return new Promise((resolve) => {
-          let n = 0;
-          const tick = () => {
-            const tab = document.querySelector('[data-dsh-settings-plugin-tab="marketplace"]');
-            if (tab) {
-              tab.click();
-              resolve(true);
-              return;
-            }
-            if (n++ > 60) {
-              resolve(false);
-              return;
-            }
-            requestAnimationFrame(tick);
-          };
-          tick();
-        });
-      })()
-    `;
-
 let mainWindow = null;
 let harnessView = null;
 let harnessRevealed = false;
@@ -119,23 +97,38 @@ function createMainWindow() {
 
 /**
  * Pin a privileged BrowserWindow/BrowserView to an allowlist; denied
- * navigations optionally open http(s) in the system browser.
+ * navigations optionally open http(s) in the system browser, and harness
+ * contents may send denied loopback (not same-origin) to the preview surface.
  * @param {Electron.WebContents} contents
- * @param {{ allowUrl: (url: unknown) => boolean, openDeniedExternal?: boolean }} options
+ * @param {{ allowUrl: (url: unknown) => boolean, openDeniedExternal?: boolean, openDeniedLoopback?: boolean }} options
  */
 function attachPrivilegedNavigationGuards(contents, options) {
-  const { allowUrl, openDeniedExternal = false } = options;
-  contents.setWindowOpenHandler(({ url }) => {
-    if (isHttpOrHttpsUrl(url)) {
+  const { allowUrl, openDeniedExternal = false, openDeniedLoopback = false } = options;
+
+  function handleDeniedHttp(url) {
+    if (openDeniedLoopback && isLoopbackHttpUrl(url)) {
+      if (!allowUrl(url)) {
+        const next = rewriteLoopbackLoadUrl(url);
+        if (next && typeof contents.send === 'function') {
+          contents.send('shell:open-preview-url', { url: next });
+        }
+      }
+      return;
+    }
+    if (openDeniedExternal && isHttpOrHttpsUrl(url)) {
       shell.openExternal(url);
     }
+  }
+
+  contents.setWindowOpenHandler(({ url }) => {
+    handleDeniedHttp(url);
     return { action: 'deny' };
   });
   contents.on('will-navigate', (event, url) => {
     const current = contents.getURL();
     if (!shouldAllowPrivilegedNavigate({ nextUrl: url, currentUrl: current, allowUrl })) {
       event.preventDefault();
-      if (openDeniedExternal && isHttpOrHttpsUrl(url)) shell.openExternal(url);
+      handleDeniedHttp(url);
     }
   });
   contents.on('will-redirect', (event, url) => {
@@ -328,6 +321,7 @@ function ensureHarnessView(win) {
   attachPrivilegedNavigationGuards(harnessView.webContents, {
     allowUrl: isHarnessNavigationUrl,
     openDeniedExternal: true,
+    openDeniedLoopback: true,
   });
   const applyChrome = () => {
     if (!harnessRevealed || !harnessView || harnessView.webContents.isDestroyed()) {
@@ -427,20 +421,8 @@ function openHarnessSettings(sectionId) {
     });
 }
 
-function jumpToMarketplaceTab(win) {
-  return openHarnessSettings('plugins').then((opened) => {
-    if (!opened) {
-      return false;
-    }
-    const contents = harnessPageContents(win);
-    if (!contents) {
-      return false;
-    }
-    return contents.executeJavaScript(MARKETPLACE_TAB_SCRIPT).catch(() => {
-      // Settings tab click is best-effort; a missing tab is not a crash.
-      return false;
-    });
-  });
+function jumpToMarketplaceTab() {
+  return openHarnessSettings('market');
 }
 
 function consumePendingMarketplaceJump(win) {
@@ -450,7 +432,7 @@ function consumePendingMarketplaceJump(win) {
   if (!win || !isHarnessLoaded(win)) {
     return;
   }
-  void jumpToMarketplaceTab(win).then((ok) => {
+  void jumpToMarketplaceTab().then((ok) => {
     if (ok) {
       pendingMarketplaceJump = false;
     }
@@ -463,7 +445,7 @@ function openMarketplace() {
     pendingMarketplaceJump = true;
     return win || null;
   }
-  return jumpToMarketplaceTab(win);
+  return jumpToMarketplaceTab();
 }
 
 function openRemote() {

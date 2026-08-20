@@ -30,6 +30,7 @@ function renderSettled(
   text: string,
   codeLabels: MarkdownCodeLabels | undefined,
   fileMentions: MarkdownFileMentions | undefined,
+  onTaskChecked: ((markerOffset: number, checked: boolean) => void) | undefined,
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -41,6 +42,8 @@ function renderSettled(
     targets,
     footnoteOrder: [],
     footnoteCounts: new Map(),
+    source: text,
+    onTaskChecked,
   }
   const blocks = wrapBlockChildren(
     renderBlocks(root.children.map((node, index) => ({ node, key: index })), context),
@@ -67,8 +70,14 @@ class StreamingRenderer {
   private lastText: string | null = null
   private lastRendered: ReactNode[] = []
 
-  /** @param codeLabels - Fence copy labels baked into cached elements; the owner replaces the renderer when they change. */
-  constructor(private readonly codeLabels: MarkdownCodeLabels | undefined) {}
+  /**
+   * @param codeLabels - Fence copy labels baked into cached elements; the owner replaces the renderer when they change.
+   * @param onTaskChecked - Optional task toggle forwarded into cached streaming elements.
+   */
+  constructor(
+    private readonly codeLabels: MarkdownCodeLabels | undefined,
+    private readonly onTaskChecked: ((markerOffset: number, checked: boolean) => void) | undefined,
+  ) {}
 
   /**
    * Render the current accumulated text. Idempotent per text value, so React
@@ -105,6 +114,8 @@ class StreamingRenderer {
         targets: frameTargets,
         footnoteOrder: this.frozenFootnoteOrder,
         footnoteCounts: this.frozenFootnoteCounts,
+        source: text,
+        onTaskChecked: this.onTaskChecked,
       }
       // Separator newlines are cached alongside the elements so the
       // assembled children match the settled pipeline's block wrapping.
@@ -123,6 +134,8 @@ class StreamingRenderer {
       targets: frameTargets,
       footnoteOrder: [...this.frozenFootnoteOrder],
       footnoteCounts: new Map(this.frozenFootnoteCounts),
+      source: text,
+      onTaskChecked: this.onTaskChecked,
     }
     const children = [...this.frozenElements]
     for (const element of renderBlocks(tail, tailContext)) {
@@ -148,29 +161,38 @@ class StreamingRenderer {
  * links inline-code tokens its resolver recognizes as real files; this is
  * the single streaming gate — it applies to settled renders only, because a
  * streaming message's vocabulary is not final and frozen cached elements
- * must not bake in handlers that could go stale.
+ * must not bake in handlers that could go stale. `onTaskChecked` enables GFM
+ * task checkboxes when the `[` source offset is known; omit it to keep
+ * checkboxes disabled.
  * @returns A GFM document with TeX math rendered through KaTeX; raw HTML,
  * relative links, and unsafe protocols are disabled, while absolute HTTP(S)
  * images render directly.
  */
-export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions }: {
+export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions, onTaskChecked }: {
   text: string
   streaming?: boolean
   codeLabels?: MarkdownCodeLabels | undefined
   fileMentions?: MarkdownFileMentions | undefined
+  onTaskChecked?: (markerOffset: number, checked: boolean) => void
 }) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownCodeLabels | undefined>(codeLabels)
+  const streamTaskRef = useRef(onTaskChecked)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, codeLabels, fileMentions)
+      return renderSettled(text, codeLabels, fileMentions, onTaskChecked)
     }
-    if (streamRef.current === null || streamLabelsRef.current !== codeLabels) {
-      streamRef.current = new StreamingRenderer(codeLabels)
+    if (
+      streamRef.current === null
+      || streamLabelsRef.current !== codeLabels
+      || streamTaskRef.current !== onTaskChecked
+    ) {
+      streamRef.current = new StreamingRenderer(codeLabels, onTaskChecked)
       streamLabelsRef.current = codeLabels
+      streamTaskRef.current = onTaskChecked
     }
     return streamRef.current.render(text)
-  }, [text, streaming, codeLabels, fileMentions])
+  }, [text, streaming, codeLabels, fileMentions, onTaskChecked])
   return <div className={css.markdown}>{children}</div>
 })

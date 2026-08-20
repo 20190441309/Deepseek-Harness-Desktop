@@ -1,6 +1,6 @@
 /** Preview plugin injects the panel into surfaces.browser. */
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '../src/client/index.ts'
@@ -46,6 +46,26 @@ describe('ui-preview apply', () => {
     await Promise.resolve()
     expect(b.slots.entries('surfaces.browser')[0]?.component).toBe(PreviewPanel)
     redeclare()
+    await b.fiber.dispose()
+  })
+
+  it('binds appendComposerText to the composer draft', async () => {
+    const b = await bench()
+    const setDraft = vi.fn()
+    b.ctx.provide('sessions', { scope: () => ({}) })
+    b.ctx.provide('conversation', {
+      input: {
+        for: () => ({
+          setDraft,
+          state: { getSnapshot: () => ({ draft: '' }) },
+        }),
+      },
+    })
+    const injected = (b.slots.entries('surfaces.browser')[0]?.inject as unknown as () => {
+      appendComposerText?: (sessionId: string, text: string) => void
+    })()
+    injected.appendComposerText?.('sess', '![#save](data:image/png;base64,abc)\n`#save`')
+    expect(setDraft).toHaveBeenCalledWith('![#save](data:image/png;base64,abc)\n`#save`')
     await b.fiber.dispose()
   })
 })

@@ -132,6 +132,19 @@ describe('SurfacesRoot', () => {
     })
   })
 
+  it('passes revealLine and revealRequestId into surfaces.file', async () => {
+    const instance = createSurfacesStore().create()
+    instance.actions.openFile('session-1', 'a.ts', { revealLine: 12 })
+    const b = mount({ store: instance })
+    await waitFor(() => {
+      expect(b.renderSlot).toHaveBeenCalledWith('surfaces.file', expect.objectContaining({
+        relativePath: 'a.ts',
+        revealLine: 12,
+        revealRequestId: 1,
+      }))
+    })
+  })
+
   it('keeps the open surface when the column is opened again (titlebar toggle does not clear the store)', () => {
     const instance = createSurfacesStore().create()
     instance.actions.open('session-1', 'files')

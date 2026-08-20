@@ -95,11 +95,26 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  * @param userLayer - `false` skips parsing `cordis.patch.yml` (the default dump).
  * @returns the loaded profile.
  */
-export function prepareProfile(name: string, userLayer = true): Profile {
+export function prepareProfile(
+  name: string,
+  optionsOrUserLayer: { userLayer?: boolean; bundles?: 'manifest' | 'template' } | boolean = true,
+  bundles: 'manifest' | 'template' = 'manifest',
+): Profile {
+  const options = typeof optionsOrUserLayer === 'boolean'
+    ? { userLayer: optionsOrUserLayer, bundles }
+    : optionsOrUserLayer
   healProfilesModuleFallback(INSTALL_ANCHOR)
-  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, { userLayer })
+  const loadOptions: { userLayer?: boolean; bundles?: 'manifest' | 'template' } = {}
+  if (options.userLayer !== undefined) loadOptions.userLayer = options.userLayer
+  if (options.bundles !== undefined) loadOptions.bundles = options.bundles
+  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, loadOptions)
   writeFileSync(join(profile.dir, PROFILE_ROOT_FILENAME), PROFILE_ROOT_CONFIG)
   return profile
+}
+
+/** Return the user patch files watched by a live profile invocation. */
+export function userPatchWatchFiles(profilePatchPath: string, skipUserPlugins = false): string[] {
+  return skipUserPlugins ? [] : [profilePatchPath, homePatchPath()]
 }
 
 /** One profile's patch layers (application order) and the row index of its pre-flag composition. */
@@ -139,12 +154,13 @@ function allPatches(composed: ComposedProfile): PatchOptions[] {
  * @param patchFiles - `--patch` overlay paths, in argv order.
  * @returns the profile, its patch layers, and the composed row index.
  */
-function composeProfile(
+export function composeProfile(
   name: string,
   patchFiles: readonly string[],
+  skipUserPlugins = false,
 ): ComposedProfile {
-  const profile = prepareProfile(name)
-  const homePatches = loadOptionalPatches(NAME, homePatchPath()) ?? []
+  const profile = prepareProfile(name, !skipUserPlugins, skipUserPlugins ? 'template' : 'manifest')
+  const homePatches = skipUserPlugins ? [] : loadOptionalPatches(NAME, homePatchPath()) ?? []
   const overlays = patchFiles.flatMap(file => loadOverlayPatches(NAME, resolve(file)))
   const bundlePatches = profile.layers.flatMap(layer => layer.patches)
   const rows = new Map<string, EntryOptions>()
@@ -180,6 +196,8 @@ export interface RunProfileOptions {
   patchFiles: readonly string[]
   /** The invocation's inner arguments, handed to the tree through `ctx.cmdlineArgs`. */
   args: readonly string[]
+  /** Omit profile and home user layers while retaining template bundles. */
+  skipUserPlugins?: boolean
 }
 
 /**
@@ -205,7 +223,7 @@ function suppressShutdownError(ctx: Context, signal: AbortSignal, error: unknown
  * @returns the settled root context and the shutdown controller.
  */
 export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Context; shutdown: ProcessShutdown }> {
-  const composed = composeProfile(options.profile, options.patchFiles)
+  const composed = composeProfile(options.profile, options.patchFiles, options.skipUserPlugins === true)
   const app: { current?: Context } = {}
   const shutdown = createProcessShutdown(async () => { await app.current?.fiber.dispose() })
   const signalShutdown = new AbortController()
@@ -265,7 +283,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   // landed mid-setup. Watching is unconditional: a one-shot surface exits
   // through its bounded shutdown, which disposes the watchers before the
   // loop drains.
-  if (!signalShutdown.signal.aborted
+  if (!options.skipUserPlugins && !signalShutdown.signal.aborted
     && ctx.fiber.state === FiberState.ACTIVE
     && ctx.get('loader') !== undefined) {
     try {

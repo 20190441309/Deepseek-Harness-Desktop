@@ -117,11 +117,15 @@ function IconTrash(): ReactNode {
 type CapacityField = 'contextWindow' | 'maxTokens'
 
 /**
- * Thinking levels this form can declare. Ids are pi-ai's canonical keys; the
- * wire spelling is the same string (`high: high`). `off` / `minimal` stay
- * YAML-only — a checked box here is a thinking intensity, not "don't think".
+ * Thinking levels this form can declare, in pi-ai's escalation order. Ids are
+ * canonical keys. A checked level other than `off` writes that same string as
+ * the wire spelling (`high: high`). `off` is the one valueless key: checking
+ * it writes `off: null` (offer Off, send nothing). A custom wire rename stays
+ * YAML-only.
  */
 const EFFORT_CHOICES = [
+  { id: 'off', key: 'effort.off' },
+  { id: 'minimal', key: 'effort.minimal' },
   { id: 'low', key: 'effort.low' },
   { id: 'medium', key: 'effort.medium' },
   { id: 'high', key: 'effort.high' },
@@ -279,7 +283,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const toggleEffort = (index: number, model: ModelDraft, id: EffortId): void => {
     const dict = effortsOf(model)
     if (Object.prototype.hasOwnProperty.call(dict, id)) delete dict[id]
-    else dict[id] = id
+    else dict[id] = id === 'off' ? null : id
     const stillOffers = EFFORT_CHOICES.some(choice => Object.prototype.hasOwnProperty.call(dict, choice.id))
     patch(index, { reasoningEfforts: stillOffers ? dict : undefined })
   }

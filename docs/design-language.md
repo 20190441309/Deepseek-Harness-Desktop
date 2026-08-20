@@ -58,14 +58,14 @@
 
 - **xterm / diff / 代码**：等宽、ANSI、字符网格，不套胶囊按钮。
 - **原生窗口控件**：最小化 / 最大化 / 关闭保持系统命中区；颜色仍跟随当前主题 token。
-- **无法 import 主题包的壳层**（远程配对页）：必须复用同一套语义色和几何，或直接引用 `ui-theme` 样式表。禁止再开 `--bg` / `--accent` 平行色板。
+- **无法 import 主题包的壳层**（远程登录页、手机 Web SPA）：复用同一套语义色和几何。手机 SPA 把 `--dsw-alias-*` 抄进 `mobile/web/tokens.css`，不挂官方 CSS Modules，也不把启动页 `--boot-*` 带过去。禁止再开 `--bg` / `--accent` 平行色板。
 - **桌面启动页**：整页仪器画布与独立 `--boot-*` 表，详见 [桌面启动页](#桌面启动页)。
 
 ## 桌面启动页
 
 启动页是整窗一张仪器画布，不是中间再套卡片，也不是把日志关进带边框的盒子。源文件是 [`boot.html`](../src/renderer/boot.html)、[`boot.css`](../src/renderer/boot.css)、[`boot-tokens.css`](../src/renderer/boot-tokens.css)、[`boot.js`](../src/renderer/boot.js)。
 
-构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，官方客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到官方那张「正在加载插件」页。
+构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试与下载日志键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，官方客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到官方那张「正在加载插件」页。
 
 色与主题：[`boot-tokens.css`](../src/renderer/boot-tokens.css) 是唯一色表。浅色是纸面近黑，深色是 CRT 近白；`--boot-accent` 与正文同色，失败用 `--boot-alert`。`html[data-boot-theme]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把用户主题的 `bg` / `accent` 写进启动页。[`boot.css`](../src/renderer/boot.css) 只引用 `--boot-*` 与官方字体、动效 token，不写 `[data-ds-dark-theme]` 分支，也不写颜色字面量。
 
@@ -73,7 +73,7 @@
 
 ## 现有偏差（不要再扩散）
 
-产品页（含远程配对页和设置页插件市场）使用官方 token 与 `ui-primitives`。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。
+产品页使用官方 token 与 `ui-primitives`。手机远程 Web（`mobile/web`）是文档化例外：抄 `--dsw-alias-*`，不嵌入官方插件树，不用启动页仪器画布。设置里的插件市场是预置 `dshmarket` 插件的 `settings.section`（id `market`），沿用该插件自己的界面。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。
 
 ## 自检
 

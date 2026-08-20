@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-desktop-surfaces-and-titlebar.md
-2026-08-14-desktop-surfaces-and-titlebar.md: 14874e61d48edcc1aaa0d0ea9444f3780a88b4ea
-2026-08-14-desktop-surfaces-and-titlebar.zh.md: e785eb3d547afd17fc78b9c8887afc127cb49bb5
+2026-08-14-desktop-surfaces-and-titlebar.md: 77363a9a0cb280d3485fcad8c57eb90c0385a1ed
+2026-08-14-desktop-surfaces-and-titlebar.zh.md: bd10f2b5fb66f4e6d0988c2c064686768d2992df

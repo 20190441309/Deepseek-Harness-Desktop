@@ -31,6 +31,23 @@ export function SessionId(id: string): SessionId {
 }
 
 /**
+ * Coarse product classification on a session header. `subagent` marks a
+ * delegated child; `dshbot` marks a desktop-plugin contact or room parent
+ * that the workspace browser hides. Absence means an ordinary top-level
+ * session.
+ */
+export type SessionOrigin = 'subagent' | 'dshbot'
+
+/**
+ * Whether a header origin value is one of the durable classifications.
+ * @param value - candidate origin.
+ * @returns true when the value may be stored on {@link SessionHeader.origin}.
+ */
+export function isSessionOrigin(value: unknown): value is SessionOrigin {
+  return value === 'subagent' || value === 'dshbot'
+}
+
+/**
  * The on-disk session format version, stamped into every newly-written {@link SessionHeader}
  * and enforced by every persistence backend on load. The single source of truth for the
  * version — write sites and the load-time check all read it.
@@ -79,10 +96,11 @@ export interface SessionHeader {
    */
   readonly seedLength?: number
   /**
-   * Coarse product classification for a session created as a subagent child.
-   * This is presentation metadata, not proof that the child is continuable.
+   * Coarse product classification for a delegated child (`subagent`) or a
+   * desktop-plugin contact/room parent (`dshbot`). This is presentation
+   * metadata, not proof that a child is continuable.
    */
-  readonly origin?: 'subagent'
+  readonly origin?: SessionOrigin
   /**
    * Delegation depth: absent (zero) for a top-level session, parent depth + 1
    * for a subagent child. Persisted so a recursion budget survives restart and
@@ -115,7 +133,7 @@ export interface CreateSessionOptions {
     readonly parentSession?: SessionId
     readonly createdAt?: number
     readonly seedLength?: number
-    readonly origin?: 'subagent'
+    readonly origin?: SessionOrigin
     readonly delegationDepth?: number
     readonly agentPreset?: string
   }

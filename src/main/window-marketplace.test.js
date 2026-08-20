@@ -8,12 +8,8 @@ function marketplaceRendererDir() {
   return path.join(__dirname, '../renderer/marketplace');
 }
 
-function hasMarketplaceTabScript(scripts) {
-  return scripts.some((script) => script.includes('[data-dsh-settings-plugin-tab="marketplace"]'));
-}
-
-function hasPluginsSectionScript(scripts) {
-  return scripts.some((script) => script.includes('data-dsh-settings-section') && script.includes('plugins'));
+function hasMarketSectionScript(scripts) {
+  return scripts.some((script) => script.includes('data-dsh-settings-section') && script.includes('"market"'));
 }
 
 function loadWindowModule() {
@@ -38,7 +34,6 @@ function loadWindowModule() {
       this.scripts = [];
       this.hasApp = false;
       this.settingsOpened = true;
-      this.marketplaceTabSelected = true;
     }
 
     isDestroyed() { return this.destroyed; }
@@ -66,9 +61,6 @@ function loadWindowModule() {
       }
       if (script.includes('data-dsh-settings-section')) {
         return Promise.resolve(this.settingsOpened);
-      }
-      if (script.includes('[data-dsh-settings-plugin-tab="marketplace"]')) {
-        return Promise.resolve(this.marketplaceTabSelected);
       }
       return Promise.resolve(true);
     }
@@ -204,7 +196,7 @@ test('openMarketplace shows the main window only when Harness is not ready', asy
     assert.equal(windows.length, 1);
     assert.equal(result, windows[0]);
     assert.deepEqual(windows[0].loadedFiles, ['C:/app/boot.html']);
-    assert.equal(hasMarketplaceTabScript(windows[0].webContents.scripts), false);
+    assert.equal(hasMarketSectionScript(windows[0].webContents.scripts), false);
   } finally {
     loaded.restore();
   }
@@ -221,7 +213,7 @@ test('openMarketplace does not create a window when the main window is missing',
   }
 });
 
-test('openMarketplace jumps to the settings marketplace tab when Harness is ready', async () => {
+test('openMarketplace jumps to the dsh-market settings section when Harness is ready', async () => {
   const loaded = loadWindowModule();
   try {
     const { windowMod, windows } = loaded;
@@ -232,8 +224,7 @@ test('openMarketplace jumps to the settings marketplace tab when Harness is read
     await harnessReady;
     await windowMod.openMarketplace();
     assert.equal(windows.length, 1);
-    assert.equal(hasPluginsSectionScript(harness.scripts), true);
-    assert.equal(hasMarketplaceTabScript(harness.scripts), true);
+    assert.equal(hasMarketSectionScript(harness.scripts), true);
   } finally {
     loaded.restore();
   }
@@ -246,7 +237,7 @@ test('openMarketplace keeps a pending jump until Harness is revealed', async () 
     await windowMod.showBoot();
     windowMod.openMarketplace();
     assert.equal(windows.length, 1);
-    assert.equal(hasMarketplaceTabScript(windows[0].webContents.scripts), false);
+    assert.equal(hasMarketSectionScript(windows[0].webContents.scripts), false);
 
     const harnessReady = waitForHarness(windowMod.showHarness);
     await new Promise((resolve) => setImmediate(resolve));
@@ -255,8 +246,7 @@ test('openMarketplace keeps a pending jump until Harness is revealed', async () 
     await harnessReady;
 
     assert.equal(windows.length, 1);
-    assert.equal(hasPluginsSectionScript(harness.scripts), true);
-    assert.equal(hasMarketplaceTabScript(harness.scripts), true);
+    assert.equal(hasMarketSectionScript(harness.scripts), true);
     assert.equal(windows[0].loadedFiles.includes('C:/app/marketplace/index.html'), false);
   } finally {
     loaded.restore();
@@ -273,9 +263,10 @@ test('openMarketplace does not open a second window when the settings jump fails
     harness.hasApp = true;
     harness.settingsOpened = false;
     await harnessReady;
-    await windowMod.openMarketplace();
+    const jumped = await windowMod.openMarketplace();
     assert.equal(windows.length, 1);
-    assert.equal(hasMarketplaceTabScript(harness.scripts), false);
+    assert.equal(jumped, false);
+    assert.equal(windows[0].loadedFiles.includes('C:/app/marketplace/index.html'), false);
   } finally {
     loaded.restore();
   }
@@ -290,8 +281,7 @@ test('revealing Harness does not jump to marketplace unless a jump is pending', 
     const harness = windowMod.getHarnessWebContents();
     harness.hasApp = true;
     await harnessReady;
-    assert.equal(hasMarketplaceTabScript(harness.scripts), false);
-    assert.equal(hasPluginsSectionScript(harness.scripts), false);
+    assert.equal(hasMarketSectionScript(harness.scripts), false);
   } finally {
     loaded.restore();
   }

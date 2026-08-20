@@ -188,7 +188,12 @@ describe('StatsLine', () => {
     source: { getSnapshot(): ConversationSnapshot; subscribe(fn: () => void): () => void },
     values: Record<string, unknown> = { tokenUsage: USAGE },
   ): StatsLineProps {
-    return { useSession: bindSnapshotSelector(source), useProjection: projections(values), t: tEn }
+    return {
+      useSession: bindSnapshotSelector(source),
+      useProjection: projections(values),
+      useStatsLine: (sel: (value: boolean) => boolean) => sel(true),
+      t: tEn,
+    }
   }
 
   it('renders the grouped stats row and hides a brand-new empty session', () => {
@@ -203,6 +208,26 @@ describe('StatsLine', () => {
       contextPressure: {},
     })} />)
     expect(emptyView.container.textContent).toBe('')
+  })
+
+  it('keeps the stats row gap and hides the figures when statsLine is off', () => {
+    const { source } = makeSource({ nodes: [assistant(1, 1)] })
+    const view = render(<StatsLine {...props(source)} useStatsLine={sel => sel(false)} />)
+    const row = view.container.querySelector('[data-stats-line="hidden"]')
+    expect(row).not.toBeNull()
+    expect(row?.getAttribute('data-stats-line')).toBe('hidden')
+    expect(row?.getAttribute('aria-hidden')).toBe('true')
+    expect(row?.textContent).toContain('1 turns')
+    expect(view.container.querySelector('[role="tooltip"]')).toBeNull()
+  })
+
+  it('keeps no row on an empty session even when statsLine is off', () => {
+    const empty = makeSource()
+    const view = render(<StatsLine {...props(empty.source, {
+      tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    })} useStatsLine={sel => sel(false)} />)
+    expect(view.container.querySelector('[data-stats-line]')).toBeNull()
+    expect(view.container.textContent).toBe('')
   })
 
   it('reveals the full line in a delayed hover tooltip only while the row is clipped', () => {

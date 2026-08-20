@@ -177,6 +177,38 @@ describe('rowToMeta', () => {
     })).toMatchObject({ id: 'with-origin', origin: 'subagent' })
   })
 
+  it('restores dshbot origin metadata', () => {
+    expect(rowToMeta({
+      id: 'bot-origin',
+      version: 0,
+      created_at: 1,
+      cwd: null,
+      parent_session: null,
+      seed_length: null,
+      origin: 'dshbot',
+      incarnation: 'bot-origin',
+      revision: 1,
+      delegation_depth: null,
+      agent_preset: null,
+    })).toMatchObject({ id: 'bot-origin', origin: 'dshbot' })
+  })
+
+  it('rejects an unknown stored origin', () => {
+    expect(() => rowToMeta({
+      id: 'bad-origin',
+      version: 0,
+      created_at: 1,
+      cwd: null,
+      parent_session: null,
+      seed_length: null,
+      origin: 'fork',
+      incarnation: 'bad-origin',
+      revision: 1,
+      delegation_depth: null,
+      agent_preset: null,
+    })).toThrow(/origin must be "subagent" or "dshbot"/)
+  })
+
   it('rejects fractional stored creation metadata', () => {
     expect(() => rowToMeta({
       id: 'fractional',

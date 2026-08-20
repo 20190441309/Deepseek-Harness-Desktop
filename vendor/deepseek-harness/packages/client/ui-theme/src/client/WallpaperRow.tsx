@@ -1,15 +1,19 @@
 /**
- * Appearance wallpaper row: pick an image, then frost and pixelate sliders.
+ * Appearance wallpaper row: pick or browse, crop to window aspect, then frost and pixelate.
  */
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   DEFAULT_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT, MIN_WALLPAPER_EFFECT,
-  WALLPAPER_EFFECT_STEP, WALLPAPER_HIGH_GLASS_HINT, encodeWallpaperFile,
+  MAX_WALLPAPER_FILE_BYTES, WALLPAPER_EFFECT_STEP, WALLPAPER_HIGH_GLASS_HINT,
+  encodeWallpaperFile, isWallpaperDataUrl,
 } from '../wallpaper.ts'
 import type { ThemeSettings } from '../theme-settings.ts'
 import type { ThemeKey } from './locales.ts'
 import { sliderFillStyle } from './slider.ts'
+import { WallpaperCropModal } from './WallpaperCropModal.tsx'
+import { WallpaperGalleryModal } from './WallpaperGalleryModal.tsx'
+import { wallpaperShell, type WallpaperCatalogItem } from './wallpaper-shell.ts'
 import css from './AppearanceSection.module.css'
 
 /** Persist wallpaper image and/or the two effect sliders. */
@@ -27,24 +31,97 @@ export function WallpaperRow({
   wallpaperBlur,
   wallpaperPixelate,
   glassOpacity,
+  wallpaperSources,
   t,
   setWallpaper,
+  setWallpaperSources,
 }: {
   wallpaperImage: string
   wallpaperBlur: number
   wallpaperPixelate: number
   glassOpacity: number
+  wallpaperSources: readonly import('../theme-settings.ts').WallpaperSource[]
   t: (key: ThemeKey) => string
   setWallpaper: SetWallpaper
+  setWallpaperSources?: (patch: { wallpaperSources: import('../theme-settings.ts').WallpaperSource[] }) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const request = useRef(0)
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const [galleryItems, setGalleryItems] = useState<readonly WallpaperCatalogItem[]>([])
+  const [galleryWarning, setGalleryWarning] = useState<string | undefined>(undefined)
+  const [busyId, setBusyId] = useState<string | undefined>(undefined)
+  const [cropImage, setCropImage] = useState<string | null>(null)
+  const [error, setError] = useState<string | undefined>(undefined)
   const hasImage = wallpaperImage.length > 0
+  const shell = wallpaperShell()
 
   const pick = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return
-    const encoded = await encodeWallpaperFile(file)
-    if (encoded === null) return
-    setWallpaper({ wallpaperImage: encoded })
+    setError(undefined)
+    if (file.size > MAX_WALLPAPER_FILE_BYTES) {
+      setError(t('wallpaper.fileTooLarge'))
+      return
+    }
+    const token = ++request.current
+    try {
+      const encoded = await encodeWallpaperFile(file)
+      if (token !== request.current) return
+      if (encoded === null) {
+        setError(t('wallpaper.invalidImage'))
+        return
+      }
+      setCropImage(encoded)
+    } catch {
+      if (token === request.current) setError(t('wallpaper.invalidImage'))
+    }
+  }
+
+  const closeGallery = (): void => {
+    request.current += 1
+    setGalleryOpen(false)
+    setBusyId(undefined)
+  }
+
+  const openGallery = async (): Promise<void> => {
+    if (shell === null) return
+    const token = ++request.current
+    setError(undefined)
+    setGalleryOpen(true)
+    setGalleryItems([])
+    setGalleryWarning(undefined)
+    try {
+      const result = await shell.listWallpaperCatalog({ kind: 'bing' })
+      if (token !== request.current) return
+      setGalleryItems(result.items ?? [])
+      setGalleryWarning(result.warning)
+    } catch {
+      if (token === request.current) setGalleryWarning(t('wallpaper.galleryFailed'))
+    }
+  }
+
+  const pickGalleryItem = async (item: WallpaperCatalogItem): Promise<void> => {
+    if (shell === null) return
+    const token = request.current
+    setBusyId(item.id)
+    setError(undefined)
+    try {
+      const result = await shell.downloadWallpaper(item.imageUrl)
+      if (token !== request.current) return
+      if (!result.dataUrl || !isWallpaperDataUrl(result.dataUrl)) {
+        setError(result.error || t('wallpaper.downloadFailed'))
+        setBusyId(undefined)
+        return
+      }
+      setGalleryOpen(false)
+      setBusyId(undefined)
+      setCropImage(result.dataUrl)
+    } catch {
+      if (token === request.current) {
+        setBusyId(undefined)
+        setError(t('wallpaper.downloadFailed'))
+      }
+    }
   }
 
   return (
@@ -61,8 +138,18 @@ export function WallpaperRow({
           {t('wallpaper.choose')}
         </Button>
         {hasImage ? (
-          <Button type="button" variant="ghost" onClick={() => { setWallpaper({ wallpaperImage: '' }) }}>
-            {t('wallpaper.clear')}
+          <>
+            <Button type="button" variant="ghost" onClick={() => { setWallpaper({ wallpaperImage: '' }) }}>
+              {t('wallpaper.clear')}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => { setCropImage(wallpaperImage) }}>
+              {t('wallpaper.crop')}
+            </Button>
+          </>
+        ) : null}
+        {shell !== null ? (
+          <Button type="button" variant="outline" onClick={() => { void openGallery() }}>
+            {t('wallpaper.browse')}
           </Button>
         ) : null}
         <input
@@ -77,6 +164,7 @@ export function WallpaperRow({
           }}
         />
       </div>
+      {error ? <p className={css.hint} role="status">{error}</p> : null}
       {hasImage ? (
         <>
           <div
@@ -139,6 +227,27 @@ export function WallpaperRow({
           </Button>
         </>
       ) : null}
+      <WallpaperGalleryModal
+        open={galleryOpen}
+        items={galleryItems}
+        warning={galleryWarning}
+        busyId={busyId}
+        wallpaperSources={wallpaperSources}
+        {...(setWallpaperSources === undefined ? {} : { setWallpaperSources })}
+        t={t}
+        onClose={closeGallery}
+        onPick={(item) => { void pickGalleryItem(item) }}
+      />
+      <WallpaperCropModal
+        open={cropImage !== null}
+        image={cropImage ?? ''}
+        t={t}
+        onClose={() => { setCropImage(null) }}
+        onConfirm={(dataUrl) => {
+          setWallpaper({ wallpaperImage: dataUrl })
+          setCropImage(null)
+        }}
+      />
     </section>
   )
 }

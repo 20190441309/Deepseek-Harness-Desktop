@@ -4,6 +4,7 @@
    the theme's drop-mask alias (dark override lives with the theme owner). */
 .mask {
   position: fixed;
+  -webkit-app-region: no-drag;
   inset: 0;
   z-index: 1000;
   display: flex;

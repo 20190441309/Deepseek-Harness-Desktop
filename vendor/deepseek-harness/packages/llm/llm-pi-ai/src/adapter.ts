@@ -147,8 +147,8 @@ const THINKING_LEVEL_LABEL: Record<ModelThinkingLevel, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
-  xhigh: 'Very High',
-  max: 'Extreme',
+  xhigh: 'Extra High',
+  max: 'Max',
 }
 
 /**

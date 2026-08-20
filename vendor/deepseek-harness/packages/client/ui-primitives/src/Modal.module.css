@@ -3,6 +3,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,10 +53,19 @@
 
 .title {
   margin: 0;
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 500; /* figma wt510, rendered 500 */
   color: var(--dsw-alias-label-primary);
+}
+
+.headerEnd {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
 }
 
 .close {

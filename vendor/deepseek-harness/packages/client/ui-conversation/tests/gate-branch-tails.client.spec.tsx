@@ -93,6 +93,7 @@ describe('render branch tails', () => {
         t={t}
         useSession={bindSnapshotSelector(source) as unknown as UseSession<ConversationSnapshot>}
         useProjection={() => undefined}
+        useStatsLine={sel => sel(true)}
       />,
     )
     expect(view.container.textContent).toBe('2 轮 · 3 步')

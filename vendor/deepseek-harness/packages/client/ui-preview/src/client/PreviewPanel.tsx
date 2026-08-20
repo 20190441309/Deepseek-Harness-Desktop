@@ -6,28 +6,51 @@ import {
   IconEllipsisOutline16,
   IconRefreshOutline14,
   IconRightUpOutline16,
+  IconStopFill16,
   Input,
   Menu,
   Tooltip,
+  type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { DeviceToolbar } from './DeviceToolbar.tsx'
 import { NS } from './locales.ts'
-import type { DiscoveredServer, PreviewBounds, PreviewNavState, PreviewShellInjected } from './shell.ts'
-import { normalizeLocalPreviewUrl } from './url.ts'
+import type { DiscoveredServer, PreviewBounds, PreviewColorScheme, PreviewNavState, PreviewShellInjected } from './shell.ts'
+import { readPreviewAnnotationTheme } from './annotationTheme.ts'
+import { formatPickedAnnotationMarkdown } from './pickMarkdown.ts'
+import { startBrowserRecording, stopBrowserRecording } from './browserRecording.ts'
+import { normalizePreviewUrl, PreviewUrlNormalizationError } from './url.ts'
+import {
+  resolveBrowserDeviceViewportLayout,
+  resolvePreviewGuestBounds,
+  type PreviewViewportSetting,
+} from './viewport.ts'
+import { DEFAULT_DEVICE_VIEWPORT } from './viewportPresets.ts'
 import css from './PreviewPanel.module.css'
 
 /** Must match ui-user-terminal; client packages cannot share a value export. */
 const OPEN_SURFACE_EVENT = 'dshd-open-surface'
 /** Must match ui-user-terminal; client packages cannot share a value export. */
 const PENDING_PREVIEW_URL_KEY = 'dshd-pending-preview-url'
-const DISCOVER_INTERVAL_MS = 8_000
+const DISCOVER_INTERVAL_MS = 3_000
 
 export type PreviewPanelProps =
   & PropsRuntime<'surfaces.browser'>
   & PropsLocale<typeof NS>
   & InjectFace<PreviewShellInjected>
 
+function currentCwd(useSessions: PreviewPanelProps['useSessions']): string | undefined {
+  return useSessions((s) => {
+    const id = s.current
+    /* v8 ignore next -- the Browser occupant is mounted with a current session id. */
+    if (id === undefined) return undefined
+    const next = s.byId[id]?.cwd
+    return next ? next : undefined
+  })
+}
+
 function readBounds(el: HTMLElement | null): PreviewBounds | undefined {
+  /* v8 ignore next -- launch and bounds sync run after the host commits. */
   if (el === null) return undefined
   const box = el.getBoundingClientRect()
   return {
@@ -41,6 +64,31 @@ function readBounds(el: HTMLElement | null): PreviewBounds | undefined {
 function visibleBounds(bounds: PreviewBounds | undefined): PreviewBounds | undefined {
   if (bounds === undefined || bounds.width <= 0 || bounds.height <= 0) return undefined
   return bounds
+}
+
+/** Overlay IPC is best-effort; renderer chrome already reflects local state. */
+function ignoreOverlayIpcFailure(): void {}
+
+function guestBoundsForHost(
+  host: HTMLElement | null,
+  deviceToolbar: boolean,
+  setting: PreviewViewportSetting,
+  zoomFactor: number,
+): PreviewBounds | undefined {
+  const occupant = visibleBounds(readBounds(host))
+  if (occupant === undefined) return undefined
+  return resolvePreviewGuestBounds(
+    occupant,
+    deviceToolbar ? setting : { _tag: 'fill' },
+    zoomFactor,
+  )
+}
+
+function appearanceScheme(id: string): PreviewColorScheme | undefined {
+  if (id === 'appearance-system' || id === 'appearance-light' || id === 'appearance-dark') {
+    return id.slice('appearance-'.length) as PreviewColorScheme
+  }
+  return undefined
 }
 
 function ChromeButton({
@@ -70,11 +118,18 @@ function ChromeButton({
 }
 
 /**
- * Desktop-only local URL occupant of `surfaces.browser`. The guest paints in
+ * Desktop-only http(s) occupant of `surfaces.browser`. The guest paints in
  * a main-process BrowserView over `host`; the renderer never loads Node.
  * Inactive tabs keep the guest alive (`previewHide`); only unmount closes it.
- * Chrome is icon Back/Forward/Reload, an Input that submits on Enter, a
- * system-browser icon, and a More menu for DevTools.
+ * Chrome is icon Back/Forward/Reload-or-Stop, an Input that submits on Enter,
+ * a system-browser icon, and a More menu (hard reload, DevTools, PiP, device
+ * toolbar, pick, record, screenshot, appearance, zoom, cookies, cache).
+ * Device toolbar mode insets the guest BrowserView (`previewResize` / `setBounds`)
+ * and paints chrome on the leftover `.host` letterbox; it does not use CDP
+ * `Emulation.setDeviceMetricsOverride`. More and the portaled device-preset catalog
+ * `previewHide` the guest until they close (BrowserView stacks above renderer chrome).
+ * Picture-in-picture occupancy is the same hide condition (`overlayOpen || pipOpen`)
+ * so closing More cannot `previewShow` the in-panel view under the PiP window.
  * @param props - session-maybe seats, preview IPC, guest visibility flags, and copy.
  * @returns the browser surface.
  */
@@ -87,6 +142,25 @@ export function PreviewPanel({
   previewBack,
   previewForward,
   previewReload,
+  previewHardReload,
+  previewStop,
+  previewZoomIn,
+  previewZoomOut,
+  previewResetZoom,
+  previewSetColorScheme,
+  previewClearCookies,
+  previewClearCache,
+  previewCaptureScreenshot,
+  previewRevealArtifact,
+  previewOpenPictureInPicture,
+  previewClosePictureInPicture,
+  previewPickElement,
+  previewSetAnnotationTheme,
+  previewStartRecording,
+  previewStopRecording,
+  onPreviewRecordingFrame,
+  previewSaveRecording,
+  appendComposerText,
   // oxlint-disable-next-line typescript/no-useless-default-assignment -- browser-only callers may omit the optional shell callback.
   onPreviewStateChange = () => () => {},
   previewOpenDevTools,
@@ -96,27 +170,59 @@ export function PreviewPanel({
   previewHide,
   previewShow,
   previewClose,
+  useSessions,
   t,
 }: PreviewPanelProps): ReactNode {
   const hostRef = useRef<HTMLDivElement>(null)
+  const cwd = currentCwd(useSessions)
+  const sessionId = useSessions(s => s.current)
   const [url, setUrl] = useState('')
   const [draft, setDraft] = useState('')
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [unreachable, setUnreachable] = useState(false)
+  const [zoomFactor, setZoomFactor] = useState(1)
+  const [colorScheme, setColorScheme] = useState<PreviewColorScheme>('system')
+  const [pipOpen, setPipOpen] = useState(false)
+  const [deviceToolbar, setDeviceToolbar] = useState(false)
+  const [viewportSetting, setViewportSetting] = useState<PreviewViewportSetting>({ _tag: 'fill' })
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
+  const [hostSize, setHostSize] = useState<{ width: number; height: number } | null>(null)
+  const [recording, setRecording] = useState(false)
   const [servers, setServers] = useState<DiscoveredServer[]>([])
   const [moreOpen, setMoreOpen] = useState(false)
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+  const overlayOpen = moreOpen || presetMenuOpen
   const focusedRef = useRef(false)
+  const deviceToolbarRef = useRef(deviceToolbar)
+  deviceToolbarRef.current = deviceToolbar
+  const viewportSettingRef = useRef(viewportSetting)
+  viewportSettingRef.current = viewportSetting
+  const zoomFactorRef = useRef(zoomFactor)
+  zoomFactorRef.current = zoomFactor
+
+  const rememberHostSize = (occupant: PreviewBounds): void => {
+    setHostSize(prev => {
+      if (prev !== null && prev.width === occupant.width && prev.height === occupant.height) return prev
+      return { width: occupant.width, height: occupant.height }
+    })
+  }
 
   useEffect(() => {
     if (!previewAvailable) return
     let cancelled = false
     const load = (): void => {
       void previewDiscover().then((found) => {
-        if (!cancelled) setServers(found)
+        /* v8 ignore next -- unmount sets cancelled before a late discover resolves. */
+        if (cancelled) return
+        setServers(found)
       }).catch(() => {
-        if (!cancelled) setServers([])
+        /* v8 ignore next -- unmount sets cancelled before a late discover rejects. */
+        if (cancelled) return
+        setServers([])
       })
     }
     load()
@@ -129,43 +235,63 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (previewId === null) return
-    if (!active || occluded || moreOpen) {
-      void previewHide(previewId).catch(() => {})
+    if (!active || occluded || overlayOpen || pipOpen) {
+      void previewHide(previewId).catch(ignoreOverlayIpcFailure)
       return
     }
     let visible = false
     const sync = (): void => {
-      const bounds = visibleBounds(readBounds(hostRef.current))
-      if (bounds === undefined) {
+      const occupant = visibleBounds(readBounds(hostRef.current))
+      if (occupant === undefined) {
         if (visible) {
           visible = false
-          void previewHide(previewId).catch(() => {})
+          void previewHide(previewId).catch(ignoreOverlayIpcFailure)
         }
         return
       }
+      rememberHostSize(occupant)
+      const bounds = resolvePreviewGuestBounds(
+        occupant,
+        deviceToolbarRef.current ? viewportSettingRef.current : { _tag: 'fill' },
+        zoomFactorRef.current,
+      )
       if (!visible) {
         visible = true
-        void previewShow(previewId, bounds).catch(() => {})
+        void previewShow(previewId, bounds).catch(ignoreOverlayIpcFailure)
         return
       }
-      void previewResize(previewId, bounds).catch(() => {})
+      void previewResize(previewId, bounds).catch(ignoreOverlayIpcFailure)
     }
     sync()
     const host = hostRef.current
-    const observer = host === null || typeof ResizeObserver === 'undefined'
-      ? undefined
-      : new ResizeObserver(() => { sync() })
-    if (host !== null) observer?.observe(host)
+    let observer: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(sync)
+      /* v8 ignore next -- the host node is committed before previewId is set. */
+      if (host !== null) observer.observe(host)
+    }
     window.addEventListener('resize', sync)
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', sync)
-      void previewHide(previewId).catch(() => {})
+      void previewHide(previewId).catch(ignoreOverlayIpcFailure)
     }
-  }, [previewId, active, occluded, moreOpen, previewHide, previewResize, previewShow])
+  }, [previewId, active, occluded, overlayOpen, pipOpen, previewHide, previewResize, previewShow])
+
+  useEffect(() => {
+    if (previewId === null || !active || occluded || overlayOpen || pipOpen) return
+    const bounds = guestBoundsForHost(
+      hostRef.current,
+      deviceToolbar,
+      viewportSetting,
+      zoomFactor,
+    )
+    if (bounds === undefined) return
+    void previewResize(previewId, bounds).catch(ignoreOverlayIpcFailure)
+  }, [deviceToolbar, viewportSetting, zoomFactor, previewId, active, occluded, overlayOpen, pipOpen, previewResize])
 
   useEffect(() => () => {
-    if (previewId !== null) void previewClose(previewId).catch(() => {})
+    if (previewId !== null) void previewClose(previewId).catch(ignoreOverlayIpcFailure)
   }, [previewId, previewClose])
 
   const applyNav = (result: PreviewNavState): void => {
@@ -181,6 +307,10 @@ export function PreviewPanel({
     }
     setCanGoBack(result.canGoBack === true)
     setCanGoForward(result.canGoForward === true)
+    setLoading(result.loading === true)
+    setUnreachable(result.unreachable === true)
+    if (typeof result.zoomFactor === 'number') setZoomFactor(result.zoomFactor)
+    if (typeof result.pictureInPicture === 'boolean') setPipOpen(result.pictureInPicture)
   }
 
   const applyNavRef = useRef(applyNav)
@@ -197,14 +327,27 @@ export function PreviewPanel({
   }, [onPreviewStateChange])
 
   const launch = (next: string): void => {
-    const trimmed = normalizeLocalPreviewUrl(next)
-    if (trimmed.length === 0) return
-    const bounds = readBounds(hostRef.current)
+    let trimmed: string
+    try {
+      trimmed = normalizePreviewUrl(next)
+    } catch (error) {
+      if (error instanceof PreviewUrlNormalizationError && error.reason === 'empty') return
+      setMessage(t('rejected'))
+      return
+    }
+    const bounds = guestBoundsForHost(
+      hostRef.current,
+      deviceToolbarRef.current,
+      viewportSettingRef.current,
+      zoomFactorRef.current,
+    )
     const currentId = previewIdRef.current
-    void (currentId === null
-      ? previewOpen({ url: trimmed, ...(bounds !== undefined ? { bounds } : {}) })
+    const opened = currentId === null
+      ? previewOpen(bounds === undefined
+        ? { url: trimmed, scope: cwd ?? 'shared' }
+        : { url: trimmed, bounds, scope: cwd ?? 'shared' })
       : previewNavigate(currentId, trimmed)
-    ).then((result) => { applyNavRef.current(result) }).catch(() => { setMessage(t('rejected')) })
+    void opened.then((result) => { applyNavRef.current(result) }).catch(() => { setMessage(t('rejected')) })
   }
 
   useEffect(() => {
@@ -229,7 +372,7 @@ export function PreviewPanel({
     }
     window.addEventListener(OPEN_SURFACE_EVENT, onOpen)
     return () => { window.removeEventListener(OPEN_SURFACE_EVENT, onOpen) }
-  }, [previewOpen, previewNavigate, t])
+  }, [previewOpen, previewNavigate, cwd, t])
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -243,7 +386,146 @@ export function PreviewPanel({
     event.currentTarget.blur()
   }
 
-  const barUrl = normalizeLocalPreviewUrl(draft)
+  let barUrl = ''
+  try {
+    barUrl = normalizePreviewUrl(draft)
+  } catch {
+    // Empty or invalid draft: disable Open in system browser.
+    barUrl = ''
+  }
+
+  const noGuest = previewId === null
+  const moreItems: MenuEntry[] = [
+    { id: 'hardReload', label: t('hardReload'), disabled: noGuest },
+    { id: 'devtools', label: t('devtools'), disabled: noGuest },
+    { id: 'pip', label: pipOpen ? t('pipClose') : t('pipOpen'), disabled: noGuest },
+    { id: 'deviceToolbar', label: deviceToolbar ? t('deviceToolbarHide') : t('deviceToolbarShow'), disabled: noGuest },
+    { id: 'pick', label: t('pick'), disabled: noGuest },
+    { id: 'record', label: recording ? t('recordStop') : t('recordStart'), disabled: noGuest },
+    { id: 'screenshot', label: t('screenshot'), disabled: noGuest },
+    {
+      id: 'appearance',
+      label: t('appearance'),
+      disabled: noGuest,
+      submenu: [
+        { id: 'appearance-system', label: t('appearanceSystem'), disabled: noGuest },
+        { id: 'appearance-light', label: t('appearanceLight'), disabled: noGuest },
+        { id: 'appearance-dark', label: t('appearanceDark'), disabled: noGuest },
+      ],
+    },
+    { type: 'separator', id: 'zoom-sep' },
+    { id: 'zoom-out', label: t('zoomOut'), disabled: noGuest },
+    { type: 'label', id: 'zoom-percent', text: `${Math.round(zoomFactor * 100)}%` },
+    { id: 'zoom-in', label: t('zoomIn'), disabled: noGuest },
+    { id: 'zoom-reset', label: t('zoomReset'), disabled: noGuest },
+    { type: 'separator', id: 'storage-sep' },
+    { id: 'clearCookies', label: t('clearCookies') },
+    { id: 'clearCache', label: t('clearCache') },
+  ]
+
+  const onMoreSelect = (id: string): void => {
+    setMoreOpen(false)
+    if (id === 'clearCookies') {
+      void previewClearCookies()
+      return
+    }
+    if (id === 'clearCache') {
+      void previewClearCache()
+      return
+    }
+    /* v8 ignore next -- More disables guest actions while no preview is open. */
+    if (previewId === null) return
+    if (id === 'hardReload') {
+      void previewHardReload(previewId).then(applyNav)
+      return
+    }
+    if (id === 'devtools') {
+      void previewOpenDevTools(previewId)
+      return
+    }
+    if (id === 'pip') {
+      if (pipOpen) {
+        void previewClosePictureInPicture().then((result) => {
+          if (result.ok) setPipOpen(false)
+        })
+      } else {
+        setPipOpen(true)
+        void previewOpenPictureInPicture(previewId).then((result) => {
+          if (!result.ok) setPipOpen(false)
+        })
+      }
+      return
+    }
+    if (id === 'deviceToolbar') {
+      if (deviceToolbar) {
+        setDeviceToolbar(false)
+        setViewportSetting({ _tag: 'fill' })
+        setAspectRatio(null)
+        setPresetMenuOpen(false)
+      } else {
+        setDeviceToolbar(true)
+        setViewportSetting(DEFAULT_DEVICE_VIEWPORT)
+        setAspectRatio(null)
+      }
+      return
+    }
+    if (id === 'pick') {
+      const theme = readPreviewAnnotationTheme()
+      void previewSetAnnotationTheme?.(previewId, theme)
+      void previewPickElement(previewId).then((result) => {
+        if (!result.ok) return
+        const markdown = formatPickedAnnotationMarkdown(result)
+        if (appendComposerText !== undefined && sessionId !== undefined) {
+          const wrote = appendComposerText(sessionId, markdown)
+          if (wrote !== false) return
+        }
+        const selector = result.annotation?.elements?.[0]?.element?.selector
+        setMessage(selector !== undefined && selector.length > 0 ? selector : markdown)
+      })
+      return
+    }
+    if (id === 'record') {
+      const bridge = {
+        previewStartRecording,
+        previewStopRecording,
+        onPreviewRecordingFrame,
+        previewSaveRecording,
+      }
+      void (recording ? stopBrowserRecording(previewId) : startBrowserRecording(previewId, bridge))
+        .then((result) => { if (result.ok) setRecording(on => !on) })
+        .catch(() => {})
+      return
+    }
+    if (id === 'screenshot') {
+      void previewCaptureScreenshot(previewId).then((result) => {
+        if (!result.ok) {
+          setMessage(result.message ?? t('rejected'))
+          return
+        }
+        /* v8 ignore next -- persist always returns path on ok. */
+        if (typeof result.path !== 'string') return
+        void previewRevealArtifact(result.path)
+      })
+      return
+    }
+    const scheme = appearanceScheme(id)
+    if (scheme !== undefined) {
+      void previewSetColorScheme(previewId, scheme).then((result) => {
+        applyNav(result)
+        if (result.ok) setColorScheme(scheme)
+      })
+      return
+    }
+    if (id === 'zoom-out') {
+      void previewZoomOut(previewId).then(applyNav)
+      return
+    }
+    if (id === 'zoom-in') {
+      void previewZoomIn(previewId).then(applyNav)
+      return
+    }
+    void previewResetZoom(previewId).then(applyNav)
+  }
 
   return (
     <div className={css.root} data-preview-panel>
@@ -256,23 +538,35 @@ export function PreviewPanel({
               <ChromeButton
                 label={t('back')}
                 disabled={previewId === null || !canGoBack}
-                onClick={() => { if (previewId !== null) void previewBack(previewId).then(applyNav) }}
+                onClick={() => {
+                  /* v8 ignore next -- the control is disabled while no guest is open or cannot go back. */
+                  if (previewId !== null) void previewBack(previewId).then(applyNav)
+                }}
               >
                 <IconChevronLeftOutline14 size={14} />
               </ChromeButton>
               <ChromeButton
                 label={t('forward')}
                 disabled={previewId === null || !canGoForward}
-                onClick={() => { if (previewId !== null) void previewForward(previewId).then(applyNav) }}
+                onClick={() => {
+                  /* v8 ignore next -- the control is disabled while no guest is open or cannot go forward. */
+                  if (previewId !== null) void previewForward(previewId).then(applyNav)
+                }}
               >
                 <IconChevronRightOutline14 size={14} />
               </ChromeButton>
               <ChromeButton
-                label={t('reload')}
+                label={loading ? t('stop') : t('reload')}
                 disabled={previewId === null}
-                onClick={() => { if (previewId !== null) void previewReload(previewId).then(applyNav) }}
+                onClick={() => {
+                  /* v8 ignore next -- the control is disabled while no guest is open. */
+                  if (previewId === null) return
+                  void (loading ? previewStop(previewId) : previewReload(previewId)).then(applyNav)
+                }}
               >
-                <IconRefreshOutline14 size={14} />
+                {loading
+                  ? <IconStopFill16 size={14} />
+                  : <IconRefreshOutline14 size={14} />}
               </ChromeButton>
             </div>
             <Input
@@ -303,15 +597,9 @@ export function PreviewPanel({
               portal
               align="end"
               open={moreOpen}
-              items={[{
-                id: 'devtools',
-                label: t('devtools'),
-                disabled: previewId === null,
-              }]}
-              onSelect={(id) => {
-                setMoreOpen(false)
-                if (id === 'devtools' && previewId !== null) void previewOpenDevTools(previewId)
-              }}
+              items={moreItems}
+              selectedIds={[`appearance-${colorScheme}`]}
+              onSelect={onMoreSelect}
               onClose={() => { setMoreOpen(false) }}
               anchor={(
                 <Tooltip label={t('more')} side="bottom">
@@ -328,6 +616,9 @@ export function PreviewPanel({
               )}
             />
           </form>
+          {unreachable ? (
+            <p className={css.unreachable} data-preview-unreachable>{t('unreachable')}</p>
+          ) : null}
           {message !== null || previewId === null ? (
             <p className={css.message}>{message ?? t('empty')}</p>
           ) : null}
@@ -349,7 +640,20 @@ export function PreviewPanel({
               ))}
             </div>
           ) : null}
-          <div ref={hostRef} className={css.host} data-preview-host />
+          <div ref={hostRef} className={css.host} data-preview-host>
+            {deviceToolbar && viewportSetting._tag !== 'fill' && hostSize !== null ? (
+              <DeviceToolbar
+                setting={viewportSetting}
+                layout={resolveBrowserDeviceViewportLayout(hostSize, viewportSetting, zoomFactor)}
+                zoomFactor={zoomFactor}
+                aspectRatio={aspectRatio}
+                t={t}
+                onAspectRatioChange={setAspectRatio}
+                onChange={setViewportSetting}
+                onPresetOpenChange={setPresetMenuOpen}
+              />
+            ) : null}
+          </div>
         </>
       )}
     </div>

@@ -8,7 +8,14 @@ import type {
   ThemeTokenOverrides,
 } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
-import { DEFAULT_THEME_SETTINGS } from '../src/theme-settings.ts'
+import {
+  DEFAULT_THEME_SETTINGS,
+  DEFAULT_WALLPAPER_SOURCES,
+  resolveThemeSettings,
+  sanitizeWallpaperFavorites,
+  sanitizeWallpaperSources,
+  ThemeSettingsSchema,
+} from '../src/theme-settings.ts'
 
 function section(overrides: Partial<ThemeSettings> = {}): ThemeSettings {
   return { ...DEFAULT_THEME_SETTINGS, customThemes: [], ...overrides }
@@ -380,8 +387,10 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().wallpaperBlur).toBe(25)
     expect(theme.getTheme().wallpaperPixelate).toBe(40)
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
     theme.setTheme('dark')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-950)')
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-950)')
     theme.setTheme('light')
     theme.setThemeHalf('light', 'celadon')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('#f3faf7')
@@ -420,5 +429,204 @@ describe('ThemeRuntime', () => {
     // Once idle, a genuine external change is adopted normally.
     host.publish({ value: { glassOpacity: 90 } as ThemeSettings, revision: 3 })
     expect(theme.getTheme().glassOpacity).toBe(90)
+  })
+
+  it('replaces wallpaperSources and queues the new field', () => {
+    const { theme, host } = make()
+    expect(theme.getTheme().wallpaperSources.map(source => source.id)).toEqual(['bing', 'wallhaven'])
+    theme.setWallpaperSources({ wallpaperSources: [] })
+    expect(theme.getTheme().wallpaperSources).toEqual([])
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperSources', [])
+  })
+
+  it('keeps the bing and catalog-url patch on setWallpaperSources', () => {
+    const { theme, host } = make()
+    theme.setWallpaperSources({
+      wallpaperBingEnabled: true,
+      wallpaperCatalogUrls: ['https://example.com/a.json'],
+    })
+    expect(theme.getTheme().wallpaperBingEnabled).toBe(true)
+    expect(theme.getTheme().wallpaperCatalogUrls).toEqual(['https://example.com/a.json'])
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperBingEnabled', true)
+    expect(host.set).toHaveBeenCalledWith('wallpaperCatalogUrls', ['https://example.com/a.json'])
+  })
+
+  it('replaces wallpaperFavorites and queues the new field', () => {
+    const { theme, host } = make()
+    const favorite = {
+      id: 'bing-2026-08-19',
+      sourceId: 'bing',
+      title: 'Lake',
+      thumbUrl: 'https://example.com/t.jpg',
+      imageUrl: 'https://example.com/i.jpg',
+    }
+    theme.setWallpaperFavorites({ wallpaperFavorites: [favorite] })
+    expect(theme.getTheme().wallpaperFavorites).toEqual([favorite])
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperFavorites', [favorite])
+  })
+})
+
+describe('resolveThemeSettings wallpaper sources', () => {
+  it('seeds bing and wallhaven when wallpaperSources is omitted', () => {
+    const parsed = ThemeSettingsSchema({} as never)
+    expect(parsed.wallpaperSources).toBeUndefined()
+    const resolved = resolveThemeSettings({
+      ...DEFAULT_THEME_SETTINGS,
+      wallpaperSources: undefined as never,
+    } as ThemeSettings)
+    expect(resolved.wallpaperSources.map(source => source.id)).toEqual(['bing', 'wallhaven'])
+    expect(resolved.wallpaperSources[0]).toMatchObject({ kind: 'bing', name: '必应' })
+    expect(resolved.wallpaperSources[1]).toMatchObject({ kind: 'wallhaven', name: 'Wallhaven' })
+    expect(resolveThemeSettings(undefined).wallpaperSources).toEqual(DEFAULT_WALLPAPER_SOURCES)
+  })
+
+  it('keeps an empty wallpaperSources array without re-seeding', () => {
+    const parsed = ThemeSettingsSchema({ wallpaperSources: [] } as never)
+    expect(resolveThemeSettings(parsed as ThemeSettings).wallpaperSources).toEqual([])
+    expect(resolveThemeSettings({
+      ...DEFAULT_THEME_SETTINGS,
+      wallpaperSources: [],
+    }).wallpaperSources).toEqual([])
+  })
+
+  it('migrates old catalog URLs when wallpaperSources is omitted', () => {
+    const resolved = resolveThemeSettings({
+      ...DEFAULT_THEME_SETTINGS,
+      wallpaperSources: undefined as never,
+      wallpaperCatalogUrls: ['https://example.com/a.json'],
+    } as ThemeSettings)
+    expect(resolved.wallpaperSources).toHaveLength(3)
+    expect(resolved.wallpaperSources[2]).toMatchObject({
+      kind: 'catalog',
+      url: 'https://example.com/a.json',
+      name: 'example.com',
+    })
+    expect(resolved.wallpaperSources[2]!.id.startsWith('catalog-')).toBe(true)
+  })
+
+  it('does not migrate a catalog URL longer than 500 characters', () => {
+    const longUrl = `https://example.com/${'a'.repeat(480)}.json`
+    expect(longUrl.length).toBeGreaterThan(500)
+    const resolved = resolveThemeSettings({
+      ...DEFAULT_THEME_SETTINGS,
+      wallpaperSources: undefined as never,
+      wallpaperCatalogUrls: [longUrl],
+    } as ThemeSettings)
+    expect(resolved.wallpaperSources.map(source => source.id)).toEqual(['bing', 'wallhaven'])
+    expect(resolved.wallpaperSources.some(source => source.kind === 'catalog')).toBe(false)
+  })
+
+  it('keeps one bing row when two bing rows are present', () => {
+    expect(sanitizeWallpaperSources([
+      { id: 'bing', kind: 'bing', name: '必应' },
+      { id: 'bing', kind: 'bing', name: 'Bing 2' },
+    ]).map(source => source.id)).toEqual(['bing'])
+  })
+
+  it('drops a sixth catalog source', () => {
+    const catalogs = Array.from({ length: 6 }, (_, index) => ({
+      kind: 'catalog' as const,
+      name: `Catalog ${index}`,
+      url: `https://example.com/${index}.json`,
+    }))
+    expect(
+      sanitizeWallpaperSources([...DEFAULT_WALLPAPER_SOURCES, ...catalogs])
+        .filter(source => source.kind === 'catalog'),
+    ).toHaveLength(5)
+  })
+
+  it('caps favorites at 100', () => {
+    const favorites = Array.from({ length: 101 }, (_, index) => ({
+      id: `item-${index}`,
+      sourceId: 'bing',
+      title: `Title ${index}`,
+      thumbUrl: `https://example.com/t${index}.jpg`,
+      imageUrl: `https://example.com/i${index}.jpg`,
+    }))
+    expect(sanitizeWallpaperFavorites(favorites)).toHaveLength(100)
+  })
+
+  it('drops a catalog without an https url', () => {
+    expect(sanitizeWallpaperSources([
+      { kind: 'catalog', name: 'Http', url: 'http://example.com/a.json' },
+      { kind: 'catalog', name: 'Missing' },
+    ])).toEqual([])
+  })
+
+  it('reuses a stable catalog id for the same URL', () => {
+    const row = { kind: 'catalog' as const, name: 'A', url: 'https://example.com/a.json' }
+    const first = sanitizeWallpaperSources([row])
+    const second = sanitizeWallpaperSources([row])
+    expect(first[0]?.id).toBe(second[0]?.id)
+    expect(first[0]?.id.startsWith('catalog-')).toBe(true)
+  })
+
+  it('returns an empty list when wallpaper sources are not an array', () => {
+    expect(sanitizeWallpaperSources(undefined)).toEqual([])
+    expect(sanitizeWallpaperSources({ kind: 'bing' })).toEqual([])
+  })
+
+  it('returns an empty list when wallpaper favorites are not an array', () => {
+    expect(sanitizeWallpaperFavorites(undefined)).toEqual([])
+    expect(sanitizeWallpaperFavorites({ id: 'x' })).toEqual([])
+  })
+
+  it('drops a catalog URL longer than 500 characters', () => {
+    const longUrl = `https://example.com/${'a'.repeat(480)}.json`
+    expect(longUrl.length).toBeGreaterThan(500)
+    expect(sanitizeWallpaperSources([
+      { kind: 'catalog', name: 'Long', url: longUrl },
+    ])).toEqual([])
+  })
+
+  it('drops a catalog with an invalid URL', () => {
+    expect(sanitizeWallpaperSources([
+      { kind: 'catalog', name: 'Broken', url: 'not-a-url' },
+    ])).toEqual([])
+  })
+
+  it('keeps the first of two catalogs with the same URL', () => {
+    expect(sanitizeWallpaperSources([
+      { kind: 'catalog', name: 'First', url: 'https://example.com/a.json' },
+      { kind: 'catalog', name: 'Second', url: 'https://example.com/a.json' },
+    ])).toEqual([
+      expect.objectContaining({ name: 'First', url: 'https://example.com/a.json' }),
+    ])
+  })
+
+  it('keeps an existing catalog-[0-9a-z]+ id', () => {
+    expect(sanitizeWallpaperSources([
+      {
+        id: 'catalog-abc123',
+        kind: 'catalog',
+        name: 'Mine',
+        url: 'https://example.com/a.json',
+      },
+    ])[0]?.id).toBe('catalog-abc123')
+  })
+
+  it('suffixes a generated catalog id when that id is already used', () => {
+    const url = 'https://b.example/catalog.json'
+    const occupied = sanitizeWallpaperSources([
+      { kind: 'catalog', name: 'Probe', url },
+    ])[0]!.id
+    const result = sanitizeWallpaperSources([
+      { kind: 'catalog', id: occupied, name: 'A', url: 'https://a.example/a.json' },
+      { kind: 'catalog', name: 'B', url },
+    ])
+    expect(result.map(source => source.id)).toEqual([occupied, `${occupied}-2`])
+    expect(result[1]).toMatchObject({ name: 'B', url })
+  })
+
+  it('names a catalog from its hostname when the name is missing', () => {
+    expect(sanitizeWallpaperSources([
+      { kind: 'catalog', url: 'https://gallery.example/feed.json' },
+    ])[0]).toMatchObject({
+      name: 'gallery.example',
+      url: 'https://gallery.example/feed.json',
+    })
   })
 })

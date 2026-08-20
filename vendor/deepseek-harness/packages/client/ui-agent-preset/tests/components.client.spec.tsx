@@ -71,7 +71,7 @@ function renderSeat(state: Partial<AgentPresetSeatState> = {}) {
 }
 
 function renderLabel(
-  summary: { blank: boolean; agentPreset?: string } | undefined,
+  summary: { blank: boolean; agentPreset?: string; origin?: 'dshbot' | 'subagent' } | undefined,
   roster: Partial<AgentPresetSettingsState> = {},
 ) {
   // The chip and the label read the same roster, metadata included.
@@ -401,5 +401,13 @@ describe('the session-header label', () => {
     await act(async () => { await Promise.resolve() })
     expect(absent.load).not.toHaveBeenCalled()
     expect(unknown.load).not.toHaveBeenCalled()
+  })
+
+  it('hides the composition name on a desktop-plugin contact', () => {
+    const { load, view } = renderLabel({
+      blank: true, agentPreset: 'dshbot-room', origin: 'dshbot',
+    })
+    expect(view.container.firstChild).toBeNull()
+    expect(load).not.toHaveBeenCalled()
   })
 })

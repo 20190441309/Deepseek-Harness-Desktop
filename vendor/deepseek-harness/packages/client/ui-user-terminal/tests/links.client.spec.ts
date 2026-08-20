@@ -50,6 +50,9 @@ describe('resolveOpenPath', () => {
 describe('splitPathAndPosition', () => {
   it('reads line and column suffixes', () => {
     expect(splitPathAndPosition('a.ts:10:4')).toEqual({ path: 'a.ts', line: '10', column: '4' })
+    expect(splitPathAndPosition('src/a.ts:10:2')).toEqual({
+      path: 'src/a.ts', line: '10', column: '2',
+    })
     expect(splitPathAndPosition('a.ts')).toEqual({ path: 'a.ts', line: undefined, column: undefined })
   })
 })
@@ -100,6 +103,16 @@ describe('activateTerminalTarget', () => {
     })).toBeNull()
   })
 
+  it('passes a parsed :line into openWorkspacePath options', () => {
+    const openLocalUrl = vi.fn()
+    const openExternal = vi.fn()
+    const openWorkspacePath = vi.fn()
+    expect(activateTerminalTarget('src/a.ts:10:2', '/tmp/proj', {
+      openLocalUrl, openExternal, openWorkspacePath,
+    })).toBe('path')
+    expect(openWorkspacePath).toHaveBeenCalledWith('/tmp/proj/src/a.ts', { line: 10 })
+  })
+
   it('returns null when nothing matches', () => {
     expect(activateTerminalTarget('hello', '/tmp', {
       openLocalUrl: vi.fn(), openExternal: vi.fn(), openWorkspacePath: vi.fn(),
@@ -113,7 +126,10 @@ describe('isTerminalLinkActivation', () => {
     expect(isTerminalLinkActivation({ metaKey: false, ctrlKey: true }, 'MacIntel')).toBe(false)
     expect(isTerminalLinkActivation({ metaKey: false, ctrlKey: true }, 'Win32')).toBe(true)
     expect(isTerminalLinkActivation({ metaKey: true, ctrlKey: false }, 'Win32')).toBe(false)
+    expect(isTerminalLinkActivation({ metaKey: true, ctrlKey: false }, 'Linux')).toBe(false)
     expect(isTerminalLinkActivation({ metaKey: true, ctrlKey: false }, '')).toBe(false)
+    expect(isTerminalLinkActivation({ metaKey: true, ctrlKey: false }, 'iPhone')).toBe(true)
+    expect(isTerminalLinkActivation({ metaKey: false, ctrlKey: true }, 'iPhone')).toBe(false)
   })
 })
 

@@ -2,15 +2,15 @@
  * Machine state arrives through the standard provide channel
  * (useInput + inputActions); the keyboard/DOM command face and stop arrive
  * through this entry's own inject, whose hooks compartment binds
- * useNotices/useLexicon; layout-phase inputs (variant, placeholder,
+ * useNotices/useLexicon/useComposerBeam/useComposerResize; layout-phase inputs (variant, placeholder,
  * region-slot content) ride the owner props. Session facts
  * (running/removed/promptError) are self-selected via useSession. */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconPlusOutline16, IconWarningOutline16, Menu, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AttachmentRail, DropOverlay, ImageLightbox } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { AttachmentRailItem } from '@deepseek-ai/dsh-client-ui-attachment'
@@ -32,6 +32,8 @@ import {
 import { ContextMeter } from './ContextMeter.tsx'
 import { PermissionSelect } from './PermissionSelect.tsx'
 import { isSafariBrowser, repairSafariTextareaLayout } from './safari.ts'
+import { ComposerResizeHandles, useComposerResizeDrag } from './ComposerResizeHandles.tsx'
+import { detectComposerTrigger, replaceTextRange } from '../composerTrigger.ts'
 import css from './InputBar.module.css'
 
 /** Decoration product of the no-session state (no machine, empty draft). */
@@ -45,21 +47,27 @@ interface ComposerRailItem extends AttachmentRailItem {
 export type InputBarProps = ComposerBarProps
 
 export function InputBar({
-  useSession, useInput, inputActions, keyboard, addImages, removeImage, draftImages,
+  useSession, useSessions, useInput, inputActions, keyboard, addImages, removeImage, draftImages,
   resolveSubmitMode, toggleCommandMenu, stop, command, t,
-  renderSlot, useNotices, useLexicon, useMenuLauncher,
+  renderSlot, useNotices, useLexicon, useMenuLauncher, useComposerBeam, useComposerResize,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
   placeholder, accessory, overlay, leftItems, rightItems, footer,
+  listSkillNames,
 }: InputBarProps) {
   const input = useInput(s => s)
   const notice = useNotices(s => s)
   const lexicon = useLexicon(s => s)
   const commandMenuOpen = useMenuLauncher(source => source === 'command')
+  const composerBeam = useComposerBeam(value => value)
+  const composerResize = useComposerResize(value => value)
   const promptError = useSession(s => s.promptError) ?? null
   const running = useSession(s => s.running) ?? false
   const subagent = useSession(s => s.subagent) ?? null
   const removed = useSession(s => s.removed) ?? false
+  const hideModelSeat = useSessions(s => (
+    sessionId !== undefined && s.byId[sessionId]?.agentPreset === 'dshbot-room'
+  ))
   // Plan mode swaps the textarea placeholder (the projection is the folded
   // host value; owner-prop placeholders — hero, session-unavailable — win).
   const planActive = useProjection('plan', plan => plan !== undefined && (plan.pending ? !plan.active : plan.active))
@@ -81,6 +89,11 @@ export function InputBar({
   // seq keys the Toast so an identical repeated message restarts the
   // hold-then-fade cycle instead of silently reusing the faded one.
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
+  const [skillMenu, setSkillMenu] = useState<{
+    names: readonly string[]
+    rangeStart: number
+    rangeEnd: number
+  } | null>(null)
   const toastSeq = useRef(0)
   const showToast = useCallback((text: string) => {
     toastSeq.current += 1
@@ -107,6 +120,8 @@ export function InputBar({
   const cardRef = useRef<HTMLDivElement | null>(null)
   const dragDepthRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const { onResizePointerDown, onResizePointerMove, onResizePointerUp }
+    = useComposerResizeDrag(composerResize, cardRef, scrollRef)
   const mirrorRef = useRef<HTMLDivElement | null>(null)
   const safari = useMemo(() => isSafariBrowser(navigator), [])
   const safariNativeShrinkRef = useRef(false)
@@ -149,6 +164,7 @@ export function InputBar({
   const workspaceTrigger = inert && !removed && onRequestWorkspace !== undefined
   // Traveling border beam while a turn is in flight: send, think, and stream.
   const beamLive = !workspaceTrigger && (machineBusy || running)
+  const showBeam = beamLive && composerBeam
   const textareaDisabled = removed || (locked && !workspaceTrigger)
   const canSteerQueue = !locked && !machineBusy && !commandMenuOpen && empty && running && subagent === null
     && input.queue.some(row => row.placement === 'queued')
@@ -266,6 +282,39 @@ export function InputBar({
     })
   }
 
+  const refreshSkillMenu = (text: string, caret: number): void => {
+    if (typeof listSkillNames !== 'function') {
+      setSkillMenu(null)
+      return
+    }
+    const hit = detectComposerTrigger(text, caret)
+    if (hit === null || hit.kind !== 'skill') {
+      setSkillMenu(null)
+      return
+    }
+    const names = listSkillNames(hit.query)
+    if (names.length === 0) {
+      setSkillMenu(null)
+      return
+    }
+    setSkillMenu({ names, rangeStart: hit.rangeStart, rangeEnd: hit.rangeEnd })
+  }
+
+  const pickSkill = (name: string): void => {
+    if (keyboard === undefined || skillMenu === null) return
+    const next = replaceTextRange(
+      keyboard.snapshot.draft,
+      skillMenu.rangeStart,
+      skillMenu.rangeEnd,
+      `$${name} `,
+    )
+    keyboard.setDraft(next.text)
+    const el = inputRef.current
+    if (el !== null) restoreCaret(el, next.cursor)
+    keyboard.track(next.text, next.cursor)
+    setSkillMenu(null)
+  }
+
   // Wheel chaining on the draft scrollport, one lifetime (it is never
   // unmounted — the inert state renders the same element disabled). While the
   // capped box can still move in this direction, keep the native scroll; only
@@ -368,7 +417,9 @@ export function InputBar({
     keyboard.setDraft(next)
     // selectionStart is number|null in lib.dom; the type-aware lint program narrows it.
     // oxlint-disable-next-line typescript/no-unnecessary-condition
-    keyboard.track(next, e.target.selectionStart ?? next.length)
+    const caret = e.target.selectionStart ?? next.length
+    keyboard.track(next, caret)
+    refreshSkillMenu(next, caret)
   }
 
   // ---- chip atomicity (DOM layer; the machine sees only transactions) ----
@@ -436,6 +487,7 @@ export function InputBar({
     const caret = sel.start + text.length
     restoreCaret(el, caret)
     keyboard.track(keyboard.snapshot.draft, caret)
+    refreshSkillMenu(keyboard.snapshot.draft, caret)
   }
 
   // Intake pre-check (DeepSeek Chat semantics): an addition that would break
@@ -475,12 +527,16 @@ export function InputBar({
   // over the composer card. Safe as document-level state: the composer-bar
   // slot is `kind: 'single'`, so at most one bar is mounted to bind these.
   // Text drags carry no 'Files' type and pass through untouched, keeping the
-  // native drop-text-into-textarea path. The overlay layer itself is
-  // pointer-inert, so it never disturbs the enter/leave count.
+  // native drop-text-into-textarea path. Mention payloads
+  // (`application/x-dshd-composer-mention`) are claimed so they insert into
+  // the draft. The overlay layer itself is pointer-inert, so it never
+  // disturbs the enter/leave count.
   const canAcceptDrop = !locked && !machineBusy && addImages !== undefined
   useEffect(() => {
     const hasFiles = (event: globalThis.DragEvent): boolean =>
       event.dataTransfer?.types.includes('Files') ?? false
+    const hasMention = (event: globalThis.DragEvent): boolean =>
+      event.dataTransfer?.types.includes('application/x-dshd-composer-mention') ?? false
     const reset = (): void => {
       dragDepthRef.current = 0
       setDragActive(false)
@@ -492,6 +548,10 @@ export function InputBar({
       setDragActive(true)
     }
     const onDragOver = (event: globalThis.DragEvent): void => {
+      if (hasMention(event)) {
+        event.preventDefault()
+        return
+      }
       if (!hasFiles(event) || event.dataTransfer === null) return
       event.preventDefault()
       event.dataTransfer.dropEffect = canAcceptDrop ? 'copy' : 'none'
@@ -507,6 +567,14 @@ export function InputBar({
       if ((event.target === document.documentElement || event.target === document.body) && leavingViewport) reset()
     }
     const onDrop = (event: globalThis.DragEvent): void => {
+      if (hasMention(event)) {
+        event.preventDefault()
+        const mention = event.dataTransfer?.getData('application/x-dshd-composer-mention') ?? ''
+        if (mention.length === 0 || keyboard === undefined) return
+        const current = keyboard.snapshot.draft
+        keyboard.setDraft(current.length === 0 ? mention : `${current} ${mention}`)
+        return
+      }
       if (!hasFiles(event)) return
       event.preventDefault()
       reset()
@@ -525,7 +593,7 @@ export function InputBar({
       document.removeEventListener('drop', onDrop)
       window.removeEventListener('dragend', reset)
     }
-  }, [canAcceptDrop, intakeImages])
+  }, [canAcceptDrop, intakeImages, keyboard])
 
   const closePreview = useCallback(() => { setPreviewOpen(false) }, [])
 
@@ -543,7 +611,10 @@ export function InputBar({
     // Any caret/selection gesture ends a live paste attempt (the machine
     // cannot observe DOM selection). Cheap no-op when none is live.
     if (keyboard !== undefined && keyboard.snapshot.paste !== undefined) keyboard.invalidatePaste()
-    void e
+    if (keyboard === undefined || locked || machineBusy) return
+    const el = e.currentTarget
+    const caret = el.selectionDirection === 'backward' ? el.selectionStart : el.selectionEnd
+    refreshSkillMenu(el.value, caret ?? el.value.length)
   }
 
   // Button presses steal focus from the textarea; suppress at mousedown so
@@ -694,17 +765,40 @@ export function InputBar({
         className={clsx(
           css.card,
           workspaceTrigger && css.cardWorkspaceTrigger,
-          beamLive && css.cardBeam,
+          showBeam && css.cardBeam,
         )}
         data-composer-card
-        data-beam={beamLive || undefined}
+        data-beam={showBeam || undefined}
         onClick={workspaceTrigger ? onRequestWorkspace : undefined}
         onPointerDown={workspaceTrigger ? (e) => { e.stopPropagation() } : undefined}
       >
+        {composerResize && !workspaceTrigger && (
+          <ComposerResizeHandles
+            t={t}
+            onPointerDown={onResizePointerDown}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+          />
+        )}
         <span className={css.beamInner} aria-hidden />
         <span className={css.beamStroke} aria-hidden />
         <span className={css.beamBloom} aria-hidden />
-        {overlay !== undefined && <div className={css.overlayAnchor}>{overlay}</div>}
+        {(overlay !== undefined || skillMenu !== null) && (
+          <div className={css.overlayAnchor}>
+            {overlay}
+            {skillMenu !== null && (
+              <Menu
+                open
+                side="top"
+                align="start"
+                anchor={<span />}
+                items={skillMenu.names.map(name => ({ id: name, label: name }))}
+                onSelect={(id) => { pickSkill(id) }}
+                onClose={() => { setSkillMenu(null) }}
+              />
+            )}
+          </div>
+        )}
         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
         {railItems.length > 0 && (
           <div className={css.attachments}>
@@ -783,7 +877,7 @@ export function InputBar({
           </div>
           <div className={css.trailing}>
             {rightItems}
-            {renderSlot('conversation.input.model', { locked: modelSeatLocked })}
+            {!hideModelSeat && renderSlot('conversation.input.model', { locked: modelSeatLocked })}
             <ContextMeter useProjection={useProjection} t={t} />
             {interruptible && (
               <Tooltip label={t('input.stop')} side="top" delayMs={500}>

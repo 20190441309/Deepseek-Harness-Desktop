@@ -1,7 +1,9 @@
 const http = require('http');
 const net = require('net');
 const zlib = require('zlib');
+const fs = require('fs');
 const { EventEmitter } = require('events');
+const { resolveMobileWebRoot, shouldProxyToHost, resolveSpaAsset } = require('./mobile-web');
 const {
   generateToken,
   isAuthorized,
@@ -194,6 +196,7 @@ class RemoteGateway extends EventEmitter {
     this.target = null;
     this.sockets = new Map();
     this.relayOp = 0;
+    this.mobileWebRoot = options.mobileWebRoot || resolveMobileWebRoot();
     this.relay = options.relay || new RelayClient({
       ...options.relayOptions,
       getLocal: () => (this.port ? { port: this.port } : null),
@@ -562,6 +565,14 @@ class RemoteGateway extends EventEmitter {
       this.touchDevice(device.id);
     }
 
+    if (!shouldProxyToHost(url)) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && this.serveMobileWeb(req, res, url)) {
+        return;
+      }
+      this.send(res, 404, { 'content-type': 'text/plain; charset=utf-8' }, 'not found');
+      return;
+    }
+
     const headers = rewriteProxyHeaders(req.headers, target);
     const proxy = http.request({
       hostname: '127.0.0.1',
@@ -596,6 +607,24 @@ class RemoteGateway extends EventEmitter {
       }
     });
     req.pipe(proxy);
+  }
+
+  serveMobileWeb(req, res, url) {
+    const asset = resolveSpaAsset(this.mobileWebRoot, url);
+    if (!asset) {
+      return false;
+    }
+    const headers = {
+      'content-type': asset.type,
+      'cache-control': /html/.test(asset.type) ? 'no-store' : 'no-cache',
+    };
+    if (req.method === 'HEAD') {
+      res.writeHead(200, headers);
+      res.end();
+      return true;
+    }
+    this.send(res, 200, headers, fs.readFileSync(asset.file));
+    return true;
   }
 
   handleUpgrade(req, socket, head) {

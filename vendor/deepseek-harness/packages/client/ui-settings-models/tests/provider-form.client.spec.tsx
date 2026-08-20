@@ -309,12 +309,30 @@ describe('model list editing', () => {
     ])
   })
 
+  it('offers every pi-ai thinking intensity on a new model row', async () => {
+    await mountSection()
+    openEditor('openai')
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    const group = screen.getByRole('group', { name: en.effortTitle })
+    expect(within(group).getAllByRole('checkbox').map(box => box.getAttribute('aria-label'))).toEqual([
+      `${en['effort.off']} 1`,
+      `${en['effort.minimal']} 1`,
+      `${en['effort.low']} 1`,
+      `${en['effort.medium']} 1`,
+      `${en['effort.high']} 1`,
+      `${en['effort.xhigh']} 1`,
+      `${en['effort.max']} 1`,
+    ])
+  })
+
   it('writes checked thinking intensities as reasoningEfforts on the model', async () => {
     const { mutate } = await mountSection()
     openEditor('openai')
 
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-think' } })
+    fireEvent.click(screen.getByLabelText(`${en['effort.off']} 1`))
+    fireEvent.click(screen.getByLabelText(`${en['effort.minimal']} 1`))
     fireEvent.click(screen.getByLabelText(`${en['effort.high']} 1`))
     fireEvent.click(screen.getByLabelText(`${en['effort.max']} 1`))
     fireEvent.click(screen.getByText(en.apply))
@@ -322,8 +340,18 @@ describe('model list editing', () => {
     await waitFor(() => { expect(mutate).toHaveBeenCalled() })
     expect(firstMutate(mutate).ops[0]?.value).toEqual([{
       id: 'acme-think',
-      reasoningEfforts: { high: 'high', max: 'max' },
+      reasoningEfforts: { off: null, minimal: 'minimal', high: 'high', max: 'max' },
     }])
+  })
+
+  it('refuses apply when Off is the only checked thinking intensity', async () => {
+    await mountSection()
+    openEditor('openai')
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-think' } })
+    fireEvent.click(screen.getByLabelText(`${en['effort.off']} 1`))
+    expect(buttonNamed(en.apply).disabled).toBe(true)
+    expect(screen.getByText(`${en.model} 1: ${en.effortOffAlone}`)).toBeTruthy()
   })
 
   it('drops reasoningEfforts when every thinking intensity is unchecked', async () => {

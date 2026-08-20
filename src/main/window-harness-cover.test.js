@@ -11,6 +11,15 @@ test('boot caption disables drag while the harness BrowserView covers it', () =>
   assert.match(css, /body\[data-harness-covered\] \.caption[\s\S]*?-webkit-app-region:\s*no-drag/);
 });
 
+test('boot failure actions include a download-log ghost button', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../renderer/boot.html'), 'utf8');
+  const boot = fs.readFileSync(path.join(__dirname, '../renderer/boot.js'), 'utf8');
+  assert.match(html, /id="save-log"/);
+  assert.match(html, /<button type="button" class="ghost" id="save-log">/);
+  assert.match(boot, /invoke\('saveBootLog'\)/);
+  assert.doesNotMatch(boot, /saveLogEl\.disabled/);
+});
+
 test('boot log docks above the corner rails and clips older lines from the top', () => {
   const css = fs.readFileSync(path.join(__dirname, '../renderer/boot.css'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../renderer/boot.html'), 'utf8');
@@ -18,11 +27,22 @@ test('boot log docks above the corner rails and clips older lines from the top',
   assert.match(css, /--boot-log-inset:\s*64px/);
   assert.match(css, /--boot-rail-inset:\s*16px/);
   assert.match(css, /--boot-rail-size:\s*28px/);
+  assert.match(css, /\.log-dock[\s\S]*?position:\s*fixed/);
   assert.match(css, /\.log-dock[\s\S]*?bottom:\s*var\(--boot-log-inset\)/);
   assert.match(css, /\.log-dock[\s\S]*?left:\s*var\(--boot-log-inset\)/);
   assert.match(css, /\.log-dock[\s\S]*?justify-content:\s*flex-end/);
   assert.match(css, /\.log-dock[\s\S]*?overflow:\s*hidden/);
   assert.match(css, /\.stage[\s\S]*?padding:[^;]*boot-log-inset[^;]*boot-log-max/);
+  assert.doesNotMatch(css, /\.log li\s*\{[^}]*opacity:\s*0/);
+});
+
+test('boot corner rails are fixed to the viewport and enclose the caption strip', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../renderer/boot.css'), 'utf8');
+  assert.match(css, /\.rail\s*\{[\s\S]*?position:\s*fixed/);
+  assert.match(css, /\.rail-tl\s*\{[^}]*top:\s*var\(--boot-rail-inset\)/);
+  assert.match(css, /\.rail-tr\s*\{[^}]*top:\s*var\(--boot-rail-inset\)/);
+  assert.doesNotMatch(css, /\.rail-tl\s*\{[^}]*--caption-h/);
+  assert.doesNotMatch(css, /\.rail-tr\s*\{[^}]*--caption-h/);
 });
 
 test('window-control buttons are a no-drag hit target and ignore SVG pointer events', () => {

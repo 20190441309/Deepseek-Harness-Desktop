@@ -8,6 +8,7 @@ import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-settings-general/client'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
+import { InterfaceSection } from '../src/client/InterfaceSection.tsx'
 import { AboutSection } from '../src/client/AboutSection.tsx'
 import { HarnessRestartRow } from '../src/client/HarnessRestartRow.tsx'
 import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
@@ -72,7 +73,7 @@ function declare(slots: SlotRegistry): () => void {
 }
 
 function seatCount(name: string): number {
-  return name === 'settings.section' ? 2 : 1
+  return name === 'settings.section' ? 3 : 1
 }
 
 function generalEntry(slots: SlotRegistry) {
@@ -95,11 +96,16 @@ describe('ui-settings-general apply', () => {
     expect(entry.options).toMatchObject({ id: 'general', order: 0 })
     // The nav label is a locale-following thunk; owners resolve at read time.
     expect(resolveSlotLabel(entry.options.label)).toBe('通用设置')
+    const iface = before.slots.entries('settings.section').find(e => e.component === InterfaceSection)
+    expect(iface?.options).toMatchObject({ id: 'interface', order: 6 })
+    expect(resolveSlotLabel(iface?.options.label)).toBe('界面设置')
     const about = before.slots.entries('settings.section').find(e => e.component === AboutSection)
     expect(about?.options).toMatchObject({ id: 'about', order: 90 })
     expect(resolveSlotLabel(about?.options.label)).toBe('关于')
     expect(before.slots.spec('settings.general.item')).toEqual({ kind: 'list', scope: 'root' })
     expect(before.slots.entries('settings.general.item')).toEqual([])
+    expect(before.slots.spec('settings.interface.item')).toEqual({ kind: 'list', scope: 'root' })
+    expect(before.slots.entries('settings.interface.item')).toEqual([])
     // The onboarding hole stays declared for feature-owned steps; this plugin
     // no longer seats one.
     expect(before.slots.entries('settings.onboarding')).toEqual([])
@@ -123,6 +129,7 @@ describe('ui-settings-general apply', () => {
     }
     await vi.waitFor(() => {
       expect(after.slots.spec('settings.general.item')).toEqual({ kind: 'list', scope: 'root' })
+      expect(after.slots.spec('settings.interface.item')).toEqual({ kind: 'list', scope: 'root' })
     })
   })
 
@@ -154,10 +161,13 @@ describe('ui-settings-general apply', () => {
       expect(b.slots.entries(name)).toHaveLength(seatCount(name))
     })
     expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('General')
+    const iface = b.slots.entries('settings.section').find(e => e.component === InterfaceSection)
+    expect(resolveSlotLabel(iface?.options.label)).toBe('Interface')
     const about = b.slots.entries('settings.section').find(e => e.component === AboutSection)
     expect(resolveSlotLabel(about?.options.label)).toBe('About')
     b.locale.setLocale('zh')
     expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('通用设置')
+    expect(resolveSlotLabel(iface?.options.label)).toBe('界面设置')
     expect(resolveSlotLabel(about?.options.label)).toBe('关于')
   })
 
@@ -232,6 +242,7 @@ describe('ui-settings-general apply', () => {
     redeclare()
     for (const [name] of SEATS) expect(b.slots.entries(name)).toHaveLength(0)
     expect(b.slots.spec('settings.general.item')).toBeUndefined()
+    expect(b.slots.spec('settings.interface.item')).toBeUndefined()
     declare(b.slots)
     await Promise.resolve()
     for (const [name, component] of SEATS) {
@@ -239,6 +250,7 @@ describe('ui-settings-general apply', () => {
     }
     expect(b.slots.entries('settings.general.item')).toEqual([])
     expect(b.slots.spec('settings.general.item')).toEqual({ kind: 'list', scope: 'root' })
+    expect(b.slots.spec('settings.interface.item')).toEqual({ kind: 'list', scope: 'root' })
     // The recovered registrations still ride the locale path.
     b.locale.setLocale('en')
     expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('General')
@@ -251,8 +263,10 @@ describe('ui-settings-general apply', () => {
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(b.slots.spec('settings.general.item')).toBeDefined()
+    expect(b.slots.spec('settings.interface.item')).toBeDefined()
     await fiber.dispose()
     for (const [name] of SEATS) expect(b.slots.entries(name)).toHaveLength(0)
     expect(b.slots.spec('settings.general.item')).toBeUndefined()
+    expect(b.slots.spec('settings.interface.item')).toBeUndefined()
   })
 })

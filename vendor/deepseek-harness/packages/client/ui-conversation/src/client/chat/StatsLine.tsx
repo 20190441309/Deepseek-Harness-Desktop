@@ -4,7 +4,7 @@
 
 import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ConversationSnapshot, UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConversationSnapshot, SnapshotStore, UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the sessionStats key into SessionProjectionMap for useProjection.
 import type {} from '@deepseek-ai/dsh-session-stats/client'
@@ -156,11 +156,22 @@ export function contextOccupancy(
 export interface StatsLineProps {
   useSession: SnapshotSelectorHook<ConversationSnapshot>
   useProjection: UseProjection
+  /** Interface Settings preference: false hides figures and keeps the row gap. */
+  useStatsLine: SnapshotSelectorHook<boolean>
   /** The owning dock's locale seat. */
   t: ComposerBarProps['t']
 }
 
-export const StatsLine = memo(function StatsLine({ useSession, useProjection, t }: StatsLineProps) {
+/** Registration-side preference face for the composer-dock stats entry. */
+export interface StatsLineInjected {
+  hooks: {
+    /** Persisted stats-strip preference bound as useStatsLine. */
+    statsLine: SnapshotStore<boolean>
+  }
+}
+
+export const StatsLine = memo(function StatsLine({ useSession, useProjection, useStatsLine, t }: StatsLineProps) {
+  const statsLine = useStatsLine(value => value)
   const settledNodes = useSession(s => s.chat.legacy.nodes)
   const usage = useProjection('tokenUsage')
   // Every figure rides the durable sessionStats projection, so paging and
@@ -219,16 +230,25 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
     return () => { observer.disconnect() }
   }, [line])
   if (groups.length === 0) return null
+  const row = (
+    <div
+      ref={rootRef}
+      className={css.root}
+      data-stats-line={statsLine ? undefined : 'hidden'}
+      aria-hidden={statsLine ? undefined : true}
+    >
+      {groups.map((group, i) => (
+        <Fragment key={group}>
+          {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
+          <span>{group}</span>
+        </Fragment>
+      ))}
+    </div>
+  )
+  if (!statsLine) return row
   return (
     <Tooltip label={line} side="top" delayMs={500} disabled={!truncated}>
-      <div ref={rootRef} className={css.root}>
-        {groups.map((group, i) => (
-          <Fragment key={group}>
-            {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
-            <span>{group}</span>
-          </Fragment>
-        ))}
-      </div>
+      {row}
     </Tooltip>
   )
 })

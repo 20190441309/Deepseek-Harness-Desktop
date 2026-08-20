@@ -1,6 +1,7 @@
 /** One PTY listener pair fans events to every live store handle. */
 import type { TerminalShellInjected } from './shell.ts'
 import type { TerminalSessionStoreHandle } from './stores.ts'
+import { forgetConptyDeviceAttributes } from './conpty-da.ts'
 
 type PtyStore = Pick<TerminalSessionStoreHandle, 'dispatchData' | 'dispatchExit'>
 
@@ -19,6 +20,7 @@ export function bindPtyListeners(
     for (const store of stores) store.dispatchData(payload.id, payload.data)
   })
   const offExit = pty.onPtyExit((payload) => {
+    forgetConptyDeviceAttributes(payload.id)
     for (const store of stores) store.dispatchExit(payload.id)
   })
   return () => {

@@ -112,6 +112,7 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
   actx.on('slash/input-begin-command', req => shell.beginCommand(req.claim, req.span) ? true : undefined)
   actx.on('slash/input-insert-reference', req => shell.insertReference(req.reference, req.span) ? true : undefined)
   actx.on('slash/input-consume-token', req => shell.consumeToken(req.guard) ? true : undefined)
+  actx.on('slash/input-insert-text', req => shell.insertText(req.text, req.span) ? true : undefined)
   const wiring = shell
   const sessionStore = createSnapshotStore<ConversationSnapshot>({
     sessionId, views: EMPTY_CONVERSATION_VIEWS, chat: EMPTY_CHAT_SNAPSHOT,
@@ -152,6 +153,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
     useNotices: bindSnapshotSelector(shell.notices),
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(controller.launcher),
+    useComposerBeam: sel => sel(true),
+    useComposerResize: sel => sel(false),
     renderSlot: (() => null) as InputBarProps['renderSlot'],
     stop: vi.fn(),
     command: () => Promise.resolve(true),
@@ -288,6 +291,51 @@ describe('scenario: reference decoration lights up when the lexicon settles', ()
     })
     const mark = b.view.container.querySelector('[data-decoration="text-ref"]')
     expect(mark?.textContent).toBe('/deploy')
+  })
+})
+
+describe('scenario: @path file mention', () => {
+  it('typing @src offers src/a.ts and picking inserts the file-link text', async () => {
+    const candidates = vi.fn((_session: ClientSessionContext, req: { query: string }) =>
+      Promise.resolve(req.query.startsWith('src')
+        ? [{ name: 'src/a.ts', description: 'a.ts' }]
+        : []))
+    const b = await scopedBench((inputTriggers) => {
+      inputTriggers.registerSource({
+        trigger: '@',
+        name: 'path',
+        order: 1,
+        candidates,
+        onPick: ({ candidate }) => ({ text: `[a.ts](${candidate.name}) ` }),
+      })
+    })
+    b.type('@src')
+    await vi.waitFor(() => {
+      const menu = b.controller.menu.getSnapshot()
+      expect(menu.open).toBe(true)
+      expect(menu.groups.find(group => group.source === 'path')?.items.map(item => item.name))
+        .toContain('src/a.ts')
+    })
+    act(() => { b.controller.pick('path', 0) })
+    expect(b.textarea.value).toBe('[a.ts](src/a.ts) ')
+  })
+
+  it('typing / does not fetch path candidates', async () => {
+    const candidates = vi.fn(() => Promise.resolve([{ name: 'src/a.ts' }]))
+    const b = await scopedBench((inputTriggers) => {
+      inputTriggers.registerSource({
+        trigger: '@',
+        name: 'path',
+        order: 1,
+        candidates,
+        onPick: () => undefined,
+      })
+    })
+    b.type('/')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(candidates).not.toHaveBeenCalled()
+    expect(b.controller.menu.getSnapshot().open).toBe(false)
   })
 })
 

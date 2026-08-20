@@ -10,13 +10,15 @@
 // buttons must be reachable no matter how long the command is.
 // One-shot: the buttons disable
 // after a click and the panel leaves (the InputBar returns) on the broadcast
-// resolved frame.
+// resolved frame. Interface Settings composerResize paints the same edge
+// handles as InputBar and shares a dragged size through `[data-composer-seat]`.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RunningToolCall } from '@deepseek-ai/dsh-client-runtime/client'
 import { PendingApproval, type ApprovalComposerProps } from '../contract/slots.ts'
 import { rootToolCall } from '../chat/tool-node-reader.ts'
+import { ComposerResizeHandles, useComposerResizeDrag } from './ComposerResizeHandles.tsx'
 import css from './ApprovalPanel.module.css'
 
 /** Extract the shell command from an approval's paired running call (bash-family args carry `command`); undefined hides the line. */
@@ -40,36 +42,65 @@ export function commandOf(call: RunningToolCall | undefined): string | undefined
  */
 export function ApprovalPanel(props: ApprovalComposerProps) {
   const approval = useMemo(() => new PendingApproval(props.matched), [props.matched])
+  const composerResize = props.useComposerResize(value => value)
   const command = props.useSession((snapshot) => {
     if (approval.callId === undefined) return undefined
     const root = rootToolCall(snapshot, approval.callId)
     if (root === undefined) return undefined
     return root.callId === approval.callId && !('kind' in root) ? commandOf(root) : undefined
   })
-  return <ApprovalFlow key={approval.key} pending={approval} t={props.t} {...command === undefined ? {} : { command }} />
+  return (
+    <ApprovalFlow
+      key={approval.key}
+      pending={approval}
+      t={props.t}
+      composerResize={composerResize}
+      {...command === undefined ? {} : { command }}
+    />
+  )
 }
 
-function ApprovalFlow({ pending, command, t }: {
+function ApprovalFlow({ pending, command, t, composerResize }: {
   pending: PendingApproval
   command?: string
   t: ApprovalComposerProps['t']
+  composerResize: boolean
 }) {
   // Local one-shot latch: the panel leaves only when the resolved frame
   // lands; until then the buttons must not re-fire. An answer failure
   // (rejected receipt / transport) re-arms them for retry.
   const [answered, setAnswered] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const { onResizePointerDown, onResizePointerMove, onResizePointerUp }
+    = useComposerResizeDrag(composerResize, cardRef, scrollRef)
   const answer = (outcome: 'allowed-once' | 'rejected'): void => {
     setAnswered(true)
     void pending.answer(outcome).catch(() => { setAnswered(false) })
   }
   return (
     <div className={css.root} data-approval-key={pending.key}>
-      <div className={css.card}>
+      <div ref={cardRef} className={css.card} data-composer-card>
+        {composerResize && (
+          <ComposerResizeHandles
+            t={t}
+            onPointerDown={onResizePointerDown}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+          />
+        )}
         <div className={css.strip}><span className={css.dot} />{t('approval.waiting')}</div>
         {/* Tab stop: the region scrolls once the command passes the cap and
             holds nothing focusable of its own, so without one a keyboard-only
             user cannot reach the command's tail before answering. */}
-        <div className={css.body} data-approval-scroll="" tabIndex={0} role="group" aria-label={t('approval.detail.aria')}>
+        <div
+          ref={scrollRef}
+          className={css.body}
+          data-approval-scroll=""
+          tabIndex={0}
+          role="group"
+          aria-label={t('approval.detail.aria')}
+        >
           <div className={css.headline}>{pending.reason ?? t('approval.escalation', { toolName: pending.toolName })}</div>
           {command !== undefined && <div className={css.command}>{command}</div>}
         </div>

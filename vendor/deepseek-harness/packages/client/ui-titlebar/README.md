@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Titlebar trailing plugin: two ghost toggles that write `ctx.layout.toggleTerminalDrawer` and `ctx.layout.toggleSurfaces`. The entry sits in `shell.titlebar.trailing` at `id: 'panel-toggles'`, `order: 40`, so it stays visible on the blank home and lands to the right of Session log (`order: 10`) with a gap for Git (`order: 20`). Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
+Titlebar trailing plugin: two ghost toggles that write `ctx.layout.toggleTerminalDrawer` and `ctx.layout.toggleSurfaces`. The entry sits in `shell.titlebar.trailing` at `id: 'panel-toggles'`, `order: 40`, so it stays visible on the blank home and lands to the right of Session log (`order: 10`) with a gap for Git (`order: 20`). Interface Settings `ui-titlebar.terminalToggle` and `surfacesToggle` (default true) hide the matching buttons; `Ctrl+\`` and `Ctrl+\\` still toggle the panels. Contract: the [slot system standard](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md).
 
 Pressed state follows the layout owner widths (`surfaces` / `terminalDrawer`; 0 is closed). The terminal toggle is disabled when `useWorkspaces` reports no workspace. The surfaces toggle stays available on the blank home. Ctrl/Cmd+` toggles the terminal drawer and Ctrl/Cmd+\\ toggles the surfaces column, except when focus is in an input, textarea, contenteditable, or `.xterm`.
 

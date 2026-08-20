@@ -68,7 +68,7 @@ export function surfaceTitle(surface: Surface, t: SurfaceTabsProps['t']): string
  * Surface tab strip: activate, trailing close (right of the label; do not
  * move it without an explicit product request), add-menu, middle-click,
  * context menu, and non-passive wheel-to-horizontal scroll. Mounted even
- * with zero surfaces so the titlebar drag region and window-control pad remain.
+ * with zero surfaces so the titlebar row and window-control pad remain.
  * @param props - surfaces, the active id, callbacks, and copy.
  * @returns the tab bar.
  */

@@ -52,6 +52,7 @@ class FakeDsh extends EventEmitter {
     this.startCalls = 0;
     this.stopCalls = 0;
     this.startResults = [];
+    this.startOptions = [];
   }
 
   snapshot() {
@@ -78,10 +79,12 @@ class FakeDsh extends EventEmitter {
     this.emit('log', entry);
   }
 
-  async start() {
+  async start(options = {}) {
     this.startCalls += 1;
+    this.startOptions.push(options);
     const result = this.startResults.length ? this.startResults.shift() : 'http://127.0.0.1:3080';
     if (result instanceof Error) {
+      if (result.pluginTree) this.log('plugin tree failed to load', 'dsh');
       this.setState('error', {
         error: result.message,
         failure: { phase: 'startup', message: result.message },
@@ -136,7 +139,11 @@ function fixture(overrides = {}) {
     harnessRestartMaxAttempts: 3,
     harnessRestartBaseDelayMs: 1000,
     openDevTools: false,
+    pluginRecovery: { skipUserPlugins: false, reason: '', at: '', appVersion: '' },
   };
+  if (overrides.initialConfig) {
+    config = { ...config, ...overrides.initialConfig };
+  }
   const remote = {
     syncCalls: 0,
     stopCalls: 0,
@@ -168,6 +175,10 @@ function fixture(overrides = {}) {
     resolveLaunchTarget: async () => ({ port: 3080 }),
     stripDroppedPlugins: () => {},
     ensureWorkspace: async () => {},
+    saveConfig: (patch) => {
+      config = { ...config, ...patch };
+    },
+    appVersion: '1.2.3',
     setTimer: clock.setTimeout,
     clearTimer: clock.clearTimeout,
     now: () => clock.time,
@@ -196,6 +207,71 @@ test('writes the desktop install plugin before launching Harness', async () => {
   });
   await f.controller.start();
   assert.deepEqual(calls, ['ensure']);
+});
+
+test('awaits the dshmarket preset after the desktop install plugin and before Harness start', async () => {
+  const order = [];
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => {
+      order.push('desktop-install');
+      return { ok: true };
+    },
+    ensureDshMarketPlugin: async () => {
+      order.push('dshmarket');
+      return { ok: true, added: true };
+    },
+  });
+  const origStart = f.dsh.start.bind(f.dsh);
+  f.dsh.start = async (options) => {
+    order.push('start');
+    return origStart(options);
+  };
+  await f.controller.start();
+  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'start']);
+});
+
+test('logs and continues when the dshmarket preset fails', async () => {
+  const f = fixture({
+    ensureDshMarketPlugin: async () => ({ ok: false, error: 'offline' }),
+  });
+  await f.controller.start();
+  assert.equal(f.dsh.startCalls, 1);
+  assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
+});
+
+test('plugin-tree startup failure retries once with the official template overlay', async () => {
+  const first = Object.assign(new Error('dsh exited'), { pluginTree: true });
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, patchFile: 'C:/desktop-install.yml' }),
+  });
+  f.dsh.startResults.push(first);
+  await f.controller.start();
+
+  assert.equal(f.dsh.startCalls, 2);
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, false);
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, []);
+  assert.equal(f.dsh.startOptions[1].skipUserPlugins, true);
+  assert.deepEqual(f.dsh.startOptions[1].patchFiles, ['C:/desktop-install.yml']);
+  assert.equal(f.controller.snapshot().pluginRecovery.skipUserPlugins, true);
+});
+
+test('sticky plugin recovery starts skip mode and retryFullPlugins clears it', async () => {
+  const f2 = fixture({
+    appVersion: '1.2.3',
+    initialConfig: {
+      pluginRecovery: {
+        skipUserPlugins: true,
+        reason: 'plugin tree failed',
+        at: '2026-08-18T00:00:00.000Z',
+        appVersion: '1.2.3',
+      },
+    },
+  });
+  await f2.controller.start();
+  assert.equal(f2.dsh.startOptions[0].skipUserPlugins, true);
+  await f2.controller.retryFullPlugins();
+  assert.equal(f2.dsh.startOptions.at(-1).skipUserPlugins, false);
+  assert.equal(f2.controller.snapshot().pluginRecovery.skipUserPlugins, false);
 });
 
 test('runtime crash returns to boot, disconnects Remote, and schedules one restart', async () => {

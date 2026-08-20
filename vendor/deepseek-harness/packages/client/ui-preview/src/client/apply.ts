@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-surfaces/client'
 import { en, NS, zh, type PreviewKey } from './locales.ts'
 import { PreviewPanel } from './PreviewPanel.tsx'
+import { appendToDraft } from './draft.ts'
 import { readPreviewShell, type PreviewShellInjected } from './shell.ts'
 
 export type { PreviewPanelProps } from './PreviewPanel.tsx'
@@ -30,6 +31,9 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('surfaces.browser', () => ctx.slots.register({
     name: 'surfaces.browser',
     locale: NS,
-    inject: (): PreviewShellInjected => readPreviewShell(),
+    inject: (): PreviewShellInjected => ({
+      ...readPreviewShell(),
+      appendComposerText: (sessionId, text) => appendToDraft(ctx, sessionId, text),
+    }),
   }, PreviewPanel))
 }

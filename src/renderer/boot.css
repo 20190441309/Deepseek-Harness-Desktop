@@ -57,7 +57,6 @@ body[data-harness-covered] .caption {
 
 .stage {
   position: relative;
-  z-index: 0;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -71,21 +70,22 @@ body[data-harness-covered] .caption {
 }
 
 .rail {
-  position: absolute;
+  position: fixed;
+  z-index: 2;
   width: var(--boot-rail-size);
   height: var(--boot-rail-size);
   pointer-events: none;
 }
 
 .rail-tl {
-  top: calc(var(--caption-h) + 12px);
+  top: var(--boot-rail-inset);
   left: var(--boot-rail-inset);
   border-top: 2px solid var(--boot-accent);
   border-left: 2px solid var(--boot-accent);
 }
 
 .rail-tr {
-  top: calc(var(--caption-h) + 12px);
+  top: var(--boot-rail-inset);
   right: var(--boot-rail-inset);
   border-top: 2px solid var(--boot-accent);
   border-right: 2px solid var(--boot-accent);
@@ -313,8 +313,8 @@ body[data-state="error"] .status {
 }
 
 .log-dock {
-  position: absolute;
-  z-index: 1;
+  position: fixed;
+  z-index: 2;
   left: var(--boot-log-inset);
   right: var(--boot-log-inset);
   bottom: var(--boot-log-inset);
@@ -339,8 +339,7 @@ body[data-state="error"] .status {
 .log li {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  opacity: 0;
-  animation: fade var(--ds-transition-duration) var(--ds-ease-in-out) forwards;
+  animation: fade var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
 body[data-state="error"] .stage {
@@ -366,8 +365,8 @@ body[data-state="error"] .stage {
 }
 
 @keyframes fade {
-  to {
-    opacity: 1;
+  from {
+    opacity: 0;
   }
 }
 

@@ -108,6 +108,33 @@ describe('createSurfacesStore', () => {
     ])
   })
 
+  it('openFile stores revealLine and bumps revealRequestId on an existing tab', () => {
+    const { store, actions } = createSurfacesStore().create()
+    actions.openFile(SESSION, 'a.ts')
+    actions.openFile(SESSION, 'a.ts', { revealLine: 12 })
+    expect(sessionSurfaces(store.getSnapshot(), SESSION).surfaces).toEqual([
+      { id: 'files', kind: 'files' },
+      {
+        id: 'file:a.ts',
+        kind: 'file',
+        relativePath: 'a.ts',
+        revealLine: 12,
+        revealRequestId: 1,
+      },
+    ])
+    actions.openFile(SESSION, 'a.ts', { revealLine: 12 })
+    const file = sessionSurfaces(store.getSnapshot(), SESSION).surfaces.find(
+      surface => surface.kind === 'file',
+    )
+    expect(file).toEqual({
+      id: 'file:a.ts',
+      kind: 'file',
+      relativePath: 'a.ts',
+      revealLine: 12,
+      revealRequestId: 2,
+    })
+  })
+
   it('no-ops close family actions when the session or id is missing', () => {
     const { store, actions } = createSurfacesStore().create()
     actions.activate(SESSION, 'files')

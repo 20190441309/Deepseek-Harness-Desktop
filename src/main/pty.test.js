@@ -12,6 +12,8 @@ const {
   defaultShell,
   defaultShellArgs,
   ptySpawnOptions,
+  createTerminalSpawnEnv,
+  resolveShellCandidates,
 } = require('./pty.js');
 
 // One shared workspace root for the whole suite; cwd checks resolve inside it.
@@ -81,10 +83,10 @@ test('ptyCreate rejects a missing project cwd', async () => {
   await assert.rejects(() => pty.create({}), /cwd/);
 });
 
-test('Windows PTY spawn uses PowerShell without the login banner', () => {
+test('Windows PTY spawn uses pwsh without the login banner', () => {
   if (process.platform !== 'win32') return;
-  assert.equal(defaultShell(), 'powershell.exe');
-  assert.deepEqual(defaultShellArgs(), ['-NoLogo', '-NoProfile']);
+  assert.equal(defaultShell(), 'pwsh.exe');
+  assert.deepEqual(defaultShellArgs(), ['-NoLogo']);
 });
 
 test('createPtyController does not load node-pty until create', () => {
@@ -157,12 +159,81 @@ test('PTY event observers receive output and can unsubscribe', async () => {
   ]);
 });
 
-test('Windows PTY spawn uses the bundled ConPTY DLL cleanup path', () => {
-  const options = ptySpawnOptions({ cwd: ws, cols: 100, rows: 30 }, 'win32');
-  assert.equal(options.useConpty, true);
-  assert.equal(options.useConptyDll, true);
+test('Windows PTY spawn matches NodePtyAdapter (name, no useConpty, no TERM overwrite)', () => {
+  const leftoverEnvKey = ['T', '3CODE_BAR'].join('');
+  const options = ptySpawnOptions({ cwd: ws, cols: 100, rows: 30 }, 'win32', {
+    TERM: 'from-host',
+    PORT: '3080',
+    ELECTRON_RUN_AS_NODE: '1',
+    VITE_FOO: 'x',
+    [leftoverEnvKey]: 'y',
+    Path: 'C:\\Windows',
+  });
+  assert.equal(options.name, 'xterm-color');
+  assert.equal('useConpty' in options, false);
+  assert.equal('useConptyDll' in options, false);
   assert.equal(options.cols, 100);
   assert.equal(options.rows, 30);
+  assert.equal(options.env.TERM, 'from-host');
+  assert.equal('PORT' in options.env, false);
+  assert.equal('ELECTRON_RUN_AS_NODE' in options.env, false);
+  assert.equal('VITE_FOO' in options.env, false);
+  assert.equal(leftoverEnvKey in options.env, false);
+  assert.equal(options.env.Path, 'C:\\Windows');
+  const unix = ptySpawnOptions({ cwd: ws, cols: 80, rows: 24 }, 'linux', { TERM: 'xterm' });
+  assert.equal(unix.name, 'xterm-256color');
+  assert.equal(unix.env.TERM, 'xterm');
+  assert.equal('useConpty' in unix, false);
+  const defaults = ptySpawnOptions({ cwd: ws }, 'win32', {});
+  assert.equal(defaults.cols, 120);
+  assert.equal(defaults.rows, 30);
+  assert.equal('TERM' in defaults.env, false);
+  const electronWin = ptySpawnOptions({ cwd: ws }, 'win32', { TERM: 'dumb', Path: 'C:\\Windows' });
+  assert.equal('TERM' in electronWin.env, false);
+});
+
+test('createTerminalSpawnEnv copies overlay env and AppImage scrub', () => {
+  const env = createTerminalSpawnEnv(
+    {
+      PATH: '/tmp/.mount_App/usr/bin:/usr/bin',
+      APPIMAGE: '/tmp/App.AppImage',
+      APPDIR: '/tmp/.mount_App',
+      ARGV0: 'App',
+      KEEP: 'yes',
+    },
+    { EXTRA: '1' },
+  );
+  assert.equal(env.KEEP, 'yes');
+  assert.equal(env.EXTRA, '1');
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal('APPIMAGE' in env, false);
+  assert.equal('APPDIR' in env, false);
+  assert.equal('ARGV0' in env, false);
+});
+
+test('resolveShellCandidates copies Windows and Unix lists', () => {
+  const win = resolveShellCandidates(() => 'pwsh.exe', 'win32', {
+    SystemRoot: 'C:\\Windows',
+    ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+  });
+  assert.deepEqual(win.map((candidate) => candidate.shell), [
+    'pwsh.exe',
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    'powershell.exe',
+    'C:\\Windows\\System32\\cmd.exe',
+    'cmd.exe',
+  ]);
+  assert.deepEqual(win[0].args, ['-NoLogo']);
+  const unix = resolveShellCandidates(() => '/bin/zsh', 'linux', { SHELL: '/bin/zsh' });
+  assert.deepEqual(unix.map((candidate) => candidate.shell), [
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+    'zsh',
+    'bash',
+    'sh',
+  ]);
+  assert.deepEqual(unix[0].args, ['-o', 'nopromptsp']);
 });
 
 test('registerPtyIpc authorizes every renderer request before dispatch', async () => {

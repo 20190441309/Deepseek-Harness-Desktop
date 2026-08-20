@@ -79,7 +79,7 @@ test('gitInit creates a repository the titlebar can commit into', async () => {
   }
 });
 
-test('gitStatus reports T3 workingTree numstat after a committed file is edited', async () => {
+test('gitStatus reports workingTree numstat after a committed file is edited', async () => {
   const cwd = makeTempDir();
   try {
     git(cwd, ['init']);

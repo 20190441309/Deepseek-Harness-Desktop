@@ -11,7 +11,7 @@ export function normalizeSelection(text: string): string {
 
 /**
  * Wrap a terminal selection so the model sees it as terminal output, not
- * prose. This desktop has no T3 composer chip; the fence is the honest form.
+ * prose. This desktop has no composer chip; the fence is the honest form.
  * @param text - raw xterm selection.
  * @returns a fenced `terminal` block, or empty when the selection is blank.
  */

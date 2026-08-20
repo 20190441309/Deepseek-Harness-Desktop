@@ -1,5 +1,6 @@
 .banner {
   position: fixed;
+  -webkit-app-region: no-drag;
   top: 0;
   left: 0;
   right: 0;

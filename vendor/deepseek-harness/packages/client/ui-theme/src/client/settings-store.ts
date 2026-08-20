@@ -5,7 +5,10 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import { DEFAULT_FAMILY_ID, type ThemeFamily } from '../theme-family.ts'
-import { DEFAULT_THEME_SETTINGS, type ThemePreference, type ThemeSettings } from '../theme-settings.ts'
+import {
+  DEFAULT_THEME_SETTINGS, type ThemePreference, type ThemeSettings,
+  type WallpaperFavorite, type WallpaperSource,
+} from '../theme-settings.ts'
 
 /** Fields the Appearance page mirrors from a theme snapshot. */
 export interface AppearanceSyncSnapshot {
@@ -29,6 +32,14 @@ export interface AppearanceSyncSnapshot {
   wallpaperBlur: number
   /** Pixelation on the wallpaper, 0–100. */
   wallpaperPixelate: number
+  /** Whether desktop Bing rows are included in the gallery. */
+  wallpaperBingEnabled?: boolean
+  /** HTTPS custom wallpaper catalogs. */
+  wallpaperCatalogUrls?: readonly string[]
+  /** Gallery sources. */
+  wallpaperSources?: readonly WallpaperSource[]
+  /** Starred gallery items. */
+  wallpaperFavorites?: readonly WallpaperFavorite[]
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -65,6 +76,14 @@ export interface AppearanceRowState {
   wallpaperBlur: number
   /** Pixelation on the wallpaper, 0–100. */
   wallpaperPixelate: number
+  /** Whether desktop Bing rows are included in the gallery. */
+  wallpaperBingEnabled: boolean
+  /** HTTPS custom wallpaper catalogs. */
+  wallpaperCatalogUrls: readonly string[]
+  /** Gallery sources. */
+  wallpaperSources: readonly WallpaperSource[]
+  /** Starred gallery items. */
+  wallpaperFavorites: readonly WallpaperFavorite[]
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -97,6 +116,10 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   wallpaperImage: '',
   wallpaperBlur: DEFAULT_THEME_SETTINGS.wallpaperBlur,
   wallpaperPixelate: DEFAULT_THEME_SETTINGS.wallpaperPixelate,
+  wallpaperBingEnabled: false,
+  wallpaperCatalogUrls: [],
+  wallpaperSources: DEFAULT_THEME_SETTINGS.wallpaperSources,
+  wallpaperFavorites: [],
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -125,6 +148,10 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.wallpaperImage = snapshot.wallpaperImage
         d.wallpaperBlur = snapshot.wallpaperBlur
         d.wallpaperPixelate = snapshot.wallpaperPixelate
+        d.wallpaperBingEnabled = snapshot.wallpaperBingEnabled ?? false
+        d.wallpaperCatalogUrls = snapshot.wallpaperCatalogUrls ?? []
+        d.wallpaperSources = snapshot.wallpaperSources ?? DEFAULT_THEME_SETTINGS.wallpaperSources
+        d.wallpaperFavorites = snapshot.wallpaperFavorites ?? []
         d.fontFamilySans = snapshot.fontFamilySans
         d.fontFamilyCode = snapshot.fontFamilyCode
         d.fontSizeInterface = snapshot.fontSizeInterface

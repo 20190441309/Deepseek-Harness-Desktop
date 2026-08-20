@@ -9,10 +9,17 @@ import {
 import type {
   BusyEnterBehavior, ComposerSubmitGesture, InputSubmitMode,
 } from '../contract/composer-submission.ts'
-import { BUSY_ENTER_FIELD, DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
+import {
+  BUSY_ENTER_FIELD, COMPOSER_BEAM_FIELD, COMPOSER_RESIZE_FIELD, DEFAULT_BUSY_ENTER_BEHAVIOR,
+  DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE, DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
+  STATS_LINE_FIELD, VIEW_TABS_FIELD,
+} from '../../submission-settings.ts'
 import type { ConversationSettings } from '../../submission-settings.ts'
 
-export { DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
+export {
+  DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE,
+  DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
+} from '../../submission-settings.ts'
 
 /**
  * Busy-Enter policy used by both the composer inject face and its Settings row.
@@ -22,6 +29,16 @@ export { DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
 export class ComposerSubmissionPolicy {
   /** Reactive preference source for the Settings row. */
   readonly busyEnter: SnapshotStore<BusyEnterBehavior> = createSnapshotStore(DEFAULT_BUSY_ENTER_BEHAVIOR)
+  /** Reactive composer-beam source for the Settings row and InputBar. */
+  readonly composerBeam: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_COMPOSER_BEAM)
+  /** Reactive composer drag-resize source for the Settings row and InputBar. */
+  readonly composerResize: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_COMPOSER_RESIZE)
+  /** Reactive stats-strip source for the Settings row and StatsLine. */
+  readonly statsLine: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_STATS_LINE)
+  /** Reactive view-tablist source for the Settings row and ConversationSessionHeader. */
+  readonly viewTabs: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_VIEW_TABS)
+  /** Host writability for the Interface Switch; true when no scope is bound. */
+  readonly writable: SnapshotStore<boolean>
   private readonly host: SettingsScope<ConversationSettings> | undefined
 
   /**
@@ -32,6 +49,7 @@ export class ComposerSubmissionPolicy {
    */
   constructor(host?: SettingsScope<ConversationSettings>) {
     this.host = host
+    this.writable = createSnapshotStore(host === undefined)
     if (host !== undefined) {
       host.subscribe(() => { this.adopt(host) })
       this.adopt(host)
@@ -68,12 +86,66 @@ export class ComposerSubmissionPolicy {
   }
 
   /**
+   * Change whether the composer plays the send/think border beam; the live
+   * value publishes before the durable write starts.
+   * @param value - true paints `.cardBeam`; false suppresses it.
+   */
+  setComposerBeam(value: boolean): void {
+    if (this.composerBeam.getSnapshot() === value) return
+    this.composerBeam.set(value)
+    void this.host?.set(COMPOSER_BEAM_FIELD, value)
+  }
+
+  /**
+   * Change whether the composer text box can be drag-resized; the live value
+   * publishes before the durable write starts.
+   * @param value - true shows the top-edge handle; false restores auto-grow.
+   */
+  setComposerResize(value: boolean): void {
+    if (this.composerResize.getSnapshot() === value) return
+    this.composerResize.set(value)
+    void this.host?.set(COMPOSER_RESIZE_FIELD, value)
+  }
+
+  /**
+   * Change whether the composer dock paints the session stats strip; the live
+   * value publishes before the durable write starts.
+   * @param value - true paints StatsLine figures; false hides them and keeps the row gap.
+   */
+  setStatsLine(value: boolean): void {
+    if (this.statsLine.getSnapshot() === value) return
+    this.statsLine.set(value)
+    void this.host?.set(STATS_LINE_FIELD, value)
+  }
+
+  /**
+   * Change whether the session header paints Chat/Trajectory tabs; the live
+   * value publishes before the durable write starts.
+   * @param value - true paints the tablist when more than one view exists.
+   */
+  setViewTabs(value: boolean): void {
+    if (this.viewTabs.getSnapshot() === value) return
+    this.viewTabs.set(value)
+    void this.host?.set(VIEW_TABS_FIELD, value)
+  }
+
+  /**
    * Adopt the scope's accepted durable behavior without writing it back.
    * @param host - the constructor-narrowed scope driving this adoption.
    */
   private adopt(host: SettingsScope<ConversationSettings>): void {
-    const section = host.getSnapshot().value
-    if (section === undefined || this.busyEnter.getSnapshot() === section.busyEnter) return
-    this.busyEnter.set(section.busyEnter)
+    const snap = host.getSnapshot()
+    if (this.writable.getSnapshot() !== snap.writable) this.writable.set(snap.writable)
+    const section = snap.value
+    if (section === undefined) return
+    if (this.busyEnter.getSnapshot() !== section.busyEnter) this.busyEnter.set(section.busyEnter)
+    const nextBeam = section.composerBeam !== false
+    if (this.composerBeam.getSnapshot() !== nextBeam) this.composerBeam.set(nextBeam)
+    const nextResize = section.composerResize === true
+    if (this.composerResize.getSnapshot() !== nextResize) this.composerResize.set(nextResize)
+    const nextStats = section.statsLine !== false
+    if (this.statsLine.getSnapshot() !== nextStats) this.statsLine.set(nextStats)
+    const nextTabs = section.viewTabs !== false
+    if (this.viewTabs.getSnapshot() !== nextTabs) this.viewTabs.set(nextTabs)
   }
 }

@@ -137,6 +137,7 @@
 .copyAnchor {
   position: fixed;
   z-index: 3;
+  -webkit-app-region: no-drag;
   display: inline-flex;
 }
 

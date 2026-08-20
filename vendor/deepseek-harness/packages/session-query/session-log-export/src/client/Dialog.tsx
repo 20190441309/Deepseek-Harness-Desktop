@@ -1,4 +1,4 @@
-import type { ObservableSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ObservableSnapshot, SessionId, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionLogDownloadState } from './controller.ts'
@@ -6,7 +6,11 @@ import { NS } from './locales.ts'
 
 /** Browser operations and state injected into the titlebar trailing contribution. */
 export interface SessionLogDownloadDialogInjected {
-  hooks: { sessionLogDownload: ObservableSnapshot<SessionLogDownloadState> }
+  hooks: {
+    sessionLogDownload: ObservableSnapshot<SessionLogDownloadState>
+    /** Persisted titlebar Session-log visibility bound as useTitlebarAction. */
+    titlebarAction: SnapshotStore<boolean>
+  }
   request: (sessionId: SessionId) => Promise<void>
   dismiss: (sessionId: SessionId) => void
 }

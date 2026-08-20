@@ -12,8 +12,9 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { SettingsScopeBinder } from './settings-scope.ts'
 
 export type {
-  SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
-  SettingsPluginsTabOwnerProps, SettingsSectionOwnerProps, SettingsTriggerOwnerProps,
+  SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsInterfaceItemOwnerProps,
+  SettingsOnboardingOwnerProps, SettingsPluginsTabOwnerProps, SettingsSectionOwnerProps,
+  SettingsTriggerOwnerProps,
 } from './contract/slots.ts'
 export { SettingsScopeController, SettingsScopeBinder } from './settings-scope.ts'
 

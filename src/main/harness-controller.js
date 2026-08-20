@@ -1,10 +1,13 @@
 const EventEmitter = require('events');
+const { isPluginTreeFailure } = require('./plugin-tree-failure');
 
 const DEFAULT_STABLE_MS = 60_000;
 const MAX_RESTART_DELAY_MS = 30_000;
 
 function errorMessage(error) {
-  return error instanceof Error ? error.message : String(error || 'Harness 启动失败');
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && typeof error.message === 'string') return error.message;
+  return String(error || 'Harness 启动失败');
 }
 
 function operationCancelled(message = 'Harness 启动已取消') {
@@ -15,6 +18,10 @@ function operationCancelled(message = 'Harness 启动已取消') {
 
 function isCancellation(error) {
   return error?.code === 'DSH_CANCELLED' || error?.code === 'HARNESS_OPERATION_CANCELLED';
+}
+
+function emptyPluginRecovery() {
+  return { skipUserPlugins: false, reason: '', at: '', appVersion: '' };
 }
 
 class HarnessController extends EventEmitter {
@@ -28,11 +35,16 @@ class HarnessController extends EventEmitter {
     this.showBoot = options.showBoot;
     this.showHarness = options.showHarness;
     this.sendToBoot = options.sendToBoot;
+    this.saveConfig = options.saveConfig || (() => {});
+    this.appVersion = String(options.appVersion || '0.0.0');
+    this.healDanglingBundles = options.healDanglingBundles || (() => ({ ok: true, changed: false }));
     this.isBootLoaded = options.isBootLoaded || (() => false);
     this.getHarnessWebContents = options.getHarnessWebContents || (() => null);
     this.resolveLaunchTarget = options.resolveLaunchTarget;
     this.stripDroppedPlugins = options.stripDroppedPlugins;
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
+    this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
+      || (async () => ({ ok: true, added: false }));
     this.ensureWorkspace = options.ensureWorkspace;
     this.setTimer = options.setTimer || setTimeout;
     this.clearTimer = options.clearTimer || clearTimeout;
@@ -47,6 +59,7 @@ class HarnessController extends EventEmitter {
     this.recoveryTimer = null;
     this.stableTimer = null;
     this.recoveryTask = null;
+    this.pluginRecoveryTask = null;
     this.recoveryGeneration = 0;
     this.shuttingDown = false;
     this.recovery = {
@@ -55,12 +68,19 @@ class HarnessController extends EventEmitter {
       nextRetryAt: null,
       reason: '',
     };
+    this.pluginRecovery = {
+      ...emptyPluginRecovery(),
+      ...((this.loadConfig() || {}).pluginRecovery || {}),
+    };
 
     this.onDshState = (snapshot) => {
       this.sendState(snapshot);
       if (!this.shuttingDown && snapshot?.state === 'error' && snapshot?.failure?.phase === 'runtime') {
         this.operationGeneration += 1;
-        this.beginRuntimeRecovery().catch((error) => {
+        const task = this.looksLikePluginTreeFailure()
+          ? this.beginPluginTreeRecovery()
+          : this.beginRuntimeRecovery();
+        task.catch((error) => {
           this.dsh.log(`恢复流程失败：${errorMessage(error)}`, 'error');
         });
       }
@@ -83,6 +103,7 @@ class HarnessController extends EventEmitter {
     const policy = this.policy();
     return {
       ...dshSnapshot,
+      pluginRecovery: { ...this.pluginRecovery },
       recovery: {
         ...this.recovery,
         enabled: policy.enabled,
@@ -147,6 +168,55 @@ class HarnessController extends EventEmitter {
       }
     });
     this.recoveryTask = task;
+    return task;
+  }
+
+  looksLikePluginTreeFailure(error = null) {
+    const snapshot = this.dsh.snapshot();
+    return [
+      errorMessage(error),
+      snapshot?.error,
+      snapshot?.failure?.message,
+      ...(Array.isArray(snapshot?.logs) ? snapshot.logs : []),
+    ].some((value) => isPluginTreeFailure(value));
+  }
+
+  writePluginSkip(error) {
+    this.pluginRecovery = {
+      skipUserPlugins: true,
+      reason: errorMessage(error),
+      at: new Date(this.now()).toISOString(),
+      appVersion: this.appVersion,
+    };
+    this.saveConfig({ pluginRecovery: this.pluginRecovery });
+    return this.sendState();
+  }
+
+  clearPluginRecovery() {
+    this.pluginRecovery = emptyPluginRecovery();
+    this.saveConfig({ pluginRecovery: this.pluginRecovery });
+    return this.sendState();
+  }
+
+  shouldSkipUserPlugins() {
+    const recovery = this.pluginRecovery;
+    if (!recovery.skipUserPlugins) return false;
+    if (recovery.appVersion === this.appVersion) return true;
+    this.clearPluginRecovery();
+    return false;
+  }
+
+  async beginPluginTreeRecovery() {
+    if (this.pluginRecoveryTask) return this.pluginRecoveryTask;
+    const task = (async () => {
+      this.writePluginSkip(this.dsh.snapshot().failure || this.dsh.snapshot().error);
+      await this.ensureBootVisible();
+      if (this.shuttingDown) throw operationCancelled();
+      return this.replaceOperation({ showBoot: false });
+    })().finally(() => {
+      if (this.pluginRecoveryTask === task) this.pluginRecoveryTask = null;
+    });
+    this.pluginRecoveryTask = task;
     return task;
   }
 
@@ -312,26 +382,46 @@ class HarnessController extends EventEmitter {
     }
   }
 
-  async performStart({ showBoot, generation }) {
+  async performStartOnce({ showBoot, generation, skipUserPlugins }) {
     const win = this.createMainWindow();
     if (showBoot) {
       await this.showBoot();
     }
     this.assertOperationCurrent(generation);
+    this.dsh.setState('starting', { error: '', failure: null });
+    const target = await this.resolveLaunchTarget();
     try {
-      this.dsh.setState('starting', { error: '', failure: null });
-      const target = await this.resolveLaunchTarget();
-      try {
-        this.stripDroppedPlugins();
-      } catch (error) {
-        this.dsh.log(`插件清理失败：${errorMessage(error)}`, 'app');
+      this.stripDroppedPlugins();
+    } catch (error) {
+      this.dsh.log(`插件清理失败：${errorMessage(error)}`, 'app');
+    }
+    try {
+      const healed = this.healDanglingBundles();
+      if (healed?.removed?.length) {
+        this.dsh.log(`已修复悬挂插件 bundle：${healed.removed.join(', ')}`, 'app');
       }
-      try {
-        this.ensureDesktopInstallPlugin();
-      } catch (error) {
-        this.dsh.log(`桌面安装插件写入失败：${errorMessage(error)}`, 'app');
+    } catch (error) {
+      this.dsh.log(`插件 bundle 修复失败：${errorMessage(error)}`, 'app');
+    }
+    const desktopInstall = this.ensureDesktopInstallPlugin();
+    if (desktopInstall && desktopInstall.ok === false) {
+      throw new Error(`桌面安装插件写入失败：${desktopInstall.reason || 'unknown'}`);
+    }
+    try {
+      const market = await this.ensureDshMarketPlugin();
+      this.assertOperationCurrent(generation);
+      if (market && market.ok === false) {
+        this.dsh.log(`预置 dshmarket 失败：${market.error || 'unknown'}`, 'app');
       }
-      const url = await this.dsh.start(target);
+    } catch (error) {
+      this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
+    }
+    const startOptions = {
+      ...target,
+      skipUserPlugins,
+      patchFiles: skipUserPlugins && desktopInstall?.patchFile ? [desktopInstall.patchFile] : [],
+    };
+    const url = await this.dsh.start(startOptions);
       this.assertOperationCurrent(generation);
       if (this.dsh.state !== 'ready') {
         throw operationCancelled('Harness 在打开界面前已停止');
@@ -347,33 +437,53 @@ class HarnessController extends EventEmitter {
       if (this.dsh.state !== 'ready') {
         throw operationCancelled('Harness 在打开界面前已停止');
       }
-      try {
-        await this.showHarness(url);
-        this.assertOperationCurrent(generation);
-        if (this.dsh.state !== 'ready') {
-          throw operationCancelled('Harness 在界面加载期间已停止');
-        }
-      } catch (error) {
-        if (isCancellation(error) || this.dsh.failure?.phase === 'runtime') {
-          await this.ensureBootVisible().catch(() => {});
-          throw isCancellation(error)
-            ? error
-            : operationCancelled('Harness 在界面加载期间已停止');
-        }
-        await this.dsh.stop();
-        throw new Error(`Web UI 加载失败：${errorMessage(error)}`);
+    try {
+      await this.showHarness(url);
+      this.assertOperationCurrent(generation);
+      if (this.dsh.state !== 'ready') {
+        throw operationCancelled('Harness 在界面加载期间已停止');
       }
-      try {
-        await this.remote?.sync?.();
-      } catch (error) {
-        this.dsh.log(`手机 Remote 同步失败：${errorMessage(error)}`, 'app');
-      }
-      if (this.loadConfig().openDevTools) {
-        const harnessWc = this.getHarnessWebContents(win);
-        (harnessWc || win.webContents).openDevTools({ mode: 'detach' });
-      }
-      return url;
     } catch (error) {
+      if (isCancellation(error) || this.dsh.failure?.phase === 'runtime') {
+        await this.ensureBootVisible().catch(() => {});
+        throw isCancellation(error)
+          ? error
+          : operationCancelled('Harness 在界面加载期间已停止');
+      }
+      await this.dsh.stop();
+      throw new Error(`Web UI 加载失败：${errorMessage(error)}`);
+    }
+    try {
+      await this.remote?.sync?.();
+    } catch (error) {
+      this.dsh.log(`手机 Remote 同步失败：${errorMessage(error)}`, 'app');
+    }
+    if (this.loadConfig().openDevTools) {
+      const harnessWc = this.getHarnessWebContents(win);
+      (harnessWc || win.webContents).openDevTools({ mode: 'detach' });
+    }
+    return url;
+  }
+
+  async performStart({ showBoot, generation }) {
+    const skipUserPlugins = this.shouldSkipUserPlugins();
+    try {
+      return await this.performStartOnce({ showBoot, generation, skipUserPlugins });
+    } catch (error) {
+      if (!skipUserPlugins && !this.shuttingDown && !isCancellation(error) && this.looksLikePluginTreeFailure(error)) {
+        await this.dsh.stop().catch(() => {});
+        this.writePluginSkip(error);
+        try {
+          return await this.performStartOnce({ showBoot: false, generation, skipUserPlugins: true });
+        } catch (recoveryError) {
+          if (!this.shuttingDown && !isCancellation(recoveryError)) {
+            this.setStartupFailure(recoveryError);
+            await this.ensureBootVisible().catch(() => {});
+            this.sendState();
+          }
+          throw recoveryError;
+        }
+      }
       if (!this.shuttingDown && !isCancellation(error)) {
         this.setStartupFailure(error);
         await this.ensureBootVisible().catch(() => {});
@@ -381,6 +491,11 @@ class HarnessController extends EventEmitter {
       }
       throw error;
     }
+  }
+
+  retryFullPlugins() {
+    this.clearPluginRecovery();
+    return this.restart();
   }
 
   reload() {

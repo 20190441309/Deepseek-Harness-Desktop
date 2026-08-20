@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within, act } from '@testing-library/react'
+import { useSyncExternalStore } from 'react'
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { GitActionsProps } from '../src/client/GitActionsControl.tsx'
 import { GitActionsControl } from '../src/client/GitActionsControl.tsx'
 import type { VcsStatus } from '../src/client/git-logic.ts'
@@ -93,6 +95,8 @@ function mount(opts: {
   openWorkspacePath?: GitActionsProps['openWorkspacePath']
   onGitProgress?: GitActionsProps['onGitProgress']
   density?: GitActionsProps['density']
+  titlebarGit?: boolean
+  useTitlebarGit?: GitActionsProps['useTitlebarGit']
 } = {}) {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => opts.git ?? null)
   const gitFetchForStatus = opts.gitFetchForStatus ?? vi.fn(async () => opts.git ?? null)
@@ -134,6 +138,7 @@ function mount(opts: {
       onGitProgress={onGitProgress}
       openExternal={openExternal}
       openWorkspacePath={openWorkspacePath}
+      useTitlebarGit={opts.useTitlebarGit ?? (sel => sel(opts.titlebarGit !== false))}
       t={t}
     />,
   )
@@ -261,6 +266,7 @@ describe('GitActionsControl', () => {
       onGitProgress: vi.fn(() => () => {}),
       openExternal: vi.fn(async () => true),
       openWorkspacePath: vi.fn(async () => ({ ok: true })),
+      useTitlebarGit: sel => sel(true),
       t,
     } satisfies Omit<GitActionsProps, 'useSessions'>
     const { rerender } = render(
@@ -526,7 +532,7 @@ describe('GitActionsControl', () => {
     expect(screen.queryByText('a.ts')).toBeNull()
   })
 
-  it('opens the commit review dialog from status.workingTree files like T3', async () => {
+  it('opens the commit review dialog from status.workingTree files', async () => {
     const gitCommit = vi.fn(async () => ({ ok: true }))
     mount({
       cwd: '/work',
@@ -867,5 +873,58 @@ describe('GitActionsControl', () => {
     await waitFor(() => {
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(false)
     })
+  })
+
+  it('hides and restores the titlebar cluster from the live Interface preference', async () => {
+    const titlebarGit = createSnapshotStore(true)
+    mount({
+      cwd: '/work',
+      git: status(),
+      useTitlebarGit: sel => useSyncExternalStore(titlebarGit.subscribe, () => sel(titlebarGit.getSnapshot())),
+    })
+    expect(await screen.findByRole('button', { name: 'Commit' })).toBeTruthy()
+    act(() => { titlebarGit.set(false) })
+    expect(screen.queryByRole('button', { name: 'Commit' })).toBeNull()
+    act(() => { titlebarGit.set(true) })
+    expect(screen.getByRole('button', { name: 'Commit' })).toBeTruthy()
+  })
+
+  it('keeps the init toast after Interface settings hide the cluster', async () => {
+    const titlebarGit = createSnapshotStore(true)
+    let finish: (result: { ok: boolean; message: string }) => void = () => {}
+    const gitInit = vi.fn(() => new Promise<{ ok: boolean; message: string }>((resolve) => {
+      finish = resolve
+    }))
+    mount({
+      cwd: '/work',
+      git: status({ isRepo: false, refName: null, hasPrimaryRemote: false }),
+      gitInit,
+      useTitlebarGit: sel => useSyncExternalStore(titlebarGit.subscribe, () => sel(titlebarGit.getSnapshot())),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
+    expect(await screen.findByRole('status', { name: 'Initializing...' })).toBeTruthy()
+    act(() => { titlebarGit.set(false) })
+    expect(screen.queryByRole('button', { name: 'Initialize Git' })).toBeNull()
+    expect(screen.getByRole('status', { name: 'Initializing...' })).toBeTruthy()
+    finish({ ok: false, message: 'cannot init' })
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+  })
+
+  it('keeps the commit dialog after Interface settings hide the cluster', async () => {
+    const titlebarGit = createSnapshotStore(true)
+    mount({
+      cwd: '/work',
+      gitStatus: vi.fn(async () => status({
+        hasWorkingTreeChanges: true,
+        workingTree: filesTree([{ path: 'a.ts', insertions: 1, deletions: 0 }]),
+      })),
+      useTitlebarGit: sel => useSyncExternalStore(titlebarGit.subscribe, () => sel(titlebarGit.getSnapshot())),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Commit' }))
+    expect(await screen.findByRole('dialog', { name: 'Commit changes' })).toBeTruthy()
+    act(() => { titlebarGit.set(false) })
+    expect(screen.queryByRole('button', { name: 'Git actions' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Commit changes' })).toBeTruthy()
   })
 })

@@ -370,6 +370,18 @@
   overflow-y: auto;
 }
 
+.scroll[data-composer-resized] {
+  max-height: 70vh;
+}
+
+.scroll[data-composer-resized] .grow {
+  min-height: 100%;
+}
+
+.card[data-composer-resized-width] {
+  max-width: 100%;
+}
+
 /* Mirror-div auto-grow stack: the hidden mirror is in normal flow and sets the FULL draft
    height (min 2 lines in hero); backdrop and textarea ride it absolutely, so both layers are
    as tall as the draft and the scrollport above shows a window onto them. Mirror and textarea

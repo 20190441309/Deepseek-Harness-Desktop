@@ -471,6 +471,7 @@ class DshManager extends EventEmitter {
     this.error = '';
     this.failure = null;
     this.baseUrl = '';
+    this.webReady = false;
     this.attached = false;
     this.host = '127.0.0.1';
     this.port = 3080;
@@ -557,7 +558,16 @@ class DshManager extends EventEmitter {
     const nodeBin = this._deps.resolveNodeBin(config);
     const npxBin = this._deps.resolveNpx(nodeBin);
     const source = this._deps.sourceHarnessStatus();
-    const args = ['web', '--host', host, '--port', String(port)];
+    const args = ['web'];
+    if (config.skipUserPlugins === true) {
+      args.push('--skip-user-plugins');
+    }
+    for (const patchFile of Array.isArray(config.patchFiles) ? config.patchFiles : []) {
+      if (typeof patchFile === 'string' && patchFile) {
+        args.push('--patch', patchFile);
+      }
+    }
+    args.push('--host', host, '--port', String(port));
 
     if (source.present) {
       if (!source.installed || !source.built) {
@@ -599,7 +609,7 @@ class DshManager extends EventEmitter {
     const pin = this._deps.readPin();
     return {
       command: npxBin,
-      args: ['--yes', `@deepseek-ai/dsh@${pin.npm}`, 'web', '--host', host, '--port', String(port)],
+      args: ['--yes', `@deepseek-ai/dsh@${pin.npm}`, ...args],
       nodeBin,
       kind: 'npx',
       host,
@@ -644,9 +654,10 @@ class DshManager extends EventEmitter {
       const text = chunk.toString('utf8');
       for (const line of text.split(/\r?\n/)) {
         this.log(line, source);
-        const match = line.match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+/i);
+        const match = line.match(/dsh web:\s*(https?:\/\/(?:127\.0\.0\.1|localhost):\d+)/i);
         if (match) {
-          this.baseUrl = match[0].replace(/\/$/, '');
+          this.baseUrl = match[1].replace(/\/$/, '');
+          this.webReady = true;
         }
       }
     };
@@ -715,12 +726,13 @@ class DshManager extends EventEmitter {
     }
 
     const port = Number(options.port) || Number(config.port) || 3080;
-    const launch = this._buildLaunch({ ...config, port });
+    const launch = this._buildLaunch({ ...config, ...options, port });
     const expectedUrl = `http://${launch.host}:${launch.port}`;
     this.host = launch.host;
     this.port = launch.port;
     this.error = '';
     this.attached = false;
+    this.webReady = false;
     this.setState('starting', { baseUrl: expectedUrl, attached: false, failure: null });
     this.log(`工作区 ${config.workspace}`);
     this.log(`启动本机服务 ${expectedUrl}`);
@@ -841,7 +853,7 @@ class DshManager extends EventEmitter {
         throw new Error(this.error || `dsh 已退出（code ${child.exitCode}）`);
       }
       const target = this.baseUrl || baseUrl;
-      if (await this._isReachable(target)) {
+      if (this.webReady && await this._isReachable(target)) {
         this.baseUrl = target;
         return target;
       }

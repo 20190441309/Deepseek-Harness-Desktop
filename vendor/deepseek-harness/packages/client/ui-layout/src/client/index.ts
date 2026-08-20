@@ -99,7 +99,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the window controls (`margin-right: var(--dshd-wco-controls, 8px)`).
      * List slot: entries order among themselves. The cluster is
      * `-webkit-app-region: no-drag` so Session log, Git, and panel toggles
-     * stay clickable beside the conversation caption drag regions. Owner props
+     * stay clickable over the AppFrame caption drag band. Owner props
      * are the live layout widths so toggles can derive pressed state.
      */
     'shell.titlebar.trailing': { kind: 'list'; scope: 'root'; owner: TitlebarTrailingOwnerProps }

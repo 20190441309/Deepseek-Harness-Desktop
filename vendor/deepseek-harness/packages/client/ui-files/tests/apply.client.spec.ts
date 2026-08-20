@@ -1,8 +1,9 @@
 /** Files plugin injects the tree and preview into surfaces.files / surfaces.file. */
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { apply, inject } from '../src/client/index.ts'
 import { FilePreview } from '../src/client/FilePreview.tsx'
 import { FilesPanel } from '../src/client/FilesPanel.tsx'
@@ -72,6 +73,66 @@ describe('ui-files apply', () => {
     await expect(injected.writeFile('/tmp', 'a.ts', 'x')).resolves.toEqual({
       ok: false, message: 'Workspace listing is unavailable.',
     })
+    await b.fiber.dispose()
+  })
+
+  it('mentions a file as a markdown link in the composer draft', async () => {
+    const b = await bench()
+    const setDraft = vi.fn()
+    b.ctx.provide('sessions', { scope: () => ({}) })
+    b.ctx.provide('conversation', {
+      input: {
+        for: () => ({
+          setDraft,
+          state: { getSnapshot: () => ({ draft: '' }) },
+        }),
+      },
+    })
+    const injected = (b.slots.entries('surfaces.files')[0]?.inject as unknown as () => FilesShellInjected)()
+    injected.mentionFile('sess', 'docs/My File.md')
+    expect(setDraft).toHaveBeenCalledWith('[My File.md](docs/My%20File.md)')
+    expect(setDraft).not.toHaveBeenCalledWith('`@docs/My File.md`')
+    await b.fiber.dispose()
+  })
+
+  it('registers the @ path source when inputTriggers and sessions are present', async () => {
+    const registered: InputTriggerSource[] = []
+    const ctx = new Context()
+    await ctx.plugin(SlotRegistry).await()
+    const slots = ctx.get('slots') as SlotRegistry
+    declare(slots)
+    ctx.provide('locale', new LocaleRuntime(ctx))
+    ctx.provide('inputTriggers', {
+      registerSource: (src: InputTriggerSource) => {
+        registered.push(src)
+        return () => {}
+      },
+    })
+    ctx.provide('sessions', {
+      list: { getSnapshot: () => ({ byId: {} }) },
+    })
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    expect(registered).toHaveLength(1)
+    expect(registered[0]).toMatchObject({ trigger: '@', name: 'path', order: 1 })
+    await fiber.dispose()
+  })
+
+  it('binds appendComposerText to the composer draft', async () => {
+    const b = await bench()
+    const setDraft = vi.fn()
+    b.ctx.provide('sessions', { scope: () => ({}) })
+    b.ctx.provide('conversation', {
+      input: {
+        for: () => ({
+          setDraft,
+          state: { getSnapshot: () => ({ draft: '' }) },
+        }),
+      },
+    })
+    const injected = (b.slots.entries('surfaces.file')[0]?.inject as unknown as () => FilesShellInjected)()
+    injected.appendComposerText?.('sess', 'L1 to L2 `src/a.ts`\n\n```text\none\ntwo\n```')
+    expect(setDraft).toHaveBeenCalledWith('L1 to L2 `src/a.ts`\n\n```text\none\ntwo\n```')
     await b.fiber.dispose()
   })
 })

@@ -3,7 +3,7 @@
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildThemeBootPayload, injectBootTheme } from '../src/boot-theme.ts'
-import type { ThemePreference } from '../src/theme-settings.ts'
+import { DEFAULT_WALLPAPER_SOURCES, type ThemePreference } from '../src/theme-settings.ts'
 
 const DARK_ATTRIBUTE = 'data-ds-dark-theme'
 
@@ -82,6 +82,10 @@ describe('theme boot index transform', () => {
       wallpaperImage: '',
       wallpaperBlur: 0,
       wallpaperPixelate: 0,
+      wallpaperBingEnabled: false,
+      wallpaperCatalogUrls: [],
+      wallpaperSources: DEFAULT_WALLPAPER_SOURCES,
+      wallpaperFavorites: [],
       fontFamilySans: '',
       fontFamilyCode: '',
       fontSizeInterface: 18,

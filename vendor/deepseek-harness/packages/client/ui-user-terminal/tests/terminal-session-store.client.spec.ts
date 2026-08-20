@@ -5,9 +5,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   acquireCreate,
+  BUFFER_REALIGN_WINDOW,
   createTerminalSessionStore,
   MAX_TERMINAL_BUFFER,
   MAX_TERMINALS_PER_GROUP,
+  realignBufferStart,
   releaseCreate,
   sessionBuffer,
 } from '../src/client/stores.ts'
@@ -66,12 +68,12 @@ describe('createTerminalSessionStore', () => {
     const { store, actions } = createTerminalSessionStore().create('session-1')
     actions.newTerminal('t1', '/work')
     actions.split('t2', '/work', 'horizontal')
-    actions.newTerminal('t3', '/work')
+    actions.newTerminal('n3', '/work')
     expect(store.getSnapshot().groups).toHaveLength(2)
-    expect(store.getSnapshot().activeId).toBe('t3')
+    expect(store.getSnapshot().activeId).toBe('n3')
     expect(store.getSnapshot().groups[1]?.splitDirection).toBeUndefined()
     actions.split('t4', '/work', 'horizontal')
-    expect(store.getSnapshot().groups[1]?.terminalIds).toEqual(['t3', 't4'])
+    expect(store.getSnapshot().groups[1]?.terminalIds).toEqual(['n3', 't4'])
   })
 
   it('stores vertical splitDirection and omits it for a horizontal split', () => {
@@ -82,9 +84,9 @@ describe('createTerminalSessionStore', () => {
     expect(store.getSnapshot().groups[0]?.splitDirection).toBe('vertical')
     expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1', 't2'])
     actions.close('t2')
-    actions.split('t3', '/work', 'horizontal')
+    actions.split('n3', '/work', 'horizontal')
     expect(store.getSnapshot().groups[0]?.splitDirection).toBeUndefined()
-    expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1', 't3'])
+    expect(store.getSnapshot().groups[0]?.terminalIds).toEqual(['t1', 'n3'])
   })
 
   it('split with no sessions opens the first group and ignores direction', () => {
@@ -138,6 +140,25 @@ describe('createTerminalSessionStore', () => {
     expect(buffer.startsWith('under')).toBe(false)
   })
 
+  it('realigns the overflow cut to the next line start near the cap cut', () => {
+    const { store, actions } = createTerminalSessionStore().create('session-1')
+    actions.newTerminal('t1', '/work')
+    actions.appendData('t1', 'ab\nrest')
+    actions.appendData('t1', 'y'.repeat(MAX_TERMINAL_BUFFER - 5))
+    const buffer = store.getSnapshot().sessions[0]?.buffer ?? ''
+    expect(buffer.startsWith('rest')).toBe(true)
+    expect(buffer.includes('\n')).toBe(false)
+  })
+
+  it('realigns the overflow cut to the next escape when no newline is near', () => {
+    const { store, actions } = createTerminalSessionStore().create('session-1')
+    actions.newTerminal('t1', '/work')
+    actions.appendData('t1', 'ab\u001b[0m')
+    actions.appendData('t1', 'y'.repeat(MAX_TERMINAL_BUFFER - 4))
+    const buffer = store.getSnapshot().sessions[0]?.buffer ?? ''
+    expect(buffer.startsWith('\u001b[0m')).toBe(true)
+  })
+
   it('dispatches PTY data and exit once to the shared instance', () => {
     const handle = createTerminalSessionStore()
     const instance = handle.create('session-1')
@@ -147,6 +168,20 @@ describe('createTerminalSessionStore', () => {
     expect(instance.getSnapshot().sessions[0]?.buffer).toBe('hello!')
     handle.dispatchExit('pty-1')
     expect(instance.getSnapshot().sessions).toHaveLength(0)
+  })
+})
+
+describe('realignBufferStart', () => {
+  it('prefers the earliest clean boundary within the window', () => {
+    expect(realignBufferStart('ab\ncd\u001bef', 1)).toBe(3)
+    expect(realignBufferStart('ab\u001bcd\nef', 1)).toBe(2)
+  })
+
+  it('falls back to the raw cut when no boundary is within the window', () => {
+    const far = 'x'.repeat(BUFFER_REALIGN_WINDOW + 10)
+    expect(realignBufferStart(`${far}\n`, 0)).toBe(0)
+    expect(realignBufferStart(`${far}\u001b`, 0)).toBe(0)
+    expect(realignBufferStart('plain text only', 3)).toBe(3)
   })
 })
 

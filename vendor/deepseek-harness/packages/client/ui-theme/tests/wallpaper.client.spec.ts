@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
@@ -66,6 +68,14 @@ describe('wallpaper helpers', () => {
     expect(solid['--dsw-alias-bg-base']).toContain(`${MAX_WALLPAPER_CANVAS_SOLIDITY}%`)
     expect(solid['--dsw-specific-sidebar-fill']).toBe('var(--dsw-static-neutral-bluish-00)')
     expect(solid['--dsw-alias-bg-layer-1']).toBe('var(--dsw-static-neutral-bluish-00)')
+    expect(solid['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+    expect(dark['--dsw-alias-terminal-pane']).toBe('#120e18')
+  })
+
+  it('dims the wallpaper bitmap with mask-1 and does not blur the terminal pane', () => {
+    const css = readFileSync(join(process.cwd(), 'packages/client/ui-theme/src/styles/wallpaper.css'), 'utf8')
+    expect(css).toMatch(/#dsh-wallpaper::after[\s\S]{0,220}--dsw-alias-bg-mask-1/)
+    expect(css).not.toMatch(/--dsw-terminal-pane-blur/)
   })
 })
 

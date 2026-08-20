@@ -1,6 +1,7 @@
 /**
- * Titlebar trailing cluster packing: flex gap and no-drag so the capsules
- * stay clickable on the desktop caption strip.
+ * Titlebar caption: one AppFrame drag band, a max-content trailing no-drag
+ * hole, and phone-menu no-drag. Conversation and surfaces must not add a
+ * second disjoint drag rectangle.
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -23,9 +24,20 @@ function declarations(selector: string): Map<string, string> | undefined {
 }
 
 describe('AppFrame.module.css titlebar trailing cluster', () => {
+  it('owns one caption drag band across sidebar, conversation, details, and surfaces', () => {
+    const band = declarations('.captionDrag')
+    expect(band?.get('grid-column')).toBe('1 / -1')
+    expect(band?.get('grid-row')).toBe('1')
+    expect(band?.get('height')).toBe('48px')
+    expect(band?.get('-webkit-app-region')).toBe('drag')
+    expect(band?.get('z-index')).toBeUndefined()
+  })
+
   it('packs cluster controls with an 8px gap and marks the cluster no-drag', () => {
     const trailing = declarations('.titlebarTrailing')
     expect(trailing?.get('gap')).toBe('8px')
+    expect(trailing?.get('width')).toBe('max-content')
+    expect(trailing?.get('max-width')).toBe('100%')
     expect(trailing?.get('-webkit-app-region')).toBe('no-drag')
     expect(trailing?.get('display')).toBe('flex')
     expect(trailing?.get('margin-right')).toBe('var(--dshd-wco-controls, 8px)')
@@ -34,6 +46,18 @@ describe('AppFrame.module.css titlebar trailing cluster', () => {
 
   it('keeps the phone menu clickable beside the blank caption', () => {
     expect(declarations('.phoneMenu')?.get('-webkit-app-region')).toBe('no-drag')
+  })
+
+  it('punches holes for handles, overlay entries, and open phone drawers', () => {
+    expect(declarations('.handle')?.get('-webkit-app-region')).toBe('no-drag')
+    expect(declarations('.overlayLayer > *')?.get('-webkit-app-region')).toBe('no-drag')
+    expect(declarations('.phoneBackdrop')?.get('-webkit-app-region')).toBe('no-drag')
+    expect(declarations('.frame[data-phone-sidebar] .sidebarCol')?.get('-webkit-app-region')).toBe('no-drag')
+    expect(declarations('.frame[data-phone-details] .detailsCol')?.get('-webkit-app-region')).toBe('no-drag')
+    // Closed drawers translate offscreen; the hole must not apply while closed
+    // or the transformed rect could subtract a band segment.
+    expect(declarations('.frame[data-phone] .sidebarCol')?.get('-webkit-app-region')).toBeUndefined()
+    expect(declarations('.frame[data-phone] .detailsCol')?.get('-webkit-app-region')).toBeUndefined()
   })
 
   it('stops the trailing cluster before an open surfaces column', () => {

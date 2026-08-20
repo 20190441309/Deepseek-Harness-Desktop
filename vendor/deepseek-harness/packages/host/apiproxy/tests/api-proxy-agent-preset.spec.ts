@@ -161,6 +161,18 @@ describe('session.create with an agent preset', () => {
     expect(ctx.sessions.get(SessionId('s2'))?.header.agentPreset).toBe('standard')
   })
 
+  it('stamps origin dshbot on the session header', async () => {
+    const { api, ctx } = await harness(['standard'])
+
+    const created = await api.sessions.create(request({
+      sessionId: SessionId('bot-1'),
+      origin: 'dshbot',
+    }))
+
+    expect(created.result.ok).toBe(true)
+    expect(ctx.sessions.get(SessionId('bot-1'))?.header.origin).toBe('dshbot')
+  })
+
   it('rejects an unknown preset and names the ones that exist', async () => {
     const { api } = await harness(['standard'])
 

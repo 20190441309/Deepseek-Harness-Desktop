@@ -7,7 +7,7 @@
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionId, SessionOrigin } from '@deepseek-ai/dsh-session/types'
 // The pure-type outlet: api/ is browser-importable, and the package root's
 // cordis Context merge (via dsh-agent) must not enter client aggregates.
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
@@ -202,7 +202,7 @@ export interface SessionSummary {
   /** fork/spawn lineage (session.header.parentSession passthrough); absent for root sessions. */
   parentSessionId?: SessionId
   /** Coarse durable origin used by navigation surfaces; never proves resumability. */
-  origin?: 'subagent'
+  origin?: SessionOrigin
   /** Session working directory (header.cwd passthrough); absent when unrecorded. */
   cwd?: string
   /**
@@ -262,8 +262,18 @@ export interface SessionsApi {
    * the session header, so a later resume rebuilds the same agent. An unknown
    * id fails with `agent-preset-not-found`, and a preset whose composition
    * cannot be mounted fails with `agent-preset-invalid`.
+   *
+   * `origin: 'dshbot'` stamps a desktop-plugin contact or room parent so the
+   * workspace browser hides the row. Ordinary sessions omit it. Callers cannot
+   * stamp `subagent`; that origin is owned by subagent start.
    */
-  create(request: RpcRequest<{ workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId; agentPreset?: string }>):
+  create(request: RpcRequest<{
+    workspaceId?: WorkspaceId
+    cwd?: string
+    sessionId?: SessionId
+    agentPreset?: string
+    origin?: 'dshbot'
+  }>):
   Promise<RpcResponse<{ sessionId: SessionId; agentPreset?: string }>>
 
   /**
@@ -297,12 +307,15 @@ export interface SessionsApi {
    * Selects the complete model selection for this session. Exact model metadata
    * validates an optional reasoning effort, while catalog membership remains
    * advisory. Session-backed subagents reject with `agent-busy`.
+   * `persistDefault` defaults to true and writes the accepted selection as the
+   * user's default; pass false to keep the switch on this session only.
    */
   selectModel(request: RpcRequest<{
     sessionId: SessionId
     provider: string
     model: string
     reasoningEffort?: string
+    persistDefault?: boolean
   }>):
   Promise<RpcResponse<{ selected: ModelSelection }>>
 

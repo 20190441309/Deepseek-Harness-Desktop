@@ -45,6 +45,7 @@ describe('SidebarRoot.module.css', () => {
     for (const selector of [
       '.railIn .iconButton',
       '.railIn .newSession',
+      '.railIn .tabList',
       '.railIn .regionArea',
     ]) {
       expect(declarations(selector)?.get('animation')).toBe(animation)
@@ -62,5 +63,15 @@ describe('SidebarRoot.module.css', () => {
     expect(declarations('.collapsed .logoRow')?.get('justify-content')).toBe('flex-start')
     expect(declarations('.collapsed .newSession')?.get('align-self')).toBe('flex-start')
     expect(declarations('.collapsed .newSession')?.get('width')).toBe('36px')
+  })
+
+  it('shrinks the wordmark hole so the logo-row gap stays in the caption band', () => {
+    const row = declarations('.logoRow')
+    expect(row?.get('justify-content')).toBe('space-between')
+    const brand = declarations('.brand')
+    expect(brand?.get('flex')).toBe('none')
+    expect(brand?.get('width')).toBe('max-content')
+    expect(brand?.get('-webkit-app-region')).toBe('no-drag')
+    expect(declarations('.iconButton')?.get('-webkit-app-region')).toBe('no-drag')
   })
 })

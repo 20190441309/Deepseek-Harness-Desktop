@@ -149,6 +149,77 @@ describe('client bundle activation', () => {
     })
     expect(body).toBe(map)
   })
+
+  it('serves Ghostty wasm beside a registered client bundle', async () => {
+    const packageName = '@fixture/ghostty-assets'
+    const clientPath = writePackage(packageName)
+    mkdirSync(dirname(clientPath), { recursive: true })
+    writeFileSync(clientPath, 'module.exports = {}\n')
+    mkdirSync(join(dirname(clientPath), 'assets'), { recursive: true })
+    const wasm = Buffer.from('wasm-bytes')
+    writeFileSync(join(dirname(clientPath), 'assets', 'ghostty-vt.wasm'), wasm)
+    const { route } = constructWithRoute([packageName])
+    let status = 0
+    let headers: Record<string, string> | undefined
+    let body = Buffer.alloc(0)
+    const response = {
+      writeHead(nextStatus: number, nextHeaders?: Record<string, string>) {
+        status = nextStatus
+        headers = nextHeaders
+        return response
+      },
+      end(chunk?: Uint8Array) {
+        body = chunk === undefined ? Buffer.alloc(0) : Buffer.from(chunk)
+        return response
+      },
+    } as unknown as ServerResponse
+
+    await route.handler({
+      method: 'GET',
+      url: `/plugins/${packageName}/assets/ghostty-vt.wasm`,
+    } as IncomingMessage, response)
+
+    expect(status).toBe(200)
+    expect(headers).toEqual({
+      'content-type': 'application/wasm',
+      'cache-control': 'no-cache',
+    })
+    expect(body.equals(wasm)).toBe(true)
+
+    writeFileSync(join(dirname(clientPath), 'assets', 'SymbolsNerdFontMono-Regular.woff2'), Buffer.from('font'))
+    await route.handler({
+      method: 'GET',
+      url: `/plugins/${packageName}/assets/SymbolsNerdFontMono-Regular.woff2`,
+    } as IncomingMessage, response)
+    expect(status).toBe(200)
+    expect(headers).toEqual({
+      'content-type': 'font/woff2',
+      'cache-control': 'no-cache',
+    })
+
+    await route.handler({
+      method: 'GET',
+      url: `/plugins/${packageName}/assets/../secret.wasm`,
+    } as IncomingMessage, response)
+    expect(status).toBe(404)
+
+    await route.handler({
+      method: 'GET',
+      url: `/plugins/${packageName}/assets/missing.wasm`,
+    } as IncomingMessage, response)
+    expect(status).toBe(404)
+
+    writeFileSync(join(dirname(clientPath), 'assets', 'notes.txt'), 'note')
+    await route.handler({
+      method: 'GET',
+      url: `/plugins/${packageName}/assets/notes.txt`,
+    } as IncomingMessage, response)
+    expect(status).toBe(200)
+    expect(headers).toEqual({
+      'content-type': 'application/octet-stream',
+      'cache-control': 'no-cache',
+    })
+  })
 })
 
 describe('host-feature compatibility gate', () => {

@@ -57,6 +57,19 @@
   display: none;
 }
 
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: 32px 16px;
+}
+
+.empty:empty {
+  display: none;
+}
+
 .callRow {
   border-radius: 6px;
 }

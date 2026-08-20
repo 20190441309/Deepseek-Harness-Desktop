@@ -26,6 +26,8 @@ function mount(opts: {
   surfaces?: number
   terminalDrawer?: number
   workspaceCount?: number
+  terminalToggle?: boolean
+  surfacesToggle?: boolean
 } = {}) {
   const toggleSurfaces = vi.fn()
   const toggleTerminalDrawer = vi.fn()
@@ -35,6 +37,8 @@ function mount(opts: {
       terminalDrawer={opts.terminalDrawer ?? 0}
       useSessions={neverHook}
       useWorkspaces={workspaces(opts.workspaceCount ?? 1)}
+      useTerminalToggle={sel => sel(opts.terminalToggle !== false)}
+      useSurfacesToggle={sel => sel(opts.surfacesToggle !== false)}
       toggleSurfaces={toggleSurfaces}
       toggleTerminalDrawer={toggleTerminalDrawer}
       t={t}
@@ -123,5 +127,28 @@ describe('PanelToggles', () => {
     expect(b.toggleSurfaces).toHaveBeenCalledOnce()
     fireEvent.keyDown(window, { key: 'a', ctrlKey: true })
     expect(b.toggleTerminalDrawer).not.toHaveBeenCalled()
+  })
+
+  it('keeps shortcuts when both titlebar buttons are hidden', () => {
+    const b = mount({ terminalToggle: false, surfacesToggle: false })
+    expect(screen.queryByRole('button', { name: 'Toggle terminal drawer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Toggle right panel' })).toBeNull()
+    expect(document.querySelector('[data-panel-layout-controls]')).toBeNull()
+    fireEvent.keyDown(window, { key: '`', ctrlKey: true })
+    fireEvent.keyDown(window, { key: '\\', ctrlKey: true })
+    expect(b.toggleTerminalDrawer).toHaveBeenCalledOnce()
+    expect(b.toggleSurfaces).toHaveBeenCalledOnce()
+  })
+
+  it('omits only the hidden panel button', () => {
+    mount({ terminalToggle: false })
+    expect(screen.queryByRole('button', { name: 'Toggle terminal drawer' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Toggle right panel' })).toBeTruthy()
+  })
+
+  it('omits the surfaces button while the terminal toggle stays', () => {
+    mount({ surfacesToggle: false })
+    expect(screen.getByRole('button', { name: 'Toggle terminal drawer' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Toggle right panel' })).toBeNull()
   })
 })

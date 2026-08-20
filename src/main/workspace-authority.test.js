@@ -5,7 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   createWorkspaceAuthority,
+  loadWorkspaceAuthority,
   readHarnessRegisteredWorkspacePaths,
+  scratchWorkspacePath,
 } = require('./workspace-authority');
 
 function makeRoot() {
@@ -162,6 +164,36 @@ test('empty workspace yields a null root that disables everything', () => {
   assert.equal(authority.authorizedRoot(), null);
   assert.equal(authority.resolveAuthorizedCwd(os.tmpdir()), null);
   assert.equal(authority.resolveInside(os.tmpdir(), 'x'), null);
+});
+
+test('PTY authority can include the Host-owned no-workspace scratch cwd', () => {
+  const home = makeRoot();
+  const boot = makeRoot();
+  const previousConfig = require.cache[require.resolve('./config')];
+  const previousHome = process.env.DSH_HOME;
+  try {
+    const scratch = scratchWorkspacePath(home);
+    fs.mkdirSync(scratch);
+    require.cache[require.resolve('./config')] = {
+      id: require.resolve('./config'),
+      filename: require.resolve('./config'),
+      loaded: true,
+      exports: { loadConfig: () => ({ workspace: boot }) },
+    };
+    process.env.DSH_HOME = home;
+
+    const ptyAuthority = loadWorkspaceAuthority({ allowScratchCwd: true });
+    assert.equal(ptyAuthority.resolveAuthorizedCwd(scratch), canonical(scratch));
+    const strictAuthority = loadWorkspaceAuthority();
+    assert.equal(strictAuthority.resolveAuthorizedCwd(scratch), null);
+  } finally {
+    if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
+    else delete require.cache[require.resolve('./config')];
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+  }
 });
 
 test('resolveAuthorizedCwd accepts a second authorized root and rejects an outsider', () => {

@@ -3,10 +3,11 @@
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
  * details | surfaces) plus a shared titlebar row over conversation and details
  * (surfaces spans every row to the window top), the conversation-column
- * terminal drawer, the titlebar trailing cluster (in that row, not over the
- * open surfaces column), the phone overlay band (portrait below
- * PHONE_MAX), landscape sidebar (rotate keeps the column in the grid), the
- * drag handles (pointer capture + rAF throttle), the concession chain
+ * terminal drawer, the single 48px caption drag band (columns 1–end, first
+ * child so columns paint above it), the titlebar trailing cluster (in that
+ * row, not over the open surfaces column), the phone overlay band (portrait
+ * below PHONE_MAX), landscape sidebar (rotate keeps the column in the grid),
+ * the drag handles (pointer capture + rAF throttle), the concession chain
  * (columns.ts), and the child-slot render decisions: the sidebar slot renders
  * HERE with live parameters from the concession solve, and the session-aware
  * occupants render in fixed column positions; strict entries gate themselves
@@ -188,22 +189,48 @@ export function AppFrame({
   // bands. Re-read landscape on resize as well as orientation.change: some
   // mobile browsers skip that event after a rotate.
   useEffect(() => {
-    const el = frameRef.current
+    const frameElement = frameRef.current
     /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
-    if (el === null) return
+    if (frameElement === null) return
+    const el = frameElement
     let raf: number | null = null
-    const apply = (): void => {
-      raf ??= requestAnimationFrame(() => {
-        raf = null
-        setLandscape(readDeviceLandscape())
-        const width = Math.min(el.getBoundingClientRect().width, window.innerWidth)
-        if (width > 0) setViewport(width)
-        const trailing = trailingRef.current
-        /* v8 ignore next -- the trailing cluster mounts unconditionally with the frame. */
-        if (trailing !== null) {
-          setTrailingWidth(Math.max(0, Math.round(trailing.getBoundingClientRect().width)))
-        }
-      })
+    let rafFallback: number | null = null
+    let zeroWidthRetry: number | null = null
+    const scheduleZeroWidthRetry = (): void => {
+      if (zeroWidthRetry !== null) return
+      zeroWidthRetry = window.setTimeout(() => {
+        zeroWidthRetry = null
+        apply()
+      }, 50)
+    }
+    function measure(): void {
+      if (rafFallback !== null) {
+        window.clearTimeout(rafFallback)
+        rafFallback = null
+      }
+      raf = null
+      setLandscape(readDeviceLandscape())
+      const frameWidth = el.getBoundingClientRect().width
+      const windowWidth = window.innerWidth
+      const width = frameWidth > 0
+        ? Math.min(frameWidth, windowWidth > 0 ? windowWidth : frameWidth)
+        : windowWidth
+      if (width > 0) setViewport(width)
+      else scheduleZeroWidthRetry()
+      const trailing = trailingRef.current
+      /* v8 ignore next -- the trailing cluster mounts unconditionally with the frame. */
+      if (trailing !== null) {
+        setTrailingWidth(Math.max(0, Math.round(trailing.getBoundingClientRect().width)))
+      }
+    }
+    function apply(): void {
+      if (raf !== null) return
+      raf = requestAnimationFrame(measure)
+      rafFallback = window.setTimeout(() => {
+        if (raf === null) return
+        cancelAnimationFrame(raf)
+        measure()
+      }, 100)
     }
     apply()
     const observer = new ResizeObserver(apply)
@@ -222,6 +249,8 @@ export function AppFrame({
       stopOrientation()
       stopVisual()
       if (raf !== null) cancelAnimationFrame(raf)
+      if (rafFallback !== null) window.clearTimeout(rafFallback)
+      if (zeroWidthRetry !== null) window.clearTimeout(zeroWidthRetry)
     }
   }, [])
 
@@ -312,6 +341,7 @@ export function AppFrame({
       data-titlebar-over-conversation={clusterOverConversation || undefined}
       data-dragging={dragging || undefined}
     >
+      <div className={css.captionDrag} data-dshd-caption="band" aria-hidden="true" />
       {phone && sidebarCollapsed && (
         <button
           type="button"

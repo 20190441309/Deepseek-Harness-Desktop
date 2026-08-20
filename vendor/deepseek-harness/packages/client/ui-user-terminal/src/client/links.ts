@@ -1,6 +1,6 @@
-/** Detect http(s) and workspace-looking paths in one terminal line. */
+import { isMacPlatform } from './ghostty/platform.ts'
 
-/** One clickable span inside a terminal line. */
+/** Detect http(s) and workspace-looking paths in one terminal line. */
 export interface TerminalLinkMatch {
   kind: 'url' | 'path'
   text: string
@@ -119,7 +119,7 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
 
 /**
  * Resolve a path link against the session cwd. Line/column suffixes are
- * stripped: this desktop's file surface has no jump-to-line.
+ * split off the filesystem path; callers pass `line` into `openPath`.
  * @param rawPath - path as printed in the terminal.
  * @param cwd - session workspace root.
  * @returns a host-absolute path for `workspaces.openPath`.
@@ -140,26 +140,21 @@ export function resolveOpenPath(rawPath: string, cwd: string): string {
   return path
 }
 
-/**
- * True when the click is a T3-style modified activation (⌘ on macOS, Ctrl elsewhere).
- * @param event - pointer modifiers.
- * @param platform - `navigator.platform`; empty means never activate.
- * @returns true when the modified click should open the link.
- */
 export function isTerminalLinkActivation(
   event: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>,
   platform = typeof navigator === 'undefined' ? '' : navigator.platform,
 ): boolean {
   if (platform.length === 0) return false
-  const mac = /Mac/i.test(platform)
-  return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+  return isMacPlatform(platform)
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey
 }
 
 /** Callbacks that open a detected terminal target. */
 export interface TerminalLinkActions {
   openLocalUrl: (url: string) => void
   openExternal: (url: string) => void
-  openWorkspacePath: (absolutePath: string) => void
+  openWorkspacePath: (absolutePath: string, options?: { line?: number }) => void
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '0.0.0.0'])
@@ -203,7 +198,10 @@ export function activateTerminalTarget(
     return 'url'
   }
   if (cwd === undefined || cwd.length === 0) return null
-  actions.openWorkspacePath(resolveOpenPath(first.text, cwd))
+  const { line } = splitPathAndPosition(first.text)
+  const absolutePath = resolveOpenPath(first.text, cwd)
+  if (line === undefined) actions.openWorkspacePath(absolutePath)
+  else actions.openWorkspacePath(absolutePath, { line: Number.parseInt(line, 10) })
   return 'path'
 }
 

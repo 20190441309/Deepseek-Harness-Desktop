@@ -58,14 +58,14 @@ Layout: `AppFrame` is columns, not a card grid. A closed column is width 0 and p
 
 - **xterm / diff / code**: monospace, ANSI, character grid — not capsules.
 - **Native window controls**: min / max / close keep system hit targets; paint still follows theme tokens.
-- **Shells that cannot import the theme package** (remote pairing page): reuse the same semantic colors and geometry, or import the `ui-theme` sheets. Do not open a parallel `--bg` / `--accent` palette.
+- **Shells that cannot import the theme package** (remote login page, mobile Web SPA): reuse the same semantic colors and geometry. The mobile SPA copies `--dsw-alias-*` into `mobile/web/tokens.css`; it does not mount official CSS Modules or the boot `--boot-*` canvas. Do not open a parallel `--bg` / `--accent` palette.
 - **Desktop boot page**: a full-window instrument canvas and a dedicated `--boot-*` table; see [Desktop boot page](#desktop-boot-page).
 
 ## Desktop boot page
 
 The boot page is one instrument canvas for the whole window. It is not a centered card, and the log is not locked in a bordered box. Sources: [`boot.html`](../src/renderer/boot.html), [`boot.css`](../src/renderer/boot.css), [`boot-tokens.css`](../src/renderer/boot-tokens.css), [`boot.js`](../src/renderer/boot.js).
 
-Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the DeepSeek mark, the brand `Deepseek-Harness-Desktop`, status and hint, and square retry buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. Lines stack upward from the bottom; `--boot-log-inset` clears the corner rails on the bottom and left. Overflow clips older lines at the top so the newest line stays fully visible. After the runtime is ready, official client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the official “正在加载插件” page is not shown.
+Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the DeepSeek mark, the brand `Deepseek-Harness-Desktop`, status and hint, and square retry and download-log buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. Lines stack upward from the bottom; `--boot-log-inset` clears the corner rails on the bottom and left. Overflow clips older lines at the top so the newest line stays fully visible. After the runtime is ready, official client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the official “正在加载插件” page is not shown.
 
 Color and theme: [`boot-tokens.css`](../src/renderer/boot-tokens.css) is the only color table. Light is paper near-black; dark is CRT near-white. `--boot-accent` matches body ink; failure uses `--boot-alert`. `html[data-boot-theme]` makes [`theme.js`](../src/renderer/theme.js) apply only the light/dark half of `theme.scheme` and skip the user’s `bg` / `accent`. [`boot.css`](../src/renderer/boot.css) consumes `--boot-*` plus official font and motion tokens; it does not branch on `[data-ds-dark-theme]` and does not contain color literals.
 
@@ -73,7 +73,7 @@ Window controls stay on [`window-controls.css`](../src/renderer/window-controls.
 
 ## Known drift (do not spread)
 
-Product pages, including remote pairing and the Settings marketplace tab, use official tokens and `ui-primitives`. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet.
+Product pages use official tokens and `ui-primitives`. Mobile remote Web (`mobile/web`) is a documented exception: it copies `--dsw-alias-*`, does not embed the official plugin tree, and does not use the boot instrument canvas. The Settings marketplace is the preset `dshmarket` plugin’s `settings.section` (id `market`) and keeps that plugin’s own UI. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet.
 
 ## Self-check
 

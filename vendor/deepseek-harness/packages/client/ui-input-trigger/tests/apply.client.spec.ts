@@ -54,6 +54,7 @@ describe('apply', () => {
     locale.setLocale('en')
     expect(t('skill')).toBe('Skills')
     expect(t('subagent')).toBe('Subagents')
+    expect(t('path')).toBe('Files')
     expect(t('loading')).toBe('Loading…')
   })
 

@@ -424,7 +424,7 @@ describe('provider profile lifecycle', () => {
           efforts: [
             { id: ReasoningEffortId('off'), name: 'Off' },
             { id: ReasoningEffortId('high'), name: 'High' },
-            { id: ReasoningEffortId('max'), name: 'Extreme' },
+            { id: ReasoningEffortId('max'), name: 'Max' },
           ],
         },
       })

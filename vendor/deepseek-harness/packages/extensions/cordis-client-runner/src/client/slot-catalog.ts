@@ -1305,6 +1305,58 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     source: 'packages/client/ui-settings/src/client/contract/slots.ts:29',
   },
   {
+    key: 'settings.interface.item',
+    kind: 'list',
+    scope: 'root',
+    summary: 'One preference row inside the Interface section — the additive seat for a titlebar-chrome or composer-beam setting that needs no page of its own (a whole page is `settings.section`), contributed by the feature plugin that owns the chrome (session-log-export → Session log, ui-git → Git cluster, ui-titlebar → panel toggles, ui-conversation → composer beam).',
+    doc: 'One preference row inside the Interface section — the additive seat for a\ntitlebar-chrome or composer-beam setting that needs no page of its own\n(a whole page is `settings.section`), contributed by the feature plugin\nthat owns the chrome (session-log-export → Session log, ui-git → Git\ncluster, ui-titlebar → panel toggles, ui-conversation → composer beam).\nOptions: `id` (row key), `order` (row position). The section column only\nstacks rows, so a row draws its own internals, including its label:\nnothing projects a `label` here and the owner passes no props at all —\ncopy, current value, and the write path are all yours, through your own\ninject face and `host.call`. Declared at runtime by\nui-settings-general\'s Interface entry; the type lives here with every\nother settings slot type, because this package is the settings domain\'s\nbase layer and every registrant already depends on it for\n`ctx.settingsScope`.',
+    registerOptions: [
+      {
+        name: 'id',
+        requirement: 'required',
+        type: 'string',
+        doc: 'Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it.',
+      },
+      {
+        name: 'order',
+        requirement: 'optional',
+        type: 'number',
+        doc: 'Position among the entries, ascending (default 0).',
+      },
+      {
+        name: 'label',
+        requirement: 'optional',
+        type: 'string | (() => string)',
+        doc: 'Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering.',
+      },
+    ],
+    ownerProps: [
+      '/** Owner share of an Interface preference row (the section supplies nothing). */\nexport interface SettingsInterfaceItemOwnerProps {\n  /** Marker field: item owner props are intentionally empty. */\n  children?: never\n}',
+    ],
+    ownerPropsReferences: [],
+    standardProps: [
+      'useSessions: SnapshotSelectorHook<SessionListState>',
+      'useWorkspaces: SnapshotSelectorHook<import(\'./workspaces/service.ts\').WorkspaceListState>',
+    ],
+    keyDomain: '',
+    hookContext: '',
+    slotInject: '',
+    declaredBy: 'an entry in \'settings.section\' (client-ui-settings-general), so it exists while that entry is mounted',
+    occupants: [
+      'client-ui-conversation BeamRow id \'composer-beam\'',
+      'client-ui-conversation ResizeRow id \'composer-resize\'',
+      'client-ui-conversation StatsLineRow id \'stats-line\'',
+      'client-ui-conversation ViewTabsRow id \'view-tabs\'',
+      'client-ui-git GitChromeRow id \'titlebar-git\'',
+      'client-ui-titlebar TerminalToggleRow id \'terminal-toggle\'',
+      'client-ui-titlebar SurfacesToggleRow id \'surfaces-toggle\'',
+      'session-log-export SessionLogChromeRow id \'session-log-export\'',
+    ],
+    replaceRisk: 'none',
+    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.interface.item\', () => ctx.slots.register(\n      { name: \'settings.interface.item\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:105',
+  },
+  {
     key: 'settings.onboarding',
     kind: 'list',
     scope: 'root',
@@ -1425,7 +1477,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'settings.section\' (client-ui-settings-plugins), so it exists while that entry is mounted',
     occupants: [
       'client-ui-settings-plugin-inventory PluginInventorySettingsTab id \'all\'',
-      'client-ui-settings-plugin-inventory MarketplaceSettingsTab id \'marketplace\'',
       'client-ui-settings-plugins ConfigurablePluginsTab id \'configurable\'',
     ],
     replaceRisk: 'none',
@@ -1473,6 +1524,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-agent-preset AgentPresetSection id \'agent-presets\'',
       'client-ui-settings-general GeneralSection id \'general\'',
+      'client-ui-settings-general InterfaceSection id \'interface\'',
       'client-ui-settings-general AboutSection id \'about\'',
       'client-ui-settings-mcp McpSection id \'mcp\'',
       'client-ui-settings-models ModelsSection id \'models\'',
@@ -1587,7 +1639,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     kind: 'list',
     scope: 'root',
     summary: 'Titlebar trailing cluster in the shared titlebar grid row, inset from the window controls (`margin-right: var(--dshd-wco-controls, 8px)`).',
-    doc: 'Titlebar trailing cluster in the shared titlebar grid row, inset from\nthe window controls (`margin-right: var(--dshd-wco-controls, 8px)`).\nList slot: entries order among themselves. The cluster is\n`-webkit-app-region: no-drag` so Session log, Git, and panel toggles\nstay clickable beside the conversation caption drag regions. Owner props\nare the live layout widths so toggles can derive pressed state.',
+    doc: 'Titlebar trailing cluster in the shared titlebar grid row, inset from\nthe window controls (`margin-right: var(--dshd-wco-controls, 8px)`).\nList slot: entries order among themselves. The cluster is\n`-webkit-app-region: no-drag` so Session log, Git, and panel toggles\nstay clickable over the AppFrame caption drag band. Owner props\nare the live layout widths so toggles can derive pressed state.',
     registerOptions: [
       {
         name: 'id',
@@ -1703,7 +1755,81 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.footer.action\', () => ctx.slots.register(\n      { name: \'sidebar.footer.action\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:35',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:52',
+  },
+  {
+    key: 'sidebar.nav.tab',
+    kind: 'list',
+    scope: 'root',
+    summary: 'Additive region tabs.',
+    doc: 'Additive region tabs. Occupancy is the only signal that draws the tab\nstrip; zero entries keep the shipped chrome (New Session + workspaces)\nwith no extra controls. Options: `id` (tab key, also the `sidebar.page`\nentryKey), `order`, `label`.',
+    registerOptions: [
+      {
+        name: 'id',
+        requirement: 'required',
+        type: 'string',
+        doc: 'Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it.',
+      },
+      {
+        name: 'order',
+        requirement: 'optional',
+        type: 'number',
+        doc: 'Position among the entries, ascending (default 0).',
+      },
+      {
+        name: 'label',
+        requirement: 'optional',
+        type: 'string | (() => string)',
+        doc: 'Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering.',
+      },
+    ],
+    ownerProps: [
+      '/**\n * Owner share of a plugin region tab\'s metadata occupancy. The shell draws\n * the strip from registration options; tab components are not mounted.\n */\nexport interface SidebarNavTabOwnerProps {\n  /** Whether the sidebar renders wide content (false = 56px rail). */\n  wide: boolean\n}',
+    ],
+    ownerPropsReferences: [],
+    standardProps: [
+      'useSessions: SnapshotSelectorHook<SessionListState>',
+      'useWorkspaces: SnapshotSelectorHook<import(\'./workspaces/service.ts\').WorkspaceListState>',
+    ],
+    keyDomain: '',
+    hookContext: '',
+    slotInject: '',
+    declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
+    occupants: [],
+    replaceRisk: 'none',
+    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.nav.tab\', () => ctx.slots.register(\n      { name: \'sidebar.nav.tab\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:36',
+  },
+  {
+    key: 'sidebar.page',
+    kind: 'keyed',
+    scope: 'root',
+    summary: 'Plugin region page keyed by the matching `sidebar.nav.tab` id.',
+    doc: 'Plugin region page keyed by the matching `sidebar.nav.tab` id. Rendered\nonly while that tab is selected; the sessions tab keeps `sidebar.workspaces`.',
+    registerOptions: [
+      {
+        name: 'key',
+        requirement: 'required',
+        type: 'string',
+        doc: 'Your cell key: the entry renders where the owner dispatches this exact key. Registering an already-occupied key replaces that occupant.',
+      },
+    ],
+    ownerProps: [
+      '/**\n * Owner share of a plugin region page — the same column facts the workspace\n * browser receives, so a page can offer rail icons while collapsed.\n */\nexport interface SidebarPageOwnerProps {\n  /** Shell fold-state output: wide renders the full page, rail the icon column. */\n  wide: boolean\n  /** Rail icons request expansion; the page rides the wide flip for focus. */\n  expandSidebar: () => void\n}',
+    ],
+    ownerPropsReferences: [],
+    standardProps: [
+      'useSessions: SnapshotSelectorHook<SessionListState>',
+      'useWorkspaces: SnapshotSelectorHook<import(\'./workspaces/service.ts\').WorkspaceListState>',
+    ],
+    keyDomain: 'open: any string the owner dispatches (no compile-time key set), none are taken yet',
+    hookContext: '',
+    slotInject: '',
+    declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
+    occupants: [],
+    replaceRisk: 'none',
+    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.page\', () => ctx.slots.register(\n      { name: \'sidebar.page\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:41',
   },
   {
     key: 'sidebar.settings',
@@ -1729,14 +1855,14 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.settings\', () => ctx.slots.register(\n      { name: \'sidebar.settings\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:30',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:47',
   },
   {
     key: 'sidebar.workspaces',
     kind: 'single',
     scope: 'root',
     summary: 'The workspace/session browsing region: section header, search, the grouped/flat session list, and every workspace dialog.',
-    doc: 'The workspace/session browsing region: section header, search, the\ngrouped/flat session list, and every workspace dialog. Declared by this\npackage\'s \'sidebar\' entry (declaring is claiming); ui-workspace\nregisters the browser.',
+    doc: 'The workspace/session browsing region: section header, search, the\ngrouped/flat session list, and every workspace dialog. Declared by this\npackage\'s \'sidebar\' entry (declaring is claiming); ui-workspace\nregisters the browser. Hidden while a plugin region tab is selected.',
     registerOptions: [],
     ownerProps: [
       '/**\n * Owner share of the browser hole — the only facts crossing the shell/region\n * boundary. Business data and actions arrive through the region\'s own inject.\n */\nexport interface SidebarSectionOwnerProps {\n  /** Shell fold-state output: wide renders the full browser, rail the icon column. */\n  wide: boolean\n  /** Rail icons request expansion; the browser rides the wide flip for focus. */\n  expandSidebar: () => void\n}',
@@ -1755,7 +1881,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.workspaces\', () => ctx.slots.register(\n      { name: \'sidebar.workspaces\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:24',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:29',
   },
   {
     key: 'sidebar.workspaces.directoryFlow',
@@ -1842,7 +1968,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.agents\', () => ctx.slots.register(\n      { name: \'surfaces.agents\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:75',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:79',
   },
   {
     key: 'surfaces.browser',
@@ -1873,7 +1999,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.browser\', () => ctx.slots.register(\n      { name: \'surfaces.browser\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:54',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:58',
   },
   {
     key: 'surfaces.diff',
@@ -1904,7 +2030,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.diff\', () => ctx.slots.register(\n      { name: \'surfaces.diff\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:71',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:75',
   },
   {
     key: 'surfaces.file',
@@ -1914,7 +2040,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     doc: 'Single-file preview occupant. ui-files injects here.',
     registerOptions: [],
     ownerProps: [
-      '/** Owner props the single-file occupant receives. */\nexport interface FileOwnerProps {\n  relativePath: string\n  /** True while this file surface is the active tab (reread on activate). */\n  active: boolean\n  /** Report whether the editor has unsaved changes (for tab-close confirm). */\n  onDirtyChange: (dirty: boolean) => void\n  /** Read a remembered buffer for this file (survives occupant remount / session switches). */\n  readBuffer: () => { text: string; draft: string } | undefined\n  /** Remember or clear the in-memory buffer for this file. */\n  writeBuffer: (buffer: { text: string; draft: string } | null) => void\n  /** Register a save that returns whether the write succeeded (tab-close Save). */\n  registerSave: (save: (() => Promise<boolean>) | null) => void\n}',
+      '/** Owner props the single-file occupant receives. */\nexport interface FileOwnerProps {\n  relativePath: string\n  /** 1-based line to scroll into view; omitted when the open was not a jump-to-line. */\n  revealLine?: number\n  /** Increments on each jump-to-line so the same line can be requested again. */\n  revealRequestId?: number\n  /** True while this file surface is the active tab (reread on activate). */\n  active: boolean\n  /** Report whether the editor has unsaved changes (for tab-close confirm). */\n  onDirtyChange: (dirty: boolean) => void\n  /** Read a remembered buffer for this file (survives occupant remount / session switches). */\n  readBuffer: () => { text: string; draft: string } | undefined\n  /** Remember or clear the in-memory buffer for this file. */\n  writeBuffer: (buffer: { text: string; draft: string } | null) => void\n  /** Register a save that returns whether the write succeeded (tab-close Save). */\n  registerSave: (save: (() => Promise<boolean>) | null) => void\n}',
     ],
     ownerPropsReferences: [],
     standardProps: [
@@ -1935,7 +2061,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.file\', () => ctx.slots.register(\n      { name: \'surfaces.file\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:67',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:71',
   },
   {
     key: 'surfaces.files',
@@ -1966,7 +2092,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.files\', () => ctx.slots.register(\n      { name: \'surfaces.files\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:63',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:67',
   },
   {
     key: 'surfaces.terminal',
@@ -1995,7 +2121,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'surfaces.terminal\', () => ctx.slots.register(\n      { name: \'surfaces.terminal\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-surfaces/src/client/apply.ts:59',
+    source: 'packages/client/ui-surfaces/src/client/apply.ts:63',
   },
   {
     key: 'tool.call.toolview',

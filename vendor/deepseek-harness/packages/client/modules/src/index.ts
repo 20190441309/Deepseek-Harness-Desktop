@@ -3,7 +3,7 @@
  * the host Loader's entries for packages declaring `dsh.client`, composes the
  * `window.__DSH_BOOT__` entry graph (wire single source: {@link WebBootEntry}
  * in `./client/manifest.ts`), serves `/plugins/<id>/client.js` and its source
- * map, taps the index render to inject the boot manifest, and provides the
+ * map plus `/plugins/<id>/assets/*` sibling files (Ghostty wasm/font), taps the index render to inject the boot manifest, and provides the
  * `clientModuleHost` service (the HMR node half's registration/notification
  * face).
  *
@@ -460,12 +460,22 @@ export class ClientModuleRegistry extends Service {
     const prefix = '/plugins/'
     const mapSuffix = '/client.js.map'
     const bundleSuffix = '/client.js'
+    const assetsMarker = '/assets/'
     const isSourceMap = pathname.startsWith(prefix) && pathname.endsWith(mapSuffix)
     const suffix = isSourceMap ? mapSuffix : bundleSuffix
+    const rest = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : ''
+    const assetAt = rest.indexOf(assetsMarker)
+    const assetName = assetAt >= 0 ? rest.slice(assetAt + assetsMarker.length) : ''
+    const assetId = assetAt >= 0 ? rest.slice(0, assetAt) : ''
+    const assetClient = assetAt >= 0 && /^[A-Za-z0-9._-]+$/.test(assetName)
+      ? this.clientPath(assetId)
+      : undefined
     const clientPath = pathname.startsWith(prefix) && pathname.endsWith(suffix)
       ? this.clientPath(pathname.slice(prefix.length, -suffix.length))
       : undefined
-    const path = clientPath === undefined ? undefined : `${clientPath}${isSourceMap ? '.map' : ''}`
+    const path = assetClient !== undefined
+      ? join(dirname(assetClient), 'assets', assetName)
+      : clientPath === undefined ? undefined : `${clientPath}${isSourceMap ? '.map' : ''}`
     if (path === undefined) {
       res.writeHead(404)
       res.end()
@@ -473,8 +483,13 @@ export class ClientModuleRegistry extends Service {
     }
     try {
       const body = await readFile(path)
+      const type = assetClient !== undefined
+        ? (assetName.endsWith('.wasm') ? 'application/wasm'
+          : assetName.endsWith('.woff2') ? 'font/woff2'
+            : 'application/octet-stream')
+        : isSourceMap ? 'application/json; charset=utf-8' : 'text/javascript; charset=utf-8'
       res.writeHead(200, {
-        'content-type': isSourceMap ? 'application/json; charset=utf-8' : 'text/javascript; charset=utf-8',
+        'content-type': type,
         'cache-control': 'no-cache',
       })
       res.end(body)

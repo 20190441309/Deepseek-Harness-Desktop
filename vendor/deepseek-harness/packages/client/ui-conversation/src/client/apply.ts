@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ViewTab } from './contract/views.ts'
 import type {
-  ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
+  ApprovalComposerInjected, ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
   ComposerChainProps, ConversationInjected, ConversationSessionHeaderInjected, ConversationSessionInjected,
   DetailsInjected,
 } from './contract/slots.ts'
@@ -27,8 +27,16 @@ import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
 import { InputBar } from './skeleton/InputBar.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
+import { BeamRow } from './settings/BeamRow.tsx'
+import type { BeamRowInjected } from './settings/BeamRow.tsx'
+import { ResizeRow } from './settings/ResizeRow.tsx'
+import type { ResizeRowInjected } from './settings/ResizeRow.tsx'
+import { StatsLineRow } from './settings/StatsLineRow.tsx'
+import type { StatsLineRowInjected } from './settings/StatsLineRow.tsx'
+import { ViewTabsRow } from './settings/ViewTabsRow.tsx'
+import type { ViewTabsRowInjected } from './settings/ViewTabsRow.tsx'
 import { ChatView } from './chat/ChatView.tsx'
-import { StatsLine } from './chat/StatsLine.tsx'
+import { StatsLine, type StatsLineInjected } from './chat/StatsLine.tsx'
 import { ApprovalPanel } from './skeleton/ApprovalPanel.tsx'
 import { todoDockEntry } from './skeleton/TodoPanel.tsx'
 import { queueDockEntry } from './queue/QueueDock.tsx'
@@ -72,6 +80,11 @@ const ABSENT_LEXICON = {
 }
 const ABSENT_MENU_LAUNCHER = {
   getSnapshot: (): string | null => null,
+  subscribe: () => () => {},
+}
+/** No session, therefore the composer beam stays on; same one-identity rule as above. */
+const ABSENT_BEAM = {
+  getSnapshot: (): boolean => true,
   subscribe: () => () => {},
 }
 
@@ -144,6 +157,50 @@ export function apply(ctx: Context): void {
       setBusyEnter: (behavior) => { submissionPolicy.setBusyEnter(behavior) },
     }),
   }, EnterBehaviorRow))
+
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
+    name: 'settings.interface.item',
+    id: 'composer-beam',
+    order: 50,
+    locale: NS,
+    inject: (): BeamRowInjected => ({
+      hooks: { composerBeam: submissionPolicy.composerBeam, writable: submissionPolicy.writable },
+      setComposerBeam: (value) => { submissionPolicy.setComposerBeam(value) },
+    }),
+  }, BeamRow))
+
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
+    name: 'settings.interface.item',
+    id: 'composer-resize',
+    order: 60,
+    locale: NS,
+    inject: (): ResizeRowInjected => ({
+      hooks: { composerResize: submissionPolicy.composerResize, writable: submissionPolicy.writable },
+      setComposerResize: (value) => { submissionPolicy.setComposerResize(value) },
+    }),
+  }, ResizeRow))
+
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
+    name: 'settings.interface.item',
+    id: 'stats-line',
+    order: 70,
+    locale: NS,
+    inject: (): StatsLineRowInjected => ({
+      hooks: { statsLine: submissionPolicy.statsLine, writable: submissionPolicy.writable },
+      setStatsLine: (value) => { submissionPolicy.setStatsLine(value) },
+    }),
+  }, StatsLineRow))
+
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
+    name: 'settings.interface.item',
+    id: 'view-tabs',
+    order: 80,
+    locale: NS,
+    inject: (): ViewTabsRowInjected => ({
+      hooks: { viewTabs: submissionPolicy.viewTabs, writable: submissionPolicy.writable },
+      setViewTabs: (value) => { submissionPolicy.setViewTabs(value) },
+    }),
+  }, ViewTabsRow))
 
   // Chat semantic reader positions by session, surviving view switches and
   // width reflow when the tab ring remounts the view. Deliberately not
@@ -272,6 +329,7 @@ export function apply(ctx: Context): void {
     inject: (): ConversationSessionHeaderInjected => ({
       views,
       open: (id) => { sessions.open(id) },
+      hooks: { viewTabs: submissionPolicy.viewTabs },
     }),
   }, ConversationSessionHeader)
 
@@ -304,7 +362,13 @@ export function apply(ctx: Context): void {
           toggleCommandMenu: undefined,
           stop: undefined,
           command: undefined,
-          hooks: { notices: ABSENT_NOTICES, lexicon: ABSENT_LEXICON, menuLauncher: ABSENT_MENU_LAUNCHER },
+          hooks: {
+            notices: ABSENT_NOTICES,
+            lexicon: ABSENT_LEXICON,
+            menuLauncher: ABSENT_MENU_LAUNCHER,
+            composerBeam: ABSENT_BEAM,
+            composerResize: submissionPolicy.composerResize,
+          },
         }
       }
       const conversation = concreteConversation(ctx)
@@ -362,6 +426,8 @@ export function apply(ctx: Context): void {
           notices: shell.notices,
           lexicon: shell.lexicon,
           menuLauncher: inputTriggers?.launcher ?? ABSENT_MENU_LAUNCHER,
+          composerBeam: submissionPolicy.composerBeam,
+          composerResize: submissionPolicy.composerResize,
         },
       }
     },
@@ -370,12 +436,21 @@ export function apply(ctx: Context): void {
   // The approval takeover: a selector-routed entry of the chain this package
   // just declared (the ui-user-questions registration pattern; the entry lives here
   // because approval answering is core conversation UX, not an optional tool).
-  // Zero business face — data and verbs both ride the matched carrier.
+  // The carrier plus PendingApproval own answering; inject only forwards the
+  // shared composerResize preference so the takeover paints the same handles.
   // priority 1: question takeovers (default 0) win when both kinds are
   // pending — a question is a conversation the model is waiting on, while an
   // approval only blocks one tool call; answering the question first cannot
   // strand the approval (it re-elects the moment the question resolves).
-  slots.register({ name: 'conversation.composer', select: selectApproval, priority: 1, locale: NS }, ApprovalPanel)
+  slots.register({
+    name: 'conversation.composer',
+    select: selectApproval,
+    priority: 1,
+    locale: NS,
+    inject: (): ApprovalComposerInjected => ({
+      hooks: { composerResize: submissionPolicy.composerResize },
+    }),
+  }, ApprovalPanel)
 
   // The chat view: first entry of the ring this package just declared.
   // ChatView owns only the stable ordered Node list. Business renderers are
@@ -388,6 +463,7 @@ export function apply(ctx: Context): void {
     locale: NS,
     children: {
       'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
+      'conversation.chat.empty': { kind: 'list', scope: 'session' },
     },
     store: chatStore,
     inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {
@@ -433,7 +509,15 @@ export function apply(ctx: Context): void {
   }, ChatView)
 
   // Session stats stick with the composer (composer.dock = stats-line family).
-  slots.register({ name: 'conversation.composer.dock', id: 'stats', order: 0, locale: NS }, StatsLine)
+  slots.register({
+    name: 'conversation.composer.dock',
+    id: 'stats',
+    order: 0,
+    locale: NS,
+    inject: (): StatsLineInjected => ({
+      hooks: { statsLine: submissionPolicy.statsLine },
+    }),
+  }, StatsLine)
 
   // Class-plugin mount (packages/AGENTS.md service form): the service
   // registers itself as `conversation` and lives on its own child fiber.

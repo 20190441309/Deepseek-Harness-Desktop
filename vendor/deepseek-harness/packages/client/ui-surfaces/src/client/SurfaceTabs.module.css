@@ -6,11 +6,11 @@
   min-width: 0;
   height: 48px;
   padding: 0 8px;
-  /* Margin, not padding: drag includes padding and would steal window-control clicks. */
+  /* Margin, not padding: a drag box that included the control pad would steal
+     minimize / maximize / close. AppFrame owns the caption rectangle. */
   margin-right: var(--dshd-wco-controls, 8px);
   box-sizing: border-box;
   overflow-x: auto;
-  -webkit-app-region: drag;
 }
 
 .interactive,
@@ -92,6 +92,7 @@
 
 .contextAnchor {
   position: fixed;
+  -webkit-app-region: no-drag;
   width: 0;
   height: 0;
   pointer-events: none;

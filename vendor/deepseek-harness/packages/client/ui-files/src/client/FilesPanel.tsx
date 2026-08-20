@@ -1,9 +1,11 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { IconRefreshOutline16, Input, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { filterEntries, mayListSearchDir, MAX_SEARCH_DIRS } from './filter.ts'
+import { serializeComposerFileLink } from './composerMention.ts'
+import { filterEntries } from './filter.ts'
 import { FileTree, joinRel, type TreeEntry } from './FileTree.tsx'
 import { NS } from './locales.ts'
+import { getProjectFilePickerMatches, type ProjectEntry } from './projectFilePicker.ts'
 import type { FilesShellInjected } from './shell.ts'
 import css from './FilesPanel.module.css'
 
@@ -31,6 +33,21 @@ function absoluteOf(cwd: string, relativePath: string): string {
   return `${root}/${relativePath}`
 }
 
+function collectFiles(
+  root: readonly TreeEntry[],
+  childrenByPath: Record<string, TreeEntry[]>,
+): ProjectEntry[] {
+  const files: ProjectEntry[] = []
+  const visit = (entries: readonly TreeEntry[]): void => {
+    for (const entry of entries) {
+      if (entry.kind === 'file') files.push({ kind: 'file', path: entry.path })
+      else visit(childrenByPath[entry.path] ?? [])
+    }
+  }
+  visit(root)
+  return files
+}
+
 /**
  * Workspace file tree occupant of `surfaces.files`. Clicking a file opens a
  * `file:` surface through the owner `openFile` callback. Refresh reloads the
@@ -47,6 +64,10 @@ export function FilesPanel({
   openFile,
   listDir,
   mentionFile,
+  listEditors,
+  openInEditor,
+  showItemInFolder,
+  openWithSystemDefault,
   t,
 }: FilesPanelProps): ReactNode {
   const cwd = currentCwd(useSessions)
@@ -57,14 +78,13 @@ export function FilesPanel({
   const [copied, setCopied] = useState(false)
   const [generation, setGeneration] = useState(0)
   const [query, setQuery] = useState('')
-  const [searchTruncated, setSearchTruncated] = useState(false)
+  const [editors, setEditors] = useState<readonly { id: string, label: string }[]>([])
 
   useEffect(() => {
     if (cwd === undefined) {
       setRoot([])
       setChildrenByPath({})
       setError(null)
-      setSearchTruncated(false)
       return
     }
     let cancelled = false
@@ -86,44 +106,44 @@ export function FilesPanel({
   }, [cwd, listDir, t, generation])
 
   useEffect(() => {
-    if (cwd === undefined || query.trim() === '') {
-      setSearchTruncated(false)
-      return
-    }
+    if (cwd === undefined || query.trim() === '') return
     let cancelled = false
-    const budget = { dirsRemaining: MAX_SEARCH_DIRS }
     const walk = async (
       parent: string,
-      depth: number,
       acc: Record<string, TreeEntry[]>,
-    ): Promise<boolean> => {
-      if (!mayListSearchDir(budget, depth)) return true
+    ): Promise<void> => {
       const result = await listDir(cwd, parent)
-      if (cancelled) return false
+      if (cancelled) return
       if (!result.ok) {
         if (parent === '') setError(result.message ?? t('error.list'))
-        return false
+        return
       }
       const entries = toTree(parent, result.entries ?? [])
       acc[parent] = entries
-      let truncated = false
       for (const entry of entries) {
         if (entry.kind === 'directory') {
-          if (await walk(entry.path, depth + 1, acc)) truncated = true
+          await walk(entry.path, acc)
         }
       }
-      return truncated
     }
     const acc: Record<string, TreeEntry[]> = {}
-    void walk('', 0, acc).then((truncated) => {
+    void walk('', acc).then(() => {
       if (cancelled) return
       setRoot(acc[''] ?? [])
       setChildrenByPath(acc)
       setExpanded(new Set(Object.keys(acc).filter(path => path !== '')))
-      setSearchTruncated(truncated)
     })
     return () => { cancelled = true }
   }, [cwd, listDir, query, generation])
+
+  useEffect(() => {
+    if (listEditors === undefined) return
+    let cancelled = false
+    void listEditors().then((listed) => {
+      if (!cancelled) setEditors(listed)
+    })
+    return () => { cancelled = true }
+  }, [listEditors])
 
   const onToggle = (path: string): void => {
     if (expanded.has(path)) {
@@ -159,7 +179,11 @@ export function FilesPanel({
     setQuery('')
   }
 
+  const searching = query.trim() !== ''
   const visibleRoot = filterEntries(root, query, childrenByPath)
+  const pickerMatches = searching
+    ? getProjectFilePickerMatches(collectFiles(root, childrenByPath), query)
+    : []
 
   return (
     <div className={css.root} data-files-panel>
@@ -197,8 +221,21 @@ export function FilesPanel({
         ) : root.length === 0 ? (
           <p className={css.message}>{t('empty.dir')}</p>
         ) : (
-          <>
-            {searchTruncated ? <p className={css.message} role="status">{t('search.truncated')}</p> : null}
+          searching ? (
+            <div className={css.picker}>
+              {pickerMatches.map(match => (
+                <button
+                  key={match.path}
+                  type="button"
+                  className={css.pickerRow}
+                  onClick={() => { openFile(match.path) }}
+                >
+                  <span className={css.pickerName}>{match.name}</span>
+                  <span className={css.pickerPath}>{match.path}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
             <FileTree
               entries={visibleRoot}
               childrenByPath={childrenByPath}
@@ -211,11 +248,25 @@ export function FilesPanel({
               }}
               onCopyRelative={(path) => { copyPath(path) }}
               onCopyAbsolute={(path) => { copyPath(absoluteOf(cwd, path)) }}
+              onCopyMention={(path) => { copyPath(serializeComposerFileLink(path)) }}
               mentionLabel={sessionId === undefined ? undefined : t('mention')}
+              copyMentionLabel={t('copy.mention')}
               copyRelativeLabel={t('copy.relative')}
               copyAbsoluteLabel={t('copy.absolute')}
+              onShowInFolder={showItemInFolder === undefined ? undefined : (path) => {
+                void showItemInFolder(cwd, path)
+              }}
+              onOpenInEditor={openInEditor === undefined ? undefined : (editor, path) => {
+                void openInEditor({ editor, cwd, relativePath: path })
+              }}
+              onOpenWithSystemDefault={openWithSystemDefault === undefined ? undefined : (path) => {
+                void openWithSystemDefault(cwd, path)
+              }}
+              editors={editors}
+              showInFolderLabel={t('open.folder')}
+              openWithSystemDefaultLabel={t('open.system')}
             />
-          </>
+          )
         )}
       </div>
     </div>

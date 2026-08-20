@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PreviewPanelProps } from '../src/client/PreviewPanel.tsx'
@@ -35,7 +35,8 @@ function mount(): {
   const props = {
     sessionId: 'session-occluded' as SessionId,
     useSession: neverHook,
-    useSessions: neverHook,
+    useSessions: (sel: (s: { current: SessionId; byId: Record<string, { cwd?: string }> }) => unknown) =>
+      sel({ current: props.sessionId, byId: { [props.sessionId]: {} } }),
     useWorkspaces: neverHook,
     useProjection: neverHook,
     active: true,
@@ -67,7 +68,21 @@ function mount(): {
   return { rerender: view.rerender, previewHide, previewShow, props }
 }
 
-afterEach(cleanup)
+class ResizeObserverStub {
+  constructor(_callback: ResizeObserverCallback) {}
+  observe(): void {}
+  disconnect(): void {}
+  unobserve(): void {}
+}
+
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('PreviewPanel native guest occlusion', () => {
   it('hides the native guest while renderer chrome is open and restores it afterward', async () => {
@@ -94,5 +109,23 @@ describe('PreviewPanel native guest occlusion', () => {
     await waitFor(() => {
       expect(b.previewShow.mock.calls.length).toBeGreaterThan(showCalls)
     })
+  })
+
+  it('hides the native guest while the More menu is open', async () => {
+    const b = mount()
+    stubHostRect()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Browser' }), {
+      target: { value: 'http://127.0.0.1:3000' },
+    })
+    fireEvent.submit(document.querySelector('[data-preview-toolbar]') as HTMLFormElement)
+    await waitFor(() => {
+      expect(b.previewShow).toHaveBeenCalled()
+    })
+    const hideCalls = b.previewHide.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    await waitFor(() => {
+      expect(b.previewHide.mock.calls.length).toBeGreaterThan(hideCalls)
+    })
+    expect(screen.getByRole('menuitem', { name: 'Developer tools' })).toBeTruthy()
   })
 })

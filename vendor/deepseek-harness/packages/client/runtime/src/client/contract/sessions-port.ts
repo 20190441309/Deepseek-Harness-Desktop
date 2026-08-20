@@ -13,10 +13,17 @@ import type { ObservableSnapshot } from './store.ts'
 /** Session-list row facts sibling domains read: recency, blank-reuse eligibility, and its cwd canon. */
 export interface SessionsPortSummary {
   id: SessionId
-  /** Empty-log bit (blank sessions are reused by New Session instead of minting another). */
+  /**
+   * Empty-log bit. New Session reuses a blank coding session targeting the
+   * same workspace. `origin: 'dshbot'` and `origin: 'subagent'` rows stay
+   * ineligible even while blank: they are contacts or hidden children, not
+   * New Session drafts.
+   */
   blank: boolean
   cwd?: string
   updatedAt: number
+  /** Coarse durable origin; absent on ordinary coding sessions. */
+  origin?: 'subagent' | 'dshbot'
 }
 
 /** Session-list facts sibling domains read: readiness, selection, and the row map. */

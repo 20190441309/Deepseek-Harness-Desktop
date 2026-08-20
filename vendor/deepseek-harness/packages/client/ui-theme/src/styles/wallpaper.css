@@ -34,6 +34,14 @@ html[data-dsh-wallpaper] #root {
   background: transparent;
 }
 
+#dsh-wallpaper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  pointer-events: none;
+}
+
 html[data-dsh-wallpaper] #root {
   position: relative;
   z-index: 1;

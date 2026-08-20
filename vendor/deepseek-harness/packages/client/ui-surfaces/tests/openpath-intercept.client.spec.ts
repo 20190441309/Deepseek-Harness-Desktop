@@ -118,4 +118,52 @@ describe('wrapOpenPath', () => {
     expect(innerOpened).not.toHaveBeenCalled()
     expect(workspaces.openPath).not.toBe(original)
   })
+
+  it('awaits an async openInSurfaces before returning', async () => {
+    const original = vi.fn(async () => {})
+    let resolveOpen: (ok: boolean) => void = () => {}
+    const pending = new Promise<boolean>((resolve) => { resolveOpen = resolve })
+    const workspaces = service(original)
+    wrapOpenPath(workspaces, {
+      takeoverEnabled: () => true,
+      currentSessionId: () => 'sess-1',
+      openInSurfaces: () => pending,
+    })
+    let finished = false
+    const done = workspaces.openPath('/tmp/proj/index.html').then(() => { finished = true })
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    resolveOpen(true)
+    await done
+    expect(finished).toBe(true)
+    expect(original).not.toHaveBeenCalled()
+  })
+
+  it('forwards openPath line options into openInSurfaces', async () => {
+    const original = vi.fn(async () => {})
+    const openInSurfaces = vi.fn(() => true)
+    const workspaces = service(original)
+    wrapOpenPath(workspaces, {
+      takeoverEnabled: () => true,
+      currentSessionId: () => 'sess-1',
+      openInSurfaces,
+    })
+    await workspaces.openPath('/tmp/proj/a.ts', { line: 10 })
+    expect(openInSurfaces).toHaveBeenCalledWith('/tmp/proj/a.ts', 'sess-1', { line: 10 })
+    expect(original).not.toHaveBeenCalled()
+  })
+
+  it('ignores line options when falling through to the original openPath', async () => {
+    const original = vi.fn(async () => {})
+    const workspaces = service(original)
+    wrapOpenPath(workspaces, {
+      takeoverEnabled: () => false,
+      currentSessionId: () => 'sess-1',
+      openInSurfaces: () => true,
+    })
+    await workspaces.openPath('/tmp/proj/a.ts', { line: 10 })
+    expect(original).toHaveBeenCalledOnce()
+    expect(original).toHaveBeenCalledWith('/tmp/proj/a.ts')
+    expect(original.mock.calls[0]).toHaveLength(1)
+  })
 })

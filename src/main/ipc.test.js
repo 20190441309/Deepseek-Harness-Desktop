@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { IPC_ROLES } = require('./ipc-authorization');
 
@@ -21,6 +24,16 @@ function leftoverMarketplaceEvent() {
     role: 'marketplace',
     sender: {
       isDestroyed: () => true,
+      send() {},
+    },
+  };
+}
+
+function bootEvent() {
+  return {
+    role: IPC_ROLES.BOOT,
+    sender: {
+      isDestroyed: () => false,
       send() {},
     },
   };
@@ -65,6 +78,7 @@ function loadIpc(options = {}) {
   const restoreEntries = [];
   const handlers = new Map();
   const listMarketplaceCalls = [];
+  const listWallpaperCatalogCalls = [];
   const installMarketplaceCalls = [];
   const installPluginCalls = [];
   const uninstallCalls = [];
@@ -82,8 +96,13 @@ function loadIpc(options = {}) {
         handlers.set(channel, listener);
       },
     },
-    dialog: {},
-    app: { setLoginItemSettings() {} },
+    dialog: {
+      showSaveDialog: options.showSaveDialog || (async () => ({ canceled: true })),
+    },
+    app: {
+      setLoginItemSettings() {},
+      getPath: options.getPath || ((name) => (name === 'downloads' ? '/tmp/downloads' : '/tmp')),
+    },
     shell: { openExternal: async () => true },
     nativeTheme: { shouldUseDarkColors: false },
   });
@@ -129,6 +148,13 @@ function loadIpc(options = {}) {
       return { ok: true, items: [] };
     },
   });
+  stub('./wallpaper-catalog', {
+    listWallpaperCatalog: async (query) => {
+      listWallpaperCatalogCalls.push(query);
+      return { items: [] };
+    },
+    downloadWallpaper: async () => ({}),
+  });
   stub('./marketplace-install', {
     listInstalledPlugins: () => ({ plugins: [] }),
     installPlugin: async (spec, opts) => {
@@ -170,7 +196,7 @@ function loadIpc(options = {}) {
   delete require.cache[ipcPath];
   const { registerIpc } = require('./ipc');
   registerIpc({
-    dsh: { snapshot: () => ({}) },
+    dsh: options.dsh || { snapshot: () => ({}), logs: [] },
     harness: null,
     startHarness: async () => {
       startHarnessCalls += 1;
@@ -199,6 +225,7 @@ function loadIpc(options = {}) {
     invoke,
     restore,
     listMarketplaceCalls,
+    listWallpaperCatalogCalls,
     installMarketplaceCalls,
     installPluginCalls,
     uninstallCalls,
@@ -405,5 +432,72 @@ test('shell:install-plugin does not spread renderer options onto the installer',
     assert.equal(opts.runPlugin, undefined);
   } finally {
     ipc.restore();
+  }
+});
+
+test('shell:list-wallpaper-catalog forwards a kind query and coerces numbers', async () => {
+  const ipc = loadIpc();
+  try {
+    await ipc.invoke('shell:list-wallpaper-catalog', harnessEvent(), {
+      kind: 'wallhaven',
+      year: '2024',
+      url: 'https://example.com/pack.json',
+      q: 'lake',
+      categories: '010',
+      page: '2',
+    });
+    await ipc.invoke('shell:list-wallpaper-catalog', harnessEvent(), {
+      kind: 'nsfw',
+      includeBing: true,
+      catalogs: ['https://example.com/a.json'],
+    });
+    assert.equal(ipc.listWallpaperCatalogCalls.length, 2);
+    const [wallhaven, rejected] = ipc.listWallpaperCatalogCalls;
+    assert.equal(wallhaven.kind, 'wallhaven');
+    assert.equal(wallhaven.year, 2024);
+    assert.equal(typeof wallhaven.year, 'number');
+    assert.equal(wallhaven.page, 2);
+    assert.equal(typeof wallhaven.page, 'number');
+    assert.equal(wallhaven.url, 'https://example.com/pack.json');
+    assert.equal(wallhaven.q, 'lake');
+    assert.equal(wallhaven.categories, '010');
+    assert.equal(rejected.kind, undefined);
+    assert.equal(rejected.includeBing, undefined);
+    assert.equal(rejected.catalogs, undefined);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:save-boot-log is boot-only and writes dsh.logs not a renderer path', async () => {
+  const dest = path.join(os.tmpdir(), `dshd-boot-ipc-${Date.now()}.log`);
+  const logs = Array.from({ length: 81 }, (_, index) => `[app] line ${index + 1}`);
+  const ipc = loadIpc({
+    dsh: {
+      logs,
+      snapshot: () => ({
+        state: 'error',
+        error: 'Harness 启动失败',
+        failure: { phase: 'startup', message: 'tar failed', code: null, signal: null, occurredAt: '2026-08-20T00:00:00.000Z' },
+      }),
+    },
+    showSaveDialog: async () => ({ canceled: false, filePath: dest }),
+  });
+  try {
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(() => ipc.invoke('shell:save-boot-log', harnessEvent()), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:save-boot-log', leftoverMarketplaceEvent()), unauthorized);
+
+    const result = await ipc.invoke('shell:save-boot-log', bootEvent(), 'C:\\evil\\from-renderer.log');
+    assert.equal(result.ok, true);
+    assert.equal(result.canceled, false);
+    assert.equal(result.path, dest);
+    const body = fs.readFileSync(dest, 'utf8');
+    assert.match(body, /\[app\] line 1\n/);
+    assert.match(body, /\[app\] line 81\n/);
+    assert.doesNotMatch(body, /from-renderer|evil/);
+  } finally {
+    ipc.restore();
+    fs.rmSync(dest, { force: true });
   }
 });

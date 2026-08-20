@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as TitlebarInvariant from '../src/invariant.ts'
+import { apply as nodeApply } from '../src/index.ts'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 
 describe('invariant companion', () => {
@@ -10,9 +11,8 @@ describe('invariant companion', () => {
     await expect(ctx.plugin(TitlebarInvariant).await()).resolves.toBeDefined()
   })
 
-  it('node-half apply is a no-op host placeholder', async () => {
-    const { apply } = await import('../src/index.ts')
-    apply()
+  it('node-half waits for optional Host settings', () => {
+    nodeApply(new Context())
     expect(true).toBe(true)
   })
 })

@@ -1,49 +1,138 @@
 const { randomUUID } = require('node:crypto');
+const fs = require('node:fs/promises');
 const net = require('node:net');
-const { isLoopbackHttpUrl, rewriteLoopbackLoadUrl } = require('./local-url');
+const path = require('node:path');
+const { rewriteLoopbackLoadUrl } = require('./local-url');
+const { isHttpOrHttpsUrl } = require('./preview-url');
+const { createWorkspacePreviewController } = require('./preview-workspace');
+const {
+  previewGuestWebPreferences,
+  previewPartitionForScope,
+  previewSessionForPartition,
+  listPreviewSessions,
+  clearPreviewCookies,
+  clearPreviewCache,
+  PREVIEW_COOKIE_STORAGES,
+} = require('./preview-session');
+const { DEFAULT_ZOOM_FACTOR, ZOOM_EPSILON, nextZoomLevel } = require('./preview-zoom');
+const {
+  START_PICK_CHANNEL,
+  CANCEL_PICK_CHANNEL,
+  ELEMENT_PICKED_CHANNEL,
+  ANNOTATION_CAPTURED_CHANNEL,
+  ANNOTATION_THEME_CHANNEL,
+} = require('./preview-guest-protocol');
+const {
+  DEFAULT_ANNOTATION_THEME,
+  isPreviewAnnotationPayload,
+  normalizeCaptureRect,
+} = require('./preview-pick-helpers');
+const {
+  PREVIEW_PIP_FRAME_CHANNEL,
+  PICTURE_IN_PICTURE_INITIAL_WIDTH,
+  PICTURE_IN_PICTURE_INITIAL_HEIGHT,
+  PICTURE_IN_PICTURE_MIN_WIDTH,
+  PICTURE_IN_PICTURE_MIN_HEIGHT,
+  PICTURE_IN_PICTURE_ASPECT_RATIO_EPSILON,
+  PREVIEW_PIP_FRAME_INTERVAL_MS,
+  PREVIEW_PIP_JPEG_QUALITY,
+  buildPreviewPictureInPictureDataUrl,
+  fitPictureInPictureContentSize,
+} = require('./preview-pip-protocol');
 
-const PREVIEW_PARTITION = 'dshd-preview';
-const DISCOVER_PORTS = [3000, 5173, 4173, 8080, 4321, 8000, 5000];
+const DISCOVER_PORTS = Object.freeze([
+  3000, 3001, 3333, 4173, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 8000, 8080, 8081, 8888, 9000,
+]);
 const DISCOVER_TIMEOUT_MS = 200;
-/** Document navigations that must stay on loopback. */
+/** Outer HTML cap for automationSnapshot (reference visibleText is 20_000). */
+const AUTOMATION_SNAPSHOT_HTML_MAX_CHARS = 100_000;
+/** WaitFor poll interval copied from the reference `Effect.sleep(100)`. */
+const AUTOMATION_WAIT_POLL_MS = 100;
+const AUTOMATION_WAIT_DEFAULT_TIMEOUT_MS = 15_000;
+/** Document navigations that must stay http(s). */
 const FRAME_RESOURCE_TYPES = new Set(['mainFrame', 'subFrame']);
+/** Max hostname characters in a screenshot filename slug. */
+const MAX_ARTIFACT_SITE_SLUG_LENGTH = 80;
 
 /**
- * Local preview document URLs only: http(s) to loopback. Arbitrary hosts,
- * file:, and script URLs are rejected so the view never follows a
- * credentialed hop. Subresource loads (fonts, CDN scripts) are filtered
- * separately by {@link previewRequestFilter}.
+ * Guest document URLs: any http(s) host. `file:`, `javascript:`, and `ftp:`
+ * are rejected. Subresource loads (fonts, CDN scripts) are filtered
+ * separately by {@link previewRequestFilter}. Loopback-dev discovery still
+ * uses `isPreviewableUrl` in preview-url.js.
  * @param {unknown} raw
  * @returns {boolean}
  */
 function isAllowedPreviewUrl(raw) {
-  return isLoopbackHttpUrl(raw);
+  return isHttpOrHttpsUrl(raw);
+}
+
+/**
+ * Map `0.0.0.0` to `127.0.0.1` when loopback; otherwise `URL.href` for http(s).
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+function resolvePreviewLoadUrl(raw) {
+  const rewritten = rewriteLoopbackLoadUrl(raw);
+  if (rewritten) return rewritten;
+  if (!isAllowedPreviewUrl(raw)) return null;
+  try {
+    return new URL(String(raw)).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Preview persist scope from the client. Missing or empty cwd → `'shared'`.
+ * @param {unknown} raw
+ * @returns {string}
+ */
+function previewScope(raw) {
+  if (typeof raw !== 'string') return 'shared';
+  const trimmed = raw.trim();
+  return trimmed === '' ? 'shared' : trimmed;
 }
 
 function rejectRemote() {
-  return { ok: false, message: 'Preview only opens local URLs.' };
+  return { ok: false, message: 'Preview only opens http(s) URLs.' };
+}
+
+/**
+ * Filesystem-safe hostname slug for screenshot filenames.
+ * Empty or unparseable URLs become `site`.
+ * @param {unknown} rawUrl
+ * @returns {string}
+ */
+function artifactSiteSlug(rawUrl) {
+  try {
+    const url = new URL(String(rawUrl));
+    const slug = url.hostname
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, MAX_ARTIFACT_SITE_SLUG_LENGTH)
+      .replace(/-+$/g, '');
+    return slug || 'site';
+  } catch {
+    return 'site';
+  }
 }
 
 function defaultAttach({ bounds, partition }) {
-  const { BrowserView, session } = require('electron');
+  const { BrowserView } = require('electron');
   const { getMainWindow } = require('./window');
   const win = getMainWindow();
   if (!win) {
     throw new Error('preview requires the desktop window');
   }
-  const ses = session.fromPartition(partition);
+  const ses = previewSessionForPartition(partition);
   const view = new BrowserView({
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      session: ses,
-    },
+    webPreferences: previewGuestWebPreferences({ session: ses }),
   });
   win.addBrowserView(view);
   if (bounds) view.setBounds(bounds);
   view.webContents.setWindowOpenHandler(({ url }) => {
-    const next = rewriteLoopbackLoadUrl(url);
+    const next = resolvePreviewLoadUrl(url);
     if (next) view.webContents.loadURL(next);
     return { action: 'deny' };
   });
@@ -70,9 +159,9 @@ function defaultAttach({ bounds, partition }) {
 }
 
 /**
- * Cancel non-loopback document navigations (mainFrame / subFrame). Allow
- * other resource types so local Vite/Next apps can load CDN fonts and scripts
- * while top-level navigation stays on loopback via will-navigate / will-redirect.
+ * Cancel non-http(s) document navigations (mainFrame / subFrame). Allow
+ * other resource types so Vite/Next apps can load CDN fonts and scripts
+ * while top-level navigation stays http(s) via will-navigate / will-redirect.
  * @param {{ url?: string, resourceType?: string }} details
  * @returns {{ cancel: boolean }}
  */
@@ -123,6 +212,14 @@ async function discoverLocalServers(probe = probeLocalPort) {
   return found;
 }
 
+function readZoomFactor(session) {
+  const contents = session.view.webContents;
+  if (contents && typeof contents.getZoomFactor === 'function') {
+    return contents.getZoomFactor();
+  }
+  return session.zoomFactor ?? DEFAULT_ZOOM_FACTOR;
+}
+
 function sessionState(session) {
   const contents = session.view.webContents;
   const url = typeof contents.getURL === 'function' && contents.getURL()
@@ -134,7 +231,27 @@ function sessionState(session) {
     url,
     canGoBack: typeof contents.canGoBack === 'function' ? contents.canGoBack() : false,
     canGoForward: typeof contents.canGoForward === 'function' ? contents.canGoForward() : false,
+    loading: session.loading === true,
+    title: session.title,
+    unreachable: session.unreachable === true,
+    zoomFactor: readZoomFactor(session),
   };
+}
+
+function applyZoom(session, next) {
+  const current = readZoomFactor(session);
+  if (Math.abs(next - current) < ZOOM_EPSILON) return sessionState(session);
+  session.zoomFactor = next;
+  const contents = session.view.webContents;
+  if (typeof contents.setZoomFactor === 'function') contents.setZoomFactor(next);
+  return sessionState(session);
+}
+
+function isPreviewRefreshShortcut(input) {
+  if (!input) return false;
+  if (input.type && input.type !== 'keyDown') return false;
+  const key = String(input.key ?? '').toLowerCase();
+  return (input.control || input.meta) && key === 'r' && !input.shift && !input.alt;
 }
 
 function guardView(view) {
@@ -154,12 +271,249 @@ function guardView(view) {
 /**
  * In-process preview table. Tests inject `attach`; production uses BrowserView
  * on an isolated partition so the user API key never rides the guest session.
- * @param {{ attach?: Function, onState?: (state: object) => void }} [options]
+ * @param {{ attach?: Function, onState?: (state: object) => void, onRecordingFrame?: (frame: object) => void, sessionCache?: { listSessions?: Function, clearCookies?: Function, clearCache?: Function }, createPipWindow?: Function, userDataPath?: string, showItemInFolder?: Function, clipboard?: { writeImage?: Function }, nativeImage?: { createFromPath?: Function } }} [options]
  */
 function createPreviewController(options = {}) {
   const attach = options.attach ?? defaultAttach;
   const onState = typeof options.onState === 'function' ? options.onState : null;
+  const onRecordingFrame = typeof options.onRecordingFrame === 'function' ? options.onRecordingFrame : null;
+  const createPipWindow = typeof options.createPipWindow === 'function'
+    ? options.createPipWindow
+    : (windowOptions) => new (require('electron').BrowserWindow)(windowOptions);
+  const sessionCache = options.sessionCache ?? {
+    listSessions: listPreviewSessions,
+    clearCookies: clearPreviewCookies,
+    clearCache: clearPreviewCache,
+  };
+  const injectedUserDataPath = typeof options.userDataPath === 'string' ? options.userDataPath : null;
+  const showItemInFolder = typeof options.showItemInFolder === 'function' ? options.showItemInFolder : null;
+  const clipboard = options.clipboard ?? null;
+  const nativeImage = options.nativeImage ?? null;
   const sessions = new Map();
+  const pickSessions = new Map();
+  /** @type {null | { window: object, previewId: string, lastAspectRatio: number | undefined }} */
+  let pipSession = null;
+  /** @type {Map<string, { timer: ReturnType<typeof setInterval> | null, consumers: Set<string> }>} */
+  const frameCaptureSessions = new Map();
+
+  function unknownPreviewId() {
+    return { ok: false, message: 'unknown preview id' };
+  }
+
+  function failClosed(error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+
+  function resolveUserDataPath() {
+    if (injectedUserDataPath) return injectedUserDataPath;
+    try {
+      return require('electron').app.getPath('userData');
+    } catch {
+      return null;
+    }
+  }
+
+  function toBuffer(data) {
+    if (data == null) return Buffer.alloc(0);
+    if (Buffer.isBuffer(data)) return data;
+    if (data instanceof ArrayBuffer) return Buffer.from(data);
+    if (ArrayBuffer.isView(data)) {
+      return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+    }
+    return Buffer.from(data);
+  }
+
+  function ensureDebugger(contents) {
+    const dbg = contents && contents.debugger;
+    if (!dbg) return null;
+    try {
+      if (typeof dbg.isAttached === 'function' && !dbg.isAttached() && typeof dbg.attach === 'function') {
+        dbg.attach('1.3');
+      }
+    } catch {
+      // Already attached on this guest.
+    }
+    return dbg;
+  }
+
+  function pipPreloadPath() {
+    return path.join(__dirname, 'preview-pip-preload.js');
+  }
+
+  function pipWindowTitle(session) {
+    const wc = session.view.webContents;
+    const raw = typeof wc.getTitle === 'function' ? wc.getTitle() : session.title;
+    const title = typeof raw === 'string' ? raw.trim() : '';
+    return title.length > 0 ? `预览 · ${title}` : 'Browser preview';
+  }
+
+  function liveState(session) {
+    return {
+      ...sessionState(session),
+      pictureInPicture: pipSession !== null && pipSession.previewId === session.id,
+    };
+  }
+
+  function publishState(session) {
+    if (!onState) return;
+    onState(liveState(session));
+  }
+
+  function releasePictureInPicture(closeWindow) {
+    const current = pipSession;
+    if (!current) return;
+    pipSession = null;
+    stopFrameCapture(current.previewId, 'picture-in-picture');
+    if (closeWindow && current.window && typeof current.window.isDestroyed === 'function' && !current.window.isDestroyed()) {
+      current.window.close();
+    }
+    const session = sessions.get(current.previewId);
+    if (session) publishState(session);
+  }
+
+  function stopFrameCapture(previewId, consumer) {
+    const current = frameCaptureSessions.get(previewId);
+    if (!current || !current.consumers.has(consumer)) return;
+    current.consumers.delete(consumer);
+    if (current.consumers.size > 0) return;
+    if (current.timer) {
+      clearInterval(current.timer);
+      current.timer = null;
+    }
+    frameCaptureSessions.delete(previewId);
+  }
+
+  function stopAllFrameCapture(previewId) {
+    const current = frameCaptureSessions.get(previewId);
+    if (!current) return;
+    if (current.timer) clearInterval(current.timer);
+    frameCaptureSessions.delete(previewId);
+  }
+
+  async function startFrameCapture(previewId, consumer) {
+    let current = frameCaptureSessions.get(previewId);
+    if (current) {
+      current.consumers.add(consumer);
+      return;
+    }
+    current = { timer: null, consumers: new Set([consumer]) };
+    frameCaptureSessions.set(previewId, current);
+    await capturePreviewFrame(previewId);
+    if (frameCaptureSessions.get(previewId) !== current) return;
+    const timer = setInterval(() => {
+      void capturePreviewFrame(previewId);
+    }, PREVIEW_PIP_FRAME_INTERVAL_MS);
+    if (typeof timer.unref === 'function') timer.unref();
+    current.timer = timer;
+  }
+
+  async function capturePreviewFrame(previewId) {
+    const capture = frameCaptureSessions.get(previewId);
+    if (!capture || capture.consumers.size === 0) return;
+    const session = sessions.get(previewId);
+    if (!session) return;
+    const wc = session.view.webContents;
+    if (typeof wc.isDestroyed === 'function' && wc.isDestroyed()) return;
+    if (typeof wc.capturePage !== 'function') return;
+    let image;
+    try {
+      image = await Promise.resolve(wc.capturePage());
+    } catch {
+      // Chromium can throw while a hidden guest warms its first frame.
+      return;
+    }
+    if (frameCaptureSessions.get(previewId) !== capture) return;
+    const size = typeof image.getSize === 'function' ? image.getSize() : { width: 0, height: 0 };
+    if (
+      !Number.isFinite(size.width)
+      || !Number.isFinite(size.height)
+      || size.width <= 0
+      || size.height <= 0
+    ) {
+      return;
+    }
+    if (typeof image.toJPEG !== 'function') return;
+    const jpeg = image.toJPEG(PREVIEW_PIP_JPEG_QUALITY);
+    const data = Buffer.isBuffer(jpeg) ? jpeg.toString('base64') : Buffer.from(jpeg).toString('base64');
+    const frame = {
+      id: previewId,
+      data,
+      width: size.width,
+      height: size.height,
+    };
+    if (capture.consumers.has('picture-in-picture')) {
+      const current = pipSession;
+      if (current && current.previewId === previewId && current.window
+        && (typeof current.window.isDestroyed !== 'function' || !current.window.isDestroyed())) {
+        const aspectRatio = size.width / size.height;
+        try {
+          if (
+            current.lastAspectRatio === undefined
+            || Math.abs(current.lastAspectRatio - aspectRatio) > PICTURE_IN_PICTURE_ASPECT_RATIO_EPSILON
+          ) {
+            const contentSize = typeof current.window.getContentSize === 'function'
+              ? current.window.getContentSize()
+              : [PICTURE_IN_PICTURE_INITIAL_WIDTH, PICTURE_IN_PICTURE_INITIAL_HEIGHT];
+            const fitted = fitPictureInPictureContentSize(contentSize, aspectRatio);
+            current.window.setAspectRatio(0);
+            current.window.setContentSize(fitted[0], fitted[1], false);
+            current.window.setAspectRatio(aspectRatio);
+            current.lastAspectRatio = aspectRatio;
+          }
+          current.window.webContents.send(PREVIEW_PIP_FRAME_CHANNEL, frame);
+        } catch {
+          // Frame delivery failed; the interval retries.
+        }
+      }
+    }
+    if (capture.consumers.has('recording') && onRecordingFrame) {
+      try {
+        onRecordingFrame(frame);
+      } catch {
+        // Harness listener failed; the interval retries.
+      }
+    }
+  }
+
+  async function captureAnnotationScreenshot(wc, cropRect) {
+    if (typeof wc.capturePage !== 'function') return null;
+    const image = await Promise.resolve(
+      wc.capturePage(cropRect ? {
+        x: cropRect.x,
+        y: cropRect.y,
+        width: cropRect.width,
+        height: cropRect.height,
+      } : undefined),
+    );
+    if (!image) return null;
+    let dataUrl = null;
+    if (typeof image.toDataURL === 'function') {
+      dataUrl = image.toDataURL();
+    } else if (typeof image.toPNG === 'function') {
+      const png = image.toPNG();
+      if (!png) return null;
+      dataUrl = `data:image/png;base64,${Buffer.isBuffer(png) ? png.toString('base64') : Buffer.from(png).toString('base64')}`;
+    }
+    if (!dataUrl) return null;
+    const size = typeof image.getSize === 'function'
+      ? image.getSize()
+      : { width: cropRect ? cropRect.width : 0, height: cropRect ? cropRect.height : 0 };
+    return {
+      dataUrl,
+      width: size.width,
+      height: size.height,
+      cropRect: cropRect ?? { x: 0, y: 0, width: size.width, height: size.height },
+    };
+  }
+
+  function sendCaptured(wc) {
+    try {
+      if (typeof wc.isDestroyed === 'function' && wc.isDestroyed()) return;
+      if (typeof wc.send === 'function') wc.send(ANNOTATION_CAPTURED_CHANNEL);
+    } catch {
+      // Guest already gone after capture.
+    }
+  }
 
   function requireSession(id) {
     const session = sessions.get(id);
@@ -169,38 +523,71 @@ function createPreviewController(options = {}) {
     return session;
   }
 
-  function bindNavigation(session) {
+  function bindGuest(session) {
+    const contents = session.view.webContents;
     const emit = () => {
-      const state = sessionState(session);
+      const state = liveState(session);
       session.url = state.url;
       if (onState) onState(state);
     };
-    session.view.webContents.on('did-navigate', emit);
-    session.view.webContents.on('did-navigate-in-page', emit);
+    contents.on('did-navigate', emit);
+    contents.on('did-navigate-in-page', emit);
+    contents.on('did-start-loading', () => {
+      session.loading = true;
+      session.unreachable = false;
+      emit();
+    });
+    contents.on('did-stop-loading', () => {
+      session.loading = false;
+      emit();
+    });
+    contents.on('did-fail-load', (_event, code, _description, _failedUrl, isMainFrame) => {
+      if (code === -3 || isMainFrame === false) return;
+      session.unreachable = true;
+      emit();
+    });
+    contents.on('page-title-updated', (_event, title) => {
+      session.title = typeof title === 'string' ? title : '';
+      emit();
+    });
+    contents.on('before-input-event', (event, input) => {
+      if (!isPreviewRefreshShortcut(input)) return;
+      event.preventDefault();
+      if (typeof contents.reload === 'function') contents.reload();
+    });
   }
 
   return {
     async open(input = {}) {
-      const loadUrl = rewriteLoopbackLoadUrl(input.url);
+      const loadUrl = resolvePreviewLoadUrl(input.url);
       if (!loadUrl) return rejectRemote();
       const id = randomUUID();
       const view = attach({
         id,
         url: loadUrl,
         bounds: input.bounds,
-        partition: PREVIEW_PARTITION,
+        partition: previewPartitionForScope(previewScope(input.scope)),
         extraHeaders: null,
       });
       guardView(view);
-      const session = { id, url: loadUrl, view };
+      const session = {
+        id,
+        url: loadUrl,
+        view,
+        loading: false,
+        title: '',
+        unreachable: false,
+        zoomFactor: DEFAULT_ZOOM_FACTOR,
+        annotationTheme: { ...DEFAULT_ANNOTATION_THEME },
+      };
       sessions.set(id, session);
-      bindNavigation(session);
+      bindGuest(session);
       view.webContents.loadURL(loadUrl);
       return { ok: true, id, url: loadUrl };
     },
 
     async navigate(id, url) {
-      const loadUrl = rewriteLoopbackLoadUrl(url);
+      const loadUrl = resolvePreviewLoadUrl(url);
       if (!loadUrl) return rejectRemote();
       const session = requireSession(id);
       session.view.webContents.loadURL(loadUrl);
@@ -251,6 +638,199 @@ function createPreviewController(options = {}) {
       return sessionState(session);
     },
 
+    async hardReload(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.reloadIgnoringCache === 'function') contents.reloadIgnoringCache();
+      return sessionState(session);
+    },
+
+    async stop(id) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      if (typeof contents.stop === 'function') contents.stop();
+      return sessionState(session);
+    },
+
+    async zoomIn(id) {
+      const session = requireSession(id);
+      return applyZoom(session, nextZoomLevel(readZoomFactor(session), 'in'));
+    },
+
+    async zoomOut(id) {
+      const session = requireSession(id);
+      return applyZoom(session, nextZoomLevel(readZoomFactor(session), 'out'));
+    },
+
+    async resetZoom(id) {
+      const session = requireSession(id);
+      return applyZoom(session, DEFAULT_ZOOM_FACTOR);
+    },
+
+    async setColorScheme(id, scheme) {
+      const session = requireSession(id);
+      const contents = session.view.webContents;
+      const dbg = ensureDebugger(contents);
+      if (dbg && typeof dbg.sendCommand === 'function') {
+        await dbg.sendCommand('Emulation.setEmulatedMedia', {
+          features: [{
+            name: 'prefers-color-scheme',
+            value: scheme === 'system' ? '' : scheme,
+          }],
+        });
+      }
+      return sessionState(session);
+    },
+
+    async clearCookies() {
+      if (typeof sessionCache.clearCookies === 'function') {
+        await sessionCache.clearCookies();
+      } else {
+        const list = typeof sessionCache.listSessions === 'function' ? sessionCache.listSessions() : [];
+        await Promise.all(list.map((ses) => (
+          typeof ses.clearStorageData === 'function'
+            ? ses.clearStorageData({ storages: [...PREVIEW_COOKIE_STORAGES] })
+            : undefined
+        )));
+      }
+      return { ok: true };
+    },
+
+    async clearCache() {
+      if (typeof sessionCache.clearCache === 'function') {
+        await sessionCache.clearCache();
+      } else {
+        const list = typeof sessionCache.listSessions === 'function' ? sessionCache.listSessions() : [];
+        await Promise.all(list.map((ses) => (
+          typeof ses.clearCache === 'function' ? ses.clearCache() : undefined
+        )));
+      }
+      return { ok: true };
+    },
+
+    async captureScreenshot(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      const contents = session.view.webContents;
+      try {
+        if (typeof contents.capturePage !== 'function') {
+          return { ok: false, message: 'capturePage is unavailable' };
+        }
+        const image = await Promise.resolve(contents.capturePage());
+        const png = image && typeof image.toPNG === 'function' ? image.toPNG() : null;
+        if (!png) return { ok: false, message: 'screenshot capture failed' };
+        const bytes = toBuffer(png);
+        const userData = resolveUserDataPath();
+        if (!userData) return { ok: false, message: 'userData path is unavailable' };
+        const rawUrl = typeof contents.getURL === 'function' ? contents.getURL() : session.url;
+        const slug = artifactSiteSlug(typeof rawUrl === 'string' ? rawUrl : '');
+        const fileId = `browser-screenshot-${slug}-${Date.now().toString(36)}`;
+        const directory = path.join(userData, 'preview-recordings');
+        const artifactPath = path.join(directory, `${fileId}.png`);
+        await fs.mkdir(directory, { recursive: true });
+        await fs.writeFile(artifactPath, bytes);
+        return {
+          ok: true,
+          path: artifactPath,
+          mimeType: 'image/png',
+          sizeBytes: bytes.length,
+          pngBase64: bytes.toString('base64'),
+        };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async setAnnotationTheme(id, theme) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      session.annotationTheme = { ...DEFAULT_ANNOTATION_THEME, ...theme };
+      const wc = session.view.webContents;
+      if (wc && typeof wc.send === 'function' && (typeof wc.isDestroyed !== 'function' || !wc.isDestroyed())) {
+        wc.send(ANNOTATION_THEME_CHANNEL, theme);
+      }
+      return { ok: true };
+    },
+
+    async cancelPickElement(id) {
+      const pending = pickSessions.get(id);
+      if (pending) pending.cancel();
+      const session = sessions.get(id);
+      if (session) {
+        const wc = session.view.webContents;
+        if (wc && typeof wc.send === 'function' && (typeof wc.isDestroyed !== 'function' || !wc.isDestroyed())) {
+          wc.send(CANCEL_PICK_CHANNEL);
+        }
+      }
+      return { ok: true };
+    },
+
+    async pickElement(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      const previous = pickSessions.get(id);
+      if (previous) previous.cancel();
+      const wc = session.view.webContents;
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          pickSessions.delete(id);
+          cleanup();
+          resolve(result);
+        };
+        const onMessage = (_event, payload, crop) => {
+          if (!isPreviewAnnotationPayload(payload)) {
+            finish({ ok: false, message: 'cancelled' });
+            return;
+          }
+          const cropRect = normalizeCaptureRect(crop);
+          Promise.resolve(captureAnnotationScreenshot(wc, cropRect)).then((screenshot) => {
+            sendCaptured(wc);
+            const annotation = screenshot ? { ...payload, screenshot } : payload;
+            finish({
+              ok: true,
+              annotation,
+              screenshot: screenshot || undefined,
+            });
+          }, () => {
+            sendCaptured(wc);
+            finish({ ok: true, annotation: payload });
+          });
+        };
+        const onDestroyed = () => finish({ ok: false, message: 'cancelled' });
+        const onNavigated = (_event, _url, _isInPlace, isMainFrame) => {
+          if (isMainFrame) finish({ ok: false, message: 'cancelled' });
+        };
+        const cleanup = () => {
+          if (wc.ipc && typeof wc.ipc.removeListener === 'function') {
+            wc.ipc.removeListener(ELEMENT_PICKED_CHANNEL, onMessage);
+          }
+          if (typeof wc.off === 'function') {
+            wc.off('destroyed', onDestroyed);
+            wc.off('did-start-navigation', onNavigated);
+          }
+        };
+        pickSessions.set(id, {
+          cancel() {
+            finish({ ok: false, message: 'cancelled' });
+          },
+        });
+        if (wc.ipc && typeof wc.ipc.on === 'function') wc.ipc.on(ELEMENT_PICKED_CHANNEL, onMessage);
+        if (typeof wc.once === 'function') {
+          wc.once('destroyed', onDestroyed);
+          wc.once('did-start-navigation', onNavigated);
+        }
+        if (typeof wc.isFocused === 'function' && !wc.isFocused() && typeof wc.focus === 'function') {
+          wc.focus();
+        }
+        if (typeof wc.send === 'function') {
+          wc.send(START_PICK_CHANNEL, session.annotationTheme ?? { ...DEFAULT_ANNOTATION_THEME });
+        }
+      });
+    },
+
     async state(id) {
       return sessionState(requireSession(id));
     },
@@ -265,12 +845,22 @@ function createPreviewController(options = {}) {
     async close(id) {
       const session = sessions.get(id);
       if (!session) return;
+      if (pipSession && pipSession.previewId === id) {
+        releasePictureInPicture(true);
+      }
+      stopAllFrameCapture(id);
+      const pending = pickSessions.get(id);
+      if (pending) pending.cancel();
       session.view.destroy();
       sessions.delete(id);
     },
 
     /** Destroy every live view (app quit, harness restart, renderer teardown). */
     async closeAll() {
+      releasePictureInPicture(true);
+      for (const previewId of [...frameCaptureSessions.keys()]) {
+        stopAllFrameCapture(previewId);
+      }
       for (const session of sessions.values()) {
         try {
           session.view.destroy();
@@ -279,6 +869,361 @@ function createPreviewController(options = {}) {
         }
       }
       sessions.clear();
+    },
+
+    async openPictureInPicture(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      if (pipSession && typeof pipSession.window.isDestroyed === 'function' && !pipSession.window.isDestroyed()) {
+        pipSession.window.showInactive();
+        return { ok: true };
+      }
+      if (pipSession) {
+        releasePictureInPicture(false);
+      }
+      session.view.setVisible(false);
+      const pictureInPictureWindow = createPipWindow({
+        width: PICTURE_IN_PICTURE_INITIAL_WIDTH,
+        height: PICTURE_IN_PICTURE_INITIAL_HEIGHT,
+        minWidth: PICTURE_IN_PICTURE_MIN_WIDTH,
+        minHeight: PICTURE_IN_PICTURE_MIN_HEIGHT,
+        title: pipWindowTitle(session),
+        show: false,
+        alwaysOnTop: true,
+        autoHideMenuBar: true,
+        fullscreenable: false,
+        maximizable: false,
+        minimizable: false,
+        resizable: true,
+        skipTaskbar: true,
+        backgroundColor: '#111111',
+        ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+        webPreferences: {
+          preload: pipPreloadPath(),
+          backgroundThrottling: false,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      });
+      const onClosed = () => {
+        if (pipSession && pipSession.window === pictureInPictureWindow) {
+          releasePictureInPicture(false);
+        }
+      };
+      if (typeof pictureInPictureWindow.once === 'function') {
+        pictureInPictureWindow.once('closed', onClosed);
+      }
+      if (typeof pictureInPictureWindow.setAlwaysOnTop === 'function') {
+        pictureInPictureWindow.setAlwaysOnTop(
+          true,
+          process.platform === 'darwin' ? 'floating' : 'normal',
+        );
+      }
+      if (process.platform === 'darwin' && typeof pictureInPictureWindow.setVisibleOnAllWorkspaces === 'function') {
+        pictureInPictureWindow.setVisibleOnAllWorkspaces(true, {
+          visibleOnFullScreen: true,
+          skipTransformProcessType: true,
+        });
+      }
+      pipSession = {
+        window: pictureInPictureWindow,
+        previewId: id,
+        lastAspectRatio: undefined,
+      };
+      await Promise.resolve(pictureInPictureWindow.loadURL(buildPreviewPictureInPictureDataUrl()));
+      if (pipSession && pipSession.window === pictureInPictureWindow) {
+        await startFrameCapture(id, 'picture-in-picture');
+      }
+      if (pipSession && pipSession.window === pictureInPictureWindow) {
+        pictureInPictureWindow.showInactive();
+        publishState(session);
+      }
+      return { ok: true };
+    },
+
+    async closePictureInPicture() {
+      releasePictureInPicture(true);
+      return { ok: true };
+    },
+
+    async startRecording(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      await startFrameCapture(id, 'recording');
+      return { ok: true };
+    },
+
+    async stopRecording(id) {
+      if (typeof id === 'string' && id.length > 0) {
+        stopFrameCapture(id, 'recording');
+        return { ok: true };
+      }
+      for (const previewId of [...frameCaptureSessions.keys()]) {
+        stopFrameCapture(previewId, 'recording');
+      }
+      return { ok: true };
+    },
+
+    async saveRecording(id, payload = {}) {
+      const userData = resolveUserDataPath();
+      if (!userData) return { ok: false, message: 'userData path is unavailable' };
+      const mimeType = typeof payload.mimeType === 'string' && payload.mimeType.length > 0
+        ? payload.mimeType
+        : 'video/webm';
+      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const recordingId = `browser-recording-${Date.now().toString(36)}`;
+      const directory = path.join(userData, 'preview-recordings');
+      const artifactPath = path.join(directory, `${recordingId}.${extension}`);
+      try {
+        const bytes = toBuffer(payload.data);
+        await fs.mkdir(directory, { recursive: true });
+        await fs.writeFile(artifactPath, bytes);
+        return {
+          ok: true,
+          id: recordingId,
+          previewId: id,
+          path: artifactPath,
+          mimeType,
+          sizeBytes: bytes.length,
+        };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async revealArtifact(artifactPath) {
+      if (typeof artifactPath !== 'string' || artifactPath.length === 0) {
+        return { ok: false, message: 'missing artifact path' };
+      }
+      try {
+        const reveal = showItemInFolder ?? ((next) => require('electron').shell.showItemInFolder(next));
+        reveal(artifactPath);
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async copyArtifactToClipboard(artifactPath) {
+      if (typeof artifactPath !== 'string' || artifactPath.length === 0) {
+        return { ok: false, message: 'missing artifact path' };
+      }
+      try {
+        const imageApi = nativeImage ?? require('electron').nativeImage;
+        const clip = clipboard ?? require('electron').clipboard;
+        const image = imageApi.createFromPath(artifactPath);
+        if (!image || (typeof image.isEmpty === 'function' && image.isEmpty())) {
+          return { ok: false, message: 'empty image' };
+        }
+        clip.writeImage(image);
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationStatus(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      const wc = session.view.webContents;
+      const destroyed = typeof wc.isDestroyed === 'function' && wc.isDestroyed();
+      return {
+        ok: true,
+        available: !destroyed,
+        url: typeof wc.getURL === 'function' ? wc.getURL() : session.url,
+        title: typeof wc.getTitle === 'function' ? wc.getTitle() : session.title,
+        loading: typeof wc.isLoading === 'function' ? wc.isLoading() : session.loading === true,
+      };
+    },
+
+    async automationSnapshot(id) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        const page = typeof wc.executeJavaScript === 'function'
+          ? await wc.executeJavaScript(`({
+              title: document.title,
+              url: location.href,
+              html: ((document.documentElement && document.documentElement.outerHTML) || "").slice(0, ${AUTOMATION_SNAPSHOT_HTML_MAX_CHARS})
+            })`)
+          : { title: session.title, url: session.url, html: '' };
+        let screenshot = null;
+        if (typeof wc.capturePage === 'function') {
+          const image = await Promise.resolve(wc.capturePage());
+          const size = image && typeof image.getSize === 'function' ? image.getSize() : { width: 0, height: 0 };
+          if (image && typeof image.toPNG === 'function') {
+            const png = image.toPNG();
+            screenshot = {
+              mimeType: 'image/png',
+              data: Buffer.isBuffer(png) ? png.toString('base64') : Buffer.from(png).toString('base64'),
+              width: size.width,
+              height: size.height,
+            };
+          }
+        }
+        return {
+          ok: true,
+          title: page && page.title,
+          url: page && page.url,
+          html: page && page.html,
+          screenshot,
+        };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationClick(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        const dbg = ensureDebugger(wc);
+        if (!dbg || typeof dbg.sendCommand !== 'function') {
+          return { ok: false, message: 'debugger unavailable' };
+        }
+        let x = input.x;
+        let y = input.y;
+        if (typeof input.selector === 'string' && input.selector.length > 0) {
+          if (typeof wc.executeJavaScript !== 'function') {
+            return { ok: false, message: 'element not found' };
+          }
+          const point = await wc.executeJavaScript(`(() => {
+            const el = document.querySelector(${JSON.stringify(input.selector)});
+            if (!el) return null;
+            el.scrollIntoView({ block: "center", inline: "center" });
+            const r = el.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          })()`);
+          if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') {
+            return { ok: false, message: 'element not found' };
+          }
+          x = point.x;
+          y = point.y;
+        }
+        if (typeof x !== 'number' || typeof y !== 'number') {
+          return { ok: false, message: 'missing click point' };
+        }
+        const mouse = { x, y, button: 'left', clickCount: 1 };
+        await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse });
+        await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse });
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationType(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        const dbg = ensureDebugger(wc);
+        if (!dbg || typeof dbg.sendCommand !== 'function') {
+          return { ok: false, message: 'debugger unavailable' };
+        }
+        if (typeof input.selector === 'string' && input.selector.length > 0
+          && typeof wc.executeJavaScript === 'function') {
+          await wc.executeJavaScript(
+            `document.querySelector(${JSON.stringify(input.selector)})?.focus()`,
+          );
+        }
+        const text = typeof input.text === 'string' ? input.text : '';
+        await dbg.sendCommand('Input.insertText', { text });
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationPress(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        const dbg = ensureDebugger(wc);
+        if (!dbg || typeof dbg.sendCommand !== 'function') {
+          return { ok: false, message: 'debugger unavailable' };
+        }
+        const key = typeof input.key === 'string' ? input.key : '';
+        await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key });
+        await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key });
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationScroll(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        const dbg = ensureDebugger(wc);
+        if (!dbg || typeof dbg.sendCommand !== 'function') {
+          return { ok: false, message: 'debugger unavailable' };
+        }
+        await dbg.sendCommand('Input.dispatchMouseEvent', {
+          type: 'mouseWheel',
+          x: input.x ?? 0,
+          y: input.y ?? 0,
+          deltaX: input.deltaX ?? 0,
+          deltaY: input.deltaY ?? 0,
+        });
+        return { ok: true };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationEvaluate(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      try {
+        const wc = session.view.webContents;
+        if (typeof wc.executeJavaScript !== 'function') {
+          return { ok: false, message: 'evaluate unavailable' };
+        }
+        const value = await wc.executeJavaScript(input.expression);
+        return { ok: true, value };
+      } catch (error) {
+        return failClosed(error);
+      }
+    },
+
+    async automationWaitFor(id, input = {}) {
+      const session = sessions.get(id);
+      if (!session) return unknownPreviewId();
+      const timeoutMs = typeof input.timeoutMs === 'number' ? input.timeoutMs : AUTOMATION_WAIT_DEFAULT_TIMEOUT_MS;
+      const deadline = Date.now() + timeoutMs;
+      const wc = session.view.webContents;
+      try {
+        for (;;) {
+          const url = typeof wc.getURL === 'function' ? String(wc.getURL() ?? '') : '';
+          const urlMatched = !input.urlIncludes || url.includes(String(input.urlIncludes));
+          let selectorMatched = true;
+          let textMatched = true;
+          if ((input.selector || input.text) && typeof wc.executeJavaScript === 'function') {
+            const probe = await wc.executeJavaScript(`(() => {
+              const selectorMatched = ${input.selector ? `document.querySelector(${JSON.stringify(input.selector)}) !== null` : 'true'};
+              const textMatched = ${input.text ? `(document.body && document.body.innerText || "").includes(${JSON.stringify(input.text)})` : 'true'};
+              return { selectorMatched, textMatched };
+            })()`);
+            selectorMatched = Boolean(probe && probe.selectorMatched);
+            textMatched = Boolean(probe && probe.textMatched);
+          }
+          if (urlMatched && selectorMatched && textMatched) return { ok: true };
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) return { ok: false, message: 'timeout' };
+          await new Promise((resolve) => {
+            setTimeout(resolve, Math.min(AUTOMATION_WAIT_POLL_MS, remaining));
+          });
+        }
+      } catch (error) {
+        return failClosed(error);
+      }
     },
   };
 }
@@ -290,15 +1235,31 @@ function createPreviewController(options = {}) {
  */
 function registerPreviewIpc(ipcMain, controller, options = {}) {
   const authorize = typeof options.authorize === 'function' ? options.authorize : () => {};
+  const workspacePreview = options.workspacePreview ?? createWorkspacePreviewController();
   let host = null;
   const remember = (event) => {
     authorize(event);
     host = event && event.sender ? event.sender : host;
   };
+  const sendToHost = (channel, payload) => {
+    if (host && typeof host.isDestroyed === 'function' && host.isDestroyed()) return;
+    if (host && typeof host.send === 'function') host.send(channel, payload);
+  };
+  const asResult = (work) => Promise.resolve()
+    .then(work)
+    .catch((error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
   const live = controller ?? createPreviewController({
+    attach: options.attach,
+    createPipWindow: options.createPipWindow,
+    userDataPath: options.userDataPath,
+    showItemInFolder: options.showItemInFolder,
+    clipboard: options.clipboard,
+    nativeImage: options.nativeImage,
     onState(state) {
-      if (host && typeof host.isDestroyed === 'function' && host.isDestroyed()) return;
-      if (host && typeof host.send === 'function') host.send('shell:preview-state-change', state);
+      sendToHost('shell:preview-state-change', state);
+    },
+    onRecordingFrame(frame) {
+      sendToHost('shell:preview-recording-frame', frame);
     },
   });
   ipcMain.handle('shell:preview-open', (event, input) => {
@@ -320,6 +1281,114 @@ function registerPreviewIpc(ipcMain, controller, options = {}) {
   ipcMain.handle('shell:preview-reload', (event, id) => {
     remember(event);
     return live.reload(id);
+  });
+  ipcMain.handle('shell:preview-hard-reload', (event, id) => {
+    remember(event);
+    return live.hardReload(id);
+  });
+  ipcMain.handle('shell:preview-stop', (event, id) => {
+    remember(event);
+    return live.stop(id);
+  });
+  ipcMain.handle('shell:preview-zoom-in', (event, id) => {
+    remember(event);
+    return live.zoomIn(id);
+  });
+  ipcMain.handle('shell:preview-zoom-out', (event, id) => {
+    remember(event);
+    return live.zoomOut(id);
+  });
+  ipcMain.handle('shell:preview-zoom-reset', (event, id) => {
+    remember(event);
+    return live.resetZoom(id);
+  });
+  ipcMain.handle('shell:preview-color-scheme', (event, id, scheme) => {
+    remember(event);
+    return live.setColorScheme(id, scheme);
+  });
+  ipcMain.handle('shell:preview-clear-cookies', (event) => {
+    remember(event);
+    return live.clearCookies();
+  });
+  ipcMain.handle('shell:preview-clear-cache', (event) => {
+    remember(event);
+    return live.clearCache();
+  });
+  ipcMain.handle('shell:preview-capture-screenshot', (event, id) => {
+    remember(event);
+    return asResult(() => live.captureScreenshot(id));
+  });
+  ipcMain.handle('shell:preview-pick-element', (event, id) => {
+    remember(event);
+    return live.pickElement(id);
+  });
+  ipcMain.handle('shell:preview-cancel-pick', (event, id) => {
+    remember(event);
+    return live.cancelPickElement(id);
+  });
+  ipcMain.handle('shell:preview-annotation-theme', (event, id, theme) => {
+    remember(event);
+    return live.setAnnotationTheme(id, theme);
+  });
+  ipcMain.handle('shell:preview-open-pip', (event, id) => {
+    remember(event);
+    return live.openPictureInPicture(id);
+  });
+  ipcMain.handle('shell:preview-close-pip', (event) => {
+    remember(event);
+    return live.closePictureInPicture();
+  });
+  ipcMain.handle('shell:preview-start-recording', (event, id) => {
+    remember(event);
+    return asResult(() => live.startRecording(id));
+  });
+  ipcMain.handle('shell:preview-stop-recording', (event, id) => {
+    remember(event);
+    return asResult(() => live.stopRecording(id));
+  });
+  ipcMain.handle('shell:preview-save-recording', (event, id, payload) => {
+    remember(event);
+    return asResult(() => live.saveRecording(id, payload));
+  });
+  ipcMain.handle('shell:preview-reveal-artifact', (event, artifactPath) => {
+    remember(event);
+    return asResult(() => live.revealArtifact(artifactPath));
+  });
+  ipcMain.handle('shell:preview-copy-artifact', (event, artifactPath) => {
+    remember(event);
+    return asResult(() => live.copyArtifactToClipboard(artifactPath));
+  });
+  ipcMain.handle('shell:preview-automation-status', (event, id) => {
+    remember(event);
+    return asResult(() => live.automationStatus(id));
+  });
+  ipcMain.handle('shell:preview-automation-snapshot', (event, id) => {
+    remember(event);
+    return asResult(() => live.automationSnapshot(id));
+  });
+  ipcMain.handle('shell:preview-automation-click', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationClick(id, input));
+  });
+  ipcMain.handle('shell:preview-automation-type', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationType(id, input));
+  });
+  ipcMain.handle('shell:preview-automation-press', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationPress(id, input));
+  });
+  ipcMain.handle('shell:preview-automation-scroll', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationScroll(id, input));
+  });
+  ipcMain.handle('shell:preview-automation-evaluate', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationEvaluate(id, input));
+  });
+  ipcMain.handle('shell:preview-automation-wait-for', (event, id, input) => {
+    remember(event);
+    return asResult(() => live.automationWaitFor(id, input));
   });
   ipcMain.handle('shell:preview-state', (event, id) => {
     remember(event);
@@ -349,15 +1418,24 @@ function registerPreviewIpc(ipcMain, controller, options = {}) {
     remember(event);
     return live.close(id);
   });
+  ipcMain.handle('shell:preview-workspace-file', (event, input) => {
+    remember(event);
+    return workspacePreview.fileUrl(input);
+  });
+  const closeAll = typeof live.closeAll === 'function' ? live.closeAll.bind(live) : async () => {};
+  live.closeAll = async () => {
+    await closeAll();
+    await workspacePreview.close();
+  };
   return live;
 }
 
 module.exports = {
-  PREVIEW_PARTITION,
   DISCOVER_PORTS,
   isAllowedPreviewUrl,
   previewRequestFilter,
   discoverLocalServers,
   createPreviewController,
   registerPreviewIpc,
+  resolvePreviewLoadUrl,
 };

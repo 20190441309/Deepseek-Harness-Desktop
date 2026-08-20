@@ -54,7 +54,7 @@ export interface SessionSummary {
   agentPreset?: string
   parentId?: SessionId
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
-  origin?: 'subagent'
+  origin?: 'subagent' | 'dshbot'
   running: boolean
   /** User interaction currently blocking this session (sidebar amber-dot state). */
   pendingInteraction?: PendingInteractionStatus
@@ -479,11 +479,18 @@ export class SessionRuntime implements ISessions {
    * draft hand-off) may address the scope synchronously, without waiting a
    * notifier flush. The synchronous projection below makes this structural
    * rather than an accident of microtask ordering.
-   * @param opts - target workspace or directory and an optional preallocated id.
+   * @param opts - target workspace or directory, optional preallocated id,
+   *   desktop-plugin origin, and agent preset.
    * @returns the new session id.
    * @throws {SessionCreateError} with the requested id.
    */
-  async create(opts: { workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId } = {}): Promise<SessionId> {
+  async create(opts: {
+    workspaceId?: WorkspaceId
+    cwd?: string
+    sessionId?: SessionId
+    origin?: 'dshbot'
+    agentPreset?: string
+  } = {}): Promise<SessionId> {
     const result = await this.manager.create(opts)
     if (!result.ok) throw new SessionCreateError(result.error, opts.sessionId)
     this.projectList()

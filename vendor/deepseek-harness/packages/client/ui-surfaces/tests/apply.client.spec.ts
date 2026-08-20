@@ -154,6 +154,18 @@ describe('ui-surfaces apply', () => {
     await b.fiber.dispose()
   })
 
+  it('forwards openPath line into openFile revealLine', async () => {
+    const b = await bench({ current: 'sess-1' })
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+    await b.workspaces.openPath('/tmp/proj/src/a.ts', { line: 10 })
+    expect(openFile).toHaveBeenCalledWith('sess-1', 'src/a.ts', { revealLine: 10 })
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
   it('falls through when the path is outside cwd or listing is absent', async () => {
     const b = await bench({ current: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
@@ -195,5 +207,158 @@ describe('ui-surfaces apply', () => {
     await b.workspaces.openPath('/tmp/proj/a.ts')
     expect(b.originalOpen).toHaveBeenCalledWith('/tmp/proj/a.ts')
     await b.fiber.dispose()
+  })
+
+  it('opens Browser for html after Files when previewWorkspaceFile succeeds', async () => {
+    const b = await bench({ current: 'sess-1' })
+    const openFile = bindOpenFile(b.slots)
+    const previewWorkspaceFile = vi.fn(async () => ({
+      ok: true as const, url: 'http://127.0.0.1:9/tok/site/index.html',
+    }))
+    const events: unknown[] = []
+    const onOpen = (event: Event) => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    sessionStorage.clear()
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile,
+    }
+    try {
+      await b.workspaces.openPath('/tmp/proj/site/index.html')
+      expect(openFile).toHaveBeenCalledWith('sess-1', 'site/index.html')
+      expect(previewWorkspaceFile).toHaveBeenCalledWith({
+        cwd: '/tmp/proj', relativePath: 'site/index.html',
+      })
+      expect(sessionStorage.getItem('dshd-pending-preview-url')).toBe(
+        'http://127.0.0.1:9/tok/site/index.html',
+      )
+      expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:9/tok/site/index.html' }])
+    } finally {
+      window.removeEventListener('dshd-open-surface', onOpen)
+      await b.fiber.dispose()
+    }
+  })
+
+  it('opens Browser for pdf after Files when previewWorkspaceFile succeeds', async () => {
+    const b = await bench({ current: 'sess-1' })
+    const openFile = bindOpenFile(b.slots)
+    const previewWorkspaceFile = vi.fn(async () => ({
+      ok: true as const, url: 'http://127.0.0.1:9/tok/doc.pdf',
+    }))
+    const events: unknown[] = []
+    const onOpen = (event: Event) => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    sessionStorage.clear()
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile,
+    }
+    try {
+      await b.workspaces.openPath('/tmp/proj/doc.pdf')
+      expect(openFile).toHaveBeenCalledWith('sess-1', 'doc.pdf')
+      expect(previewWorkspaceFile).toHaveBeenCalledWith({
+        cwd: '/tmp/proj', relativePath: 'doc.pdf',
+      })
+      expect(sessionStorage.getItem('dshd-pending-preview-url')).toBe(
+        'http://127.0.0.1:9/tok/doc.pdf',
+      )
+      expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:9/tok/doc.pdf' }])
+    } finally {
+      window.removeEventListener('dshd-open-surface', onOpen)
+      await b.fiber.dispose()
+    }
+  })
+
+  it('does not preview a non-browser file', async () => {
+    const b = await bench({ current: 'sess-1' })
+    const openFile = bindOpenFile(b.slots)
+    const previewWorkspaceFile = vi.fn(async () => ({ ok: true as const, url: 'http://127.0.0.1:9/tok/a.ts' }))
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile,
+    }
+    await b.workspaces.openPath('/tmp/proj/src/a.ts')
+    expect(openFile).toHaveBeenCalledWith('sess-1', 'src/a.ts')
+    await b.workspaces.openPath('/tmp/proj/LICENSE')
+    expect(openFile).toHaveBeenCalledWith('sess-1', 'LICENSE')
+    expect(previewWorkspaceFile).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('keeps Files when previewWorkspaceFile is missing or refuses', async () => {
+    const b = await bench({ current: 'sess-1' })
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+    await expect(b.workspaces.openPath('/tmp/proj/index.html')).resolves.toBeUndefined()
+    expect(openFile).toHaveBeenCalledWith('sess-1', 'index.html')
+    expect(b.originalOpen).not.toHaveBeenCalled()
+
+    const previewWorkspaceFile = vi.fn(async (): Promise<{ ok: true } | { ok: false; message: string }> => (
+      { ok: false, message: 'nope' }
+    ))
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile,
+    }
+    const events: unknown[] = []
+    const onOpen = (event: Event) => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    try {
+      await b.workspaces.openPath('/tmp/proj/page.svg')
+      expect(previewWorkspaceFile).toHaveBeenCalled()
+      expect(events).toEqual([])
+      expect(b.originalOpen).not.toHaveBeenCalled()
+
+      previewWorkspaceFile.mockImplementation(async () => { throw new Error('ipc') })
+      await expect(b.workspaces.openPath('/tmp/proj/index.htm')).resolves.toBeUndefined()
+      expect(events).toEqual([])
+      expect(b.originalOpen).not.toHaveBeenCalled()
+
+      previewWorkspaceFile.mockImplementation(async () => ({ ok: true as const }))
+      await b.workspaces.openPath('/tmp/proj/diagram.xhtml')
+      expect(events).toEqual([])
+      expect(openFile).toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('dshd-open-surface', onOpen)
+      await b.fiber.dispose()
+    }
+  })
+
+  it('forwards onOpenPreviewUrl into the preview surface event', async () => {
+    let listener: ((payload: { url?: string }) => void) | undefined
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      onOpenPreviewUrl: (fn: (payload: { url?: string }) => void) => {
+        listener = fn
+        return () => { listener = undefined }
+      },
+    }
+    const b = await bench({ current: 'sess-1' })
+    const events: unknown[] = []
+    const onOpen = (event: Event) => { events.push((event as CustomEvent).detail) }
+    window.addEventListener('dshd-open-surface', onOpen)
+    sessionStorage.clear()
+    try {
+      listener?.({ url: '' })
+      listener?.({})
+      expect(events).toEqual([])
+      listener?.({ url: 'http://127.0.0.1:5173/' })
+      expect(sessionStorage.getItem('dshd-pending-preview-url')).toBe('http://127.0.0.1:5173/')
+      expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:5173/' }])
+
+      events.length = 0
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('quota')
+      })
+      listener?.({ url: 'http://127.0.0.1:4173/' })
+      expect(events).toEqual([{ kind: 'preview', url: 'http://127.0.0.1:4173/' }])
+    } finally {
+      vi.restoreAllMocks()
+      window.removeEventListener('dshd-open-surface', onOpen)
+      await b.fiber.dispose()
+      expect(listener).toBeUndefined()
+    }
   })
 })

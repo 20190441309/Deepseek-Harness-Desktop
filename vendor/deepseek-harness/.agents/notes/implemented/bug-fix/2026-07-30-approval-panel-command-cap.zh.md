@@ -14,7 +14,7 @@ Status: implemented
 
 面板的理由与命令移入同一个滚动区域（`data-approval-scroll`），其高度上限与 composer 的草稿区完全相同；琥珀色状态条与操作按钮行位于该区域之外，因此无论内容多长，两个按钮都留在卡片内。
 
-这个上限是一个值、两个消费方，以 `--dsh-composer-text-max-height: 336px` 声明在 `ConversationRoot` 的 `.composerSeat` 上——它是 composer 链唯一的共同祖先，因为兜底的 InputBar 与被选中的接管面板是兄弟节点。`InputBar` 的草稿滚动容器与面板的滚动区域都读取它，于是同一个容器不可能给它的两种状态设出不同上限：设计同学要求的「可以跟输入框最大高度统一」，如今是样式表中的一个事实，而不是抄在两个文件里的一个数字。该区域取 `box-sizing: border-box`，因此上限指的是它的外框高度，与 composer 草稿区占据的是同一个盒子。
+这个上限是一个值、两个消费方，以 `--dsh-composer-text-max-height: 336px` 声明在 `ConversationRoot` 的 `.composerSeat` 上——它是 composer 链唯一的共同祖先，因为兜底的 InputBar 与被选中的接管面板是兄弟节点。`InputBar` 的草稿滚动容器与面板的滚动区域都读取它，于是同一个容器不可能给它的两种状态设出不同上限：设计同学要求的「可以跟输入框最大高度统一」，如今是样式表中的一个事实，而不是抄在两个文件里的一个数字。该区域取 `box-sizing: border-box`，因此上限指的是它的外框高度，与 composer 草稿区占据的是同一个盒子。`composerResize` 打开时，两个滚动区都可以通过共享手柄拖到最高 `70vh`；该 token 仍是静止上限（[审批接管跟随输入框拖动调整](2026-08-20-approval-panel-composer-resize.md)）。
 
 该区域自身是一个 Tab 停靠点（`tabIndex={0}`，带名称的 `role="group"`）。提问 composer 的滚动体不需要这样做——它的选项行本身可聚焦，会把容器一起带过去；而这里除文本之外别无内容：没有自己的停靠点，仅用键盘的用户能走到按钮却走不到命令尾部，于是可能批准了自己没读完的东西。
 

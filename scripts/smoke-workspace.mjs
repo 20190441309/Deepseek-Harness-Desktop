@@ -92,6 +92,7 @@ export function assertSmokeResult(outcome, result) {
     && Number(hits.branch) > 0
     && Number(hits.git) > 0
     && result.result?.titlebarHits?.error == null
+    && (process.env.DSH_THEME_SMOKE !== '1' || result.result?.themeSmoke?.ok === true)
     && Array.isArray(result.pageErrors)
     && result.pageErrors.length === 0
   if (outcome.code !== 0 || result.ok !== true || !uiOk || result.ptyStatus !== 'echoed:ok') {

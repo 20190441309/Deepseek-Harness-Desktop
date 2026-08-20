@@ -2,10 +2,15 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { GitActionsInjected } from './GitActionsControl.tsx'
 import { GitActionsControl } from './GitActionsControl.tsx'
+import type { GitChromeRowInjected } from './GitChromeRow.tsx'
+import { GitChromeRow } from './GitChromeRow.tsx'
+import { ChromeVisibility } from './chrome-visibility.ts'
 import type { BranchRef } from './branches.ts'
 import type { GitProgressEvent, GitResult, VcsStatus } from './git-logic.ts'
+import { GIT_SETTINGS_NAMESPACE, TITLEBAR_GIT_FIELD, type GitSettings } from '../git-settings.ts'
 import { en, NS, zh, type GitKey } from './locales.ts'
 
 export type { GitActionsInjected, GitActionsProps } from './GitActionsControl.tsx'
@@ -50,7 +55,7 @@ function unavailable(): GitResult {
  * Bind desktop git IPC when `window.shell` is present.
  * @returns injected git callbacks; each call no-ops outside the desktop app.
  */
-function readGitShell(): GitActionsInjected {
+function readGitShell(): Omit<GitActionsInjected, 'hooks'> {
   /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
   const shell = typeof window === 'undefined'
     ? undefined
@@ -77,20 +82,40 @@ function readGitShell(): GitActionsInjected {
 }
 
 /** Services required by the git plugin. */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope']
 
 /**
- * Register the dictionaries and inject the Git split button at order 20.
+ * Register the dictionaries, inject the Git split button at order 20, and
+ * contribute the Interface Settings row.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-git: dictionaries')
+
+  const gitChrome = new ChromeVisibility<GitSettings>(
+    ctx.settingsScope.bind<GitSettings>({ namespace: GIT_SETTINGS_NAMESPACE }),
+    TITLEBAR_GIT_FIELD,
+  )
 
   ctx.slots.inject('shell.titlebar.trailing', () => ctx.slots.register({
     name: 'shell.titlebar.trailing',
     id: 'git-actions',
     order: 20,
     locale: NS,
-    inject: (): GitActionsInjected => readGitShell(),
+    inject: (): GitActionsInjected => ({
+      ...readGitShell(),
+      hooks: { titlebarGit: gitChrome.visible },
+    }),
   }, GitActionsControl))
+
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
+    name: 'settings.interface.item',
+    id: 'titlebar-git',
+    order: 20,
+    locale: NS,
+    inject: (): GitChromeRowInjected => ({
+      hooks: { titlebarGit: gitChrome.visible, writable: gitChrome.writable },
+      setTitlebarGit: (value) => { gitChrome.setVisible(value) },
+    }),
+  }, GitChromeRow))
 }

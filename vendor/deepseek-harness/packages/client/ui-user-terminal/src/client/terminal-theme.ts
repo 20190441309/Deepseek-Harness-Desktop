@@ -1,74 +1,90 @@
-import type { ITheme } from '@xterm/xterm'
+import type { GhosttyColor, GhosttyTheme } from './ghostty/core.ts'
+import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from './ghostty/surface.ts'
 
-/** Monospace stack used when CSS terminal/code families do not resolve. */
-export const FALLBACK_TERMINAL_FONT_FAMILY =
-  "'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Liberation Mono', Menlo, Courier"
+/** Copied from ThreadTerminalDrawer `parseTerminalColor`. */
+function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor {
+  if (typeof document === "undefined") return fallback;
 
-/** Default canvas size when `--dsw-font-size-code` is absent. */
-const DEFAULT_TERMINAL_FONT_SIZE = 13
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return fallback;
 
-/** xterm `lineHeight` multiplier (not a CSS px/em ratio). */
-const TERMINAL_LINE_HEIGHT = 1.2
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = value;
+  context.fillRect(0, 0, 1, 1);
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
+  if (alpha === 0) return fallback;
 
-function isPaintedColor(value: string): boolean {
-  if (value === '' || value === 'transparent' || value === 'rgba(0, 0, 0, 0)') return false
-  return value.startsWith('rgb') || value.startsWith('#') || value.startsWith('hsl') || value.startsWith('color')
+  return {
+    r: red ?? fallback.r,
+    g: green ?? fallback.g,
+    b: blue ?? fallback.b,
+  };
 }
 
-function resolvedColor(el: HTMLElement, token: string, fallback: string): string {
-  const probe = el.ownerDocument.createElement('span')
-  probe.style.color = `var(${token})`
-  el.appendChild(probe)
-  const value = getComputedStyle(probe).color
-  probe.remove()
-  return isPaintedColor(value) ? value : fallback
+/** Copied from ThreadTerminalDrawer `normalizeComputedColor`. */
+function normalizeComputedColor(value: string | null | undefined, fallback: string): string {
+  const normalizedValue = value?.trim().toLowerCase();
+  if (
+    !normalizedValue ||
+    normalizedValue === "transparent" ||
+    normalizedValue === "rgba(0, 0, 0, 0)" ||
+    normalizedValue === "rgba(0 0 0 / 0)"
+  ) {
+    return fallback;
+  }
+  return value ?? fallback;
+}
+
+/** The surface treats an omitted family or size as "use the built-in default". */
+export function terminalFontOptions(family: string, size: number): { family?: string; size: number } {
+  const trimmed = family.trim();
+  return trimmed.length > 0 ? { family: trimmed, size } : { size };
 }
 
 /**
- * Build an xterm theme from the host's computed `--dsw-*` aliases so the
- * canvas matches light and dark sheets. Fallbacks exist for jsdom, where
- * custom properties do not resolve.
- * @param el - the pane host that already consumes alias background and color.
- * @returns an xterm `ITheme`.
+ * Copied from `terminalThemeFromApp`. Dark also accepts this desktop's
+ * `data-ds-dark-theme` because the web client does not set `html.dark`.
+ * @param mountElement - the pane host, or body when omitted.
+ * @returns a Ghostty theme.
  */
-export function readXtermTheme(el: HTMLElement): ITheme {
-  const styles = getComputedStyle(el)
-  const background = isPaintedColor(styles.backgroundColor)
-    ? styles.backgroundColor
-    : resolvedColor(el, '--dsw-alias-bg-layer-2', 'rgb(255, 255, 255)')
-  const foreground = isPaintedColor(styles.color)
-    ? styles.color
-    : resolvedColor(el, '--dsw-alias-label-primary', 'rgb(15, 17, 21)')
-  const muted = resolvedColor(el, '--dsw-alias-label-secondary', foreground)
-  const hover = resolvedColor(el, '--dsw-alias-interactive-bg-hover', muted)
-  const red = resolvedColor(el, '--dsw-alias-state-error-primary', foreground)
-  const green = resolvedColor(el, '--dsw-alias-state-success-primary', foreground)
-  const yellow = resolvedColor(el, '--dsw-alias-state-warn-primary', foreground)
-  const blue = resolvedColor(el, '--dsw-alias-state-business-primary', foreground)
+export function terminalThemeFromApp(mountElement?: HTMLElement | null): GhosttyTheme {
+  const isDark =
+    document.documentElement.classList.contains("dark") ||
+    document.body.hasAttribute("data-ds-dark-theme");
+  const fallbackBackground = isDark ? "rgb(14, 18, 24)" : "rgb(255, 255, 255)";
+  const fallbackForeground = isDark ? "rgb(237, 241, 247)" : "rgb(28, 33, 41)";
+  const drawerSurface =
+    mountElement?.closest(".thread-terminal-drawer") ??
+    document.querySelector(".thread-terminal-drawer") ??
+    document.body;
+  const drawerStyles = getComputedStyle(drawerSurface);
+  const bodyStyles = getComputedStyle(document.body);
+  const background = normalizeComputedColor(
+    drawerStyles.backgroundColor,
+    normalizeComputedColor(bodyStyles.backgroundColor, fallbackBackground),
+  );
+  const foreground = normalizeComputedColor(
+    drawerStyles.color,
+    normalizeComputedColor(bodyStyles.color, fallbackForeground),
+  );
+
   return {
-    background,
-    foreground,
-    cursor: foreground,
-    cursorAccent: background,
-    selectionBackground: hover,
-    selectionForeground: foreground,
-    black: foreground,
-    red,
-    green,
-    yellow,
-    blue,
-    magenta: resolvedColor(el, '--dsw-alias-state-error-secondary', red),
-    cyan: resolvedColor(el, '--dsw-alias-state-success-secondary', green),
-    white: muted,
-    brightBlack: muted,
-    brightRed: red,
-    brightGreen: green,
-    brightYellow: yellow,
-    brightBlue: blue,
-    brightMagenta: red,
-    brightCyan: green,
-    brightWhite: foreground,
-  }
+    background: parseTerminalColor(
+      background,
+      isDark ? { r: 14, g: 18, b: 24 } : { r: 255, g: 255, b: 255 },
+    ),
+    foreground: parseTerminalColor(
+      foreground,
+      isDark ? { r: 237, g: 241, b: 247 } : { r: 28, g: 33, b: 41 },
+    ),
+    cursor: isDark ? { r: 180, g: 203, b: 255 } : { r: 38, g: 56, b: 78 },
+    // Matches the xterm selection overlays this renderer replaced; the text
+    // color underneath is left unchanged for contrast in both themes.
+    selectionBackground: isDark ? "rgba(180, 203, 255, 0.25)" : "rgba(37, 63, 99, 0.2)",
+  };
 }
 
 function isResolvedFontFamily(value: string): boolean {
@@ -87,7 +103,7 @@ function resolvedFontFamily(el: HTMLElement): string {
   if (isResolvedFontFamily(terminal)) return terminal
   const code = styles.getPropertyValue('--ds-font-family-code').trim()
   if (isResolvedFontFamily(code)) return code
-  return FALLBACK_TERMINAL_FONT_FAMILY
+  return DEFAULT_TERMINAL_FONT_FAMILY
 }
 
 function resolvedFontSize(el: HTMLElement): number {
@@ -96,26 +112,16 @@ function resolvedFontSize(el: HTMLElement): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TERMINAL_FONT_SIZE
 }
 
-/** Canvas typeface, size, and line-height for one xterm instance. */
+export const FALLBACK_TERMINAL_FONT_FAMILY = DEFAULT_TERMINAL_FONT_FAMILY
+
 export type XtermFont = {
   fontFamily: string
   fontSize: number
-  lineHeight: number
 }
 
-/**
- * Resolve xterm type metrics from the host. xterm's canvas does not parse
- * CSS variables, so `--dsw-font-family-terminal` (then `--ds-font-family-code`)
- * is read through a probe the same way `readXtermTheme` resolves colors.
- * `--dsw-font-size-code` is used when present; otherwise 13px. `lineHeight`
- * is the xterm multiplier 1.2.
- * @param el - the pane host that inherits appearance tokens.
- * @returns fontFamily, fontSize, and lineHeight for `new Terminal(...)`.
- */
 export function readXtermFont(el: HTMLElement): XtermFont {
   return {
     fontFamily: resolvedFontFamily(el),
     fontSize: resolvedFontSize(el),
-    lineHeight: TERMINAL_LINE_HEIGHT,
   }
 }

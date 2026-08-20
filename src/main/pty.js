@@ -9,29 +9,243 @@ function setWorkspaceAuthority(authority) {
 }
 
 function asCwd(cwd) {
-  if (workspaceAuthority === null) workspaceAuthority = loadWorkspaceAuthority();
+  if (workspaceAuthority === null) {
+    workspaceAuthority = loadWorkspaceAuthority({ allowScratchCwd: true });
+  }
   return workspaceAuthority.resolveAuthorizedCwd(cwd);
 }
 
-function defaultShell() {
-  if (process.platform === 'win32') {
-    return 'powershell.exe';
+// Copied from the external desktop `apps/server/src/terminal/Manager.ts`.
+const DEFAULT_OPEN_COLS = 120;
+const DEFAULT_OPEN_ROWS = 30;
+const TERMINAL_ENV_BLOCKLIST = new Set(['PORT', 'ELECTRON_RENDERER_PORT', 'ELECTRON_RUN_AS_NODE']);
+const leftoverEnvPrefix = ['T', '3CODE_'].join('');
+
+function shouldExcludeTerminalEnvKey(key) {
+  const normalizedKey = key.toUpperCase();
+  if (normalizedKey.startsWith(leftoverEnvPrefix)) {
+    return true;
   }
-  return process.env.SHELL || '/bin/bash';
+  if (normalizedKey.startsWith('VITE_')) {
+    return true;
+  }
+  return TERMINAL_ENV_BLOCKLIST.has(normalizedKey);
 }
 
-function defaultShellArgs() {
-  return process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
+function defaultShellResolver(platform, env) {
+  if (platform === 'win32') {
+    return 'pwsh.exe';
+  }
+  return env.SHELL ?? 'bash';
 }
 
-function ptySpawnOptions({ cwd, cols, rows }, platform = process.platform) {
+function defaultShell() {
+  return defaultShellResolver(process.platform, process.env);
+}
+
+function normalizeShellCommand(value, platform) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  if (platform === 'win32') {
+    return trimmed;
+  }
+
+  const firstToken = trimmed.split(/\s+/g)[0]?.trim();
+  if (!firstToken) return null;
+  return firstToken.replace(/^['"]|['"]$/g, '');
+}
+
+function basenameForPlatform(command, platform) {
+  const normalized =
+    platform === 'win32' ? command.replaceAll('/', '\\') : command.replaceAll('\\', '/');
+  const parts = normalized
+    .split(platform === 'win32' ? /\\+/ : /\/+/)
+    .filter((part) => part.length > 0);
+  return parts.at(-1) ?? normalized;
+}
+
+function joinWindowsPath(...parts) {
+  return parts
+    .map((part, index) => {
+      if (index === 0) return part.replace(/[\\/]+$/g, '');
+      return part.replace(/^[\\/]+|[\\/]+$/g, '');
+    })
+    .filter((part) => part.length > 0)
+    .join('\\');
+}
+
+function shellCandidateFromCommand(command, platform) {
+  if (!command || command.length === 0) return null;
+  const shellName = basenameForPlatform(command, platform).toLowerCase();
+  if (platform === 'win32' && (shellName === 'pwsh.exe' || shellName === 'powershell.exe')) {
+    return { shell: command, args: ['-NoLogo'] };
+  }
+  if (platform !== 'win32' && shellName === 'zsh') {
+    return { shell: command, args: ['-o', 'nopromptsp'] };
+  }
+  return { shell: command };
+}
+
+function windowsSystemRoot(env) {
+  return env.SystemRoot?.trim() || env.windir?.trim() || 'C:\\Windows';
+}
+
+function windowsPowerShellPath(env) {
+  return joinWindowsPath(
+    windowsSystemRoot(env),
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+}
+
+function windowsCmdPath(env) {
+  return joinWindowsPath(windowsSystemRoot(env), 'System32', 'cmd.exe');
+}
+
+function formatShellCandidate(candidate) {
+  if (!candidate.args || candidate.args.length === 0) return candidate.shell;
+  return `${candidate.shell} ${candidate.args.join(' ')}`;
+}
+
+function uniqueShellCandidates(candidates) {
+  const seen = new Set();
+  const ordered = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const key = formatShellCandidate(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(candidate);
+  }
+  return ordered;
+}
+
+function resolveShellCandidates(shellResolver, platform, env) {
+  const requested = shellCandidateFromCommand(
+    normalizeShellCommand(shellResolver(), platform),
+    platform,
+  );
+
+  if (platform === 'win32') {
+    return uniqueShellCandidates([
+      requested,
+      shellCandidateFromCommand('pwsh.exe', platform),
+      shellCandidateFromCommand(windowsPowerShellPath(env), platform),
+      shellCandidateFromCommand('powershell.exe', platform),
+      shellCandidateFromCommand(env.ComSpec ?? null, platform),
+      shellCandidateFromCommand(windowsCmdPath(env), platform),
+      shellCandidateFromCommand('cmd.exe', platform),
+    ]);
+  }
+
+  return uniqueShellCandidates([
+    requested,
+    shellCandidateFromCommand(normalizeShellCommand(env.SHELL, platform), platform),
+    shellCandidateFromCommand('/bin/zsh', platform),
+    shellCandidateFromCommand('/bin/bash', platform),
+    shellCandidateFromCommand('/bin/sh', platform),
+    shellCandidateFromCommand('zsh', platform),
+    shellCandidateFromCommand('bash', platform),
+    shellCandidateFromCommand('sh', platform),
+  ]);
+}
+
+function defaultShellArgs(platform = process.platform, env = process.env) {
+  const candidate = shellCandidateFromCommand(
+    normalizeShellCommand(defaultShellResolver(platform, env), platform),
+    platform,
+  );
+  return candidate?.args ?? [];
+}
+
+// Marker variables the AppImage runtime injects into the process it launches.
+// They describe the AppImage itself, not the user's session, so terminals must
+// not inherit them.
+const APPIMAGE_RUNTIME_ENV_KEYS = ['APPIMAGE', 'APPDIR', 'ARGV0', 'OWD'];
+// Colon-separated search-path variables the AppImage runtime points at its
+// temporary mount (e.g. /tmp/.mount_*/usr/bin, the bundled glib schemas,
+// and an $APPDIR/usr/share XDG data entry). Only the mount segments are
+// dropped; the user's real entries are preserved. When nothing but mount
+// segments remain the variable is removed entirely so consumers fall back to
+// their platform default (e.g. gsettings finds the host schemas instead of
+// reporting "No schemas installed"). See issues #1699 and #5059.
+const APPIMAGE_PATH_LIKE_ENV_KEYS = [
+  'PATH',
+  'LD_LIBRARY_PATH',
+  'XDG_DATA_DIRS',
+  'GSETTINGS_SCHEMA_DIR',
+];
+
+function isPathSegmentUnderAppDir(segment, appDir) {
+  return segment === appDir || segment.startsWith(`${appDir}/`);
+}
+
+// On Linux AppImage builds the runtime mounts the app under a temporary dir and
+// injects APPIMAGE/APPDIR/ARGV0/OWD plus mount entries on PATH/LD_LIBRARY_PATH.
+// The integrated terminal inherits the server process environment, so without
+// this scrub those leak into the PTY and tools resolve against the AppImage
+// mount instead of the user's real environment (e.g. `php` reporting
+// PHP_BINARY as the AppImage path). See issue #1699. The scrub is gated on an
+// actual AppImage launch so non-AppImage environments are left untouched.
+function stripAppImageRuntimeEnv(env) {
+  if (env.APPIMAGE === undefined && env.APPDIR === undefined) return env;
+
+  const scrubbed = { ...env };
+  for (const key of APPIMAGE_RUNTIME_ENV_KEYS) {
+    delete scrubbed[key];
+  }
+
+  const appDir = env.APPDIR?.replace(/\/+$/, '');
+  if (appDir) {
+    for (const key of APPIMAGE_PATH_LIKE_ENV_KEYS) {
+      const value = scrubbed[key];
+      if (value === undefined) continue;
+      const kept = value
+        .split(':')
+        .filter((segment) => segment.length > 0 && !isPathSegmentUnderAppDir(segment, appDir));
+      if (kept.length > 0) {
+        scrubbed[key] = kept.join(':');
+      } else {
+        delete scrubbed[key];
+      }
+    }
+  }
+
+  return scrubbed;
+}
+
+function createTerminalSpawnEnv(baseEnv, runtimeEnv) {
+  const spawnEnv = {};
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (value === undefined) continue;
+    if (shouldExcludeTerminalEnvKey(key)) continue;
+    spawnEnv[key] = value;
+  }
+  if (runtimeEnv) {
+    for (const [key, value] of Object.entries(runtimeEnv)) {
+      spawnEnv[key] = value;
+    }
+  }
+  return stripAppImageRuntimeEnv(spawnEnv);
+}
+
+function ptySpawnOptions({ cwd, cols, rows }, platform = process.platform, env = process.env) {
+  const spawnEnv = createTerminalSpawnEnv(env);
+  // Windows node-pty never writes `name` into $TERM. Electron stamps
+  // TERM=dumb on the GUI process; Ink then skips color. Drop only that stamp.
+  if (platform === 'win32' && spawnEnv.TERM === 'dumb') {
+    delete spawnEnv.TERM;
+  }
   return {
     cwd,
-    cols: cols ?? 80,
-    rows: rows ?? 24,
-    name: 'xterm-256color',
-    env: { ...process.env, TERM: 'xterm-256color' },
-    ...(platform === 'win32' ? { useConpty: true, useConptyDll: true } : {}),
+    cols: cols ?? DEFAULT_OPEN_COLS,
+    rows: rows ?? DEFAULT_OPEN_ROWS,
+    name: platform === 'win32' ? 'xterm-color' : 'xterm-256color',
+    env: spawnEnv,
   };
 }
 
@@ -43,11 +257,25 @@ function defaultSpawn() {
     throw new Error('node-pty is not available');
   }
   return ({ cwd, cols, rows, onData, onExit }) => {
-    const term = pty.spawn(
-      defaultShell(),
-      defaultShellArgs(),
-      ptySpawnOptions({ cwd, cols, rows }),
+    const options = ptySpawnOptions({ cwd, cols, rows });
+    const candidates = resolveShellCandidates(
+      () => defaultShellResolver(process.platform, process.env),
+      process.platform,
+      process.env,
     );
+    let term;
+    let lastError;
+    for (const candidate of candidates) {
+      try {
+        term = pty.spawn(candidate.shell, candidate.args ?? [], options);
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!term) {
+      throw lastError || new Error('node-pty is not available');
+    }
     let resolveExit;
     const exited = new Promise((resolve) => {
       resolveExit = resolve;
@@ -161,7 +389,7 @@ function createPtyController(options = {}) {
     },
 
     async resize(id, cols, rows) {
-      requireSession(id).resize(Number(cols) || 80, Number(rows) || 24);
+      requireSession(id).resize(Number(cols) || DEFAULT_OPEN_COLS, Number(rows) || DEFAULT_OPEN_ROWS);
     },
 
     async kill(id) {
@@ -232,10 +460,14 @@ function registerPtyIpc(ipcMain, controller, options = {}) {
 
 module.exports = {
   BACKEND_UNAVAILABLE,
+  DEFAULT_OPEN_COLS,
+  DEFAULT_OPEN_ROWS,
   createPtyController,
   registerPtyIpc,
   setWorkspaceAuthority,
   defaultShell,
   defaultShellArgs,
   ptySpawnOptions,
+  createTerminalSpawnEnv,
+  resolveShellCandidates,
 };

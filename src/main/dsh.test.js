@@ -87,6 +87,9 @@ function makeHarness(overrides = {}) {
       const pid = overrides.childPid !== undefined ? overrides.childPid : CHILD_PID;
       const child = makeFakeChild(pid);
       spawned.push(child);
+      if (reachable && overrides.announceReady !== false) {
+        queueMicrotask(() => child.stdout.emit('data', Buffer.from(`dsh web: ${EXPECTED_URL}\n`)));
+      }
       return child;
     },
     isReachable: async () => reachable,
@@ -118,8 +121,12 @@ function makeHarness(overrides = {}) {
     calls,
     workspace,
     cleanup,
-    setReachable: (value) => {
+    setReachable: (value, announceReady = overrides.announceReady !== false) => {
       reachable = value;
+      if (value && announceReady) {
+        const child = spawned[spawned.length - 1];
+        if (child) child.stdout.emit('data', Buffer.from(`dsh web: ${EXPECTED_URL}\n`));
+      }
     },
     lastChild: () => spawned[spawned.length - 1],
   };
@@ -160,6 +167,20 @@ test('正常启动：reachable 后进入 ready、清 failure、写 PID、返回 
   for (const key of ['state', 'error', 'baseUrl', 'attached', 'logs', 'failure']) {
     assert.ok(key in lastSnapshot, `snapshot 应包含 ${key}`);
   }
+});
+
+test('HTTP 探活单独不能标记 ready，必须等 dsh web 行', async (t) => {
+  const h = makeHarness({ announceReady: false });
+  t.after(h.cleanup);
+  const outcome = settle(h.manager.start());
+  await waitFor(() => h.spawned.length === 1);
+  h.setReachable(true, false);
+  await tick(20);
+  assert.equal(h.manager.state, 'starting');
+  h.lastChild().stdout.emit('data', Buffer.from(`dsh web: ${EXPECTED_URL}\n`));
+  const result = await outcome;
+  assert.equal(result.ok, true);
+  assert.equal(h.manager.state, 'ready');
 });
 
 test('单飞：并发 start 只 spawn 一次；ready 后再 start 直接返回', async (t) => {
@@ -432,6 +453,25 @@ test('npx fallback pins @deepseek-ai/dsh to pin.npm', () => {
   assert.ok(launch.args.includes(`@deepseek-ai/dsh@${pin.npm}`));
   assert.equal(launch.args.includes('@deepseek-ai/dsh'), false);
   assert.equal(launch.args.some((arg) => String(arg).includes('@latest')), false);
+});
+
+test('launcher recovery flags stay before host and port', () => {
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => 'dsh',
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+  });
+  const launch = manager.buildLaunch({
+    host: '127.0.0.1',
+    port: 3080,
+    skipUserPlugins: true,
+    patchFiles: ['C:/desktop-install.yml'],
+  });
+  assert.deepEqual(launch.args, [
+    'web', '--skip-user-plugins', '--patch', 'C:/desktop-install.yml',
+    '--host', '127.0.0.1', '--port', '3080',
+  ]);
 });
 
 test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (t) => {

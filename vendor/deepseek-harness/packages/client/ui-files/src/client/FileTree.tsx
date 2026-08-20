@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from 'react'
+import { useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconChevronRightOutline14,
@@ -8,6 +8,7 @@ import {
   Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import { createFileTreeDragMentionController, type FileTreeDragMentionController } from './fileTreeDragMention.ts'
 import { filterEntries } from './filter.ts'
 import type { DirEntry } from './shell.ts'
 import css from './FileTree.module.css'
@@ -26,13 +27,23 @@ export interface FileTreeProps {
   onMention?: ((path: string) => void) | undefined
   onCopyRelative?: ((path: string) => void) | undefined
   onCopyAbsolute?: ((path: string) => void) | undefined
+  onCopyMention?: ((path: string) => void) | undefined
   mentionLabel?: string | undefined
   copyRelativeLabel?: string | undefined
   copyAbsoluteLabel?: string | undefined
+  copyMentionLabel?: string | undefined
+  onShowInFolder?: ((path: string) => void) | undefined
+  onOpenInEditor?: ((editor: string, path: string) => void) | undefined
+  onOpenWithSystemDefault?: ((path: string) => void) | undefined
+  editors?: readonly { id: string, label: string }[] | undefined
+  showInFolderLabel?: string | undefined
+  openWithSystemDefaultLabel?: string | undefined
   /** Case-insensitive name filter; empty shows every row. */
   query?: string | undefined
   /** False for nested directory lists so they keep indent. */
   root?: boolean | undefined
+  /** Shared by nested lists so a drag started on a child row stays in progress. */
+  dragMention?: FileTreeDragMentionController | undefined
 }
 
 /**
@@ -59,12 +70,26 @@ export function FileTree({
   onMention,
   onCopyRelative,
   onCopyAbsolute,
+  onCopyMention,
   mentionLabel,
   copyRelativeLabel,
   copyAbsoluteLabel,
+  copyMentionLabel,
+  onShowInFolder,
+  onOpenInEditor,
+  onOpenWithSystemDefault,
+  editors = [],
+  showInFolderLabel,
+  openWithSystemDefaultLabel,
   query = '',
   root = true,
+  dragMention: inherited,
 }: FileTreeProps): ReactNode {
+  const owned = useRef<FileTreeDragMentionController | undefined>(undefined)
+  if (inherited === undefined && owned.current === undefined) {
+    owned.current = createFileTreeDragMentionController({ deselect: () => {} })
+  }
+  const dragMention = inherited ?? owned.current!
   const visible = filterEntries(entries, query, childrenByPath)
   return (
     <ul className={css.list} {...(root ? { 'data-file-tree': true } : {})}>
@@ -79,10 +104,19 @@ export function FileTree({
           onMention={onMention}
           onCopyRelative={onCopyRelative}
           onCopyAbsolute={onCopyAbsolute}
+          onCopyMention={onCopyMention}
           mentionLabel={mentionLabel}
           copyRelativeLabel={copyRelativeLabel}
           copyAbsoluteLabel={copyAbsoluteLabel}
+          copyMentionLabel={copyMentionLabel}
+          onShowInFolder={onShowInFolder}
+          onOpenInEditor={onOpenInEditor}
+          onOpenWithSystemDefault={onOpenWithSystemDefault}
+          editors={editors}
+          showInFolderLabel={showInFolderLabel}
+          openWithSystemDefaultLabel={openWithSystemDefaultLabel}
           query={query}
+          dragMention={dragMention}
         />
       ))}
     </ul>
@@ -98,10 +132,19 @@ function TreeNode({
   onMention,
   onCopyRelative,
   onCopyAbsolute,
+  onCopyMention,
   mentionLabel,
   copyRelativeLabel,
   copyAbsoluteLabel,
+  copyMentionLabel,
+  onShowInFolder,
+  onOpenInEditor,
+  onOpenWithSystemDefault,
+  editors,
+  showInFolderLabel,
+  openWithSystemDefaultLabel,
   query,
+  dragMention,
 }: {
   entry: TreeEntry
   childrenByPath: FileTreeProps['childrenByPath']
@@ -111,18 +154,41 @@ function TreeNode({
   onMention: FileTreeProps['onMention']
   onCopyRelative: FileTreeProps['onCopyRelative']
   onCopyAbsolute: FileTreeProps['onCopyAbsolute']
+  onCopyMention: FileTreeProps['onCopyMention']
   mentionLabel: FileTreeProps['mentionLabel']
   copyRelativeLabel: FileTreeProps['copyRelativeLabel']
   copyAbsoluteLabel: FileTreeProps['copyAbsoluteLabel']
+  copyMentionLabel: FileTreeProps['copyMentionLabel']
+  onShowInFolder: FileTreeProps['onShowInFolder']
+  onOpenInEditor: FileTreeProps['onOpenInEditor']
+  onOpenWithSystemDefault: FileTreeProps['onOpenWithSystemDefault']
+  editors: readonly { id: string, label: string }[]
+  showInFolderLabel: FileTreeProps['showInFolderLabel']
+  openWithSystemDefaultLabel: FileTreeProps['openWithSystemDefaultLabel']
   query: string
+  dragMention: FileTreeDragMentionController
 }): ReactNode {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const items: MenuEntry[] = []
+  if (onCopyMention !== undefined && copyMentionLabel !== undefined) {
+    items.push({ id: 'copy.mention', label: copyMentionLabel })
+  }
   if (onCopyRelative !== undefined && copyRelativeLabel !== undefined) {
     items.push({ id: 'relative', label: copyRelativeLabel })
   }
   if (onCopyAbsolute !== undefined && copyAbsoluteLabel !== undefined) {
     items.push({ id: 'absolute', label: copyAbsoluteLabel })
+  }
+  if (onShowInFolder !== undefined && showInFolderLabel !== undefined) {
+    items.push({ id: 'open.folder', label: showInFolderLabel })
+  }
+  if (entry.kind === 'file') {
+    for (const editor of editors) {
+      items.push({ id: `editor.${editor.id}`, label: editor.label })
+    }
+    if (onOpenWithSystemDefault !== undefined && openWithSystemDefaultLabel !== undefined) {
+      items.push({ id: 'open.system', label: openWithSystemDefaultLabel })
+    }
   }
 
   const onContext = (event: MouseEvent) => {
@@ -135,12 +201,27 @@ function TreeNode({
     <button
       type="button"
       className={css.row}
+      draggable={entry.kind === 'file'}
+      data-item-path={entry.path}
       aria-expanded={entry.kind === 'directory' ? expanded.has(entry.path) : undefined}
       onClick={() => {
-        if (entry.kind === 'file') onOpenFile(entry.path)
-        else onToggle(entry.path)
+        if (entry.kind === 'file') {
+          if (dragMention.isDragInProgress()) return
+          onOpenFile(entry.path)
+          return
+        }
+        onToggle(entry.path)
       }}
       onContextMenu={onContext}
+      onDragStart={(event) => {
+        dragMention.handleDragStart({
+          dataTransfer: event.dataTransfer,
+          composedPath: () => event.nativeEvent.composedPath(),
+        })
+      }}
+      onDragEnd={() => {
+        dragMention.handleDragEnd()
+      }}
     >
       {entry.kind === 'directory' ? (
         <IconChevronRightOutline14
@@ -182,8 +263,24 @@ function TreeNode({
       items={items}
       onSelect={(id) => {
         setMenu(null)
+        if (id === 'copy.mention') {
+          onCopyMention?.(entry.path)
+          return
+        }
         if (id === 'relative') {
           onCopyRelative?.(entry.path)
+          return
+        }
+        if (id === 'open.folder') {
+          onShowInFolder?.(entry.path)
+          return
+        }
+        if (id === 'open.system') {
+          onOpenWithSystemDefault?.(entry.path)
+          return
+        }
+        if (id.startsWith('editor.')) {
+          onOpenInEditor?.(id.slice('editor.'.length), entry.path)
           return
         }
         /* v8 ignore next -- Menu only emits the declared item ids. */
@@ -220,11 +317,20 @@ function TreeNode({
           onMention={onMention}
           onCopyRelative={onCopyRelative}
           onCopyAbsolute={onCopyAbsolute}
+          onCopyMention={onCopyMention}
           mentionLabel={mentionLabel}
           copyRelativeLabel={copyRelativeLabel}
           copyAbsoluteLabel={copyAbsoluteLabel}
+          copyMentionLabel={copyMentionLabel}
+          onShowInFolder={onShowInFolder}
+          onOpenInEditor={onOpenInEditor}
+          onOpenWithSystemDefault={onOpenWithSystemDefault}
+          editors={editors}
+          showInFolderLabel={showInFolderLabel}
+          openWithSystemDefaultLabel={openWithSystemDefaultLabel}
           query={query}
           root={false}
+          dragMention={dragMention}
         />
       ) : null}
     </li>

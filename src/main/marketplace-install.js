@@ -338,6 +338,18 @@ function listNodeModuleNames() {
   return names;
 }
 
+function listProfileDependencyNames() {
+  const manifest = readJsonFile(path.join(webProfileDir(), 'package.json'));
+  if (!manifest || typeof manifest !== 'object') {
+    return [];
+  }
+  return [...new Set([
+    ...Object.keys(manifest.dependencies || {}),
+    ...Object.keys(manifest.optionalDependencies || {}),
+    ...Object.keys(manifest.devDependencies || {}),
+  ])];
+}
+
 function githubIdentity(spec) {
   const value = String(spec || '');
   const pathMatch = GITHUB_PATH_SPEC.exec(value);
@@ -591,6 +603,7 @@ async function installMarketplacePlugin(id, options = {}) {
     }
     const before = listInstalledPlugins();
     const beforeModules = listNodeModuleNames();
+    const beforeDependencies = new Set(listProfileDependencyNames());
     const added = await addPluginSpec(spec, options);
     if (!added.ok) {
       return added;
@@ -602,16 +615,22 @@ async function installMarketplacePlugin(id, options = {}) {
       beforeModules,
       listNodeModuleNames(),
     );
-    if (names.length === 0) {
-      return loadableInstallFailure(added);
-    }
+    const dependencyNames = listProfileDependencyNames()
+      .filter((name) => !beforeDependencies.has(name));
+    const rollbackNames = [...new Set([...names, ...dependencyNames])];
     const runner = pluginCommand(options);
     async function removeNames() {
-      for (const name of names) {
+      for (const name of rollbackNames) {
         if (isValidPackageName(name)) {
           await runner(['remove', name], options.onProgress);
         }
       }
+    }
+    if (rollbackNames.length === 0) {
+      // A successful add with no discoverable package is still a failed
+      // install. Remove the profile mutation before returning the error.
+      await removeNames();
+      return loadableInstallFailure(added);
     }
     const clashes = names.flatMap((name) => conflictingEntryIds(name, pluginNames(before)));
     if (clashes.length > 0) {
@@ -634,4 +653,5 @@ module.exports = {
   uninstallPlugin,
   installMarketplacePlugin,
   resolveCli,
+  runPlugin,
 };

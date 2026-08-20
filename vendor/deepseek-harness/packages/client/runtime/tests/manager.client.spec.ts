@@ -744,6 +744,19 @@ describe('remaining branches', () => {
     expect(session.getSnapshot().running).toBe(true)
   })
 
+  it('create forwards origin and agentPreset and stamps them on the optimistic row', async () => {
+    const api = new FakeApiClient()
+    api.onCreate = () => Promise.resolve(ok({ sessionId: S1, agentPreset: 'dshbot-room' }))
+    const manager = new SessionManager(api, fakeRemote())
+    await manager.create({ origin: 'dshbot', agentPreset: 'dshbot-room', sessionId: S1 })
+    expect(api.callsOf('session.create')).toEqual([
+      { origin: 'dshbot', agentPreset: 'dshbot-room', sessionId: S1 },
+    ])
+    expect(manager.getListSnapshot().items[0]).toMatchObject({
+      sessionId: S1, origin: 'dshbot', agentPreset: 'dshbot-room',
+    })
+  })
+
   it('create passes cwd and a preallocated id, folds transport throws, and deduplicates the echo', async () => {
     const api = new FakeApiClient()
     api.onCreate = () => Promise.resolve(ok({ sessionId: S1 }))

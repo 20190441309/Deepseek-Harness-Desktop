@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {
   DefaultBranchConfirmableAction,
@@ -61,6 +62,10 @@ export interface GitActionsInjected {
   gitCreateBranch: (cwd: string, name: string) => Promise<GitResult & { refName?: string }>
   openExternal: (url: string) => Promise<boolean>
   openWorkspacePath: (cwd: string, relativePath: string) => Promise<GitResult>
+  hooks: {
+    /** Persisted titlebar Git visibility bound as useTitlebarGit. */
+    titlebarGit: SnapshotStore<boolean>
+  }
 }
 
 export type GitActionsProps =
@@ -156,6 +161,7 @@ function foldPr(result: GitResult): NonNullable<StackedActionResult['pr']> {
 export function GitActionsControl({
   density = 'full',
   useSessions,
+  useTitlebarGit,
   gitStatus,
   gitFetchForStatus,
   gitReadPullRequest,
@@ -178,6 +184,7 @@ export function GitActionsControl({
     const next = id === undefined ? undefined : s.byId[id]?.cwd
     return next ? next : undefined
   })
+  const showChrome = useTitlebarGit(value => value)
   const [status, setStatus] = useState<VcsStatus | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -690,7 +697,7 @@ export function GitActionsControl({
 
   return (
     <>
-      {showInit ? initButton : (
+      {showChrome ? (showInit ? initButton : (
         <div className={css.split}>
           <BranchMenu
             cwd={cwd}
@@ -769,7 +776,7 @@ export function GitActionsControl({
             onClose={() => { setMenuOpen(false) }}
           />
         </div>
-      )}
+      )) : null}
 
       <CommitDialog
         open={!showInit && commitOpen}

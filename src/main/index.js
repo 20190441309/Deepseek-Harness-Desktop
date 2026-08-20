@@ -4,7 +4,8 @@ const fs = require('fs');
 const { loadConfig, saveConfig } = require('./config');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
-const { stripDroppedPlugins, ensureDesktopInstallPlugin } = require('./plugins');
+const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin } = require('./plugins');
+const { ensureDshMarketPlugin } = require('./dshmarket-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
@@ -66,6 +67,10 @@ const harness = new HarnessController({
   resolveLaunchTarget,
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
+  ensureDshMarketPlugin,
+  healDanglingBundles,
+  saveConfig,
+  appVersion: app.getVersion(),
   ensureWorkspace,
 });
 
@@ -112,6 +117,7 @@ function reloadWithCleanup() {
 const SMOKE_SURFACES = 'right panel|surfaces|\u53f3\u4fa7\u680f';
 const SMOKE_BRANCH = 'switch branch|\u5207\u6362\u5206\u652f';
 const SMOKE_GIT = 'git actions|git \u64cd\u4f5c';
+const SMOKE_TERMINAL = 'terminal|\u7ec8\u7aef';
 const SMOKE_ONBOARDING = '^\u7ee7\u7eed$|^Continue$|^\u7a0d\u540e\u914d\u7f6e$|^Configure later$';
 
 function sleep(ms) {
@@ -142,8 +148,12 @@ async function titlebarButtonRect(wc, pattern) {
     const match = new RegExp(${JSON.stringify(pattern)}, 'i');
     const titlebar = document.querySelector('#dshd-shell-titlebar-trailing');
     if (!titlebar) return null;
-    const button = Array.from(titlebar.querySelectorAll('button')).find((el) =>
-      match.test((el.getAttribute('aria-label') || el.textContent || '').trim()));
+    const buttons = Array.from(titlebar.querySelectorAll('button'));
+    const button = buttons.find((el) =>
+      match.test((el.getAttribute('aria-label') || el.textContent || '').trim()))
+      || (match.test('right panel')
+        ? titlebar.querySelector('[data-panel-layout-controls] button:nth-of-type(2)')
+        : null);
     if (!button) return null;
     const box = button.getBoundingClientRect();
     if (box.width < 1 || box.height < 1) return null;
@@ -159,6 +169,23 @@ async function titlebarMenuOpen(wc, pattern) {
       match.test((el.getAttribute('aria-label') || el.textContent || '').trim()));
     return Boolean(button && button.getAttribute('aria-expanded') === 'true')
       || Boolean(document.querySelector('[role="menu"]'));
+  })()`);
+}
+
+async function clickTitlebarButton(wc, pattern) {
+  return wc.executeJavaScript(`(() => {
+    const match = new RegExp(${JSON.stringify(pattern)}, 'i');
+    const titlebar = document.querySelector('#dshd-shell-titlebar-trailing');
+    if (!titlebar) return false;
+    const buttons = Array.from(titlebar.querySelectorAll('button'));
+    const button = buttons.find((el) =>
+      match.test((el.getAttribute('aria-label') || el.textContent || '').trim()))
+      || (match.test('right panel')
+        ? titlebar.querySelector('[data-panel-layout-controls] button:nth-of-type(2)')
+        : null);
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
   })()`);
 }
 
@@ -210,26 +237,44 @@ async function probeTitlebarHits(wc) {
     if (!await dismissFirstRunOnboarding(wc)) {
       return { hits, error: 'onboarding still open' };
     }
-    const surfaces = await waitUntil(() => titlebarButtonRect(wc, SMOKE_SURFACES), 30_000);
-    if (!surfaces) {
+    const surfaces = await waitUntil(() => titlebarButtonRect(wc, SMOKE_SURFACES), 5_000);
+    if (surfaces) {
+      await clickClientCenter(wc, surfaces.x, surfaces.y);
+    } else if (!await clickTitlebarButton(wc, SMOKE_SURFACES)) {
       return { hits, error: 'surfaces toggle missing' };
     }
-    await clickClientCenter(wc, surfaces.x, surfaces.y);
     hits.surfaces += 1;
-    const opened = await waitUntil(() => wc.executeJavaScript(
-      `Boolean(document.querySelector('[class*="frame"]') && !document.querySelector('[class*="frame"][data-surfaces-collapsed]'))`,
-    ), 10_000);
+    let opened = await waitUntil(() => wc.executeJavaScript(`(() => {
+      const frame = document.querySelector('[class*="frame"]');
+      if (!frame) return false;
+      return frame.getAttribute('data-surfaces-collapsed') !== 'true';
+    })()`), 10_000);
+    if (!opened && surfaces && await clickTitlebarButton(wc, SMOKE_SURFACES)) {
+      opened = await waitUntil(() => wc.executeJavaScript(`(() => {
+        const frame = document.querySelector('[class*="frame"]');
+        if (!frame) return false;
+        return frame.getAttribute('data-surfaces-collapsed') !== 'true';
+      })()`), 10_000);
+    }
     if (!opened) {
-      return { hits, error: 'surfaces did not open' };
+      return {
+        hits,
+        error: 'surfaces did not open',
+      };
     }
 
     const branch = await waitUntil(() => titlebarButtonRect(wc, SMOKE_BRANCH), 20_000);
-    if (!branch) {
+    if (branch) {
+      await clickClientCenter(wc, branch.x, branch.y);
+    } else if (!await clickTitlebarButton(wc, SMOKE_BRANCH)) {
       return { hits, error: 'branch trigger missing' };
     }
-    await clickClientCenter(wc, branch.x, branch.y);
     hits.branch += 1;
-    if (!await waitUntil(() => titlebarMenuOpen(wc, SMOKE_BRANCH), 5_000)) {
+    let branchMenuOpen = await waitUntil(() => titlebarMenuOpen(wc, SMOKE_BRANCH), 5_000);
+    if (!branchMenuOpen && branch && await clickTitlebarButton(wc, SMOKE_BRANCH)) {
+      branchMenuOpen = await waitUntil(() => titlebarMenuOpen(wc, SMOKE_BRANCH), 5_000);
+    }
+    if (!branchMenuOpen) {
       return { hits, error: 'branch menu did not open' };
     }
     await pressEscape(wc);
@@ -237,15 +282,169 @@ async function probeTitlebarHits(wc) {
     await sleep(200);
 
     const git = await waitUntil(() => titlebarButtonRect(wc, SMOKE_GIT), 10_000);
-    if (!git) {
+    if (git) {
+      await clickClientCenter(wc, git.x, git.y);
+    } else if (!await clickTitlebarButton(wc, SMOKE_GIT)) {
       return { hits, error: 'git actions missing' };
     }
-    await clickClientCenter(wc, git.x, git.y);
     hits.git += 1;
-    if (!await waitUntil(() => titlebarMenuOpen(wc, SMOKE_GIT), 5_000)) {
+    let gitMenuOpen = await waitUntil(() => titlebarMenuOpen(wc, SMOKE_GIT), 5_000);
+    if (!gitMenuOpen && git && await clickTitlebarButton(wc, SMOKE_GIT)) {
+      gitMenuOpen = await waitUntil(() => titlebarMenuOpen(wc, SMOKE_GIT), 5_000);
+    }
+    if (!gitMenuOpen) {
       return { hits, error: 'git menu did not open' };
     }
     return { hits, error: null };
+  } finally {
+    if (!wasAttached && wc.debugger.isAttached()) {
+      try {
+        wc.debugger.detach();
+      } catch {
+        // Detach is best-effort before process exit.
+      }
+    }
+  }
+}
+
+/** Open both terminal owners and report the colors that actually reach the DOM and canvas. */
+async function probeThemeBackgrounds(wc) {
+  const wasAttached = wc.debugger.isAttached();
+  if (!wasAttached) {
+    await wc.debugger.attach('1.3');
+  }
+  try {
+    await pressEscape(wc);
+    await waitUntil(() => wc.executeJavaScript(`(() => !document.querySelector('[role="menu"]'))()`), 3_000);
+    await dismissFirstRunOnboarding(wc);
+    await wc.executeJavaScript(`(() => {
+      window.dispatchEvent(new CustomEvent('dshd-open-surface', { detail: { kind: 'terminal' } }));
+      return true;
+    })()`);
+    const surface = await waitUntil(() => wc.executeJavaScript(`(() => {
+      const root = document.querySelector('[data-terminal-owner="surface"]');
+      return root && root.getBoundingClientRect().height > 0;
+    })()`), 10_000);
+    if (!surface) return { ok: false, error: 'surface terminal did not open' };
+
+    const terminalToggle = await waitUntil(() => titlebarButtonRect(wc, SMOKE_TERMINAL), 5_000);
+    if (terminalToggle) {
+      await clickClientCenter(wc, terminalToggle.x, terminalToggle.y);
+    } else if (!await clickTitlebarButton(wc, SMOKE_TERMINAL)) {
+      return { ok: false, error: 'terminal drawer toggle missing' };
+    }
+    const drawer = await waitUntil(() => wc.executeJavaScript(`(() => {
+      const root = document.querySelector('[data-terminal-owner="drawer"]');
+      return root && root.getBoundingClientRect().height > 0;
+    })()`), 10_000);
+    if (!drawer) return { ok: false, error: 'terminal drawer did not open' };
+
+    await wc.executeJavaScript(`(() => {
+      for (const owner of ['surface', 'drawer']) {
+        const root = document.querySelector('[data-terminal-owner="' + owner + '"]');
+        const button = root && Array.from(root.querySelectorAll('button')).find((el) =>
+          /new terminal|\u65b0\u5efa\u7ec8\u7aef/i.test(el.getAttribute('aria-label') || el.textContent || ''));
+        if (button && !button.disabled) button.click();
+      }
+      return true;
+    })()`);
+    const panesOpened = await waitUntil(() => wc.executeJavaScript(`(() => Boolean(
+      document.querySelector('[data-terminal-owner="surface"] [data-terminal-pane]')
+      && document.querySelector('[data-terminal-owner="drawer"] [data-terminal-pane]')
+    ))()`), 15_000);
+    if (!panesOpened) {
+      return wc.executeJavaScript(`(() => {
+        const read = (owner) => {
+          const root = document.querySelector('[data-terminal-owner="' + owner + '"]');
+          return {
+            height: root?.getBoundingClientRect().height || 0,
+            buttons: root ? Array.from(root.querySelectorAll('button')).map((el) => ({
+              label: el.getAttribute('aria-label') || el.textContent || '',
+              disabled: el.disabled,
+            })) : [],
+          };
+        };
+        return { ok: false, error: 'terminal panes did not open', debug: {
+          surface: read('surface'),
+          drawer: read('drawer'),
+          cwd: document.querySelector('[data-terminal-owner="drawer"]')?.textContent || '',
+        } };
+      })()`);
+    }
+
+    return wc.executeJavaScript(`(() => {
+      const stylesFor = (element) => {
+        if (!element) return null;
+        const styles = getComputedStyle(element);
+        return {
+          backgroundColor: styles.backgroundColor,
+          backgroundImage: styles.backgroundImage,
+          color: styles.color,
+        };
+      };
+      const canvasPixel = (element) => {
+        const canvas = element?.querySelector('canvas');
+        if (!canvas || canvas.width < 1 || canvas.height < 1) return null;
+        try {
+          return Array.from(canvas.getContext('2d')?.getImageData(0, 0, 1, 1).data || []);
+        } catch {
+          return null;
+        }
+      };
+      const readOwner = (owner) => {
+        const root = document.querySelector('[data-terminal-owner="' + owner + '"]');
+        const pane = root?.querySelector('[data-terminal-pane]');
+        const xterm = pane?.querySelector('.xterm');
+        const viewport = pane?.querySelector('.xterm-viewport');
+        const screen = pane?.querySelector('.xterm-screen');
+        return {
+          root: stylesFor(root),
+          pane: stylesFor(pane),
+          xterm: stylesFor(xterm),
+          viewport: stylesFor(viewport),
+          screen: stylesFor(screen),
+          canvasPixel: canvasPixel(xterm),
+        };
+      };
+      const tokenStyles = getComputedStyle(document.body);
+      const rootTokenStyles = getComputedStyle(document.documentElement);
+      const frame = document.querySelector('[class*="frame"]');
+      const frameTokenStyles = frame ? getComputedStyle(frame) : null;
+      const tokenValue = (name) => tokenStyles.getPropertyValue(name).trim()
+        || rootTokenStyles.getPropertyValue(name).trim()
+        || frameTokenStyles?.getPropertyValue(name).trim()
+        || '';
+      const tokens = {
+        base: tokenValue('--dsw-alias-bg-base'),
+        layer2: tokenValue('--dsw-alias-bg-layer-2'),
+      };
+      const isBlack = (value) => {
+        const match = String(value || '').match(/rgba?\\(\\s*0[ ,]+0[ ,]+0(?:[ ,/]+(?:0|1(?:\\.0*)?))?\\s*\\)/i);
+        return Boolean(match);
+      };
+      const owners = { surface: readOwner('surface'), drawer: readOwner('drawer') };
+      const backgrounds = [
+        owners.surface?.root?.backgroundColor,
+        owners.surface?.pane?.backgroundColor,
+        owners.surface?.viewport?.backgroundColor,
+        owners.drawer?.root?.backgroundColor,
+        owners.drawer?.pane?.backgroundColor,
+        owners.drawer?.viewport?.backgroundColor,
+      ];
+      return {
+        ok: Boolean(
+          owners.surface?.root
+          && owners.surface?.pane
+          && owners.drawer?.root
+          && owners.drawer?.pane
+          && tokens.base
+          && tokens.layer2
+          && backgrounds.every(value => !isBlack(value)),
+        ),
+        tokens,
+        owners,
+      };
+    })()`);
   } finally {
     if (!wasAttached && wc.debugger.isAttached()) {
       try {
@@ -315,7 +514,7 @@ async function runSmoke(win) {
         hasDragMark: Boolean(document.querySelector('[data-dshd-shell-drag]')),
         hasHitMark: Boolean(document.querySelector('[data-dshd-shell-hit]')),
         captionRegion: (() => {
-          const caption = document.querySelector('[data-dshd-caption]');
+          const caption = document.querySelector('[data-dshd-caption="band"]');
           return caption ? getComputedStyle(caption).webkitAppRegion : null;
         })(),
         hasHarnessShellApi: Boolean(
@@ -399,6 +598,14 @@ async function runSmoke(win) {
     }
     result.titlebarHits = titlebarHits;
     console.log('[DSH_SMOKE_HITS]', JSON.stringify(titlebarHits));
+    if (process.env.DSH_THEME_SMOKE === '1') {
+      try {
+        result.themeSmoke = await probeThemeBackgrounds(wc);
+      } catch (error) {
+        result.themeSmoke = { ok: false, error: String(error) };
+      }
+      console.log('[DSH_THEME_SMOKE]', JSON.stringify(result.themeSmoke));
+    }
     const hitCount = titlebarHits.hits.surfaces + titlebarHits.hits.branch + titlebarHits.hits.git;
     const ok = result.hasFrame
       && result.hasTitlebar
@@ -418,6 +625,7 @@ async function runSmoke(win) {
       && titlebarHits.hits.git > 0
       && titlebarHits.error == null
       && ptyStatus === 'echoed:ok'
+      && (process.env.DSH_THEME_SMOKE !== '1' || result.themeSmoke?.ok === true)
       && pageErrors.length === 0;
     try {
       fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));

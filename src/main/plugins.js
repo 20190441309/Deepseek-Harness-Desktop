@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { createRequire } = require('module');
 const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -18,6 +19,10 @@ const DESKTOP_INSTALL_FILES = [
   'install-dsh-plugin.mjs',
   'install-dsh-plugin-client.js',
 ];
+const OFFICIAL_TEMPLATE_BUNDLES = new Set([
+  '@deepseek-ai/dsh-base',
+  '@deepseek-ai/dsh-web-app',
+]);
 
 function dshHome() {
   const fromEnv = process.env.DSH_HOME;
@@ -29,6 +34,64 @@ function dshHome() {
 
 function webProfileDir() {
   return path.join(dshHome(), 'profiles', PROFILE);
+}
+
+function defaultInstallAnchor() {
+  try {
+    const { harnessRoot } = require('./paths');
+    return path.join(harnessRoot(), 'apps', 'cli', 'package.json');
+  } catch {
+    return '';
+  }
+}
+
+function packageDirFromAnchor(anchor, packageName) {
+  if (!anchor || !fs.existsSync(anchor)) return '';
+  try {
+    const searchPaths = createRequire(anchor).resolve.paths(packageName) || [];
+    for (const searchPath of searchPaths) {
+      const candidate = path.join(searchPath, packageName);
+      if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+    }
+  } catch {
+    // Invalid anchors are treated as unresolved bundle names.
+  }
+  return '';
+}
+
+function bundleResolves(packageName, profileDir, installAnchor) {
+  return [installAnchor, path.join(profileDir, 'package.json')]
+    .filter(Boolean)
+    .some((anchor) => Boolean(packageDirFromAnchor(anchor, packageName)));
+}
+
+/** Remove only user bundle names that the Loader cannot resolve. */
+function healDanglingBundles(options = {}) {
+  const profileDir = options.profileDir || webProfileDir();
+  const file = path.join(profileDir, 'package.json');
+  if (!fs.existsSync(file)) return { ok: false, reason: 'missing-profile', changed: false };
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { ok: false, reason: 'invalid-profile', changed: false };
+  }
+  const current = manifest.dsh?.profile?.bundles;
+  if (!Array.isArray(current)) return { ok: true, changed: false, removed: [] };
+  const installAnchor = options.installAnchor || defaultInstallAnchor();
+  const removed = current.filter((name) => (
+    typeof name === 'string'
+    && !OFFICIAL_TEMPLATE_BUNDLES.has(name)
+    && !bundleResolves(name, profileDir, installAnchor)
+  ));
+  if (removed.length === 0) return { ok: true, changed: false, removed: [] };
+  const bundles = current.filter((name) => !removed.includes(name));
+  manifest.dsh = {
+    ...manifest.dsh,
+    profile: { ...manifest.dsh.profile, bundles },
+  };
+  writeAtomic(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  return { ok: true, changed: true, removed };
 }
 
 function manifestPath() {
@@ -136,7 +199,13 @@ function ensureDesktopInstallPlugin(options = {}) {
     DESKTOP_INSTALL_END,
     body,
   );
-  return { ok: true, destDir, href, patchChanged: patchChanged || strippedLegacy };
+  return {
+    ok: true,
+    destDir,
+    href,
+    patchFile,
+    patchChanged: patchChanged || strippedLegacy,
+  };
 }
 
 /** Drop retired community plugins from the live web profile so they cannot boot. */
@@ -209,8 +278,11 @@ module.exports = {
   DROPPED,
   webProfileDir,
   stripDroppedPlugins,
+  healDanglingBundles,
   listInstalledPlugins,
   ensureDesktopInstallPlugin,
+  upsertManagedBlock,
+  stripBlockFromFile,
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
   LEGACY_DESKTOP_INSTALL_BEGIN,

@@ -1090,6 +1090,7 @@ describe('small branch tails', () => {
         useProjection={(key: string) => key === 'tokenUsage'
           ? { uncachedInputTokens: 0, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }
           : undefined}
+        useStatsLine={sel => sel(true)}
       />,
     )
     expect(view.container.textContent).toBe('1 轮 · 1 步| 输入 0 tok · 输出 10 tok')

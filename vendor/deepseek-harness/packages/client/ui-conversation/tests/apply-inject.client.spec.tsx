@@ -209,6 +209,14 @@ describe('conversation slot inject API', () => {
     expect(absent.hooks.notices.getSnapshot()).toBeNull()
     expect(absent.hooks.lexicon.getSnapshot().size).toBe(0)
     expect(absent.hooks.menuLauncher.getSnapshot()).toBeNull()
+    expect(absent.hooks.composerBeam.getSnapshot()).toBe(true)
+    expect(absent.hooks.composerResize.getSnapshot()).toBe(false)
+    const offBeam = absent.hooks.composerBeam.subscribe(() => {})
+    offBeam()
+    const offResize = absent.hooks.composerResize.subscribe(() => {})
+    offResize()
+    const header = b.conversationHeaderApi(ROOT).injected
+    expect(header.hooks.viewTabs.getSnapshot()).toBe(true)
     // A scope whose service tree lost 'conversation' (the feature fiber
     // unloaded while a retained inject closure re-runs): fails loud too.
     const stop = injectFn(ROOT).stop!

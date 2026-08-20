@@ -18,7 +18,13 @@ export type Surface =
   | { id: 'files'; kind: 'files' }
   | { id: 'diff'; kind: 'diff' }
   | { id: 'agents'; kind: 'agents' }
-  | { id: string; kind: 'file'; relativePath: string }
+  | {
+    id: string
+    kind: 'file'
+    relativePath: string
+    revealLine?: number
+    revealRequestId?: number
+  }
 
 /** Per-session active id and ordered surface list. */
 export type SessionSurfaces = {
@@ -33,7 +39,12 @@ export type SurfacesState = {
 
 type SurfacesActions = {
   open: (draft: SurfacesState, sessionId: string, kind: OpenableKind) => void
-  openFile: (draft: SurfacesState, sessionId: string, relativePath: string) => void
+  openFile: (
+    draft: SurfacesState,
+    sessionId: string,
+    relativePath: string,
+    options?: { revealLine?: number },
+  ) => void
   activate: (draft: SurfacesState, sessionId: string, id: string) => void
   close: (draft: SurfacesState, sessionId: string, id: string) => void
   closeOthers: (draft: SurfacesState, sessionId: string, id: string) => void
@@ -122,14 +133,31 @@ export function createSurfacesStore(): EngineStoreHandle<SurfacesState, Surfaces
         }
         bucket.activeId = surface.id
       },
-      openFile: (draft, sessionId: string, relativePath: string) => {
+      openFile: (
+        draft,
+        sessionId: string,
+        relativePath: string,
+        options?: { revealLine?: number },
+      ) => {
         const bucket = ensure(draft, sessionId)
         if (!bucket.surfaces.some(surface => surface.kind === 'files')) {
           bucket.surfaces.push(singleton('files'))
         }
         const id = `file:${relativePath}`
-        if (!bucket.surfaces.some(surface => surface.id === id)) {
-          bucket.surfaces.push({ id, kind: 'file', relativePath })
+        const existingIndex = bucket.surfaces.findIndex(surface => surface.id === id)
+        if (existingIndex < 0) {
+          bucket.surfaces.push({
+            id,
+            kind: 'file',
+            relativePath,
+            ...(options?.revealLine !== undefined
+              ? { revealLine: options.revealLine, revealRequestId: 1 }
+              : {}),
+          })
+        } else if (options?.revealLine !== undefined) {
+          const existing = bucket.surfaces[existingIndex] as Extract<Surface, { kind: 'file' }>
+          existing.revealLine = options.revealLine
+          existing.revealRequestId = (existing.revealRequestId ?? 0) + 1
         }
         bucket.activeId = id
       },

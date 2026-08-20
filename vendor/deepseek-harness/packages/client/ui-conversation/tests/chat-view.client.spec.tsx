@@ -395,6 +395,31 @@ describe('ChatView', () => {
     expect(h.toolOwners[0]).toMatchObject({ callId: 'w1', toolName: '' })
   })
 
+  it('offers the empty-transcript list slot when the flow has no nodes', () => {
+    const slotCalls: string[] = []
+    const h = makeHarness({ nodes: [] })
+    const inner = h.props.renderSlot
+    h.props.renderSlot = ((key, owner, opts) => {
+      slotCalls.push(key)
+      return inner(key, owner, opts)
+    }) as typeof inner
+    const view = render(<h.ChatView {...h.props} />)
+    expect(slotCalls).toContain('conversation.chat.empty')
+    expect(view.container.querySelector('[data-chat-empty]')).not.toBeNull()
+  })
+
+  it('withholds the empty-transcript slot once a node exists', () => {
+    const slotCalls: string[] = []
+    const h = makeHarness({ nodes: [user(1, 'hello')] })
+    const inner = h.props.renderSlot
+    h.props.renderSlot = ((key, owner, opts) => {
+      slotCalls.push(key)
+      return inner(key, owner, opts)
+    }) as typeof inner
+    render(<h.ChatView {...h.props} />)
+    expect(slotCalls).not.toContain('conversation.chat.empty')
+  })
+
   it('prepend keeps the reader\'s latest pending-request scroll position anchored', () => {
     const h = makeHarness({ nodes: [user(9, 'first visible'), user(10, 'next visible')], hasMore: true })
     const view = render(<h.ChatView {...h.props} />)

@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const net = require('net');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { generateToken } = require('../shared/remote-auth');
 const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
@@ -514,25 +517,18 @@ test('an HTML visit with the pairing cookie upgrades into a bound device', async
   await close(upstream);
 });
 
-test('paired HTML and assets come from the official UI, not a second phone client', async () => {
+test('paired HTML comes from the mobile SPA; /api still hits the host', async () => {
+  const spaRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mobile-web-'));
+  fs.writeFileSync(path.join(spaRoot, 'index.html'), '<html>手机远程</html>');
+  fs.writeFileSync(path.join(spaRoot, 'app.js'), 'window.DSH_MOBILE=1');
   const upstream = http.createServer((req, res) => {
-    if (req.url === '/assets/app.js') {
-      res.writeHead(200, { 'content-type': 'text/javascript' });
-      res.end('official-asset');
-      return;
-    }
-    if (req.url === '/plugins/ui-layout/client.js') {
-      res.writeHead(200, { 'content-type': 'text/javascript' });
-      res.end('official-plugin');
-      return;
-    }
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end('<html>Into the Unknown</html>');
   });
   const upstreamPort = await listen(upstream);
   const token = generateToken();
   const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
-  const gateway = new RemoteGateway(config);
+  const gateway = new RemoteGateway({ ...config, mobileWebRoot: spaRoot });
   await gateway.start({ port: 0, token, target: { port: upstreamPort } });
   const port = gateway.port || gateway.server.address().port;
 
@@ -540,8 +536,9 @@ test('paired HTML and assets come from the official UI, not a second phone clien
   assert.equal(page.status, 401);
   assert.match(page.body, /#offer=/);
   assert.doesNotMatch(page.body, /Into the Unknown/);
+  assert.doesNotMatch(page.body, /手机远程/);
 
-  const assetDenied = await request(port, '/assets/app.js');
+  const assetDenied = await request(port, '/app.js');
   assert.equal(assetDenied.status, 401);
 
   const login = await request(port, '/__remote__/login', {
@@ -555,19 +552,19 @@ test('paired HTML and assets come from the official UI, not a second phone clien
     headers: { accept: 'text/html', cookie: `dsh_remote=${deviceToken}` },
   });
   assert.equal(authed.status, 200);
-  assert.match(authed.body, /Into the Unknown/);
+  assert.match(authed.body, /手机远程/);
+  assert.doesNotMatch(authed.body, /Into the Unknown/);
 
-  const asset = await request(port, '/assets/app.js', {
+  const asset = await request(port, '/app.js', {
     headers: { cookie: `dsh_remote=${deviceToken}` },
   });
   assert.equal(asset.status, 200);
-  assert.equal(asset.body, 'official-asset');
+  assert.equal(asset.body, 'window.DSH_MOBILE=1');
 
   const plugin = await request(port, '/plugins/ui-layout/client.js', {
     headers: { cookie: `dsh_remote=${deviceToken}` },
   });
-  assert.equal(plugin.status, 200);
-  assert.equal(plugin.body, 'official-plugin');
+  assert.equal(plugin.status, 404);
 
   const api = await request(port, '/api/session.list', {
     method: 'POST',
@@ -582,5 +579,6 @@ test('paired HTML and assets come from the official UI, not a second phone clien
 
   await gateway.stop();
   await close(upstream);
+  fs.rmSync(spaRoot, { recursive: true, force: true });
 });
 

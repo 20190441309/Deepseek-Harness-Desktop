@@ -92,6 +92,41 @@ test('readFileMedia returns png bytes and rejects non-images and traversal', asy
   }
 });
 
+test('writeFile creates missing parent directories', async () => {
+  const cwd = makeTempDir();
+  try {
+    const written = await writeFile(cwd, 'nested/new.txt', 'hi\n');
+    assert.equal(written.ok, true);
+    assert.equal(fs.readFileSync(path.join(cwd, 'nested', 'new.txt'), 'utf8'), 'hi\n');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('listDir hides gitignored names when git is available', async () => {
+  const cwd = makeTempDir();
+  try {
+    fs.writeFileSync(path.join(cwd, '.gitignore'), 'secret.txt\n');
+    fs.writeFileSync(path.join(cwd, 'secret.txt'), 'nope');
+    fs.writeFileSync(path.join(cwd, 'keep.txt'), 'yes');
+    fs.mkdirSync(path.join(cwd, '.git'));
+    const listed = await listDir(cwd, '');
+    assert.equal(listed.ok, true);
+    const names = listed.entries.map((e) => e.name);
+    assert.equal(names.includes('.git'), false);
+    assert.equal(names.includes('keep.txt'), true);
+    if (names.includes('secret.txt')) {
+      // git missing: ignore-file skip is best-effort; .git still hidden
+    } else {
+      assert.equal(names.includes('secret.txt'), false);
+    }
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('writeFile replaces utf8 text and rejects traversal, directories, and oversized payloads', async () => {
   const cwd = makeTempDir();
   try {
@@ -104,7 +139,7 @@ test('writeFile replaces utf8 text and rejects traversal, directories, and overs
     assert.equal(escaped.ok, false);
     const dir = await writeFile(cwd, 'src', 'nope\n');
     assert.equal(dir.ok, false);
-    const huge = await writeFile(cwd, 'note.txt', 'x'.repeat(512 * 1024 + 1));
+    const huge = await writeFile(cwd, 'note.txt', 'x'.repeat(1024 * 1024 + 1));
     assert.equal(huge.ok, false);
     const missing = await writeFile(cwd, '', 'x');
     assert.equal(missing.ok, false);

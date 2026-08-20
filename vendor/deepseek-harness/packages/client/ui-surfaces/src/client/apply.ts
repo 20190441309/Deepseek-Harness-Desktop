@@ -22,6 +22,10 @@ export interface FilesOwnerProps {
 /** Owner props the single-file occupant receives. */
 export interface FileOwnerProps {
   relativePath: string
+  /** 1-based line to scroll into view; omitted when the open was not a jump-to-line. */
+  revealLine?: number
+  /** Increments on each jump-to-line so the same line can be requested again. */
+  revealRequestId?: number
   /** True while this file surface is the active tab (reread on activate). */
   active: boolean
   /** Report whether the editor has unsaved changes (for tab-close confirm). */
@@ -76,14 +80,32 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
+const OPEN_SURFACE_EVENT = 'dshd-open-surface'
+const PENDING_PREVIEW_URL_KEY = 'dshd-pending-preview-url'
+const BROWSER_DOCUMENTS = new Set(['.html', '.htm', '.xhtml', '.svg', '.pdf'])
+
 interface DesktopShell {
   gitStatus?: (cwd: string) => Promise<unknown>
   previewOpen?: (input: { url: string }) => Promise<unknown>
   listDir?: (cwd: string, relativePath?: string) => Promise<unknown>
+  previewWorkspaceFile?: (input: {
+    cwd: string
+    relativePath: string
+  }) => Promise<{ ok?: boolean, url?: string } | null | undefined>
+  onOpenPreviewUrl?: (handler: (payload: { url?: string }) => void) => () => void
 }
 
 interface SurfacesStoreActions {
-  openFile: (sessionId: string, relativePath: string) => void
+  openFile: (sessionId: string, relativePath: string, options?: { revealLine?: number }) => void
+}
+
+/**
+ * @returns the desktop `window.shell` object, or undefined outside the renderer.
+ */
+function readWindowShell(): DesktopShell | undefined {
+  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
+  if (typeof window === 'undefined') return undefined
+  return (window as Window & { shell?: DesktopShell }).shell
 }
 
 /**
@@ -91,14 +113,69 @@ interface SurfacesStoreActions {
  * @returns a probe that resolves null outside the desktop app or when git is missing.
  */
 function readDesktopShell(): Pick<SurfacesRootInjected, 'gitStatus' | 'previewAvailable'> {
-  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
-  const shell = typeof window === 'undefined'
-    ? undefined
-    : (window as Window & { shell?: DesktopShell }).shell
+  const shell = readWindowShell()
   return {
     previewAvailable: typeof shell?.previewOpen === 'function',
     gitStatus: cwd => shell?.gitStatus?.(cwd) ?? Promise.resolve(null),
   }
+}
+
+/**
+ * @param relative - workspace-relative path using `/` separators.
+ * @returns the lowercased extension including the leading dot, or empty.
+ */
+function documentExtension(relative: string): string {
+  const slash = relative.lastIndexOf('/')
+  const base = slash >= 0 ? relative.slice(slash + 1) : relative
+  const dot = base.lastIndexOf('.')
+  if (dot <= 0) return ''
+  return base.slice(dot).toLowerCase()
+}
+
+/**
+ * Write the pending preview URL and open the Browser surface, matching terminal.
+ * @param url - loopback http(s) the guest should load.
+ */
+function openPreviewSurface(url: string): void {
+  try {
+    sessionStorage.setItem(PENDING_PREVIEW_URL_KEY, url)
+  } catch {
+    // Quota / SecurityError: Preview still listens for the event when mounted.
+  }
+  window.dispatchEvent(new CustomEvent(OPEN_SURFACE_EVENT, { detail: { kind: 'preview', url } }))
+}
+
+/**
+ * After Files opens, load a browser-renderable workspace file in Browser.
+ * Missing or failing IPC leaves Files in place and does not throw.
+ * @param cwd - session workspace root.
+ * @param relative - path inside cwd.
+ */
+async function previewBrowserDocument(cwd: string, relative: string): Promise<void> {
+  const preview = readWindowShell()?.previewWorkspaceFile
+  if (typeof preview !== 'function' || !BROWSER_DOCUMENTS.has(documentExtension(relative))) return
+  try {
+    const result = await preview({ cwd, relativePath: relative })
+    if (result?.ok === true && typeof result.url === 'string' && result.url.length > 0) {
+      openPreviewSurface(result.url)
+    }
+  } catch {
+    // Files already open; preview is optional.
+  }
+}
+
+/**
+ * Forward main-process loopback popups into the same preview event as terminal.
+ * @returns a disposer; a no-op when `onOpenPreviewUrl` is absent.
+ */
+function subscribeOpenPreviewUrl(): () => void {
+  const subscribe = readWindowShell()?.onOpenPreviewUrl
+  if (typeof subscribe !== 'function') return () => {}
+  return subscribe((payload) => {
+    if (typeof payload?.url === 'string' && payload.url.length > 0) {
+      openPreviewSurface(payload.url)
+    }
+  })
 }
 
 /**
@@ -107,10 +184,7 @@ function readDesktopShell(): Pick<SurfacesRootInjected, 'gitStatus' | 'previewAv
  * @returns whether `window.shell.listDir` is a function.
  */
 export function desktopListingAvailable(): boolean {
-  /* v8 ignore next -- browser-only module; Node coverage never sees a missing window. */
-  if (typeof window === 'undefined') return false
-  const shell = (window as Window & { shell?: DesktopShell }).shell
-  return typeof shell?.listDir === 'function'
+  return typeof readWindowShell()?.listDir === 'function'
 }
 
 /** Services required by the surfaces plugin. */
@@ -118,11 +192,12 @@ export const inject = ['slots', 'layout', 'locale', 'workspaces', 'sessions']
 
 /**
  * Register dictionaries, occupy the layout `surfaces` column, and intercept
- * `workspaces.openPath` into the files surface on desktop.
+ * `workspaces.openPath` into Files (and Browser for html/svg/pdf) on desktop.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-surfaces: dictionaries')
+  ctx.effect(() => subscribeOpenPreviewUrl(), 'ui-surfaces: open-preview-url')
 
   const live: { openFile?: SurfacesStoreActions['openFile'] } = {}
 
@@ -140,7 +215,10 @@ export function apply(ctx: ClientContext): void {
     },
     inject: (_sessionId, actions): SurfacesRootInjected => {
       if (actions !== undefined) {
-        live.openFile = (sessionId, relativePath) => { actions.openFile(sessionId, relativePath) }
+        live.openFile = (sessionId, relativePath, options) => {
+          if (options === undefined) actions.openFile(sessionId, relativePath)
+          else actions.openFile(sessionId, relativePath, options)
+        }
       }
       return {
         openSurfaces: () => { ctx.layout.openSurfaces() },
@@ -152,14 +230,16 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => wrapOpenPath(ctx.workspaces, {
     takeoverEnabled: desktopListingAvailable,
     currentSessionId: () => ctx.sessions.list.getSnapshot().current,
-    openInSurfaces: (path, sessionId) => {
+    openInSurfaces: async (path, sessionId, options) => {
       const cwd = ctx.sessions.list.getSnapshot().byId[sessionId as SessionId]?.cwd
       if (typeof cwd !== 'string' || cwd.length === 0) return false
       const relative = relativeTo(cwd, path)
       if (relative === undefined || relative === '') return false
       if (live.openFile === undefined) return false
-      live.openFile(sessionId, relative)
+      if (options?.line !== undefined) live.openFile(sessionId, relative, { revealLine: options.line })
+      else live.openFile(sessionId, relative)
       ctx.layout.openSurfaces()
+      await previewBrowserDocument(cwd, relative)
       return true
     },
   }), 'ui-surfaces: openPath intercept')

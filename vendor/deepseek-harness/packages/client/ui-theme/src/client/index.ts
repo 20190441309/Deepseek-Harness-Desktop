@@ -16,6 +16,7 @@ import { AppearanceSection } from './AppearanceSection.tsx'
 import { applyAppearanceDocumentExtras } from '../appearance-apply.ts'
 import { createAppearanceRowStore } from './settings-store.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
+import { wallpaperShell } from './wallpaper-shell.ts'
 import { deriveThemeTokens } from '../derive.ts'
 import {
   DEFAULT_FAMILY_ID, type ThemeFamily, type ThemeTokens as FamilyTokens,
@@ -26,15 +27,20 @@ import {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, isThemePreference,
   THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
   THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
-  THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
+  THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_BING_FIELD, THEME_WALLPAPER_CATALOGS_FIELD,
+  THEME_WALLPAPER_FAVORITES_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
+  THEME_WALLPAPER_SOURCES_FIELD,
   resolveThemeSettings,
-  type ThemePreference, type ThemeSettings,
+  sanitizeWallpaperCatalogUrls,
+  sanitizeWallpaperFavorites,
+  sanitizeWallpaperSources,
+  type ThemePreference, type ThemeSettings, type WallpaperFavorite, type WallpaperSource,
 } from '../theme-settings.ts'
 
 export type { AppearanceSectionComponentProps, AppearanceSectionInjected } from './AppearanceSection.tsx'
 export type { AppearanceRowState } from './settings-store.ts'
 export type { ThemeKey } from './locales.ts'
-export type { ThemePreference, ThemeSettings } from '../theme-settings.ts'
+export type { ThemePreference, ThemeSettings, WallpaperFavorite, WallpaperSource } from '../theme-settings.ts'
 export type { ThemeFamily, ThemeSeeds, ThemeTokens as FamilyThemeTokens } from '../theme-family.ts'
 
 /** Namespace owning this feature's settings copy. */
@@ -105,6 +111,14 @@ export interface ThemeSnapshot {
   wallpaperBlur: number
   /** Pixelation on the wallpaper, 0–100. */
   wallpaperPixelate: number
+  /** Whether the desktop gallery includes Bing rows. */
+  wallpaperBingEnabled: boolean
+  /** HTTPS custom wallpaper catalogs. */
+  wallpaperCatalogUrls: readonly string[]
+  /** Gallery sources. */
+  wallpaperSources: readonly WallpaperSource[]
+  /** Starred gallery items. */
+  wallpaperFavorites: readonly WallpaperFavorite[]
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -394,6 +408,46 @@ export class ThemeRuntime {
   }
 
   /**
+   * Persist desktop wallpaper catalog preferences without exposing desktop APIs to the web bundle.
+   * `{ wallpaperSources }` replaces the sanitized source list. The bing / catalog-url
+   * patch remains so Appearance still typechecks.
+   */
+  setWallpaperSources(
+    patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>,
+  ): void {
+    if (patch.wallpaperSources !== undefined) {
+      const nextSources = sanitizeWallpaperSources(patch.wallpaperSources)
+      if (JSON.stringify(nextSources) === JSON.stringify(this.settings.wallpaperSources)) return
+      this.settings = { ...this.settings, wallpaperSources: nextSources }
+      this.queueWrite(THEME_WALLPAPER_SOURCES_FIELD, nextSources)
+      this.publish()
+      return
+    }
+    const nextBing = patch.wallpaperBingEnabled ?? this.settings.wallpaperBingEnabled
+    const nextCatalogs = patch.wallpaperCatalogUrls === undefined
+      ? this.settings.wallpaperCatalogUrls
+      : sanitizeWallpaperCatalogUrls(patch.wallpaperCatalogUrls)
+    if (nextBing === this.settings.wallpaperBingEnabled
+      && JSON.stringify(nextCatalogs) === JSON.stringify(this.settings.wallpaperCatalogUrls)) return
+    this.settings = { ...this.settings, wallpaperBingEnabled: nextBing, wallpaperCatalogUrls: nextCatalogs }
+    if (patch.wallpaperBingEnabled !== undefined) this.queueWrite(THEME_WALLPAPER_BING_FIELD, nextBing)
+    if (patch.wallpaperCatalogUrls !== undefined) this.queueWrite(THEME_WALLPAPER_CATALOGS_FIELD, nextCatalogs)
+    this.publish()
+  }
+
+  /**
+   * Replace the starred gallery list.
+   * @param patch - next favorites; the list is sanitized before persist.
+   */
+  setWallpaperFavorites(patch: Pick<ThemeSettings, 'wallpaperFavorites'>): void {
+    const next = sanitizeWallpaperFavorites(patch.wallpaperFavorites)
+    if (JSON.stringify(next) === JSON.stringify(this.settings.wallpaperFavorites)) return
+    this.settings = { ...this.settings, wallpaperFavorites: next }
+    this.queueWrite(THEME_WALLPAPER_FAVORITES_FIELD, next)
+    this.publish()
+  }
+
+  /**
    * Persist typography extras.
    * @param patch - one or more font fields.
    */
@@ -495,6 +549,10 @@ export class ThemeRuntime {
       wallpaperImage: this.settings.wallpaperImage,
       wallpaperBlur: this.settings.wallpaperBlur,
       wallpaperPixelate: this.settings.wallpaperPixelate,
+      wallpaperBingEnabled: this.settings.wallpaperBingEnabled,
+      wallpaperCatalogUrls: Object.freeze([...this.settings.wallpaperCatalogUrls]),
+      wallpaperSources: Object.freeze([...this.settings.wallpaperSources]),
+      wallpaperFavorites: Object.freeze([...this.settings.wallpaperFavorites]),
       fontFamilySans: this.settings.fontFamilySans,
       fontFamilyCode: this.settings.fontFamilyCode,
       fontSizeInterface: this.settings.fontSizeInterface,
@@ -538,6 +596,10 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.wallpaperImage === right.wallpaperImage
     && left.wallpaperBlur === right.wallpaperBlur
     && left.wallpaperPixelate === right.wallpaperPixelate
+    && left.wallpaperBingEnabled === right.wallpaperBingEnabled
+    && JSON.stringify(left.wallpaperCatalogUrls) === JSON.stringify(right.wallpaperCatalogUrls)
+    && JSON.stringify(left.wallpaperSources) === JSON.stringify(right.wallpaperSources)
+    && JSON.stringify(left.wallpaperFavorites) === JSON.stringify(right.wallpaperFavorites)
     && left.fontFamilySans === right.fontFamilySans
     && left.fontFamilyCode === right.fontFamilyCode
     && left.fontSizeInterface === right.fontSizeInterface
@@ -624,6 +686,7 @@ export function apply(ctx: ClientContext): void {
   const injected = (actions: BoundActions<typeof store>): AppearanceSectionInjected => {
     bound = actions
     sync(theme.getTheme())
+    const desktopWallpaper = wallpaperShell() !== null
     return {
       setTheme: (id) => { theme.setTheme(id) },
       setThemeHalf: (mode, id) => { theme.setThemeHalf(mode, id) },
@@ -631,6 +694,11 @@ export function apply(ctx: ClientContext): void {
       previewTheme: (family) => { theme.setPreviewFamily(family) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
       setWallpaper: (patch) => { theme.setWallpaper(patch) },
+      ...(desktopWallpaper ? {
+        setWallpaperSources: (patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>) => {
+          theme.setWallpaperSources(patch)
+        },
+      } : {}),
       setTypography: (patch) => { theme.setTypography(patch) },
     }
   }

@@ -130,7 +130,7 @@ describe('when: ref is clean, ahead, and has no open PR', () => {
 })
 
 describe('when: source control provider uses merge requests', () => {
-  it('keeps T3 Create MR rows; desktop gh failure stays on the backend', () => {
+  it('keeps Create MR rows; desktop gh failure stays on the backend', () => {
     const gitlabStatus = status({
       aheadCount: 2,
       sourceControlProvider: {
@@ -513,7 +513,7 @@ describe('getMenuActionDisabledReason', () => {
     })).toBe('Git action in progress.')
   })
 
-  it('Create PR disabled reason uses aheadCount only, like T3', () => {
+  it('Create PR disabled reason uses aheadCount only', () => {
     const noUpstreamAheadVsDefault = status({
       hasUpstream: false,
       aheadCount: 2,

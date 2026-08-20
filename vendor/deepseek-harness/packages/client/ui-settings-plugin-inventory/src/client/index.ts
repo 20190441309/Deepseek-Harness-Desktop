@@ -1,20 +1,17 @@
-/** Host plugin inventory and desktop marketplace Settings tabs. */
+/** Host plugin inventory Settings tab. */
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { catalogLocale, desktopShell } from './desktop-shell.ts'
-import { MarketplaceSettingsTab, type MarketplaceSettingsTabInjected } from './MarketplaceSettingsTab.tsx'
 import { PluginInventorySettingsTab, type PluginInventorySettingsTabInjected } from './PluginInventorySettingsTab.tsx'
 import { en, zh, type PluginInventoryLocaleKey } from './locales.ts'
 
 export type { PluginInventorySettingsTabInjected, PluginInventorySettingsTabProps } from './PluginInventorySettingsTab.tsx'
-export type { MarketplaceSettingsTabInjected, MarketplaceSettingsTabProps } from './MarketplaceSettingsTab.tsx'
 export type { PluginInventoryLocaleKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Plugin inventory and desktop marketplace copy. */
+    /** Plugin inventory copy. */
     'settings.pluginInventory': PluginInventoryLocaleKey
   }
 }
@@ -47,28 +44,4 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: injected,
   }, PluginInventorySettingsTab))
-
-  const shell = desktopShell()
-  if (shell?.listMarketplace && shell.listInstalledPlugins && shell.installMarketplacePlugin && shell.uninstallPlugin) {
-    const { listMarketplace, listInstalledPlugins, installMarketplacePlugin, uninstallPlugin } = shell
-    const market = (): MarketplaceSettingsTabInjected => ({
-      listMarketplace: options => listMarketplace({
-        ...options,
-        locale: catalogLocale(ctx.locale.getSnapshot().active),
-      }),
-      listInstalled: () => listInstalledPlugins(),
-      installMarketplacePlugin: (id, options) => installMarketplacePlugin(id, options),
-      uninstallPlugin: name => uninstallPlugin(name),
-      openExternal: url => shell.openExternal?.(url) ?? Promise.resolve(false),
-      onProgress: handler => shell.onPluginProgress?.(handler) ?? (() => {}),
-    })
-    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
-      name: 'settings.plugins.tab',
-      id: 'marketplace',
-      order: 5,
-      label: () => t('marketTab'),
-      locale: NS,
-      inject: market,
-    }, MarketplaceSettingsTab))
-  }
 }

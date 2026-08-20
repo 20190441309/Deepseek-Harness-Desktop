@@ -3,8 +3,8 @@
  * `sidebar.settings` occupant — panel chrome, section navigation, and the
  * onboarding stage — and registers everything on the Settings pages that
  * belongs to no single feature: the trigger/header chrome content,
- * local-document action, General section, desktop close-window row, and
- * `settings` dictionaries.
+ * local-document action, General and Interface sections, desktop close-window
+ * row, and `settings` dictionaries.
  * Feature-owned rows and sections stay with their features.
  * Export discipline: packages/client/AGENTS.md.
  */
@@ -24,6 +24,7 @@ import type {
 import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
+import { InterfaceSection } from './InterfaceSection.tsx'
 import { CloseBehaviorRow } from './CloseBehaviorRow.tsx'
 import { AboutSection } from './AboutSection.tsx'
 import { HarnessRestartRow } from './HarnessRestartRow.tsx'
@@ -39,6 +40,9 @@ export type {
 export type {
   GeneralSectionComponentProps,
 } from './GeneralSection.tsx'
+export type {
+  InterfaceSectionComponentProps,
+} from './InterfaceSection.tsx'
 export type { HarnessRestartRowProps } from './HarnessRestartRow.tsx'
 export type { AboutSectionProps } from './AboutSection.tsx'
 export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
@@ -183,6 +187,14 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     children: { 'settings.general.item': { kind: 'list', scope: 'root' } },
   }, GeneralSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'interface',
+    order: 6,
+    label: () => t('interface.nav'),
+    locale: NS,
+    children: { 'settings.interface.item': { kind: 'list', scope: 'root' } },
+  }, InterfaceSection))
   if (canPersistCloseBehavior()) {
     ctx.slots.inject('settings.general.item', () => ctx.slots.register({
       name: 'settings.general.item',

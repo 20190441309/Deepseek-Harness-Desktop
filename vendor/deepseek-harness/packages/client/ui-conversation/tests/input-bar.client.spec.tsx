@@ -88,7 +88,12 @@ interface BenchOptions {
   addImages?: (files: readonly File[]) => string | null
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
+  composerBeam?: boolean
+  composerResize?: boolean
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
+  listSkillNames?: (query: string) => readonly string[]
+  /** Session list row preset; rooms hide the composer model seat. */
+  agentPreset?: string
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
@@ -146,7 +151,11 @@ function bench(over?: BenchOptions) {
     SessionProvider: ({ children }) => children(SID),
     useSession: bindSnapshotSelector(session),
     useSessions: bindSnapshotSelector(createSnapshotStore({
-      ids: [], byId: {}, current: undefined, phase: 'ready',
+      ids: over?.agentPreset === undefined ? [] : [SID],
+      byId: over?.agentPreset === undefined ? {} : {
+        [SID]: { id: SID, displayTitle: 'room', running: false, blank: false, agentPreset: over.agentPreset },
+      },
+      current: undefined, phase: 'ready',
       subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
     })),
     useWorkspaces: bindSnapshotSelector(createSnapshotStore({
@@ -175,8 +184,11 @@ function bench(over?: BenchOptions) {
     useNotices: bindSnapshotSelector(shell.notices),
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(menuLauncher),
+    useComposerBeam: sel => sel(over?.composerBeam ?? true),
+    useComposerResize: sel => sel(over?.composerResize ?? false),
     stop,
     command: over?.command ?? (() => Promise.resolve(true)),
+    ...(over?.listSkillNames === undefined ? {} : { listSkillNames: over.listSkillNames }),
     // Mirrors the real lookup chain (conversation namespace, then common).
     t: over?.t ?? makeTranslate(zh, commonZh),
     renderSlot,
@@ -235,6 +247,44 @@ describe('image draft rail', () => {
     expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
     expect(addImages).toHaveBeenCalledWith([image])
     expect(view.queryByRole('status')).toBeNull()
+  })
+
+  it('inserts a composer mention drop into the draft', () => {
+    const { shell } = bench()
+    const dataTransfer = {
+      types: ['application/x-dshd-composer-mention'],
+      files: [],
+      dropEffect: 'none',
+      getData: (type: string) => type === 'application/x-dshd-composer-mention' ? '[a.ts](src/a.ts)' : '',
+    }
+    expect(fireEvent.dragOver(document.body, { dataTransfer })).toBe(false)
+    expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
+    expect(shell.snapshot.draft).toBe('[a.ts](src/a.ts)')
+  })
+
+  it('appends a composer mention drop after an existing draft', () => {
+    const { shell } = bench({ draft: 'hello' })
+    const dataTransfer = {
+      types: ['application/x-dshd-composer-mention'],
+      files: [],
+      dropEffect: 'none',
+      getData: () => '[a.ts](src/a.ts)',
+    }
+    fireEvent.drop(document.body, { dataTransfer })
+    expect(shell.snapshot.draft).toBe('hello [a.ts](src/a.ts)')
+  })
+
+  it('does not insert a leftover mention MIME drop', () => {
+    const { shell } = bench()
+    const leftoverMentionMime = `application/x-${['t', '3', 'code'].join('')}-composer-mention`
+    const dataTransfer = {
+      types: [leftoverMentionMime],
+      files: [],
+      dropEffect: 'none',
+      getData: () => '[a.ts](src/a.ts)',
+    }
+    fireEvent.drop(document.body, { dataTransfer })
+    expect(shell.snapshot.draft).toBe('')
   })
 
   it('keeps text drags native and hides the overlay when the drag leaves or ends', () => {
@@ -1205,6 +1255,54 @@ describe('decorations', () => {
   })
 })
 
+describe('composer $skill trigger', () => {
+  function typeDraft(textarea: HTMLTextAreaElement, value: string): void {
+    fireEvent.change(textarea, {
+      target: { value, selectionStart: value.length, selectionEnd: value.length },
+    })
+  }
+
+  it('does not call listSkillNames or a Files listDir when typing /', () => {
+    const listSkillNames = vi.fn((_query: string) => [] as string[])
+    const listDir = vi.fn()
+    const previous = (window as Window & { shell?: { listDir: typeof listDir } }).shell
+    ;(window as Window & { shell?: { listDir: typeof listDir } }).shell = { listDir }
+    try {
+      const { textarea, view } = bench({ listSkillNames })
+      typeDraft(textarea, '/')
+      expect(listSkillNames).not.toHaveBeenCalled()
+      expect(listDir).not.toHaveBeenCalled()
+      expect(view.queryByRole('menuitem')).toBeNull()
+    } finally {
+      ;(window as Window & { shell?: { listDir: typeof listDir } }).shell = previous
+    }
+  })
+
+  it('offers a stub skill for $fo and replaces the $fo range on pick', () => {
+    const listSkillNames = vi.fn((query: string) => query === 'fo' ? ['foo-skill'] : [])
+    const { textarea, view, shell } = bench({ listSkillNames })
+    typeDraft(textarea, '$fo')
+    expect(listSkillNames).toHaveBeenCalledWith('fo')
+    fireEvent.click(view.getByRole('menuitem', { name: 'foo-skill' }))
+    expect(shell.snapshot.draft).toBe('$foo-skill ')
+    expect(shell.snapshot.draft).not.toContain('/foo-skill')
+  })
+
+  it('does not open the skill menu for /model', () => {
+    const listSkillNames = vi.fn((query: string) => query === 'fo' ? ['foo-skill'] : [])
+    const { textarea, view } = bench({ listSkillNames })
+    typeDraft(textarea, '/model')
+    expect(listSkillNames).not.toHaveBeenCalled()
+    expect(view.queryByRole('menuitem', { name: 'foo-skill' })).toBeNull()
+  })
+
+  it('does not open a $ skill menu without listSkillNames', () => {
+    const { textarea, view } = bench()
+    typeDraft(textarea, '$fo')
+    expect(view.queryByRole('menuitem')).toBeNull()
+  })
+})
+
 describe('insertText (scoped event body)', () => {
   it('splices plain text over the span and reports success as true', () => {
     const { shell } = bench({ draft: '/fix' })
@@ -1409,6 +1507,17 @@ describe('command launcher chrome and control seats', () => {
     expect(command).not.toHaveBeenCalled()
   })
 
+  it('skips the model seat when the session agent preset is dshbot-room', () => {
+    const { view, slotCalls } = bench({
+      agentPreset: 'dshbot-room',
+      planEntry: <i data-testid="plan-entry" />,
+      modelEntry: <i data-testid="model-entry" />,
+    })
+    expect(slotCalls.map(call => call.key)).toEqual(['conversation.input.plan'])
+    expect(view.getByTestId('plan-entry')).toBeTruthy()
+    expect(view.queryByTestId('model-entry')).toBeNull()
+  })
+
   it('a registered entry fills its seat and receives the locked owner prop', () => {
     const { view, slotCalls } = bench({
       disabled: true,
@@ -1439,5 +1548,91 @@ describe('command launcher chrome and control seats', () => {
     expect(idle.view.container.querySelector('[data-composer-card]')?.hasAttribute('data-beam')).toBe(false)
     const live = bench({ running: true })
     expect(live.view.container.querySelector('[data-composer-card]')?.hasAttribute('data-beam')).toBe(true)
+  })
+
+  it('suppresses the composer border beam when Interface settings turn it off', () => {
+    const live = bench({ running: true, composerBeam: false })
+    expect(live.view.container.querySelector('[data-composer-card]')?.hasAttribute('data-beam')).toBe(false)
+  })
+
+  it('hides the composer resize handle until Interface settings turn it on', () => {
+    expect(bench().view.container.querySelectorAll('[data-composer-resize-handle]')).toHaveLength(0)
+    const live = bench({ composerResize: true })
+    expect(live.view.container.querySelectorAll('[data-composer-resize-handle]')).toHaveLength(3)
+    const trigger = bench({ composerResize: true, inert: true, onRequestWorkspace: vi.fn() })
+    expect(trigger.view.container.querySelectorAll('[data-composer-resize-handle]')).toHaveLength(0)
+  })
+
+  it('drags the composer text box taller from its top edge when resize is on', () => {
+    const { view } = bench({ composerResize: true })
+    const scroll = view.container.querySelector('[data-input-scroll]') as HTMLElement
+    const handle = view.container.querySelector('[data-composer-resize-edge="top"]') as HTMLElement
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, width: 400, height: 80, top: 0, left: 0, bottom: 80, right: 400, toJSON() { return this },
+    })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 350 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
+    expect(scroll.style.height).toBe('130px')
+    expect(scroll.hasAttribute('data-composer-resized')).toBe(true)
+  })
+
+  it('drags the composer card wider from either vertical edge when resize is on', () => {
+    const { view } = bench({ composerResize: true })
+    const card = view.container.querySelector('[data-composer-card]') as HTMLElement
+    Object.defineProperty(card.parentElement, 'clientWidth', { configurable: true, value: 900 })
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, width: 400, height: 80, top: 0, left: 0, bottom: 80, right: 400, toJSON() { return this },
+    })
+    const right = view.container.querySelector('[data-composer-resize-edge="right"]') as HTMLElement
+    fireEvent.pointerDown(right, { pointerId: 1, clientX: 500, button: 0 })
+    fireEvent.pointerMove(right, { pointerId: 1, clientX: 560 })
+    fireEvent.pointerUp(right, { pointerId: 1, clientX: 560 })
+    expect(card.style.width).toBe('460px')
+    expect(card.hasAttribute('data-composer-resized-width')).toBe(true)
+    const left = view.container.querySelector('[data-composer-resize-edge="left"]') as HTMLElement
+    fireEvent.pointerDown(left, { pointerId: 2, clientX: 100, button: 0 })
+    fireEvent.pointerMove(left, { pointerId: 2, clientX: 40 })
+    fireEvent.pointerUp(left, { pointerId: 2, clientX: 40 })
+    expect(card.style.width).toBe('460px')
+  })
+
+  it('ignores a non-primary press and a move without a matching pointer down', () => {
+    const { view } = bench({ composerResize: true })
+    const scroll = view.container.querySelector('[data-input-scroll]') as HTMLElement
+    const handle = view.container.querySelector('[data-composer-resize-edge="top"]') as HTMLElement
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, width: 400, height: 80, top: 0, left: 0, bottom: 80, right: 400, toJSON() { return this },
+    })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 400 })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 1 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 350 })
+    expect(scroll.style.height).toBe('')
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 2, clientY: 350 })
+    fireEvent.pointerUp(handle, { pointerId: 2, clientY: 350 })
+    expect(scroll.style.height).toBe('')
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 350 })
+    expect(scroll.style.height).toBe('130px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
+  })
+
+  it('clears a dragged size when Interface settings turn resize off', () => {
+    const { view, props } = bench({ composerResize: true })
+    const scroll = view.container.querySelector('[data-input-scroll]') as HTMLElement
+    const card = view.container.querySelector('[data-composer-card]') as HTMLElement
+    const handle = view.container.querySelector('[data-composer-resize-edge="top"]') as HTMLElement
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, width: 400, height: 80, top: 0, left: 0, bottom: 80, right: 400, toJSON() { return this },
+    })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 350 })
+    expect(scroll.style.height).toBe('130px')
+    view.rerender(<InputBar {...props} useComposerResize={sel => sel(false)} />)
+    expect(scroll.style.height).toBe('')
+    expect(scroll.hasAttribute('data-composer-resized')).toBe(false)
+    expect(card.style.width).toBe('')
+    expect(card.hasAttribute('data-composer-resized-width')).toBe(false)
+    expect(view.container.querySelector('[data-composer-resize-handle]')).toBeNull()
   })
 })

@@ -6,9 +6,10 @@
  * controls enter the 56px rail from the same horizontal offset (one icon each,
  * same top-down order) on one fade that ends with the slide. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
- * the New Session button and the foot is the `sidebar.workspaces` registrant's,
- * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
- * hands them the wide flag (plus an expand request callback for the browser).
+ * the New Session button and the foot is the `sidebar.workspaces` registrant's
+ * while the sessions tab is selected; a plugin tab swaps that region for
+ * `sidebar.page`. The foot holds `sidebar.settings` plus `sidebar.footer.action`;
+ * the shell hands them the wide flag (plus an expand request callback).
  *
  * The column also owns whether the scroll regions nested in it draw a
  * scrollbar at all: the shell tracks the pointer and rebinds ui-theme's
@@ -19,10 +20,11 @@ import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   BrandWordmark, FishLogo,
-  IconNewChatOutline16, IconPanelLeftOutline16,
+  IconAgentPresetOutline16, IconNewChatOutline16, IconPanelLeftOutline16,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarRootComponentProps } from './contract/slots.ts'
+import { SESSIONS_TAB_ID } from './stores.ts'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -48,6 +50,9 @@ export function SidebarRoot({
   toggleSidebar,
   t,
   renderSlot,
+  useStore,
+  actions,
+  useNavTabs,
 }: SidebarRootComponentProps) {
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
@@ -69,6 +74,12 @@ export function SidebarRoot({
   // collapsed state renders the rail statically (no delay-hidden icons).
   const everWide = useRef(!collapsed)
   if (!collapsed) everWide.current = true
+
+  const navTabs = useNavTabs(rows => rows)
+  const selectedTab = useStore(state => state.selectedTab)
+  const activeTab = navTabs.some(row => row.id === selectedTab) ? selectedTab : SESSIONS_TAB_ID
+  const pluginPage = navTabs.length > 0 && activeTab !== SESSIONS_TAB_ID
+  const expandSidebar = (): void => { if (collapsed) toggleSidebar() }
 
   // Scrollbars in the column follow the pointer (.quietBars rebinds them
   // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
@@ -129,8 +140,14 @@ export function SidebarRoot({
     >
       <div className={css.logoRow}>
         {/* Expanded, the wordmark doubles as a New Session shortcut; the
-            collapsed rail's logo is the expand toggle below instead. */}
-        {wide && (
+            collapsed rail's logo is the expand toggle below instead. Plugin
+            region tabs keep the mark as brand-only so it does not start a
+            coding session while the bot list is showing. */}
+        {wide && (pluginPage ? (
+          <div className={clsx(css.brand, css.wide)}>
+            <BrandWordmark />
+          </div>
+        ) : (
           <button
             type="button"
             className={clsx(css.brand, css.wide)}
@@ -139,7 +156,7 @@ export function SidebarRoot({
           >
             <BrandWordmark />
           </button>
-        )}
+        ))}
         {/* Rail resting state is the whale mark; hovering swaps in the panel
             icon (the expand affordance, figma sidebar-hover flow). */}
         <Tooltip label={collapsed ? t('toggle.open') : t('toggle.collapse')} delayMs={500}>
@@ -156,26 +173,57 @@ export function SidebarRoot({
         </Tooltip>
       </div>
 
+      {navTabs.length > 0 && (
+        <div className={css.tabList} role="tablist" aria-label={t('tab.sessions')}>
+          <button
+            type="button"
+            className={clsx(css.tab, activeTab === SESSIONS_TAB_ID && css.tabActive)}
+            role="tab"
+            aria-label={t('tab.sessions')}
+            aria-selected={activeTab === SESSIONS_TAB_ID}
+            onClick={() => { actions.selectTab(SESSIONS_TAB_ID) }}
+          >
+            <IconNewChatOutline16 size={wide ? 14 : 18} />
+            {wide && <span className={clsx(css.tabLabel, css.wide)}>{t('tab.sessions')}</span>}
+          </button>
+          {navTabs.map(row => (
+            <button
+              key={row.id}
+              type="button"
+              className={clsx(css.tab, activeTab === row.id && css.tabActive)}
+              role="tab"
+              aria-label={row.label}
+              aria-selected={activeTab === row.id}
+              onClick={() => { actions.selectTab(row.id) }}
+            >
+              <IconAgentPresetOutline16 size={wide ? 14 : 18} />
+              {wide && <span className={clsx(css.tabLabel, css.wide)}>{row.label}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Expanded, the button carries its own label — tooltip only on the rail. */}
-      <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
-        <button
-          type="button"
-          className={css.newSession}
-          aria-label={t('session.new.label')}
-          onClick={() => { startSession() }}
-        >
-          <IconNewChatOutline16 size={wide ? 14 : 18} />
-          {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
-        </button>
-      </Tooltip>
+      {!pluginPage && (
+        <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
+          <button
+            type="button"
+            className={css.newSession}
+            aria-label={t('session.new.label')}
+            onClick={() => { startSession() }}
+          >
+            <IconNewChatOutline16 size={wide ? 14 : 18} />
+            {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
+          </button>
+        </Tooltip>
+      )}
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}
       <div className={css.regionArea}>
-        {renderSlot('sidebar.workspaces', {
-          wide,
-          expandSidebar: () => { if (collapsed) toggleSidebar() },
-        })}
+        {pluginPage
+          ? renderSlot('sidebar.page', { wide, expandSidebar }, { entryKey: activeTab })
+          : renderSlot('sidebar.workspaces', { wide, expandSidebar })}
       </div>
 
       {/* Footer actions stack above Settings in both sidebar widths. */}

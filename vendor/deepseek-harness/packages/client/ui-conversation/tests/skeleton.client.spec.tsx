@@ -93,12 +93,14 @@ function mount(
     summaryBlank?: boolean
     /** Drop the session's summary row entirely (a session the list has not caught up with). */
     omitSummaryRow?: boolean
-    /** Classify the selected child as a subagent instead of an ordinary fork. */
-    summaryOrigin?: 'subagent'
+    /** Classify the selected child as a subagent or a desktop-plugin contact. */
+    summaryOrigin?: 'subagent' | 'dshbot'
     /** A composer block another plugin raised for this session. */
     composerBlock?: { reason: string }
     /** Mutable view ledger used by registration-order regressions. */
     viewTabs?: ViewTab[]
+    /** Hide the Chat/Trajectory tablist while keeping views.list intact. */
+    viewTabsChrome?: boolean
     /** Render the resident shell with no current session (cold start). */
     noSession?: boolean
   } = {},
@@ -161,6 +163,7 @@ function mount(
           actions={chat.actions}
           renderSlot={renderSlot as never}
           views={views}
+          useViewTabs={sel => sel(options.viewTabsChrome !== false)}
           open={open}
           t={t}
         />
@@ -209,6 +212,8 @@ function mount(
           useNotices={bindSnapshotSelector(wiring.notices)}
           useLexicon={bindSnapshotSelector(wiring.lexicon)}
           useMenuLauncher={bindSnapshotSelector(createSnapshotStore<string | null>(null))}
+          useComposerBeam={sel => sel(true)}
+          useComposerResize={sel => sel(false)}
           stop={stop}
           command={() => Promise.resolve(true)}
           t={t}
@@ -496,6 +501,15 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.getByRole('tab', { name: 'New view' }).getAttribute('aria-selected')).toBe('false')
   })
 
+  it('hides the view tablist while keeping the active view and the view ledger', () => {
+    const b = mount(conversationSnapshot(), undefined, undefined, { viewTabsChrome: false })
+    expect(b.view.queryByRole('tablist')).toBeNull()
+    expect(b.view.getByTestId('view-chat')).toBeTruthy()
+    act(() => { b.chat.actions.setView('trajectory') })
+    expect(b.view.getByTestId('view-trajectory')).toBeTruthy()
+    expect(b.view.queryByRole('tablist')).toBeNull()
+  })
+
   it('rolls the pending workspace label back when switching fails', async () => {
     const selectWorkspace = vi.fn(async () => { throw new Error('connect failed') })
     const b = mount(
@@ -512,6 +526,28 @@ describe('ConversationRoot resident composer', () => {
     expect(selectWorkspace).toHaveBeenCalledWith(wid('second'))
     expect(b.view.queryByText('Selected Folder')).toBeNull()
     expect(b.view.getByText('one')).toBeTruthy()
+  })
+
+  it('a blank dshbot session skips the new-session hero and docks the composer', () => {
+    const b = mount(
+      conversationSnapshot({ composerPhase: 'blank', blank: true }),
+      undefined,
+      undefined,
+      { summaryOrigin: 'dshbot', summaryBlank: true },
+    )
+    const root = b.view.container.querySelector('[data-phase]')
+    const header = b.view.container.querySelector('header')
+    expect(root?.getAttribute('data-phase')).toBe('active')
+    expect(b.view.queryByText('探索未至之境')).toBeNull()
+    expect(b.view.queryByRole('button', { name: '选择工作区' })).toBeNull()
+    expect(b.slotCalls).not.toContain('conversation.hero.workspace')
+    expect(b.slotCalls).not.toContain('conversation.hero.agentPreset')
+    expect(header?.getAttribute('aria-hidden')).toBeNull()
+    expect(header?.querySelector('[data-dshd-caption="title"]')).not.toBeNull()
+    expect(b.view.getByTestId('view-chat')).toBeTruthy()
+    const box = b.view.getByRole('textbox')
+    expect(b.view.container.querySelector('[data-conversation-scroll]')?.contains(box)).toBe(true)
+    expect(box.getAttribute('placeholder')).toBe('给智能体发消息')
   })
 
   it('blank session keeps the interactive picker chip (workspace switchable until the first message)', () => {

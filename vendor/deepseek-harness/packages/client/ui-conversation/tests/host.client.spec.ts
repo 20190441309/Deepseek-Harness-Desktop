@@ -2,7 +2,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { SettingsProvider, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  CONVERSATION_SETTINGS_NAMESPACE, DEFAULT_BUSY_ENTER_BEHAVIOR, apply,
+  CONVERSATION_SETTINGS_NAMESPACE, DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM,
+  DEFAULT_COMPOSER_RESIZE, DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS, apply,
 } from '@deepseek-ai/dsh-client-ui-conversation'
 
 class MemorySettings extends SettingsProvider {
@@ -14,16 +15,30 @@ class MemorySettings extends SettingsProvider {
 }
 
 describe('ui-conversation host', () => {
-  it('registers, validates, and disposes the durable busy-Enter preference', async () => {
+  it('registers, validates, and disposes the durable busy-Enter, composer-beam, composer-resize, stats-line, and view-tabs preferences', async () => {
     const ctx = new Context()
     await ctx.plugin(MemorySettings).await()
     const fiber = ctx.plugin({ apply })
     await fiber.await()
     const ns = settingsNamespace(CONVERSATION_SETTINGS_NAMESPACE)
-    expect(ctx.settings.get(ns)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
-    await ctx.settings.update(ns, { busyEnter: 'steer' })
-    expect(ctx.settings.get(ns)).toEqual({ busyEnter: 'steer' })
+    expect(ctx.settings.get(ns)).toEqual({
+      busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR,
+      composerBeam: DEFAULT_COMPOSER_BEAM,
+      composerResize: DEFAULT_COMPOSER_RESIZE,
+      statsLine: DEFAULT_STATS_LINE,
+      viewTabs: DEFAULT_VIEW_TABS,
+    })
+    await ctx.settings.update(ns, {
+      busyEnter: 'steer', composerBeam: false, composerResize: true, statsLine: false, viewTabs: false,
+    })
+    expect(ctx.settings.get(ns)).toEqual({
+      busyEnter: 'steer', composerBeam: false, composerResize: true, statsLine: false, viewTabs: false,
+    })
     await expect(ctx.settings.update(ns, { busyEnter: 'invalid' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { composerBeam: 'yes' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { composerResize: 'yes' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { statsLine: 'yes' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { viewTabs: 'yes' })).rejects.toThrow()
     await fiber.dispose()
     expect(ctx.settings.describe().map(row => row.ns)).not.toContain(ns)
   })

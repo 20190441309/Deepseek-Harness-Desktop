@@ -20,7 +20,7 @@ export interface TerminalShellInjected {
   setTerminalDrawer: (px: number) => void
   mentionTerminal: (sessionId: string, text: string) => void
   writeClipboard: (text: string) => Promise<void>
-  openWorkspacePath: (absolutePath: string) => void
+  openWorkspacePath: (absolutePath: string, options?: { line?: number }) => void
   openLocalUrl: (url: string) => void
   openExternal: (url: string) => void
 }

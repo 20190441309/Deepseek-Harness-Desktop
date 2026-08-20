@@ -7,12 +7,36 @@ import { defineStore, type EngineStoreHandle, type EngineStoreInstance } from '@
 
 /** Per-group split ceiling. */
 export const MAX_TERMINALS_PER_GROUP = 4
-/** Default PTY columns before the viewport reports a fit. */
-export const DEFAULT_TERMINAL_COLS = 80
-/** Default PTY rows before the viewport reports a fit. */
-export const DEFAULT_TERMINAL_ROWS = 24
+/** Default PTY columns before the viewport reports a fit. `DEFAULT_OPEN_COLS`. */
+export const DEFAULT_TERMINAL_COLS = 120
+/** Default PTY rows before the viewport reports a fit. `DEFAULT_OPEN_ROWS`. */
+export const DEFAULT_TERMINAL_ROWS = 30
 /** Retained scrollback cap; appendData drops from the head past this length. */
 export const MAX_TERMINAL_BUFFER = 256 * 1024
+
+/**
+ * How far past the cap cut appendData scans for a clean boundary. A cut at an
+ * arbitrary byte can split an escape sequence and corrupt the replay parse;
+ * realigning to the next line start or ESC keeps the replay well-formed.
+ */
+export const BUFFER_REALIGN_WINDOW = 4096
+
+/**
+ * First index at or after `start` that begins a parseable replay: just after
+ * the next newline, or at the next ESC, whichever comes first within the
+ * realign window. Falls back to `start` when neither is near.
+ * @param text - the concatenated PTY output.
+ * @param start - the raw cap cut position.
+ * @returns the realigned slice start.
+ */
+export function realignBufferStart(text: string, start: number): number {
+  const newline = text.indexOf('\n', start)
+  const escape = text.indexOf('\u001b', start)
+  let aligned = Number.POSITIVE_INFINITY
+  if (newline !== -1 && newline + 1 - start <= BUFFER_REALIGN_WINDOW) aligned = newline + 1
+  if (escape !== -1 && escape - start <= BUFFER_REALIGN_WINDOW) aligned = Math.min(aligned, escape)
+  return Number.isFinite(aligned) ? aligned : start
+}
 
 /** One live PTY session owned by a single terminal shell. */
 export type TerminalSessionRecord = {
@@ -196,7 +220,7 @@ export function createTerminalSessionStore(): TerminalSessionStoreHandle {
         const next = session.buffer + data
         session.buffer = next.length <= MAX_TERMINAL_BUFFER
           ? next
-          : next.slice(next.length - MAX_TERMINAL_BUFFER)
+          : next.slice(realignBufferStart(next, next.length - MAX_TERMINAL_BUFFER))
       },
       failCreate: (draft) => {
         draft.createFailed = true

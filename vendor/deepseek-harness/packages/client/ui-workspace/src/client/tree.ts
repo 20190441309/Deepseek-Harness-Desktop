@@ -116,7 +116,7 @@ function byRecency(a: SessionSummary, b: SessionSummary): number {
  * unarchiving restores position.
  */
 function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
-  return session.origin !== 'subagent'
+  return session.origin !== 'subagent' && session.origin !== 'dshbot'
     && !archived.has(session.id)
     && (!session.blank || session.id === current)
 }

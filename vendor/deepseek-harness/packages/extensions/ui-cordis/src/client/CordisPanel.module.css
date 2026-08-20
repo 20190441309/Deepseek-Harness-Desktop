@@ -83,6 +83,7 @@
 .panel {
   position: fixed;
   z-index: 30;
+  -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
   width: 420px;

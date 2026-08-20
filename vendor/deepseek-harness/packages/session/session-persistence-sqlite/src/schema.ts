@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
+import { isSessionOrigin } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SurfaceOp } from '@deepseek-ai/dsh-session'
 
 /**
@@ -36,7 +37,7 @@ export interface SessionRow {
   cwd: string | null
   parent_session: string | null
   seed_length: number | null
-  origin: 'subagent' | null
+  origin: string | null
   /** Stable identity assigned when this log is materialized. */
   incarnation: string
   /** Monotonic log-change token incremented in each mutating transaction. */
@@ -179,6 +180,9 @@ function configureDatabase(db: DatabaseSync, path: string, journalMode: JournalM
 export function rowToMeta(row: SessionRow): SessionHeader {
   if (!Number.isSafeInteger(row.created_at) || row.created_at < 0) {
     throw new Error('stored session createdAt must be a non-negative safe integer')
+  }
+  if (row.origin !== null && !isSessionOrigin(row.origin)) {
+    throw new Error('stored session origin must be "subagent" or "dshbot"')
   }
   return {
     version: row.version,
