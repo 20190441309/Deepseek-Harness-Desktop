@@ -496,8 +496,22 @@ describe('connection status reporting', () => {
     const ctx = await mountRegistry()
     const fiber = ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
     await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    expect(mcpClientStatus(ctx, 'srv')?.tools).toEqual(['mcp__srv__remote'])
     await fiber.dispose()
     expect(mcpClientStatus(ctx, 'srv')).toBeUndefined()
+  })
+
+  it('updates published tool names after a list_changed re-sync', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.tools).toEqual(['mcp__srv__remote']) })
+    mockListTools.mockResolvedValue(listing('search', 'fetch'))
+    const handler = mockSetNotificationHandler.mock.calls[0]![1] as () => Promise<void>
+    await handler()
+    await vi.waitFor(() => {
+      expect(mcpClientStatus(ctx, 'srv')?.tools).toEqual(['mcp__srv__search', 'mcp__srv__fetch'])
+    })
+    await ctx.fiber.dispose()
   })
 
   it('reports reconnecting with the loss reason while waiting out the backoff', async () => {

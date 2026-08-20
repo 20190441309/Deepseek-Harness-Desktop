@@ -151,6 +151,23 @@
   line-height: 18px;
 }
 
+.lastError {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-state-danger-label);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.tools {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
 .runtime,
 .rowActions {
   display: inline-flex;

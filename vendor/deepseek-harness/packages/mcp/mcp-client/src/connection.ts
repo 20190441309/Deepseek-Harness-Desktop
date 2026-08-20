@@ -126,8 +126,14 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   const root = ctx.root
   /** Text of the error that ended the most recent attempt; carried into the reported status. */
   let lastErrorText: string | undefined
+  /** Live tool registrations owned by this server; only {@link enqueueSync} and dispose swap it. */
+  let disposers: ToolDisposers = new Map()
   const report = (health: McpConnectionHealth, lastError?: string): void => {
-    reportMcpClientStatus(root, config.serverName, { health, ...lastError === undefined ? {} : { lastError } })
+    reportMcpClientStatus(root, config.serverName, {
+      health,
+      ...lastError === undefined ? {} : { lastError },
+      ...health === 'connected' && disposers.size > 0 ? { tools: [...disposers.keys()] } : {},
+    })
   }
   report('connecting')
   const opts: ToolBridgeOptions = {
@@ -147,8 +153,6 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   let client: Client | undefined
   /** Close signal paired with {@link client}; captured by dispose before current ownership is cleared. */
   let clientClosed: Promise<void> | undefined
-  /** Live tool registrations owned by this server; only {@link enqueueSync} and dispose swap it. */
-  let disposers: ToolDisposers = new Map()
   let reconnectTimer: NodeJS.Timeout | undefined
   /** Consecutive failed connection attempts within the current outage. */
   let failedAttempts = 0
@@ -274,6 +278,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         ctx.logger.info(`${label}: tool list changed, re-syncing`)
         try {
           await enqueueSync(generation)
+          if (isCurrent(generation) && connectedAt !== undefined) report('connected')
         } catch (error) {
           // Fetch-phase failure: the previous generation is still registered
           // and `disposers` still owns it — keep serving the last good list.

@@ -14,6 +14,8 @@ export type McpServerOrigin = 'managed' | 'composition'
 export interface McpServerConnection {
   readonly health: 'connecting' | 'connected' | 'reconnecting' | 'failed'
   readonly lastError?: string
+  /** Public `mcp__<serverName>__…` names registered for the current generation. */
+  readonly tools?: readonly string[]
 }
 
 /** One MCP server as Settings lists it. */

@@ -22,9 +22,8 @@ import {
   toClientConfig,
   upsertRecord,
 } from './document.ts'
+import { authorizeMcpHttp, defaultOAuthRuntime, type McpOAuthTokens } from './oauth.ts'
 import type { ChildFiberPhase, McpServerRecord, McpServersDocument, McpServerUpsert } from './types.ts'
-
-export type { ChildFiberPhase } from './types.ts'
 
 /** Plugin configuration fields used by the file service. */
 export interface McpServersFileOptions {
@@ -111,6 +110,7 @@ export class McpServersFile extends Service {
   private readonly children = new Map<string, { fingerprint: string; handle: ChildHandle }>()
   private operations: Promise<void> = Promise.resolve()
   private mounter: McpClientMounter = defaultMounter
+  private authorizeHttp: (url: string) => Promise<McpOAuthTokens> = (url) => authorizeMcpHttp(url, defaultOAuthRuntime())
   private watcher: FSWatcher | undefined
   private closed = false
   private selfWrite: string | undefined
@@ -133,6 +133,14 @@ export class McpServersFile extends Service {
    */
   useMounter(mounter: McpClientMounter): void {
     this.mounter = mounter
+  }
+
+  /**
+   * Replace HTTP OAuth. Tests call this before {@link authorize}.
+   * @param authorizeHttp - returns tokens for one MCP endpoint URL.
+   */
+  useAuthorizeHttp(authorizeHttp: (url: string) => Promise<McpOAuthTokens>): void {
+    this.authorizeHttp = authorizeHttp
   }
 
   /**
@@ -217,6 +225,54 @@ export class McpServersFile extends Service {
    */
   setEnabled(id: string, enabled: boolean): Promise<void> {
     return this.mutate(document => setRecordEnabled(document, id, enabled))
+  }
+
+  /**
+   * Dispose and remount one managed child without rewriting the document.
+   * Settings Refresh uses this after the connection supervisor has given up.
+   * @param id - record id.
+   */
+  remount(id: string): Promise<void> {
+    return this.enqueue(async () => {
+      await this.ready
+      const record = this.document.servers.find(server => server.id === id)
+      if (record === undefined) {
+        throw new Error(`mcp-servers-file: server "${id}" is not in the managed document`)
+      }
+      const child = this.children.get(id)
+      if (child !== undefined) {
+        await child.handle.dispose()
+        this.children.delete(id)
+      }
+      if (!record.enabled) return
+      const handle = this.mounter(this.ctx, toClientConfig(record))
+      this.children.set(id, { fingerprint: fingerprintOf(record), handle })
+    })
+  }
+
+  /**
+   * Run HTTP OAuth for one managed server, persist `Authorization`, and remount.
+   * @param id - record id.
+   * @returns after the bearer is stored and the child is remounted.
+   */
+  async authorize(id: string): Promise<void> {
+    await this.ready
+    const record = this.document.servers.find(server => server.id === id)
+    if (record === undefined) {
+      throw new Error(`mcp-servers-file: server "${id}" is not in the managed document`)
+    }
+    if (record.transport !== 'streamable-http') {
+      throw new Error('mcp-servers-file: OAuth login is only for HTTP servers')
+    }
+    const tokens = await this.authorizeHttp(record.url)
+    const current = this.document.servers.find(server => server.id === id)
+    if (current === undefined || current.transport !== 'streamable-http') {
+      throw new Error(`mcp-servers-file: server "${id}" is not in the managed document`)
+    }
+    await this.upsert({
+      ...current,
+      headers: { ...current.headers, Authorization: `Bearer ${tokens.access_token}` },
+    })
   }
 
   private async boot(): Promise<void> {

@@ -17,6 +17,12 @@ export type McpConnectionHealth = 'connecting' | 'connected' | 'reconnecting' | 
 export interface McpClientStatus {
   readonly health: McpConnectionHealth
   readonly lastError?: string
+  /**
+   * Public `mcp__<serverName>__…` names registered on `ctx.tools` for this
+   * generation. Present only while `health` is `connected` and at least one
+   * tool is registered.
+   */
+  readonly tools?: readonly string[]
 }
 
 const statuses = new WeakMap<Context, Map<string, McpClientStatus>>()

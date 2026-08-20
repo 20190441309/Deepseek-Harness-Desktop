@@ -121,6 +121,27 @@ export class McpServersGateway extends TypertRemoteService {
     await this.ctx.mcpServersFile.setEnabled(request.id, request.enabled)
   }
 
+  /**
+   * Remount one managed mcp-client child.
+   * @param request - record id.
+   */
+  @Remote('retry')
+  async retry(request: McpServerIdRequest): Promise<void> {
+    this.assertManaged(request.id)
+    await this.ctx.mcpServersFile.remount(request.id)
+  }
+
+  /**
+   * Open a browser OAuth login for one managed HTTP server, persist the bearer
+   * token, and remount the child so its tools are live.
+   * @param request - record id.
+   */
+  @Remote('authorize')
+  async authorize(request: McpServerIdRequest): Promise<void> {
+    this.assertManaged(request.id)
+    await this.ctx.mcpServersFile.authorize(request.id)
+  }
+
   private assertManaged(id: string): void {
     const snapshot = this.list()
     const match = snapshot.servers.find(entry => entry.id === id)

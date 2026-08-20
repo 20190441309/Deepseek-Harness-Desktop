@@ -39,6 +39,8 @@ export interface McpSectionInjected {
   upsert: (spec: McpServerRecord) => Promise<void>
   remove: (id: string) => Promise<void>
   setEnabled: (id: string, enabled: boolean) => Promise<void>
+  retry: (id: string) => Promise<void>
+  authorize: (id: string) => Promise<void>
   t: (key: McpSettingsKey) => string
 }
 
@@ -71,16 +73,23 @@ const PHASE_DOT: Record<Exclude<McpServerEntry['fiberPhase'], null>, StateDotSta
   unloading: 'warning',
 }
 
-type Connection = NonNullable<McpServerEntry['connection']>
+const HEALTH_POLL_MS = 2000
 
-const HEALTH: Record<Connection['health'], McpSettingsKey> = {
+function inFlightHealth(snapshot: McpServerSnapshot): boolean {
+  return snapshot.servers.some(entry =>
+    entry.connection?.health === 'connecting' || entry.connection?.health === 'reconnecting')
+}
+
+type ConnectionHealth = NonNullable<McpServerEntry['connection']>['health']
+
+const HEALTH: Record<ConnectionHealth, McpSettingsKey> = {
   connecting: 'healthConnecting',
   connected: 'healthConnected',
   reconnecting: 'healthReconnecting',
   failed: 'healthFailed',
 }
 
-const HEALTH_DOT: Record<Connection['health'], StateDotState> = {
+const HEALTH_DOT: Record<ConnectionHealth, StateDotState> = {
   connecting: 'ongoing',
   connected: 'done',
   reconnecting: 'warning',
@@ -102,6 +111,7 @@ export function McpSection(props: McpSectionProps) {
   const [deletePending, setDeletePending] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<string | undefined>()
   const [togglePending, setTogglePending] = useState<ReadonlySet<string>>(new Set())
+  const [signInPending, setSignInPending] = useState<ReadonlySet<string>>(new Set())
   const [rowFailures, setRowFailures] = useState<Readonly<Record<string, string>>>({})
   const [refreshFailure, setRefreshFailure] = useState(false)
 
@@ -124,6 +134,11 @@ export function McpSection(props: McpSectionProps) {
       loadSequence.current += 1
     }
   }, [props.list, request])
+
+  const togglePendingRef = useRef(togglePending)
+  togglePendingRef.current = togglePending
+  const signInPendingRef = useRef(signInPending)
+  signInPendingRef.current = signInPending
 
   const servers = view.status === 'ready' ? view.snapshot.servers : []
   const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -150,6 +165,38 @@ export function McpSection(props: McpSectionProps) {
       if (loadSequence.current === sequence) setRefreshFailure(true)
       throw error
     }
+  }
+
+  useEffect(() => {
+    if (view.status !== 'ready' || !inFlightHealth(view.snapshot)) return
+    const id = window.setInterval(() => {
+      if (togglePendingRef.current.size > 0 || signInPendingRef.current.size > 0) return
+      void reloadReady().catch(() => {
+        // reloadReady already recorded refreshFailure for this tick.
+      })
+    }, HEALTH_POLL_MS)
+    return () => { window.clearInterval(id) }
+  }, [props.list, view])
+
+  const refresh = (): void => {
+    void (async () => {
+      if (view.status === 'ready') {
+        const failed = view.snapshot.servers.filter(entry =>
+          entry.origin === 'managed' && entry.connection?.health === 'failed')
+        for (const entry of failed) {
+          try {
+            await props.retry(entry.id)
+          } catch {
+            // The following list call reports whether the child came back.
+          }
+        }
+      }
+      try {
+        await reloadReady()
+      } catch {
+        // reloadReady records refreshFailure when the list call rejects.
+      }
+    })()
   }
 
   const retry = (): void => {
@@ -202,6 +249,29 @@ export function McpSection(props: McpSectionProps) {
     })
   }
 
+  const signIn = (entry: McpServerEntry): void => {
+    if (signInPending.has(entry.id)) return
+    const generation = lifecycleGeneration.current
+    setSignInPending(current => new Set(current).add(entry.id))
+    setRowFailures(current => omitKey(current, entry.id))
+    const clearPending = (): void => {
+      setSignInPending((current) => {
+        const next = new Set(current)
+        next.delete(entry.id)
+        return next
+      })
+    }
+    void props.authorize(entry.id).then(() => {
+      if (lifecycleGeneration.current !== generation) return
+      clearPending()
+      void reloadReady().catch(() => {})
+    }).catch((error: unknown) => {
+      if (lifecycleGeneration.current !== generation) return
+      setRowFailures(current => ({ ...current, [entry.id]: messageOf(error, t('signInFailed')) }))
+      clearPending()
+    })
+  }
+
   const filterOptions = [
     ['all', t('filterAll')],
     ['enabled', t('filterEnabledOnly')],
@@ -231,7 +301,7 @@ export function McpSection(props: McpSectionProps) {
             className={styles.iconAction}
             icon={<IconRefreshOutline16 />}
             aria-label={t('refresh')}
-            onClick={() => { void reloadReady().catch(() => {}) }}
+            onClick={refresh}
           />
         </div>
       </div>
@@ -314,6 +384,8 @@ export function McpSection(props: McpSectionProps) {
                       setDeleteFailure(undefined)
                       setDeletePending(false)
                     }}
+                    signingIn={signInPending.has(entry.id)}
+                    onSignIn={() => { signIn(entry) }}
                   />
                 ))}
               </ul>
@@ -397,8 +469,14 @@ export function McpSection(props: McpSectionProps) {
   )
 }
 
+function needsSignIn(entry: McpServerEntry): boolean {
+  if (!entry.writable || !entry.enabled || entry.spec.transport !== 'streamable-http') return false
+  const health = entry.connection?.health
+  return health !== 'connected' && health !== 'connecting' && health !== 'reconnecting'
+}
+
 function ServerRow({
-  entry, pending, failure, t, onToggleEnabled, onEdit, onDelete,
+  entry, pending, failure, t, onToggleEnabled, onEdit, onDelete, signingIn, onSignIn,
 }: {
   entry: McpServerEntry
   pending: boolean
@@ -407,6 +485,8 @@ function ServerRow({
   onToggleEnabled: (enabled: boolean) => void
   onEdit: () => void
   onDelete: () => void
+  signingIn?: boolean
+  onSignIn?: () => void
 }) {
   const connection = entry.connection
   const status = connection !== undefined
@@ -429,6 +509,16 @@ function ServerRow({
         <span className={styles.identity}>
           <strong className={styles.name}>{name}</strong>
           <span className={styles.summary}>{summaryLine(entry, t)}</span>
+          {connection?.lastError === undefined ? null : (
+            <span className={styles.lastError}>{connection.lastError}</span>
+          )}
+          {connection?.tools === undefined || connection.tools.length === 0 ? null : (
+            <span className={styles.tools}>
+              {format(t('toolCount'), { count: String(connection.tools.length) })}
+              {' · '}
+              {connection.tools.join(', ')}
+            </span>
+          )}
         </span>
         <Pill>{entry.origin === 'managed' ? t('managed') : t('composition')}</Pill>
       </div>
@@ -443,6 +533,17 @@ function ServerRow({
         ) : <span className={styles.readOnly}>{t('readOnly')}</span>}
         {entry.writable ? (
           <>
+            {needsSignIn(entry) && onSignIn !== undefined ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={signingIn === true || pending}
+                aria-label={format(t('signInFor'), { name })}
+                onClick={onSignIn}
+              >
+                {signingIn === true ? t('signingIn') : t('signIn')}
+              </Button>
+            ) : null}
             <button
               type="button"
               className={styles.iconButton}

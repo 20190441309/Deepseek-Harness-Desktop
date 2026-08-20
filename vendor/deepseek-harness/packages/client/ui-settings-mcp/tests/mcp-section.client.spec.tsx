@@ -5,7 +5,10 @@ import { McpSection } from '../src/client/McpSection.tsx'
 import type { McpSectionInjected, McpSectionProps } from '../src/client/McpSection.tsx'
 import { en, type McpSettingsKey } from '../src/client/locales.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const t = ((key: McpSettingsKey): string => en[key])
 
@@ -65,6 +68,8 @@ function props(partial: Partial<McpSectionInjected> = {}): McpSectionProps {
     upsert: async () => {},
     remove: async () => {},
     setEnabled: async () => {},
+    retry: async () => {},
+    authorize: async () => {},
     ...partial,
   } as McpSectionProps
 }
@@ -135,6 +140,7 @@ describe('McpSection', () => {
     render(<McpSection {...props({ list: async () => ({ servers: [reconnecting] }) })} />)
     expect(await screen.findByText(en.healthReconnecting)).toBeTruthy()
     expect(screen.queryByText(en.active)).toBeNull()
+    expect(screen.getByText('Error: spawn ENOENT')).toBeTruthy()
     const runtime = screen.getByTitle(`${en.healthReconnecting}: Error: spawn ENOENT`)
     expect(runtime).toBeTruthy()
 
@@ -228,6 +234,82 @@ describe('McpSection', () => {
     expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.getByText(en.composition, { selector: 'span' })).toBeTruthy()
   })
+
+  it('polls live connection health while the page is open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const list = vi.fn()
+      .mockResolvedValueOnce({
+        servers: [{ ...managedStdio, connection: { health: 'connecting' as const } }],
+      })
+      .mockResolvedValue({
+        servers: [{ ...managedStdio, connection: { health: 'connected' as const } }],
+      })
+    render(<McpSection {...props({ list })} />)
+    expect(await screen.findByText(en.healthConnecting)).toBeTruthy()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await screen.findByText(en.healthConnected)).toBeTruthy()
+  })
+
+  it('lists registered tool names on a connected row', async () => {
+    render(<McpSection {...props({
+      list: async () => ({
+        servers: [{
+          ...managedStdio,
+          connection: {
+            health: 'connected' as const,
+            tools: ['mcp__github__create_issue', 'mcp__github__list'],
+          },
+        }],
+      }),
+    })} />)
+    expect(await screen.findByText(en.healthConnected)).toBeTruthy()
+    expect(screen.getByText(/2 tools · mcp__github__create_issue, mcp__github__list/)).toBeTruthy()
+  })
+
+  it('remounts failed managed rows when refresh is clicked', async () => {
+    const retry = vi.fn(async () => {})
+    const failed = {
+      ...managedStdio,
+      connection: { health: 'failed' as const, lastError: 'Error: spawn ENOENT' },
+    }
+    const failedComposition = {
+      ...compositionHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: missing bearer token' },
+    }
+    render(<McpSection {...props({
+      list: async () => ({ servers: [failed, failedComposition] }),
+      retry,
+    })} />)
+    expect((await screen.findAllByText(en.healthFailed)).length).toBe(2)
+    expect(screen.getByText('Error: missing bearer token')).toBeTruthy()
+    expect(screen.queryByText(en.healthConnected)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    await waitFor(() => { expect(retry).toHaveBeenCalledWith('github-id') })
+    expect(retry).toHaveBeenCalledTimes(1)
+    expect(retry).not.toHaveBeenCalledWith(failedComposition.id)
+  })
+
+  it('signs in a failed managed HTTP row so the Host can mount tools', async () => {
+    const authorize = vi.fn(async () => {})
+    const failedHttp = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: missing bearer token' },
+    }
+    const failedStdio = {
+      ...managedStdio,
+      connection: { health: 'failed' as const, lastError: 'Error: spawn ENOENT' },
+    }
+    render(<McpSection {...props({
+      list: async () => ({ servers: [failedHttp, failedStdio, compositionHttp] }),
+      authorize,
+    })} />)
+    expect(await screen.findByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'github') })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-tools') })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') }))
+    await waitFor(() => { expect(authorize).toHaveBeenCalledWith('remote-id') })
+  })
+
 
   it('groups the add form, warns about stdio execution, and saves valid KEY=value lines', async () => {
     const upsert = vi.fn(async () => {})

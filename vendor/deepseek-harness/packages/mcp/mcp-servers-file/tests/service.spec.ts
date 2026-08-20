@@ -144,6 +144,80 @@ servers:
     expect(mounted[0]).toMatchObject({ command: 'uvx' })
   })
 
+  it('remounts an enabled child without rewriting the document', async () => {
+    const dshHome = await home()
+    const ctx = new Context()
+    contexts.push(ctx)
+    const mounted: McpClientConfig[] = []
+    const service = new McpServersFile(ctx, { dshHome, watch: false })
+    service.useMounter(trackingMounter(mounted))
+    service.start()
+    await service.upsert({
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    })
+    const first = mounted[0]
+    const before = await readFile(join(dshHome, 'mcp-servers.yaml'), 'utf8')
+    await service.remount('github')
+    expect(mounted).toHaveLength(1)
+    expect(mounted[0]).not.toBe(first)
+    expect(mounted[0]).toMatchObject({ serverName: 'github', command: 'npx' })
+    expect(await readFile(join(dshHome, 'mcp-servers.yaml'), 'utf8')).toBe(before)
+    await expect(service.remount('missing')).rejects.toThrow(/not in the managed document/)
+  })
+
+  it('authorize writes a bearer header for an HTTP server and remounts', async () => {
+    const dshHome = await home()
+    const ctx = new Context()
+    contexts.push(ctx)
+    const mounted: McpClientConfig[] = []
+    const service = new McpServersFile(ctx, { dshHome, watch: false })
+    service.useMounter(trackingMounter(mounted))
+    service.useAuthorizeHttp(async (url) => {
+      expect(url).toBe('https://mcp.example.test/mcp')
+      return { access_token: 'tok-live' }
+    })
+    const stop = service.start()
+    await service.upsert({
+      id: 'remote',
+      enabled: true,
+      transport: 'streamable-http',
+      serverName: 'remote',
+      url: 'https://mcp.example.test/mcp',
+    })
+    await service.authorize('remote')
+    expect(mounted[0]).toMatchObject({
+      transport: 'streamable-http',
+      headers: { Authorization: 'Bearer tok-live' },
+    })
+    expect(await readFile(join(dshHome, 'mcp-servers.yaml'), 'utf8')).toContain('tok-live')
+    stop()
+  })
+
+  it('authorize refuses stdio and unknown ids', async () => {
+    const dshHome = await home()
+    const ctx = new Context()
+    contexts.push(ctx)
+    const mounted: McpClientConfig[] = []
+    const service = new McpServersFile(ctx, { dshHome, watch: false })
+    service.useMounter(trackingMounter(mounted))
+    const stop = service.start()
+    await service.upsert({
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    })
+    await expect(service.authorize('github')).rejects.toThrow(/HTTP/)
+    await expect(service.authorize('missing')).rejects.toThrow(/not in the managed document/)
+    stop()
+  })
+
+
   it('defaultMounter reports fiber phase from the child plugin', () => {
     const dispose = (): void => {}
     const ctx = {

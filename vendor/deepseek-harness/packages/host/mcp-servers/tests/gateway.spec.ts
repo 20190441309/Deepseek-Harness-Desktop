@@ -13,7 +13,11 @@ afterEach(async () => {
 
 const mcpPlugin = { name: 'mcp-client', apply() {} }
 
-type TestHealth = { health: 'connecting' | 'connected' | 'reconnecting' | 'failed'; lastError?: string }
+type TestHealth = {
+  health: 'connecting' | 'connected' | 'reconnecting' | 'failed'
+  lastError?: string
+  tools?: readonly string[]
+}
 
 async function harness(managed: McpServerRecord[] = [], health: {
   managed?: TestHealth
@@ -23,6 +27,8 @@ async function harness(managed: McpServerRecord[] = [], health: {
   contexts.push(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins['mcp-client'] = mcpPlugin
+  const remounted: string[] = []
+  const authorized: string[] = []
   ctx.provide('mcpServersFile', {
     listManaged: () => managed,
     childPhase: () => 'active' as const,
@@ -37,16 +43,18 @@ async function harness(managed: McpServerRecord[] = [], health: {
       const index = managed.findIndex(item => item.id === id)
       if (index !== -1) managed[index] = { ...managed[index]!, enabled }
     },
+    remount: async (id: string) => { remounted.push(id) },
+    authorize: async (id: string) => { authorized.push(id) },
   } as never)
   await ctx.plugin(McpServersGateway)
-  return { ctx, gateway: ctx.get('mcpServers') as McpServersGateway, managed }
+  return { ctx, gateway: ctx.get('mcpServers') as McpServersGateway, managed, remounted, authorized }
 }
 
 describe('McpServersGateway', () => {
-  it('publishes list, upsert, delete, and setEnabled remotes', async () => {
+  it('publishes list, upsert, delete, retry, authorize, and setEnabled remotes', async () => {
     const { gateway } = await harness()
     expect(remoteMethods(gateway).map(item => item.method).sort()).toEqual([
-      'delete', 'list', 'setEnabled', 'upsert',
+      'authorize', 'delete', 'list', 'retry', 'setEnabled', 'upsert',
     ])
   })
 
@@ -146,7 +154,7 @@ describe('McpServersGateway', () => {
       serverName: 'github',
       command: 'npx',
     }], {
-      managed: { health: 'reconnecting', lastError: 'Error: spawn ENOENT' },
+      managed: { health: 'connected', tools: ['mcp__github__create_issue'] },
       composition: { health: 'failed', lastError: 'connection refused' },
     })
     await ctx.loader.create({
@@ -155,7 +163,7 @@ describe('McpServersGateway', () => {
     })
     const snapshot = gateway.list()
     expect(snapshot.servers.find(entry => entry.id === 'github')?.connection)
-      .toMatchObject({ health: 'reconnecting', lastError: 'Error: spawn ENOENT' })
+      .toMatchObject({ health: 'connected', tools: ['mcp__github__create_issue'] })
     expect(snapshot.servers.find(entry => entry.spec.serverName === 'memory')?.connection)
       .toMatchObject({ health: 'failed', lastError: 'connection refused' })
   })
@@ -167,5 +175,31 @@ describe('McpServersGateway', () => {
       config: { serverName: 'memory', command: 'mcp-server-memory' },
     })
     await expect(gateway.delete({ id: entryId })).rejects.toThrow(/read-only/)
+    await expect(gateway.retry({ id: entryId })).rejects.toThrow(/read-only/)
+    await expect(gateway.authorize({ id: entryId })).rejects.toThrow(/read-only/)
+  })
+
+  it('retries a managed row by remounting its child', async () => {
+    const { gateway, remounted } = await harness([{
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    }])
+    await gateway.retry({ id: 'github' })
+    expect(remounted).toEqual(['github'])
+  })
+
+  it('authorizes a managed HTTP row through the file service', async () => {
+    const { gateway, authorized } = await harness([{
+      id: 'remote',
+      enabled: true,
+      transport: 'streamable-http',
+      serverName: 'remote',
+      url: 'https://mcp.example.test/mcp',
+    }])
+    await gateway.authorize({ id: 'remote' })
+    expect(authorized).toEqual(['remote'])
   })
 })

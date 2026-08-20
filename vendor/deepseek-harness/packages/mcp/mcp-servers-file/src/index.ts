@@ -12,6 +12,8 @@ import { McpServersFile, type McpServersFileOptions } from './service.ts'
 export interface Config extends McpServersFileOptions {}
 export type { ChildHandle, McpClientMounter, ResolvedSpec } from './service.ts'
 export { McpServersFile, defaultMounter, resolveSpec } from './service.ts'
+export type { McpOAuthListener, McpOAuthRuntime, McpOAuthTokens } from './oauth.ts'
+export { authorizeMcpHttp, defaultOAuthRuntime } from './oauth.ts'
 export type {
   ChildFiberPhase,
   McpHttpServerRecord,

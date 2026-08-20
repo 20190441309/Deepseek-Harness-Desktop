@@ -270,6 +270,12 @@ Owns `$DSH_HOME/mcp-servers.yaml` and the live mcp-client children it describes.
 useMounter(mounter: McpClientMounter): void
 
 /**
+ * Replace HTTP OAuth. Tests call this before {@link authorize}.
+ * @param authorizeHttp - returns tokens for one MCP endpoint URL.
+ */
+useAuthorizeHttp(authorizeHttp: (url: string) => Promise<McpOAuthTokens>): void
+
+/**
  * Load the document, mount enabled servers, and optionally watch.
  * @returns disposer that closes the watcher and child fibers.
  */
@@ -328,9 +334,23 @@ remove(id: string): Promise<void>
  * @param enabled - next enablement.
  */
 setEnabled(id: string, enabled: boolean): Promise<void>
+
+/**
+ * Dispose and remount one managed child without rewriting the document.
+ * Settings Refresh uses this after the connection supervisor has given up.
+ * @param id - record id.
+ */
+remount(id: string): Promise<void>
+
+/**
+ * Run HTTP OAuth for one managed server, persist `Authorization`, and remount.
+ * @param id - record id.
+ * @returns after the bearer is stored and the child is remounted.
+ */
+async authorize(id: string): Promise<void>
 ```
 
-Source: [`packages/mcp/mcp-servers-file/src/service.ts:109`](../../packages/mcp/mcp-servers-file/src/service.ts)
+Source: [`packages/mcp/mcp-servers-file/src/service.ts:108`](../../packages/mcp/mcp-servers-file/src/service.ts)
 
 <a id="cordis-events"></a>
 
