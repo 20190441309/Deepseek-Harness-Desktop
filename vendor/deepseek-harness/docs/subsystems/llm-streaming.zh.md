@@ -915,9 +915,9 @@ configured(): boolean
 async rewriteMessages( session: Session, route: { provider: string; model: string }, messages: Message[], signal: AbortSignal, ): Promise<Message[]>
 ```
 
-Types: [Session](session.md)
+Types: [Session](session.zh.md)
 
-Source: [`packages/llm/llm-vision-fallback/src/index.ts:130`](../../packages/llm/llm-vision-fallback/src/index.ts)
+Source: [`packages/llm/llm-vision-fallback/src/index.ts`](../../packages/llm/llm-vision-fallback/src/index.ts)
 
 <a id="llm-events"></a>
 

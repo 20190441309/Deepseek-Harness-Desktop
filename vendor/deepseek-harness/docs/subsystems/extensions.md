@@ -350,7 +350,7 @@ remount(id: string): Promise<void>
 async authorize(id: string): Promise<void>
 ```
 
-Source: [`packages/mcp/mcp-servers-file/src/service.ts:108`](../../packages/mcp/mcp-servers-file/src/service.ts)
+Source: [`packages/mcp/mcp-servers-file/src/service.ts`](../../packages/mcp/mcp-servers-file/src/service.ts)
 
 <a id="cordis-events"></a>
 

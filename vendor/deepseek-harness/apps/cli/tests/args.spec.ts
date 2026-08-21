@@ -104,3 +104,18 @@ describe('parseDshArgs', () => {
     expect(exitCode(['--version'])).toBe(0)
   })
 })
+
+// Desktop fork: --skip-user-plugins boots the shipped bundle template for the
+// launcher recovery path. Absent by default so the shape matches upstream.
+describe('parseDshArgs skipUserPlugins (desktop fork)', () => {
+  it('sets the flag only when asked', () => {
+    expect(parse(['--profile', 'tui', '--skip-user-plugins']))
+      .toEqual({ mode: 'profile', profile: 'tui', patches: [], args: [], skipUserPlugins: true })
+    expect(parse(['--profile', 'web', '--skip-user-plugins', '--patch', 'x.yml']))
+      .toEqual({ mode: 'profile', profile: 'web', patches: ['x.yml'], args: [], skipUserPlugins: true })
+  })
+
+  it('rejects combining the flag with a default-only dump', () => {
+    expect(exitCode(['--profile', 'x', '--dump-default-config', '--skip-user-plugins'])).toBe(1)
+  })
+})

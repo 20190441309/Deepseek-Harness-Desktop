@@ -24,7 +24,7 @@ interface ProfileInvocation {
   /** Extra patch-list overlays applied after the profile's own layer, in argv order. */
   patches: string[]
   /** Omit profile/home user layers and use the shipped bundle template. */
-  skipUserPlugins: boolean
+  skipUserPlugins?: boolean
   /** Everything after the launcher's own flags, verbatim, for injected app plugins. */
   args: string[]
 }
@@ -37,7 +37,7 @@ interface DumpConfigInvocation {
   defaultOnly: boolean
   patches: string[]
   /** Whether the dump uses the shipped template instead of user layers. */
-  skipUserPlugins: boolean
+  skipUserPlugins?: boolean
 }
 
 /** Manage a profile's plugins: forward `args` to pnpm inside the profile directory. */
@@ -90,7 +90,11 @@ function resolveBoot(program: Command, profile: string, options: BootOptions, ar
   const skipUserPlugins = options.skipUserPlugins === true
   if (patches.includes('')) program.error('error: --patch needs a path')
   if (options.dumpConfig !== true && options.dumpDefaultConfig !== true) {
-    return { mode: 'profile', profile, patches, args, skipUserPlugins }
+    // Desktop fork: omit the field unless the flag was given, so the shape
+    // matches the upstream spec's exact-equality expectations.
+    return skipUserPlugins
+      ? { mode: 'profile', profile, patches, args, skipUserPlugins }
+      : { mode: 'profile', profile, patches, args }
   }
   if (options.dumpConfig === true && options.dumpDefaultConfig === true) {
     program.error('error: --dump-config and --dump-default-config are mutually exclusive')
@@ -108,7 +112,9 @@ function resolveBoot(program: Command, profile: string, options: BootOptions, ar
   if (defaultOnly && skipUserPlugins) {
     program.error('error: --dump-default-config and --skip-user-plugins are mutually exclusive')
   }
-  return { mode: 'dump-config', profile, defaultOnly, patches, skipUserPlugins }
+  return skipUserPlugins
+    ? { mode: 'dump-config', profile, defaultOnly, patches, skipUserPlugins }
+    : { mode: 'dump-config', profile, defaultOnly, patches }
 }
 
 /**
