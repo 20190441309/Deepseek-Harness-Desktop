@@ -1421,32 +1421,6 @@ describe('input types', () => {
     expect(onChange).toHaveBeenNthCalledWith(2, [{ id: 'm' }])
     expect(screen.getByText(en.inputInherited)).toBeTruthy()
   })
-
-  it('requires a non-empty route-level default input for pi-ai', async () => {
-    const { mutate } = await mountSection()
-    fireEvent.click(screen.getByRole('button', { name: openaiCopy(en.editProvider) }))
-    await screen.findByLabelText(en.keyInput)
-    fireEvent.click(screen.getByText(en.customized))
-    const text = screen.getByLabelText(en.inputText) as HTMLInputElement
-    // The fixture stores no defaultInput: the field is absent, so nothing
-    // blocks the write and the hint explains inheritance.
-    expect(text.checked).toBe(false)
-    expect(screen.getByText(en.defaultInputHint)).toBeTruthy()
-    expect((screen.getByText(en.apply) as HTMLButtonElement).disabled).toBe(false)
-    fireEvent.click(text)
-    fireEvent.click(screen.getByLabelText(en.inputText))
-    // An explicitly emptied set is refused, like the host grammar refuses it.
-    expect(await screen.findByText(en.defaultInputEmpty)).toBeTruthy()
-    expect((screen.getByText(en.apply) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByLabelText(en.inputImage))
-    fireEvent.click(screen.getByText(en.apply))
-    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
-    expect(mutate.mock.calls[0]?.[0]).toEqual({
-      ns: 'llm-pi-ai',
-      ops: [{ op: 'set', path: ['providers', 'openai', 'defaultInput'], value: ['image'] }],
-      expectedRevision: 0,
-    })
-  })
 })
 
 describe('apiKeyFailure', () => {

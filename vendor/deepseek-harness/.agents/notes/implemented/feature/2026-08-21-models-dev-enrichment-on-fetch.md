@@ -1,6 +1,6 @@
 # Agent Note: models.dev enrichment on Fetch available models
 
-Status: implemented
+Status: parked (desktop fork on dsh-v0.1.1-rc.1; landed via the wip park commit, not released yet)
 
 English | [中文](2026-08-21-models-dev-enrichment-on-fetch.zh.md)
 
@@ -22,7 +22,7 @@ Enrichment stays in the client package (`models-dev-metadata.ts`). It does not w
 
 ## Verification
 
-Unit specs cover match, effort mapping, capacity precedence, and best-effort failure. Provider-form specs adopt with stubbed models.dev metadata, preserve discover capacities, and adopt id-only rows when enrichment is disabled or unreachable.
+Unit specs cover match, effort mapping, capacity precedence, and best-effort failure. Provider-form specs adopt with stubbed models.dev metadata, preserve discover capacities, and adopt id-only rows when enrichment is disabled or unreachable. A manual live-endpoint probe driver lives at `scripts/live-fetch-enrich-probe.ts` (run by hand; not part of the spec gate).
 
 ## Consequences
 

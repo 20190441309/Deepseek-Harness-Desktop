@@ -256,14 +256,16 @@ export function enrichDiscoveredModel(
     ? record.limit as Record<string, unknown>
     : {}
   const reasoningEfforts = reasoningEffortsFromMetadata(record)
+  const contextLimit = positiveMetadataLimit(limit.context)
+  const outputLimit = positiveMetadataLimit(limit.output)
   return {
     ...candidate,
     ...candidate.name === undefined && typeof record.name === 'string' ? { name: record.name } : {},
-    ...candidate.contextWindow === undefined && positiveMetadataLimit(limit.context) !== undefined
-      ? { contextWindow: positiveMetadataLimit(limit.context) }
+    ...candidate.contextWindow === undefined && contextLimit !== undefined
+      ? { contextWindow: contextLimit }
       : {},
-    ...candidate.maxTokens === undefined && positiveMetadataLimit(limit.output) !== undefined
-      ? { maxTokens: positiveMetadataLimit(limit.output) }
+    ...candidate.maxTokens === undefined && outputLimit !== undefined
+      ? { maxTokens: outputLimit }
       : {},
     ...reasoningEfforts === undefined ? {} : { reasoningEfforts },
   }

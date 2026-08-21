@@ -9,6 +9,7 @@ const path = require('node:path');
 const {
   DESKTOP_PACKAGES,
   COMPOSITION_ROWS,
+  FORK_FILE_MARKERS,
   assertDesktopForks,
 } = require('./harness-desktop-forks');
 
@@ -59,6 +60,20 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
     "  const store = host.storeOf(entry, scope === 'session-maybe' && scopeKey === undefined ? '' : scopeKey)",
     '',
   ].join('\n'));
+  for (const marker of FORK_FILE_MARKERS) {
+    const content = {
+      'packages/client/ui-primitives/src/index.ts': "export { SettingsSelect } from './SettingsSelect.tsx'\n",
+      'packages/client/ui-settings-mcp/src/client/McpSection.tsx': 'export const editor = () => <SettingsSelect variant="block" />\n',
+      'packages/client/ui-settings-models/src/client/models-dev-metadata.ts': 'export const MODELS_DEV_URL = "https://models.dev/api.json"\n',
+      'packages/client/ui-settings-models/scripts/live-fetch-enrich-probe.ts': '// live probe\n',
+      'packages/client/ui-theme/src/client/WallpaperGalleryModal.tsx': 'export const gallery = () => null\n',
+      'packages/client/ui-theme/src/client/WallpaperRow.tsx': 'export const row = () => null\n',
+      'apps/cli/src/args.ts': "program.option('--skip-user-plugins', 'boot the shipped bundle template')\n",
+      'apps/cli/tests/web-agent-presets.e2e.ts': "    { insert: [\n      { id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' },\n    ] },\n",
+      'apps/web/tests/snapshots/agent-preset-selection/header.expected.md': '- navigation "Session hierarchy"\n',
+    };
+    writeFile(root, marker.file, content[marker.file] ?? 'export {}\n');
+  }
   return root;
 }
 
@@ -71,6 +86,20 @@ test('assertDesktopForks throws when ui-titlebar is missing', (t) => {
   const root = makeFixture(t);
   fs.rmSync(path.join(root, 'packages', 'client', 'ui-titlebar'), { recursive: true, force: true });
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /ui-titlebar/);
+});
+
+test('assertDesktopForks throws when a parked fork marker regresses', (t) => {
+  const root = makeFixture(t);
+  const indexPath = path.join(root, ...'packages/client/ui-primitives/src/index.ts'.split('/'));
+  fs.writeFileSync(indexPath, "export { Button } from './Button.tsx'\n");
+  assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /SettingsSelect/);
+});
+
+test('assertDesktopForks throws when the header golden regains Session log', (t) => {
+  const root = makeFixture(t);
+  const goldenPath = path.join(root, ...'apps/web/tests/snapshots/agent-preset-selection/header.expected.md'.split('/'));
+  fs.writeFileSync(goldenPath, '- button "Session log"\n');
+  assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /Session log/);
 });
 
 test('assertDesktopForks accepts the current vendor tree at rc.1', () => {

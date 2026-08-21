@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-21-models-dev-enrichment-on-fetch.md
-2026-08-21-models-dev-enrichment-on-fetch.md: cf9b2d9d457d0f3d5a755eba39a33536591befd1
-2026-08-21-models-dev-enrichment-on-fetch.zh.md: 90087787b0e588f6caa5a1e03bb7f343910ea464
+2026-08-21-models-dev-enrichment-on-fetch.md: e1925d99bc279190ced2a7d54aa593c6295a9258
+2026-08-21-models-dev-enrichment-on-fetch.zh.md: 1dd72eb5b1834aa55ded83ba62ad9dc0ce45850c

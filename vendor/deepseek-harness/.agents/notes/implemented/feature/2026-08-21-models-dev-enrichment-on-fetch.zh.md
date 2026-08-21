@@ -1,6 +1,6 @@
 # Agent Note: 获取可用模型时用 models.dev 补全
 
-Status: implemented
+Status: parked（dsh-v0.1.1-rc.1 上的桌面 fork；随 wip 停放提交落地，尚未发布）
 
 [English](2026-08-21-models-dev-enrichment-on-fetch.md) | 中文
 
@@ -22,7 +22,7 @@ Models 页（`ModelListEditor`）在发现成功后，浏览器尽力加载 `htt
 
 ## Verification
 
-单元规格覆盖匹配、强度映射、容量优先与 best-effort 失败。Provider-form 规格用桩接的 models.dev 元数据验证采纳、保留发现容量，并在补全关闭或不可达时采纳仅含 id 的行。
+单元规格覆盖匹配、强度映射、容量优先与 best-effort 失败。Provider-form 规格用桩接的 models.dev 元数据验证采纳、保留发现容量，并在补全关闭或不可达时采纳仅含 id 的行。实机端点探针驱动位于 `scripts/live-fetch-enrich-probe.ts`（手工运行；不属于规格门）。
 
 ## Consequences
 

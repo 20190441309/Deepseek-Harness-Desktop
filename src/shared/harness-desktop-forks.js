@@ -46,6 +46,27 @@ const COMPOSITION_ROWS = [
 
 const LAYOUT_MARKERS = ['surfaces', 'shell.titlebar.trailing', 'shell.terminalDrawer'];
 
+// Desktop content inside upstream-owned files. The whole-package registry above
+// cannot see these: sync:harness keeps them only via git merge, so a conflict
+// resolved towards upstream would drop them without failing any other assert.
+const FORK_FILE_MARKERS = [
+  // Parked settings UI (wip park commit on dsh-v0.1.1-rc.1).
+  { file: 'packages/client/ui-primitives/src/index.ts', includes: ['export { SettingsSelect }'] },
+  { file: 'packages/client/ui-settings-mcp/src/client/McpSection.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-settings-models/src/client/models-dev-metadata.ts', includes: ['models.dev'] },
+  { file: 'packages/client/ui-settings-models/scripts/live-fetch-enrich-probe.ts', includes: [] },
+  // Standing wallpaper fork on the upstream ui-theme package.
+  { file: 'packages/client/ui-theme/src/client/WallpaperGalleryModal.tsx', includes: [] },
+  { file: 'packages/client/ui-theme/src/client/WallpaperRow.tsx', includes: [] },
+  // Desktop launcher recovery flag on the upstream CLI args parser.
+  { file: 'apps/cli/src/args.ts', includes: ['skip-user-plugins'] },
+  // Desktop composition carries the browse rows in the shipped base, so the
+  // upstream preset e2e must re-insert only the host row.
+  { file: 'apps/cli/tests/web-agent-presets.e2e.ts', includes: ["{ id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' }"] },
+  // Session log download lives in the desktop titlebar capsule, never in the conversation header.
+  { file: 'apps/web/tests/snapshots/agent-preset-selection/header.expected.md', excludes: ['button "Session log"'] },
+];
+
 function readRel(vendorRoot, rel) {
   return fs.readFileSync(path.join(vendorRoot, ...rel.split('/')), 'utf8');
 }
@@ -131,10 +152,25 @@ function assertDesktopForks(vendorRoot, npmVersion) {
   if (!scoped.includes('session-maybe') || !scoped.includes("? ''")) {
     throw new Error('scoped-slots.tsx no longer binds session-maybe to an empty string');
   }
+
+  for (const marker of FORK_FILE_MARKERS) {
+    const text = readRel(vendorRoot, marker.file);
+    for (const snippet of marker.includes || []) {
+      if (!text.includes(snippet)) {
+        throw new Error(`${marker.file} no longer contains ${JSON.stringify(snippet)}`);
+      }
+    }
+    for (const snippet of marker.excludes || []) {
+      if (text.includes(snippet)) {
+        throw new Error(`${marker.file} must not contain ${JSON.stringify(snippet)}`);
+      }
+    }
+  }
 }
 
 module.exports = {
   DESKTOP_PACKAGES,
   COMPOSITION_ROWS,
+  FORK_FILE_MARKERS,
   assertDesktopForks,
 };

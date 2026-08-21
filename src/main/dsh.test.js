@@ -474,8 +474,8 @@ test('launcher recovery flags stay before host and port', () => {
   ]);
 });
 
-test('every launch kind passes --no-open so dsh web does not open the OS browser', () => {
-  const source = new DshManager({
+function makeSourceLaunchManager(overrides = {}) {
+  return new DshManager({
     sourceHarnessStatus: () => ({
       present: true,
       installed: true,
@@ -485,7 +485,12 @@ test('every launch kind passes --no-open so dsh web does not open the OS browser
     }),
     resolveNodeBin: () => process.execPath,
     ensureGhosttyAssetsInHarness: () => ({ ok: true, roots: ['C:/harness'], detail: 'complete' }),
+    ...overrides,
   });
+}
+
+test('every launch kind passes --no-open so dsh web does not open the OS browser', () => {
+  const source = makeSourceLaunchManager();
   const sourceLaunch = source.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(sourceLaunch.kind, 'source');
   assert.equal(sourceLaunch.args.includes('--no-open'), true);
@@ -514,36 +519,20 @@ test('every launch kind passes --no-open so dsh web does not open the OS browser
 });
 
 test('source launch copies Ghostty assets beside client.js', () => {
-  let seen;
-  const manager = new DshManager({
-    sourceHarnessStatus: () => ({
-      present: true,
-      installed: true,
-      built: true,
-      root: 'C:/harness',
-      bin: 'C:/harness/apps/cli/lib/bin.js',
-    }),
-    resolveNodeBin: () => process.execPath,
+  let ensuredRoot;
+  const manager = makeSourceLaunchManager({
     ensureGhosttyAssetsInHarness: (root) => {
-      seen = root;
+      ensuredRoot = root;
       return { ok: true, roots: [root], detail: 'complete' };
     },
   });
   const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(launch.kind, 'source');
-  assert.equal(seen, 'C:/harness');
+  assert.equal(ensuredRoot, 'C:/harness');
 });
 
 test('source launch refuses when Ghostty assets are incomplete', () => {
-  const manager = new DshManager({
-    sourceHarnessStatus: () => ({
-      present: true,
-      installed: true,
-      built: true,
-      root: 'C:/harness',
-      bin: 'C:/harness/apps/cli/lib/bin.js',
-    }),
-    resolveNodeBin: () => process.execPath,
+  const manager = makeSourceLaunchManager({
     ensureGhosttyAssetsInHarness: () => ({ ok: false, roots: [], detail: 'missing source' }),
   });
   assert.throws(
@@ -558,14 +547,13 @@ test('source launch refuses when Ghostty assets are incomplete', () => {
 });
 
 test('source launch refuses when harness root is missing', () => {
-  const manager = new DshManager({
+  const manager = makeSourceLaunchManager({
     sourceHarnessStatus: () => ({
       present: true,
       installed: true,
       built: true,
       bin: 'C:/harness/apps/cli/lib/bin.js',
     }),
-    resolveNodeBin: () => process.execPath,
     ensureGhosttyAssetsInHarness: () => {
       throw new Error('ensure must not run without root');
     },
