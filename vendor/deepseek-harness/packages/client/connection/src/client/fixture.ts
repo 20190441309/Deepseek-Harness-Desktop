@@ -3168,6 +3168,11 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         case 'goals/resume': return Promise.resolve(goalRemotes.resume(sessionId, args.ref as FxGoalRef))
         case 'goals/complete': return Promise.resolve(goalRemotes.complete(sessionId, args.ref as FxGoalRef))
         case 'goals/clear': return Promise.resolve(goalRemotes.clear(sessionId, args.ref as FxGoalRef))
+        // The Cordis debug console's dynamic runner has no fixtures to serve:
+        // answer with an empty inventory and a valueless manifest ack so the
+        // panel settles quietly instead of flooding console tripwires.
+        case 'dynamicCordisRunner/inventory': return Promise.resolve({ ok: true, value: [] })
+        case 'dynamicCordisRunner/syncInspectManifest': return Promise.resolve({ ok: true, value: null })
         default:
           return Promise.reject(new Error(`fixture connection RPC endpoint ${JSON.stringify(endpoint)} is unavailable`))
       }
