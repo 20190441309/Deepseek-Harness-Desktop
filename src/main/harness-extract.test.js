@@ -14,7 +14,7 @@ Module._load = function load(request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
-const { tarCommand } = require('./harness-extract');
+const { tarCommand, hasBuiltHarness } = require('./harness-extract');
 Module._load = originalLoad;
 
 test('tarCommand uses PATH tar outside Windows', () => {
@@ -58,4 +58,22 @@ test('tarCommand falls back to PATH when system tar is unavailable', (t) => {
   });
 
   assert.equal(tarCommand('win32'), 'tar');
+});
+
+test('hasBuiltHarness requires Ghostty assets beside terminal client.js', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'built-harness-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'apps', 'cli', 'lib'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'apps', 'web', 'dist'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apps', 'cli', 'lib', 'bin.js'), 'export {}\n');
+  fs.writeFileSync(path.join(root, 'apps', 'web', 'dist', 'index.html'), '<html></html>\n');
+  assert.equal(hasBuiltHarness(root), false);
+
+  const pkg = path.join(root, 'packages', 'client', 'ui-user-terminal', 'lib');
+  fs.mkdirSync(path.join(pkg, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(pkg, 'client.js'), 'export {}\n');
+  for (const name of ['ghostty-vt.wasm', 'ghostty-write-pty.wasm', 'SymbolsNerdFontMono-Regular.woff2']) {
+    fs.writeFileSync(path.join(pkg, 'assets', name), 'x');
+  }
+  assert.equal(hasBuiltHarness(root), true);
 });

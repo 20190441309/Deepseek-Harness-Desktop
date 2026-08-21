@@ -15,6 +15,7 @@ import type { AppearanceSectionInjected } from './AppearanceSection.tsx'
 import { AppearanceSection } from './AppearanceSection.tsx'
 import { applyAppearanceDocumentExtras } from '../appearance-apply.ts'
 import { createAppearanceRowStore } from './settings-store.ts'
+import { installThemeStyles } from './styles.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
 import { wallpaperShell } from './wallpaper-shell.ts'
 import { deriveThemeTokens } from '../derive.ts'
@@ -654,6 +655,7 @@ export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {
+  installThemeStyles(ctx)
   const host = ctx.settingsScope.bind<ThemeSettings>({ namespace: THEME_SETTINGS_NAMESPACE })
   const theme = new ThemeRuntime(ctx, host)
   ctx.provide('theme', theme)

@@ -21,9 +21,6 @@
       "path": "../ui-surfaces"
     },
     {
-      "path": "../ui-input-trigger"
-    },
-    {
       "path": "../runtime"
     },
     {

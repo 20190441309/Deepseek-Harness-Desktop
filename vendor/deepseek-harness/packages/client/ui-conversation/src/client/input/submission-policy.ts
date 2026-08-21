@@ -10,16 +10,25 @@ import type {
   BusyEnterBehavior, ComposerSubmitGesture, InputSubmitMode,
 } from '../contract/composer-submission.ts'
 import {
-  BUSY_ENTER_FIELD, COMPOSER_BEAM_FIELD, COMPOSER_RESIZE_FIELD, DEFAULT_BUSY_ENTER_BEHAVIOR,
-  DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE, DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
-  STATS_LINE_FIELD, VIEW_TABS_FIELD,
+  BUSY_ENTER_FIELD, COMPOSER_BEAM_FIELD, COMPOSER_RESIZE_FIELD,
+  COMPOSER_RESIZE_HEIGHT_FIELD, COMPOSER_RESIZE_WIDTH_FIELD,
+  DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE,
+  DEFAULT_COMPOSER_RESIZE_HEIGHT, DEFAULT_COMPOSER_RESIZE_WIDTH,
+  DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS, STATS_LINE_FIELD, VIEW_TABS_FIELD,
 } from '../../submission-settings.ts'
 import type { ConversationSettings } from '../../submission-settings.ts'
 
 export {
   DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_RESIZE,
+  DEFAULT_COMPOSER_RESIZE_HEIGHT, DEFAULT_COMPOSER_RESIZE_WIDTH,
   DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
 } from '../../submission-settings.ts'
+
+/** Last drag-committed composer box size (null = that axis is not customized). */
+export interface ComposerResizeSize {
+  height: number | null
+  width: number | null
+}
 
 /**
  * Busy-Enter policy used by both the composer inject face and its Settings row.
@@ -33,6 +42,10 @@ export class ComposerSubmissionPolicy {
   readonly composerBeam: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_COMPOSER_BEAM)
   /** Reactive composer drag-resize source for the Settings row and InputBar. */
   readonly composerResize: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_COMPOSER_RESIZE)
+  /** Reactive last-dragged scrollport height for InputBar / ApprovalPanel remounts. */
+  readonly composerResizeHeight: SnapshotStore<number | null> = createSnapshotStore(DEFAULT_COMPOSER_RESIZE_HEIGHT)
+  /** Reactive last-dragged card width for InputBar / ApprovalPanel remounts. */
+  readonly composerResizeWidth: SnapshotStore<number | null> = createSnapshotStore(DEFAULT_COMPOSER_RESIZE_WIDTH)
   /** Reactive stats-strip source for the Settings row and StatsLine. */
   readonly statsLine: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_STATS_LINE)
   /** Reactive view-tablist source for the Settings row and ConversationSessionHeader. */
@@ -98,13 +111,30 @@ export class ComposerSubmissionPolicy {
 
   /**
    * Change whether the composer text box can be drag-resized; the live value
-   * publishes before the durable write starts.
-   * @param value - true shows the top-edge handle; false restores auto-grow.
+   * publishes before the durable write starts. Turning resize off also clears
+   * any remembered box size so the next opt-in starts from auto-grow.
+   * @param value - true shows the edge handles; false restores auto-grow.
    */
   setComposerResize(value: boolean): void {
     if (this.composerResize.getSnapshot() === value) return
     this.composerResize.set(value)
     void this.host?.set(COMPOSER_RESIZE_FIELD, value)
+  }
+
+  /**
+   * Remember the last dragged composer box so remounts / session switches
+   * restore it while resize stays enabled.
+   * @param size - axes to update; omitted axes keep their previous value.
+   */
+  setComposerResizeSize(size: Partial<ComposerResizeSize>): void {
+    if (size.height !== undefined && this.composerResizeHeight.getSnapshot() !== size.height) {
+      this.composerResizeHeight.set(size.height)
+      if (size.height !== null) void this.host?.set(COMPOSER_RESIZE_HEIGHT_FIELD, size.height)
+    }
+    if (size.width !== undefined && this.composerResizeWidth.getSnapshot() !== size.width) {
+      this.composerResizeWidth.set(size.width)
+      if (size.width !== null) void this.host?.set(COMPOSER_RESIZE_WIDTH_FIELD, size.width)
+    }
   }
 
   /**
@@ -143,6 +173,10 @@ export class ComposerSubmissionPolicy {
     if (this.composerBeam.getSnapshot() !== nextBeam) this.composerBeam.set(nextBeam)
     const nextResize = section.composerResize === true
     if (this.composerResize.getSnapshot() !== nextResize) this.composerResize.set(nextResize)
+    const nextHeight = typeof section.composerResizeHeight === 'number' ? section.composerResizeHeight : null
+    if (this.composerResizeHeight.getSnapshot() !== nextHeight) this.composerResizeHeight.set(nextHeight)
+    const nextWidth = typeof section.composerResizeWidth === 'number' ? section.composerResizeWidth : null
+    if (this.composerResizeWidth.getSnapshot() !== nextWidth) this.composerResizeWidth.set(nextWidth)
     const nextStats = section.statsLine !== false
     if (this.statsLine.getSnapshot() !== nextStats) this.statsLine.set(nextStats)
     const nextTabs = section.viewTabs !== false

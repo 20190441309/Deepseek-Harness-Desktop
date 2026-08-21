@@ -91,7 +91,7 @@ describe('runtime client apply', () => {
     expect(workspaces.list.getSnapshot().items[0]?.workspaceId).toBe('w-new')
     // Mux sink and onConnected route without throwing (manager semantics own the behavior).
     bench.sinks?.onMuxEnvelope?.({ rpcId: 'r2' as never, payload: { type: 'stream/error', message: 'x' } as never })
-    void bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' })
+    bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' })
   })
 
   it('selects the recent Workspace once when the first baselines have no current session', async () => {
@@ -104,7 +104,7 @@ describe('runtime client apply', () => {
     }))
     bench.api.onList = () => Promise.resolve(ok({ items: [] }))
 
-    await bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' })
+    bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' })
     await flushMicrotasks()
 
     const sessions = bench.ctx.get('sessions') as SessionRuntime
@@ -152,39 +152,5 @@ describe('runtime client apply', () => {
     await bench.ctx.fiber.dispose()
     expect(bench.stopped).toBe(1)
     void fiber
-  })
-
-  it('waits for the boot gate before starting the stream loop', async () => {
-    let release!: () => void
-    ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    try {
-      const bench = await mount()
-      expect(bench.sinks).toBeUndefined()
-      release()
-      await vi.waitFor(() => { expect(bench.sinks).toBeDefined() })
-      await bench.ctx.fiber.dispose()
-      expect(bench.stopped).toBe(1)
-    } finally {
-      delete (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
-    }
-  })
-
-  it('does not start the stream loop when the fiber unloads before the boot gate', async () => {
-    let release!: () => void
-    ;(globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__ = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    try {
-      const bench = await mount()
-      await bench.ctx.fiber.dispose()
-      release()
-      await flushMicrotasks()
-      expect(bench.sinks).toBeUndefined()
-      expect(bench.stopped).toBe(0)
-    } finally {
-      delete (globalThis as { __DSH_BOOT_GATE__?: Promise<void> }).__DSH_BOOT_GATE__
-    }
   })
 })

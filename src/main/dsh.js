@@ -567,7 +567,9 @@ class DshManager extends EventEmitter {
         args.push('--patch', patchFile);
       }
     }
-    args.push('--host', host, '--port', String(port));
+    // Electron owns the page in BrowserView. Official dsh web opens the OS
+    // browser unless this invocation opts out.
+    args.push('--host', host, '--port', String(port), '--no-open');
 
     if (source.present) {
       if (!source.installed || !source.built) {

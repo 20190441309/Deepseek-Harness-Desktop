@@ -90,7 +90,7 @@ function runWeb() {
   const bin = path.join(deploy, 'lib', 'bin.js');
   // 用隔离的 DSH_HOME，避免串读用户级配置
   const home = path.join(deploy, '.dsh-home');
-  const res = spawnSync(process.execPath, [bin, 'web', '--host', '127.0.0.1', '--port', '3081'], {
+  const res = spawnSync(process.execPath, [bin, 'web', '--host', '127.0.0.1', '--port', '3081', '--no-open'], {
     cwd: deploy,
     timeout: 25000,
     encoding: 'utf8',

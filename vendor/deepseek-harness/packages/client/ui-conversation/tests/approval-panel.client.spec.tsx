@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS, PendingWait,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -33,7 +33,13 @@ function snapshotOf(overrides: Partial<ConversationSnapshot> = {}): Conversation
   }
 }
 
-function bench(over?: { composerResize?: boolean; seat?: HTMLDivElement }) {
+function bench(over?: {
+  composerResize?: boolean
+  height?: number | null
+  width?: number | null
+  onCommit?: (size: Partial<{ height: number; width: number }>) => void
+  seat?: HTMLDivElement
+}) {
   const respond = vi.fn(() => Promise.resolve({ accepted: true as const }))
   const carrier = new PendingWait(
     'approval', RpcId('r1'), SID,
@@ -62,6 +68,9 @@ function bench(over?: { composerResize?: boolean; seat?: HTMLDivElement }) {
     useInput: () => { throw new Error('unused') },
     inputActions: { setDraft: () => { throw new Error('unused') }, submit: () => { throw new Error('unused') } },
     useComposerResize: (sel: (value: boolean) => boolean) => sel(over?.composerResize ?? false),
+    useComposerResizeHeight: (sel: (value: number | null) => number | null) => sel(over?.height ?? null),
+    useComposerResizeWidth: (sel: (value: number | null) => number | null) => sel(over?.width ?? null),
+    setComposerResizeSize: over?.onCommit ?? vi.fn(),
     t: makeTranslate(zh, commonZh),
   } as unknown as ApprovalComposerProps
   const view = over?.seat === undefined
@@ -89,6 +98,30 @@ describe('ApprovalPanel composer resize', () => {
     fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
     expect(scroll.style.height).toBe('130px')
     expect(scroll.hasAttribute('data-composer-resized')).toBe(true)
+  })
+
+  it('commits the dragged size so a remount can restore it', () => {
+    const onCommit = vi.fn()
+    const { view } = bench({ composerResize: true, onCommit })
+    const scroll = view.container.querySelector('[data-approval-scroll]') as HTMLElement
+    const handle = view.container.querySelector('[data-composer-resize-edge="top"]') as HTMLElement
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, width: 400, height: 80, top: 0, left: 0, bottom: 80, right: 400, toJSON() { return this },
+    })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 350 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
+    expect(onCommit).toHaveBeenCalledWith({ height: 130 })
+  })
+
+  it('restores a Host-remembered size when the seat has none yet', () => {
+    const { view } = bench({ composerResize: true, height: 200, width: 480 })
+    const scroll = view.container.querySelector('[data-approval-scroll]') as HTMLElement
+    const card = view.container.querySelector('[data-composer-card]') as HTMLElement
+    expect(scroll.style.height).toBe('200px')
+    expect(scroll.hasAttribute('data-composer-resized')).toBe(true)
+    expect(card.style.width).toBe('480px')
+    expect(card.hasAttribute('data-composer-resized-width')).toBe(true)
   })
 
   it('drags the approval card wider from either vertical edge when resize is on', () => {

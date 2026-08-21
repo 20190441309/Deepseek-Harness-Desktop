@@ -1,19 +1,21 @@
 /** ui-theme apply wiring: service provision, settings dictionaries riding the
- * locale service, declaration-aware Appearance section registration, snapshot
- * projection into the page store, and HMR collapse recovery. */
+ * locale service, declaration-aware Appearance row registration, snapshot
+ * projection into the row store, and HMR collapse recovery. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { TestRemote, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
-import { SettingsScopeBinder } from '@deepseek-ai/dsh-client-ui-settings/client'
+import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
+import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply, inject, SETTINGS_NS } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { AppearanceSectionInjected, ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema } from '../src/theme-settings.ts'
 import { AppearanceSection } from '../src/client/AppearanceSection.tsx'
 import type { createAppearanceRowStore } from '../src/client/settings-store.ts'
 
-usePinnedBrowserLanguages('zh-CN')
+// These specs assert the shipped Chinese copy. The lane has no jsdom `window`,
+// so browser-language detection never runs and a fresh LocaleRuntime opens on
+// FALLBACK_LOCALE (en); bench stages zh explicitly on the locale instead.
 
 const SLOT = 'settings.section'
 
@@ -27,12 +29,13 @@ async function bench(isLoopback = true) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const locale = new LocaleRuntime(ctx)
+  locale.setLocale('zh')
   ctx.provide('locale', locale)
-  const section: Record<string, unknown> = { preference: 'system' }
+  let preference = 'system'
   const namespace = () => ({
     ns: THEME_SETTINGS_NAMESPACE,
     schema: ThemeSettingsSchema.toJSON(),
-    value: { ...section },
+    value: { preference },
     applies: 'live' as const,
     secrets: [],
     revision: 0,
@@ -44,24 +47,24 @@ async function bench(isLoopback = true) {
       value: { writable: true, hasDocument: true, namespaces: [namespace()] },
     },
   }))
-  const mutate = vi.fn((request: { ops: { path: string[]; value: unknown }[] }) => {
-    for (const op of request.ops) {
-      section[op.path[0]!] = op.value
-    }
+  const mutate = vi.fn((request: { ops: { value: string }[] }) => {
+    preference = request.ops[0]!.value
     return Promise.resolve({
       rpcId: 'theme-mutate' as never,
       result: { ok: true as const, value: namespace() },
     })
   })
   ctx.provide('connection', { api: { settings: { describe, mutate } }, isLoopback } as never)
+  // The settings transport and the forwarded-event port the plugin injects.
   new TestRemote(ctx)
-  await ctx.plugin(SettingsScopeBinder).await()
+  await ctx.plugin({ inject: [...settingsInject], apply: settingsApply }).await()
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, describe, mutate,
-    setHostPreference: (next: string) => { section.preference = next },
+    setHostPreference: (next: string) => { preference = next },
   }
 }
 
+/** Stand in for the settings shell: declare the General item slot from root. */
 function declareItems(slots: SlotRegistry): () => void {
   return slots.register(
     { name: 'root', children: { [SLOT]: { kind: 'list', scope: 'root' } } } as never,
@@ -69,6 +72,8 @@ function declareItems(slots: SlotRegistry): () => void {
   )
 }
 
+/** Mirror the framework's inject choreography: bake a real instance from the
+ * declared handle and hand its actions to the entry's inject factory. */
 function faceOf(slots: SlotRegistry) {
   const entry = slots.entries(SLOT).find(e => e.component === AppearanceSection)!
   const handle = entry.store as ReturnType<typeof createAppearanceRowStore>
@@ -82,7 +87,7 @@ describe('ui-theme apply', () => {
     expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'settingsScope'])
   })
 
-  it('provides the service, registers localized copy, and registers the section (declaration before or after apply)', async () => {
+  it('provides the service, registers localized copy, and registers the row (declaration before or after apply)', async () => {
     const before = await bench()
     declareItems(before.slots)
     await before.ctx.plugin({ inject: [...inject], apply }).await()
@@ -101,52 +106,41 @@ describe('ui-theme apply', () => {
     expect(after.slots.entries(SLOT).some(e => e.component === AppearanceSection)).toBe(true)
   })
 
-  it('projects service snapshots into the page store and routes face writes back', async () => {
+  it('projects service snapshots into the row store and routes face writes back', async () => {
     const b = await bench()
     declareItems(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
+    // An event ahead of any inject hits the unbound-actions arm.
     theme.setTheme('dark')
 
     const { instance, face } = faceOf(b.slots)
+    // The inject-time re-sync sealed the init window: the mirror is current.
     expect(instance.getSnapshot().preference).toBe('dark')
+    // Copy rides the standard locale seat: the entry declares the namespace.
     expect(b.slots.entries(SLOT).find(e => e.component === AppearanceSection)!.locale).toBe(SETTINGS_NS)
 
     face.setTheme('system')
     expect(theme.getTheme().preference).toBe('system')
     expect(instance.getSnapshot().preference).toBe('system')
-    face.setThemeHalf('dark', 'celadon')
-    expect(theme.getTheme().activeDarkThemeId).toBe('celadon')
-    face.setGlassOpacity(55)
-    expect(theme.getTheme().glassOpacity).toBe(55)
-    face.setTypography({ fontFamilySans: 'Inter' })
-    expect(theme.getTheme().fontFamilySans).toBe('Inter')
-    face.setWallpaper({ wallpaperBlur: 30 })
-    expect(theme.getTheme().wallpaperBlur).toBe(30)
-    face.setCustomThemes([])
-    expect(theme.getTheme().customThemes).toEqual([])
-    face.previewTheme({
-      id: 'p', name: 'p', origin: 'custom',
-      light: { accent: '#e60000', background: '#ffffff', foreground: '#0f1115', contrast: 46 },
-      dark: { accent: '#ff8080', background: '#151517', foreground: '#f5f5f5', contrast: 41 },
-    })
-    expect(theme.getTheme().active.id).toBe('p')
-    face.previewTheme(null)
-    expect(theme.getTheme().active.id).not.toBe('p')
-    const label = b.slots.entries(SLOT).find(e => e.component === AppearanceSection)!.options.label
-    expect(typeof label === 'function' ? label() : label).toBe('外观')
-    await vi.waitFor(() => { expect(b.mutate.mock.calls.length).toBeGreaterThanOrEqual(2) })
+    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
   })
 
   it('loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local', async () => {
     const b = await bench()
+    // The shared mirror read once at bench time; a Host-side change reaches it
+    // through the document invalidation, exactly as production announces one.
     b.setHostPreference('dark')
+    b.ctx.remote.$dispatch('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
     declareItems(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('dark') })
+    // The mirror refreshes on every document commit (ns-agnostic); the scope's
+    // derived value only moves when its own namespace changed.
     b.ctx.remote.$dispatch('settings/document-updated', ['unrelated', 0])
-    expect(b.describe).toHaveBeenCalledOnce()
+    await vi.waitFor(() => { expect(b.describe).toHaveBeenCalledTimes(3) })
+    expect(theme.getTheme().preference).toBe('dark')
     b.setHostPreference('light')
     b.ctx.remote.$dispatch('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('light') })
@@ -164,12 +158,15 @@ describe('ui-theme apply', () => {
     expect(remote.mutate).not.toHaveBeenCalled()
   })
 
-  it('activates before a slow initial settings read and converges when it settles', async () => {
+  it('activates before a slow settings refresh and converges when it settles', async () => {
     const b = await bench()
     b.setHostPreference('dark')
     const describe = b.describe.getMockImplementation()!
     const pending = deferred<Awaited<ReturnType<typeof describe>>>()
     b.describe.mockImplementationOnce(() => pending.promise)
+    // The refresh hangs on the wire; the mirror keeps serving the last good
+    // answer, so activation never blocks on the settings transport.
+    b.ctx.remote.$dispatch('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     const theme = b.ctx.get('theme') as ThemeRuntime
@@ -182,9 +179,10 @@ describe('ui-theme apply', () => {
   it('ignores an invalid preference crossing the settings wire', async () => {
     const b = await bench()
     b.setHostPreference('sepia')
+    b.ctx.remote.$dispatch('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
-    await vi.waitFor(() => { expect(b.describe).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(b.describe).toHaveBeenCalledTimes(2) })
     expect(theme.getTheme().preference).toBe('system')
   })
 
@@ -194,6 +192,8 @@ describe('ui-theme apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     expect(b.slots.entries(SLOT)).toHaveLength(1)
 
+    // Collapse: the declarer dies, the cascade removes our entry while the
+    // apply closure still holds its (now stale) disposer.
     host()
     expect(b.slots.entries(SLOT)).toHaveLength(0)
 
@@ -202,7 +202,7 @@ describe('ui-theme apply', () => {
     expect(b.slots.entries(SLOT).some(e => e.component === AppearanceSection)).toBe(true)
   })
 
-  it('teardown removes the section and the dictionaries; teardown without a declaration is quiet', async () => {
+  it('teardown removes the row and the dictionaries; teardown without a declaration is quiet', async () => {
     const b = await bench()
     declareItems(b.slots)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
@@ -210,8 +210,10 @@ describe('ui-theme apply', () => {
     expect(b.slots.entries(SLOT)).toHaveLength(1)
     await fiber.dispose()
     expect(b.slots.entries(SLOT)).toHaveLength(0)
+    // Dictionary disposal: translation falls back to the bare key.
     expect(b.locale.bind(SETTINGS_NS)('appearance.title')).toBe('appearance.title')
 
+    // Never-declared bench: the effect disposer's dispose arm stays undefined.
     const quiet = await bench()
     const f2 = quiet.ctx.plugin({ inject: [...inject], apply })
     await f2.await()

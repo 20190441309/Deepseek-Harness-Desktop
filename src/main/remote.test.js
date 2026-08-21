@@ -8,7 +8,7 @@ const path = require('path');
 const { generateToken } = require('../shared/remote-auth');
 const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
-const { RemoteGateway, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
+const { RemoteGateway, createDisabledRemote, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
 const { RelayClient } = require('./relay-client');
 const { RelayServer } = require('../relay/server');
 
@@ -39,6 +39,43 @@ function insecureRelayClient(hostToken, options = {}) {
     getHostToken: () => hostToken,
   });
 }
+
+test('disabled remote stub does not listen or create an HTTP server', () => {
+  const original = http.createServer;
+  let created = 0;
+  http.createServer = (...args) => {
+    created += 1;
+    return original.apply(http, args);
+  };
+  try {
+    const remote = createDisabledRemote();
+    const synced = remote.sync();
+    const snap = remote.snapshot();
+    assert.notEqual(snap.listening, true);
+    assert.equal(snap.available, false);
+    assert.equal(snap.enabled, false);
+    assert.deepEqual(synced, snap);
+    assert.equal(created, 0);
+    remote.stop();
+    assert.equal(created, 0);
+    assert.deepEqual(remote.sync(), snap);
+    remote.stop();
+    assert.deepEqual(remote.snapshot(), {
+      available: false,
+      enabled: false,
+      listening: false,
+    });
+  } finally {
+    http.createServer = original;
+  }
+});
+
+test('main process constructs the disabled remote stub instead of RemoteGateway', () => {
+  const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  assert.match(index, /createDisabledRemote/);
+  assert.doesNotMatch(index, /new RemoteGateway/);
+  assert.match(index, /const remote = createDisabledRemote\(\)/);
+});
 
 test('relay close destroys upgraded clients and completes pending responses', async () => {
   const relay = insecureRelay('host-token-1234567890');

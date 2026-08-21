@@ -1,6 +1,16 @@
+## 0.2.7（待发）
+
+### 相对 0.2.6 的修复
+
+- 终端 Ghostty wasm/字体随客户端构建写入 `lib/assets`（根 `build:lib:client` 会跑 `copy-ghostty-assets`）
+- 打包门禁：`afterPack` 在归档前补齐并校验 `dirname(client.js)/assets`，缺文件则失败
+- 已安装不完整运行时（缺 wasm 导致 `Unable to load libghostty-vt (404)`）会在下次启动时重新解压
+
 ## 0.2.6
 
-当前请用这一版。0.2.4 与 0.2.5 的安装包里，预置插件市场的运行时依赖不完整，部分用户一打开就是 `dsh 进程结束（code 1）`（缺 `undici`，或缺 `js-yaml` 的 ESM 入口）。请改装 0.2.6。不要再装 0.2.4 / 0.2.5。
+当前已发出的安装包仍是 0.2.6。若终端页出现 `Unable to load libghostty-vt (404)`，请改装即将发布的 0.2.7，或从源码构建。
+
+0.2.4 与 0.2.5 的安装包里，预置插件市场的运行时依赖不完整，部分用户一打开就是 `dsh 进程结束（code 1）`（缺 `undici`，或缺 `js-yaml` 的 ESM 入口）。请改装 0.2.6 或更新。不要再装 0.2.4 / 0.2.5。
 
 [v0.2.0](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases) 因启动失败已撤回。v0.2.1 与 v0.2.2 从未发出安装包。
 
@@ -16,4 +26,4 @@
 - 门禁检查依赖的真实 `exports` / `module` / `main` 文件，缺 `js-yaml.mjs` 这类入口则构建失败
 - 这些依赖若仍缺失，桌面不会把残缺市场插件写进 profile，Harness 还能启动（设置里暂时没有市场）
 
-0.2.3 / 0.2.4 的功能说明仍适用：内置插件市场、壁纸图库、用户插件树恢复、终端与 Files 工作循环、浏览器预览。内置 Harness 仍钉在 `0.1.0-rc.7`。
+0.2.3 / 0.2.4 的功能说明仍适用：内置插件市场、壁纸图库、用户插件树恢复、终端与 Files 工作循环、浏览器预览。已发布的 0.2.6 安装包当时钉的是 `0.1.0-rc.7`。当前仓库源码钉是 `0.1.0-rc.8`（`dsh-v0.1.0-rc.8` / `141eb6fef83422698aef7a981029e843e8161534`，见 `vendor/harness-upstream.json`）。不要把已发出的 0.2.6 安装包说成 rc.8。

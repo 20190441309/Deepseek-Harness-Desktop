@@ -76,7 +76,7 @@ function makeHarness(overrides = {}) {
     ensurePackagedHarness: async () => null,
     buildLaunch: (config) => ({
       command: 'node',
-      args: ['web', '--host', config.host || '127.0.0.1', '--port', String(config.port || 3080)],
+      args: ['web', '--host', config.host || '127.0.0.1', '--port', String(config.port || 3080), '--no-open'],
       nodeBin: null,
       kind: 'dsh',
       host: config.host || '127.0.0.1',
@@ -470,8 +470,45 @@ test('launcher recovery flags stay before host and port', () => {
   });
   assert.deepEqual(launch.args, [
     'web', '--skip-user-plugins', '--patch', 'C:/desktop-install.yml',
-    '--host', '127.0.0.1', '--port', '3080',
+    '--host', '127.0.0.1', '--port', '3080', '--no-open',
   ]);
+});
+
+test('every launch kind passes --no-open so dsh web does not open the OS browser', () => {
+  const source = new DshManager({
+    sourceHarnessStatus: () => ({
+      present: true,
+      installed: true,
+      built: true,
+      bin: 'C:/harness/apps/cli/lib/bin.js',
+    }),
+    resolveNodeBin: () => process.execPath,
+  });
+  const sourceLaunch = source.buildLaunch({ host: '127.0.0.1', port: 3080 });
+  assert.equal(sourceLaunch.kind, 'source');
+  assert.equal(sourceLaunch.args.includes('--no-open'), true);
+
+  const dsh = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => 'dsh',
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+  });
+  const dshLaunch = dsh.buildLaunch({ host: '127.0.0.1', port: 3080 });
+  assert.equal(dshLaunch.kind, 'dsh');
+  assert.equal(dshLaunch.args.includes('--no-open'), true);
+
+  const pin = readPin(path.join(__dirname, '..', '..'));
+  const npx = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => null,
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+    readPin: () => pin,
+  });
+  const npxLaunch = npx.buildLaunch({ host: '127.0.0.1', port: 3080 });
+  assert.equal(npxLaunch.kind, 'npx');
+  assert.equal(npxLaunch.args.includes('--no-open'), true);
 });
 
 test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (t) => {

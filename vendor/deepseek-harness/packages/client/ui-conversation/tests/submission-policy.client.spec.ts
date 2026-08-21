@@ -11,6 +11,8 @@ function chrome(over: Partial<ConversationSettings> = {}): ConversationSettings 
     busyEnter: 'queue',
     composerBeam: true,
     composerResize: false,
+    composerResizeHeight: null,
+    composerResizeWidth: null,
     statsLine: true,
     viewTabs: true,
     ...over,
@@ -124,11 +126,35 @@ describe('ComposerSubmissionPolicy', () => {
       writable: true,
     })
     expect(policy.composerResize.getSnapshot()).toBe(true)
+    policy.setComposerResizeSize({ height: 180, width: 500 })
+    expect(policy.composerResizeHeight.getSnapshot()).toBe(180)
+    expect(policy.composerResizeWidth.getSnapshot()).toBe(500)
     policy.setComposerResize(false)
     expect(policy.composerResize.getSnapshot()).toBe(false)
+    // Turning the switch off clears the live DOM size, but keeps the remembered
+    // box so enabling resize again (or remounting) restores the last drag.
+    expect(policy.composerResizeHeight.getSnapshot()).toBe(180)
+    expect(policy.composerResizeWidth.getSnapshot()).toBe(500)
     expect(host.set).toHaveBeenCalledWith('composerResize', false)
+    const calls = host.set.mock.calls.length
     policy.setComposerResize(false)
-    expect(host.set).toHaveBeenCalledOnce()
+    expect(host.set).toHaveBeenCalledTimes(calls)
+  })
+
+  it('remembers a dragged composer size through the Host scope', () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    policy.setComposerResizeSize({ height: 140, width: 420 })
+    expect(host.set).toHaveBeenCalledWith('composerResizeHeight', 140)
+    expect(host.set).toHaveBeenCalledWith('composerResizeWidth', 420)
+    host.publish({
+      status: 'ready',
+      value: chrome({ composerResize: true, composerResizeHeight: 140, composerResizeWidth: 420 }),
+      revision: 1,
+      writable: true,
+    })
+    expect(policy.composerResizeHeight.getSnapshot()).toBe(140)
+    expect(policy.composerResizeWidth.getSnapshot()).toBe(420)
   })
 
   it('treats a missing composerResize field as off', () => {

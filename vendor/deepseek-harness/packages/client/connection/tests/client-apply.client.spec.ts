@@ -337,7 +337,7 @@ describe('connection client apply', () => {
       return Response.json({
         type: 'server-response',
         rpcId: body.rpcId,
-        result: { ok: true, value: { version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: false, scratchCwd: '/scratch' } },
+        result: { ok: true, value: { version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: false, scratchCwd: '/scratch' } },
       })
     }
     try {

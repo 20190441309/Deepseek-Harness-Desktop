@@ -12,10 +12,7 @@ import * as ReactDom from 'react-dom'
 import * as ReactDomClient from 'react-dom/client'
 import * as Cordis from '@deepseek-ai/cordis'
 import * as UiSlots from '@deepseek-ai/dsh-client-ui-slots'
-import * as WebReact from '@deepseek-ai/dsh-client-web-react'
 import * as UiPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
-import * as UiAttachment from '@deepseek-ai/dsh-client-ui-attachment'
-import * as SchemaForm from '@deepseek-ai/dsh-client-schema-form'
 import type { PlatformModule } from './platform.ts'
 
 function preserveModuleExports<T extends object>(module: T): T {
@@ -39,9 +36,6 @@ export function getStaticModules(): Record<string, unknown> {
     'react-dom/client': preserveModuleExports(ReactDomClient),
     '@deepseek-ai/cordis': preserveModuleExports(Cordis),
     '@deepseek-ai/dsh-client-ui-slots': preserveModuleExports(UiSlots),
-    '@deepseek-ai/dsh-client-web-react': preserveModuleExports(WebReact),
     '@deepseek-ai/dsh-client-ui-primitives': preserveModuleExports(UiPrimitives),
-    '@deepseek-ai/dsh-client-ui-attachment': preserveModuleExports(UiAttachment),
-    '@deepseek-ai/dsh-client-schema-form': preserveModuleExports(SchemaForm),
   } satisfies Record<PlatformModule, unknown>
 }

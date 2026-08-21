@@ -2,6 +2,11 @@ const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { missingRuntimeFiles } = require('../src/main/plugin-runtime-files');
+const {
+  ensureGhosttyAssetsInHarness,
+  harnessHasGhosttyAssets,
+  missingGhosttyAssetPaths,
+} = require('../src/shared/ghostty-assets');
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -536,6 +541,14 @@ function assertHarnessRuntime(harnessDest, pin) {
     throw new Error(`安装包缺少 Harness 运行时产物：${missing.join(', ')}`);
   }
 
+  // Root client tsdown does not run copy-ghostty-assets; fill lib/assets before the gate.
+  ensureGhosttyAssetsInHarness(harnessDest);
+  if (!harnessHasGhosttyAssets(harnessDest)) {
+    throw new Error(
+      `安装包缺少终端 Ghostty 资源（dirname(client.js)/assets）：${missingGhosttyAssetPaths(harnessDest).join(', ')}`,
+    );
+  }
+
   const features = fs.readFileSync(
     path.join(harnessDest, 'node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
     'utf8',
@@ -639,3 +652,4 @@ module.exports.assertVendoredPluginRuntimeDeps = assertVendoredPluginRuntimeDeps
 module.exports.installPluginRuntimeDeps = installPluginRuntimeDeps;
 module.exports.nodePtyPrebuildRelative = nodePtyPrebuildRelative;
 module.exports.restoreVendoredPluginNodeModules = restoreVendoredPluginNodeModules;
+module.exports.ensureGhosttyAssetsInHarness = ensureGhosttyAssetsInHarness;

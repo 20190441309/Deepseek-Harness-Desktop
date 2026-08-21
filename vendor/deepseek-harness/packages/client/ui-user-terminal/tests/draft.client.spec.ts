@@ -36,4 +36,78 @@ describe('appendToDraft', () => {
     expect(appendToDraft(ctx as never, 'sess', '```terminal\nls\n```')).toBe(true)
     expect(setDraft).toHaveBeenCalledWith('hello ```terminal\nls\n```')
   })
+
+  it('writes through ctx.get("sessions") when ctx.sessions throws without inject', () => {
+    const setDraft = vi.fn()
+    const sessions = { scope: () => ({}) }
+    const conversation = {
+      input: {
+        for: () => ({
+          setDraft,
+          state: { getSnapshot: () => ({ draft: '' }) },
+        }),
+      },
+    }
+    let sessionsPropReads = 0
+    const ctx = {
+      get(name: string) {
+        if (name === 'conversation') return conversation
+        if (name === 'sessions') return sessions
+        return undefined
+      },
+      get sessions(): never {
+        sessionsPropReads += 1
+        throw new Error('cannot get property "sessions" without inject')
+      },
+    }
+    expect(appendToDraft(ctx as never, 'sess', '```terminal\nls\n```')).toBe(true)
+    expect(setDraft).toHaveBeenCalledWith('```terminal\nls\n```')
+    expect(sessionsPropReads).toBe(0)
+  })
+
+  it('appends a terminal fence through get("sessions") when a draft already exists', () => {
+    const setDraft = vi.fn()
+    const sessions = { scope: () => ({}) }
+    const conversation = {
+      input: {
+        for: () => ({
+          setDraft,
+          state: { getSnapshot: () => ({ draft: 'note' }) },
+        }),
+      },
+    }
+    const ctx = {
+      get(name: string) {
+        if (name === 'conversation') return conversation
+        if (name === 'sessions') return sessions
+        return undefined
+      },
+      get sessions(): never {
+        throw new Error('cannot get property "sessions" without inject')
+      },
+    }
+    expect(appendToDraft(ctx as never, 'sess', '```terminal\nls\n```')).toBe(true)
+    expect(setDraft).toHaveBeenCalledWith('note ```terminal\nls\n```')
+  })
+
+  it('returns false when ctx.get("sessions") is missing even if ctx.sessions would throw', () => {
+    const conversation = {
+      input: {
+        for: () => ({
+          setDraft: vi.fn(),
+          state: { getSnapshot: () => ({ draft: '' }) },
+        }),
+      },
+    }
+    const ctx = {
+      get(name: string) {
+        if (name === 'conversation') return conversation
+        return undefined
+      },
+      get sessions(): never {
+        throw new Error('cannot get property "sessions" without inject')
+      },
+    }
+    expect(appendToDraft(ctx as never, 'sess', '```terminal\nls\n```')).toBe(false)
+  })
 })

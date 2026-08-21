@@ -1,7 +1,10 @@
+'use strict';
+
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { harnessHasGhosttyAssets } = require('../shared/ghostty-assets');
 
 function looseHarnessRoot() {
   return path.join(process.resourcesPath, 'vendor', 'deepseek-harness');
@@ -15,9 +18,15 @@ function extractedHarnessRoot() {
   return path.join(app.getPath('userData'), 'runtime', app.getVersion());
 }
 
+/**
+ * True when the tree can boot the CLI/web UI and serve Ghostty terminal assets.
+ * @param {string} root
+ * @returns {boolean}
+ */
 function hasBuiltHarness(root) {
   return fs.existsSync(path.join(root, 'apps', 'cli', 'lib', 'bin.js'))
-    && fs.existsSync(path.join(root, 'apps', 'web', 'dist', 'index.html'));
+    && fs.existsSync(path.join(root, 'apps', 'web', 'dist', 'index.html'))
+    && harnessHasGhosttyAssets(root);
 }
 
 function packagedHarnessRoot() {
@@ -70,6 +79,11 @@ async function ensurePackagedHarness(log = () => {}) {
   if (hasBuiltHarness(dest)) {
     return dest;
   }
+  // Incomplete extract (e.g. 0.2.6 missing Ghostty wasm) must not stick forever.
+  if (fs.existsSync(dest)) {
+    log('运行时不完整，正在重新解压…');
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
   const loose = looseHarnessRoot();
   if (hasBuiltHarness(loose)) {
     return loose;
@@ -79,7 +93,6 @@ async function ensurePackagedHarness(log = () => {}) {
     throw new Error('安装包缺少运行时归档 deepseek-harness.tar');
   }
   log('正在解压运行时（仅首次，之后会变快）…');
-  fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(dest, { recursive: true });
   await runTar(['-xf', archive, '-C', dest]);
   if (!hasBuiltHarness(dest)) {

@@ -12,6 +12,11 @@ interface ConversationDraftFace {
   }
 }
 
+/** Session list face used only to resolve composer scope; optional on session-maybe fibers. */
+interface SessionsDraftFace {
+  scope: (sessionId: never) => unknown
+}
+
 /**
  * Append `text` to the session composer, separated by a space when a draft
  * already exists. Missing conversation or session scope is a no-op.
@@ -23,7 +28,9 @@ interface ConversationDraftFace {
 export function appendToDraft(ctx: ClientContext, sessionId: string, text: string): boolean {
   const conversation = ctx.get('conversation') as ConversationDraftFace | undefined
   if (conversation === undefined) return false
-  const scope = ctx.sessions.scope(sessionId as never)
+  const sessions = ctx.get('sessions') as SessionsDraftFace | undefined
+  if (sessions === undefined) return false
+  const scope = sessions.scope(sessionId as never)
   if (scope === undefined) return false
   const input = conversation.input.for(scope)
   const current = input.state.getSnapshot().draft

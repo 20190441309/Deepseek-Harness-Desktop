@@ -15,6 +15,8 @@
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "node scripts/run-electron-builder.cjs --dir --publish never",
     "smoke:source": "node scripts/run-source-smoke.mjs",
+    "qa:source": "node scripts/run-source-qa.mjs",
+    "qa:composer": "node scripts/run-composer-official-qa.mjs",
     "smoke:packaged": "node scripts/run-packaged-smoke.mjs",
     "check:release-version": "node scripts/check-release-version.mjs",
     "dist": "node scripts/run-electron-builder.cjs --win --publish never",

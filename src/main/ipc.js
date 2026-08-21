@@ -288,7 +288,12 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
   });
 
   handle('shell:get-remote', HARNESS_ONLY, () => {
-    const snapshot = remote ? remote.snapshot() : {};
+    const snapshot = remote && typeof remote.snapshot === 'function'
+      ? remote.snapshot()
+      : { available: false, enabled: false, listening: false };
+    if (snapshot.available === false) {
+      return { ...snapshot, available: false, enabled: false };
+    }
     return {
       ...snapshot,
       available: REMOTE_FEATURE_ENABLED,

@@ -43,6 +43,8 @@ export function commandOf(call: RunningToolCall | undefined): string | undefined
 export function ApprovalPanel(props: ApprovalComposerProps) {
   const approval = useMemo(() => new PendingApproval(props.matched), [props.matched])
   const composerResize = props.useComposerResize(value => value)
+  const composerResizeHeight = props.useComposerResizeHeight(value => value)
+  const composerResizeWidth = props.useComposerResizeWidth(value => value)
   const command = props.useSession((snapshot) => {
     if (approval.callId === undefined) return undefined
     const root = rootToolCall(snapshot, approval.callId)
@@ -55,16 +57,24 @@ export function ApprovalPanel(props: ApprovalComposerProps) {
       pending={approval}
       t={props.t}
       composerResize={composerResize}
+      composerResizeHeight={composerResizeHeight}
+      composerResizeWidth={composerResizeWidth}
+      setComposerResizeSize={props.setComposerResizeSize}
       {...command === undefined ? {} : { command }}
     />
   )
 }
 
-function ApprovalFlow({ pending, command, t, composerResize }: {
+function ApprovalFlow({
+  pending, command, t, composerResize, composerResizeHeight, composerResizeWidth, setComposerResizeSize,
+}: {
   pending: PendingApproval
   command?: string
   t: ApprovalComposerProps['t']
   composerResize: boolean
+  composerResizeHeight: number | null
+  composerResizeWidth: number | null
+  setComposerResizeSize: ApprovalComposerProps['setComposerResizeSize']
 }) {
   // Local one-shot latch: the panel leaves only when the resolved frame
   // lands; until then the buttons must not re-fire. An answer failure
@@ -73,7 +83,13 @@ function ApprovalFlow({ pending, command, t, composerResize }: {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const { onResizePointerDown, onResizePointerMove, onResizePointerUp }
-    = useComposerResizeDrag(composerResize, cardRef, scrollRef)
+    = useComposerResizeDrag(
+      composerResize,
+      cardRef,
+      scrollRef,
+      { height: composerResizeHeight, width: composerResizeWidth },
+      setComposerResizeSize,
+    )
   const answer = (outcome: 'allowed-once' | 'rejected'): void => {
     setAnswered(true)
     void pending.answer(outcome).catch(() => { setAnswered(false) })

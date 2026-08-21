@@ -110,13 +110,8 @@ describe('detectComposerTrigger', () => {
     })
   })
 
-  it('detects a $skill query', () => {
-    expect(detectComposerTrigger('$fo', 3)).toEqual({
-      kind: 'skill',
-      query: 'fo',
-      rangeStart: 0,
-      rangeEnd: 3,
-    })
+  it('does not treat a $ token as a live trigger', () => {
+    expect(detectComposerTrigger('$fo', 3)).toBeNull()
   })
 
   it('returns null when no trigger is live', () => {
@@ -194,9 +189,9 @@ describe('detectComposerTrigger', () => {
 
 describe('replaceTextRange', () => {
   it('replaces the $fo span with a skill token and space', () => {
-    expect(replaceTextRange('$fo', 0, 3, '$foo-skill ')).toEqual({
-      text: '$foo-skill ',
-      cursor: 11,
+    expect(replaceTextRange('$fo', 0, 3, 'replaced ')).toEqual({
+      text: 'replaced ',
+      cursor: 9,
     })
   })
 

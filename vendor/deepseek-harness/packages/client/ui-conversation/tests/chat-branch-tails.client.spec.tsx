@@ -7,22 +7,22 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import type {
-  ChatConversationViewNode, ConversationNode, SessionId, SessionListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  ChatConversationViewNode, ConversationNode, SessionId,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNodeViewProps } from '../src/client/contract/slots.ts'
 import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,
 } from '../src/client/chat/message-chrome.ts'
 import {
-  CompactionNodeView, ContextMessageNodeView, PendingSteeringBubble, RetryNodeView, SteeringMessageNodeView,
-  UnknownNodeView, UserMessageNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView, UnknownNodeView,
+  UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
-import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
+import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/chat/AssistantMarkdown.tsx'
 import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
 import { zh } from '../src/client/locales.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
@@ -43,23 +43,18 @@ afterEach(() => {
 
 // Mirrors the real lookup chain (conversation namespace, then common).
 const t: ChatNodeViewProps['t'] = makeTranslate(zh, commonZh)
+const renderMessageImages: AssistantMarkdownProps['renderMessageImages'] = () => null
 const RETRY_ID = 'retry-fixture' as Extract<ConversationNode, { kind: 'model-retry' }>['retryId']
 
 interface MessageItemProps {
   readonly node: ConversationNode
   readonly t: ChatNodeViewProps['t']
+  readonly referenceLabels?: readonly string[]
   readonly agentPreset?: string
 }
 
-/** The user renderer's slot seat, stubbed inert: no plugin mounted on the seat. */
-const renderUserActions = (() => null) as unknown as
-  React.ComponentProps<typeof UserMessageNodeView>['renderSlot']
-/** The framework-injected session-area seat of the user renderer's child slot. */
-const stubSessionProvider = (() => null) as unknown as
-  React.ComponentProps<typeof UserMessageNodeView>['SessionProvider']
-
 /** Legacy-node fixture adapter for the independently registered renderers. */
-function MessageItem({ node, t: translate, agentPreset }: MessageItemProps) {
+function MessageItem({ node, t: translate, referenceLabels, agentPreset }: MessageItemProps) {
   const kind = node.kind === 'assistant' ? 'assistant-step' : node.kind
   const viewNode: ChatConversationViewNode = {
     key: `fixture:${node.kind}:${node.seq}`,
@@ -69,47 +64,111 @@ function MessageItem({ node, t: translate, agentPreset }: MessageItemProps) {
     anchorSeq: node.seq,
     location: { kind: 'session' },
     visibility: 'visible',
-    data: node.kind === 'model-retry' ? { attempts: [node], current: node } : node,
+    data: node.kind === 'model-retry'
+      ? { attempts: [node], current: node }
+      : (node.kind === 'user' || node.kind === 'steering') && referenceLabels !== undefined
+        ? { ...node, referenceLabels }
+        : node,
   }
-  const sid = 's1' as SessionId
-  const useSessions = bindSnapshotSelector(createSnapshotStore<SessionListState>({
-    ids: [sid],
+  const sessionId = 's1' as SessionId
+  const useSessions = bindSnapshotSelector(createSnapshotStore({
+    ids: [sessionId],
     byId: {
-      [sid]: {
-        id: sid, displayTitle: 'room', running: false, blank: false, updatedAt: 0,
+      [sessionId]: {
+        id: sessionId, displayTitle: 'room', running: false, blank: false, updatedAt: 0,
         ...(agentPreset === undefined ? {} : { agentPreset }),
       },
     },
     current: undefined, phase: 'ready',
     subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
   }))
-  const props = { node: viewNode, t: translate, sessionId: sid, useSessions } as ChatNodeViewProps
+  const nodeProps = {
+    node: viewNode,
+    t: translate,
+    renderMessageImages,
+    openFile: () => {},
+    inspectCall: () => {},
+    forkAt: () => {},
+    fileMentions: () => undefined,
+    renderSlot: () => null,
+    sessionId,
+    useSessions,
+  }
   switch (node.kind) {
     case 'user':
-      return (
-        <UserMessageNodeView
-          {...props as ChatNodeViewProps<'user'>}
-          renderSlot={renderUserActions}
-          SessionProvider={stubSessionProvider}
-        />
-      )
+      return <UserMessageNodeView {...nodeProps as unknown as Parameters<typeof UserMessageNodeView>[0]} />
     case 'steering':
-      return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />
+      return <SteeringMessageNodeView {...nodeProps as unknown as ChatNodeViewProps<'steering'>} />
     case 'context':
-      return <ContextMessageNodeView {...props as ChatNodeViewProps<'context'>} />
+      return <ContextMessageNodeView {...nodeProps as unknown as ChatNodeViewProps<'context'>} />
     case 'compaction':
-      return <CompactionNodeView {...props as ChatNodeViewProps<'compaction'>} />
+      return <CompactionNodeView {...nodeProps as unknown as ChatNodeViewProps<'compaction'>} />
     case 'model-retry':
-      return <RetryNodeView {...props as ChatNodeViewProps<'model-retry'>} />
+      return <RetryNodeView {...nodeProps as unknown as ChatNodeViewProps<'model-retry'>} />
     case 'unknown':
-      return <UnknownNodeView {...props as ChatNodeViewProps<'unknown'>} />
+      return <UnknownNodeView {...nodeProps as unknown as ChatNodeViewProps<'unknown'>} />
     default:
       throw new Error(`unsupported MessageItem fixture kind: ${node.kind}`)
   }
 }
 
 describe('MessageItem arms', () => {
-  it('user bubbles expose clock / copy and neither branch nor built-in edit; copy writes the text', () => {
+  it('renders an adjacent session mention as a chip even without trailing whitespace', () => {
+    const view = render(
+      <MessageItem
+        t={t}
+        referenceLabels={['你好']}
+        node={{
+          kind: 'user',
+          seq: 1,
+          time: 1_000,
+          content: [{ type: 'text', text: '@你好这个在讲啥' }] as never,
+          source: null,
+        }}
+      />,
+    )
+    expect(view.container.querySelector('[data-ref-chip="session"]')?.textContent).toBe('你好')
+    expect(view.container.querySelector('[data-ref-chip="session"] svg')).not.toBeNull()
+    expect(view.getByText('这个在讲啥')).toBeTruthy()
+    expect(view.getByText('引用会话 · 你好')).toBeTruthy()
+  })
+
+  it('renders the complete metadata-confirmed multi-word session label', () => {
+    const view = render(
+      <MessageItem
+        t={t}
+        referenceLabels={['Research notes']}
+        node={{
+          kind: 'user',
+          seq: 1,
+          time: 1_000,
+          content: [{ type: 'text', text: '@Research notes what changed?' }] as never,
+          source: null,
+        }}
+      />,
+    )
+    expect(view.container.querySelector('[data-ref-chip="session"]')?.textContent).toBe('Research notes')
+    expect(view.getByText('what changed?')).toBeTruthy()
+    expect(view.getByText('引用会话 · Research notes')).toBeTruthy()
+  })
+
+  it('renders no-extension paths as files and leaves sentence punctuation outside the reference', () => {
+    const view = render(
+      <MessageItem t={t} node={{
+        kind: 'user',
+        seq: 1,
+        time: 1_000,
+        content: [{ type: 'text', text: 'Read @Dockerfile and @src/README.md, please.' }] as never,
+        source: null,
+      }} />,
+    )
+    const files = [...view.container.querySelectorAll('[data-ref-chip="file"]')]
+    expect(files.map(file => file.textContent)).toEqual(['Dockerfile', 'README.md'])
+    expect(files.every(file => file.querySelector('svg') !== null)).toBe(true)
+    expect(view.container.textContent).toContain('README.md, please.')
+  })
+
+  it('user bubbles expose clock / copy and neither branch nor edit; copy writes the text', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -129,113 +188,9 @@ describe('MessageItem arms', () => {
     expect(screen.getByText('14:24')).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
-    // The core ships no edit control of its own: with no plugin mounted on
-    // the user-actions seat there is still nothing but copy here.
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('hello bubble')
-  })
-
-  it('hands the user-actions seat the message seq and frozen content, rendered after copy in the same actions row', () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const content = [{ type: 'text', text: 'editable bubble' }] as never
-    const renderUserActions = vi.fn((_name: string, _owner: unknown) => (
-      <button data-testid="user-edit-probe" type="button">编辑</button>
-    ))
-    const node = {
-      key: 'fixture:user:7',
-      kind: 'user',
-      id: '7',
-      target: 'chat',
-      anchorSeq: 7,
-      location: { kind: 'session' },
-      visibility: 'visible',
-      data: { kind: 'user', seq: 7, time: 1_000, content, source: null },
-    }
-    const view = render(
-      <UserMessageNodeView
-        {...{ node, t } as unknown as ChatNodeViewProps<'user'>}
-        renderSlot={renderUserActions as unknown as React.ComponentProps<typeof UserMessageNodeView>['renderSlot']}
-        SessionProvider={stubSessionProvider}
-      />,
-    )
-    // The render site dispatches exactly this owner currency: the durable
-    // message seq plus the frozen content blocks the bubble renders, and
-    // startEdit to swap the row for the user-editor seat.
-    expect(renderUserActions).toHaveBeenCalledOnce()
-    expect(renderUserActions).toHaveBeenCalledWith(
-      'conversation.chat.user-actions',
-      expect.objectContaining({ seq: 7, content }),
-    )
-    const owner = renderUserActions.mock.calls[0]?.[1] as { startEdit: unknown }
-    expect(owner.startEdit).toBeTypeOf('function')
-    // extraActions lands inside the same IconActions row, after the copy
-    // button (the strip's position between copy and branch).
-    const copy = view.getByRole('button', { name: '复制' })
-    const probe = view.getByTestId('user-edit-probe')
-    expect(probe.parentElement).toBe(copy.parentElement)
-    expect(copy.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-  })
-
-  it('replaces the bubble and IconActions with the user-editor seat after startEdit', () => {
-    const content = [{ type: 'text', text: 'editable bubble' }] as never
-    const renderSlot = vi.fn((name: string, owner: { startEdit?: () => void; cancelEdit?: () => void; seq: number }) => {
-      if (name === 'conversation.chat.user-actions') {
-        return <button type="button" onClick={owner.startEdit}>start-edit</button>
-      }
-      return <div data-testid="user-editor-probe">{owner.seq}<button type="button" onClick={owner.cancelEdit}>cancel-edit</button></div>
-    })
-    const node = {
-      key: 'fixture:user:7',
-      kind: 'user',
-      id: '7',
-      target: 'chat',
-      anchorSeq: 7,
-      location: { kind: 'session' },
-      visibility: 'visible',
-      data: { kind: 'user', seq: 7, time: 1_000, content, source: null },
-    }
-    const view = render(
-      <UserMessageNodeView
-        {...{ node, t } as unknown as ChatNodeViewProps<'user'>}
-        renderSlot={renderSlot as unknown as React.ComponentProps<typeof UserMessageNodeView>['renderSlot']}
-        SessionProvider={stubSessionProvider}
-      />,
-    )
-    expect(view.getByText('editable bubble')).toBeTruthy()
-    fireEvent.click(view.getByRole('button', { name: 'start-edit' }))
-    expect(view.queryByText('editable bubble')).toBeNull()
-    expect(view.queryByRole('button', { name: '复制' })).toBeNull()
-    expect(view.getByTestId('user-editor-probe').textContent).toContain('7')
-    expect(renderSlot).toHaveBeenCalledWith(
-      'conversation.chat.user-editor',
-      expect.objectContaining({ seq: 7, content }),
-    )
-    fireEvent.click(view.getByRole('button', { name: 'cancel-edit' }))
-    expect(view.getByText('editable bubble')).toBeTruthy()
-    expect(view.getByRole('button', { name: '复制' })).toBeTruthy()
-  })
-
-  it('pending steering keeps copy-only chrome and never hosts the user-actions seat', () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const view = render(
-      <PendingSteeringBubble
-        content={[{ type: 'text', text: 'interrupt now' }] as never}
-        t={t}
-      />,
-    )
-    expect(view.getByText('interrupt now')).toBeTruthy()
-    expect(view.container.querySelector('[data-pending-steering]')).not.toBeNull()
-    // The pre-admission projection carries no slot seat: no anchor at all.
-    expect(view.container.querySelector('[data-slot="conversation.chat.user-actions"]')).toBeNull()
   })
 
   it('user copy falls back to execCommand when clipboard.writeText is unavailable', () => {
@@ -380,9 +335,6 @@ describe('MessageItem arms', () => {
     fireEvent.click(view.getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('steer!')
     expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
-    // The steering renderer owns no user-actions seat: no slot anchor, so a
-    // per-message action plugin can never attach to an admitted steering row.
-    expect(view.container.querySelector('[data-slot="conversation.chat.user-actions"]')).toBeNull()
   })
 
   it('context uses the Tool calls disclosure chrome and keeps its body collapsed by default', () => {
@@ -401,6 +353,7 @@ describe('MessageItem arms', () => {
     expect(disclosure.getAttribute('aria-expanded')).toBe('false')
     expect(ctxView.container.querySelector('[data-context-injection-body]')).toBeNull()
     expect(ctxView.container.querySelector('svg')).not.toBeNull()
+    expect(ctxView.container.querySelector('[data-context-recall-icon]')).toBeNull()
 
     fireEvent.click(disclosure)
     expect(disclosure.getAttribute('aria-expanded')).toBe('true')
@@ -414,21 +367,6 @@ describe('MessageItem arms', () => {
 
     fireEvent.keyDown(disclosure, { key: ' ' })
     expect(disclosure.getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('renders no context injection row in a dshbot-room session', () => {
-    const view = render(
-      <MessageItem t={t} agentPreset="dshbot-room" node={{
-        kind: 'context',
-        seq: 3,
-        content: [{ type: 'text', text: 'line one' }],
-        source: { kind: 'plugin', plugin: 'fixture', empty: {}, list: [] },
-        provenance: { role: 'inject', label: 'fixture' },
-        form: null,
-      } as never}
-      />,
-    )
-    expect(view.queryByRole('button', { name: /上下文注入/ })).toBeNull()
   })
 
   it('the instructions form names the files it reconciled above their text', () => {
@@ -868,6 +806,7 @@ describe('MessageItem arms', () => {
       } as never}
       />,
     )
+    expect(view.container.querySelector('[data-context-recall-icon]')).not.toBeNull()
     fireEvent.click(view.getByRole('button', { name: /^跨会话召回\s*重构 loader, 修 CI$/ }))
     const rows = [...view.container.querySelectorAll('[data-context-recalls] li')].map(node => node.textContent)
     expect(rows).toEqual(['重构 loader保留 18 条 · 省略 42 条已截断', '修 CI保留 3 条 · 省略 0 条'])
@@ -1099,7 +1038,12 @@ describe('useCalendarDay boundary refresh', () => {
 describe('small branch tails', () => {
   it('AssistantMarkdown single-line reasoning summary skips the newline cut', () => {
     const view = render(
-      <AssistantMarkdown t={t} blocks={[{ kind: 'reasoning', text: 'one-liner' }]} streaming={false} />,
+      <AssistantMarkdown
+        t={t}
+        blocks={[{ kind: 'reasoning', text: 'one-liner' }]}
+        streaming={false}
+        renderMessageImages={renderMessageImages}
+      />,
     )
     expect(view.getByText('one-liner')).toBeTruthy()
   })
@@ -1116,12 +1060,28 @@ describe('small branch tails', () => {
       <StatsLine
         t={t}
         useSession={bindSnapshotSelector(source) as unknown as StatsLineProps['useSession']}
+        useStatsLine={bindSnapshotSelector(createSnapshotStore(true))}
         useProjection={(key: string) => key === 'tokenUsage'
           ? { uncachedInputTokens: 0, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }
           : undefined}
-        useStatsLine={sel => sel(true)}
       />,
     )
     expect(view.container.textContent).toBe('1 轮 · 1 步| 输入 0 tok · 输出 10 tok')
   })
+
+  it('renders no context injection row in a dshbot-room session', () => {
+    const view = render(
+      <MessageItem t={t} agentPreset="dshbot-room" node={{
+        kind: 'context',
+        seq: 3,
+        content: [{ type: 'text', text: 'line one' }],
+        source: { kind: 'plugin', plugin: 'fixture', empty: {}, list: [] },
+        provenance: { role: 'inject', label: 'fixture' },
+        form: null,
+      } as never}
+      />,
+    )
+    expect(view.queryByRole('button', { name: /上下文注入/ })).toBeNull()
+  })
+
 })

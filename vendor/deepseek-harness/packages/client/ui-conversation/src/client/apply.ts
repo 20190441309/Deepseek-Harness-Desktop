@@ -279,6 +279,7 @@ export function apply(ctx: Context): void {
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.input.right': { kind: 'list', scope: 'session' },
+      'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
       'conversation.hero.workspace': { kind: 'single', scope: 'root' },
       'conversation.hero.agentPreset': { kind: 'single', scope: 'root' },
     },
@@ -347,6 +348,7 @@ export function apply(ctx: Context): void {
     // access control, model right); empty until their owning plugins
     // register.
     children: {
+      'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
       'conversation.input.model': { kind: 'single', scope: 'session' },
     },
@@ -368,7 +370,10 @@ export function apply(ctx: Context): void {
             menuLauncher: ABSENT_MENU_LAUNCHER,
             composerBeam: ABSENT_BEAM,
             composerResize: submissionPolicy.composerResize,
+            composerResizeHeight: submissionPolicy.composerResizeHeight,
+            composerResizeWidth: submissionPolicy.composerResizeWidth,
           },
+          setComposerResizeSize: (size) => { submissionPolicy.setComposerResizeSize(size) },
         }
       }
       const conversation = concreteConversation(ctx)
@@ -407,6 +412,7 @@ export function apply(ctx: Context): void {
             inputTriggers.toggleSource('command', {
               trigger: '/',
               query: '',
+              quoted: false,
               position: snapshot.draft.slice(0, selection.start).trim() === '' ? 'leading' : 'inline',
               span: { ...selection, draftRev: snapshot.draftRev },
             })
@@ -428,7 +434,10 @@ export function apply(ctx: Context): void {
           menuLauncher: inputTriggers?.launcher ?? ABSENT_MENU_LAUNCHER,
           composerBeam: submissionPolicy.composerBeam,
           composerResize: submissionPolicy.composerResize,
+          composerResizeHeight: submissionPolicy.composerResizeHeight,
+          composerResizeWidth: submissionPolicy.composerResizeWidth,
         },
+        setComposerResizeSize: (size) => { submissionPolicy.setComposerResizeSize(size) },
       }
     },
   }, InputBar)
@@ -448,7 +457,12 @@ export function apply(ctx: Context): void {
     priority: 1,
     locale: NS,
     inject: (): ApprovalComposerInjected => ({
-      hooks: { composerResize: submissionPolicy.composerResize },
+      hooks: {
+        composerResize: submissionPolicy.composerResize,
+        composerResizeHeight: submissionPolicy.composerResizeHeight,
+        composerResizeWidth: submissionPolicy.composerResizeWidth,
+      },
+      setComposerResizeSize: (size) => { submissionPolicy.setComposerResizeSize(size) },
     }),
   }, ApprovalPanel)
 
@@ -464,6 +478,7 @@ export function apply(ctx: Context): void {
     children: {
       'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
       'conversation.chat.empty': { kind: 'list', scope: 'session' },
+      'conversation.message.images': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
     inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {
@@ -477,10 +492,7 @@ export function apply(ctx: Context): void {
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
         openFile: (path) => {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
-          void workspaces.openPath(resolveWorkspacePath(cwd, path)).catch(() => {
-            // Host/OS open failures stay silent in the chat row; the native
-            // app surfaces its own error dialog when the path is unusable.
-          })
+          return workspaces.openPath(resolveWorkspacePath(cwd, path))
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),

@@ -12,7 +12,7 @@ surfaces 分支通过了单元测试和浏览器测试，但真实 Electron 启�
 
 ## 决策
 
-**session-maybe 的 store 绑定到空 key。** `standardKit` 在无当前会话时跳过了 `session-maybe` 条目的 store 座位，于是 `SurfacesRoot` 与终端工作区在会话出现前挂载、永远拿不到 `useStore`。渲染器现在以空字符串作为 scope key 解析 `session-maybe` 的 store；surfaces 与终端 store 都用 `sessionId ?? ''` 作为自身桶 key，因此空实例在会话解析前是正确的。（`packages/client/web-react/src/scoped-slots.tsx`）
+**session-maybe 的 store 绑定到空 key。** `standardKit` 在无当前会话时跳过了 `session-maybe` 条目的 store 座位，于是 `SurfacesRoot` 与终端工作区在会话出现前挂载、永远拿不到 `useStore`。渲染器现在以空字符串作为 scope key 解析 `session-maybe` 的 store；surfaces 与终端 store 都用 `sessionId ?? ''` 作为自身桶 key，因此空实例在会话解析前是正确的。（`packages/client/ui-renderer/src/client/scoped-slots.tsx`）
 
 **每个 slot 只有一个包声明。** catalog 门禁拒绝在两处声明同一个 slot。`ui-surfaces` 拥有 `surfaces.*` 子座，`ui-layout` 拥有 `shell.titlebar.trailing` / `shell.terminalDrawer`；占用方导入这些拥有者的 slot 类型，而不是重复声明 `SlotMap` 键。
 
@@ -40,7 +40,7 @@ surfaces 壳、终端和文件系统控件现在在打包安装中与单元测�
 
 ## 测试
 
-`workspace-authority.test.js` 钉住根/子目录的接受、第二个 harness 已注册根、局外人拒绝，以及 `..` / 绝对 / 缺失 / 文件目标的拒绝。`pty.test.js` 与 `preview.test.js` 钉住 `killAll` / `closeAll` 及 IPC controller 回传。`terminal-drawer` mock 了 xterm 并断言 write/data/resize 接线。根 `npm test` 覆盖桌面主进程模块；`desktop-chrome.e2e.ts` 在浏览器 lane 钉住组装后的标题栏与五卡网格，`DSH_SMOKE=1` 端到端钉住真实 Electron 运行。
+`workspace-authority.test.js` 钉住根/子目录的接受、第二个 harness 已注册根、局外人拒绝，以及 `..` / 绝对 / 缺失 / 文件目标的拒绝。`pty.test.js` 与 `preview.test.js` 钉住 `killAll` / `closeAll` 及 IPC controller 回传。`terminal-drawer` mock 了 xterm 并断言 write/data/resize 接线。根 `npm test` 覆盖桌面主进程模块和 `src/shared/post-merge-ui.test.js` 源码标记。`desktop-chrome.e2e.ts` 在浏览器 lane 钉住组装后的标题栏与五卡网格。`post-merge-desktop-ui.e2e.ts` 在同一 lane 走查 composer mention、Files/Agents/终端工作环、Appearance 图库图源，以及 MCP/Skills。`DSH_SMOKE=1` 在真实 Electron 里钉住启动 chrome、标题栏命中和一次 PTY 往返。`DSH_QA=1`（`npm run qa:source`）在同一 `webContents` 走查组装后的桌面 UI：composer、终端抽屉、Files/Agents/Diff/Browser/Terminal、Appearance 图库图源、MCP/Skills/Plugins/Market，以及 dshbot 插件挂上的侧栏贡献。
 
 ## 相关
 

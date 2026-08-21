@@ -184,6 +184,15 @@ test('resolveDeployDir ignores local caches unless a deploy directory is explici
   assert.equal(resolveDeployDir('.pack-release'), path.resolve('.pack-release'));
 });
 
+function writeGhosttyTerminalPackage(root) {
+  const base = path.join(root, 'node_modules', '@deepseek-ai', 'dsh-client-ui-user-terminal', 'lib');
+  fs.mkdirSync(path.join(base, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'client.js'), 'export {}\n');
+  for (const name of ['ghostty-vt.wasm', 'ghostty-write-pty.wasm', 'SymbolsNerdFontMono-Regular.woff2']) {
+    fs.writeFileSync(path.join(base, 'assets', name), 'asset');
+  }
+}
+
 test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-runtime-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -218,8 +227,54 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
   writeNodePtyPrebuild(root);
+  writeGhosttyTerminalPackage(root);
 
   assert.doesNotThrow(() => assertHarnessRuntime(root, RC7_PIN));
+});
+
+test('assertHarnessRuntime rejects a host missing Ghostty terminal assets', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-ghostty-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-user-terminal', 'lib', 'client.js'),
+      'export {}\n',
+    ],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  writeRuntimeVersions(root, RC7_PIN.npm);
+  writeNodePtyPrebuild(root);
+
+  assert.throws(
+    () => assertHarnessRuntime(root, RC7_PIN),
+    /ghostty-vt\.wasm/,
+  );
 });
 
 test('assertHarnessRuntime rejects a host missing MCP settings runtime', (t) => {
@@ -302,6 +357,7 @@ test('assertHarnessRuntime rejects pin.npm mismatch', (t) => {
   }
   writeRuntimeVersions(root, '0.1.0-rc.5');
   writeNodePtyPrebuild(root);
+  writeGhosttyTerminalPackage(root);
   assert.throws(
     () => assertHarnessRuntime(root, { npm: '0.1.0-rc.7' }),
     /0\.1\.0-rc\.7/,
@@ -341,6 +397,7 @@ test('assertHarnessRuntime rejects a missing node-pty prebuild', (t) => {
     fs.writeFileSync(file, content);
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
+  writeGhosttyTerminalPackage(root);
   assert.throws(
     () => assertHarnessRuntime(root, RC7_PIN),
     /node-pty/,

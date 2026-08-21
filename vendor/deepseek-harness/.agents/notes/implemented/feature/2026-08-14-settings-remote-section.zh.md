@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-远程是 `@deepseek-ai/dsh-client-ui-settings-remote` 里受桌面门控的 `sidebar.footer.action`（`id: 'remote'`），画在设置齿轮旁边。触发器和标题文案是 **远程**。网关关闭时手机图标用次级文字色，开启后用主文字色。弹窗暴露一对 `ui-primitives` `Button` 的开启／关闭、一对 `Button` 的局域网／服务器中继（`size="sm"`：选中 `primary`，未选中 `ghost`）、配对二维码，以及带描边和 `IconChevronRightOutline14` 的 **已连接设备** 行；点该行打开设备管理。改模式先写入 `snap.mode`，不置弹窗级 busy，因此开启／关闭按钮保持可点。改模式只换配对二维码；远程开启时局域网网关和出站中继都保持运行，只有关闭远程才会停掉它们。端口、地址、复制、换令牌和中继地址编辑不在这一面。注册仍要求 `desktopShell()` 提供 `getRemote`／`saveRemote`／`rotateRemoteToken`／`unbindRemoteDevice`。配对 URL 把密钥放在 `#offer=`。扫码成功后给这台设备签发长期凭证，和二维码里的配对密钥分开；解绑后该设备失效。中继是桌面对已配置源的出站连接（默认 `http://125.124.85.212:8411`）。dsh 仍然绑定 `127.0.0.1`。
+远程是 `@deepseek-ai/dsh-client-ui-settings-remote` 里受桌面门控的 `sidebar.footer.action`（`id: 'remote'`），画在设置齿轮旁边。触发器和标题文案是 **远程**。网关关闭时手机图标用次级文字色，开启后用主文字色。弹窗暴露一对 `ui-primitives` `Button` 的开启／关闭、一对 `Button` 的局域网／服务器中继（`size="sm"`：选中 `primary`，未选中 `ghost`）、配对二维码，以及带描边和 `IconChevronRightOutline14` 的 **已连接设备** 行；点该行打开设备管理。改模式先写入 `snap.mode`，不置弹窗级 busy，因此开启／关闭按钮保持可点。改模式只换配对二维码；远程开启时局域网网关和出站中继都保持运行，只有关闭远程才会停掉它们。端口、地址、复制、换令牌和中继地址编辑不在这一面。注册仍要求 `desktopShell()` 提供 `getRemote`／`saveRemote`／`rotateRemoteToken`／`unbindRemoteDevice`。配对 URL 把密钥放在 `#offer=`。扫码成功后给这台设备签发长期凭证，和二维码里的配对密钥分开；解绑后该设备失效。中继是桌面对已配置源的出站连接（默认 `http://125.124.85.212:8411`）。dsh 仍然绑定 `127.0.0.1`。web-app 补丁当前注释掉 `ui-settings-remote` 行，因此这个页脚动作不会被组装。桌面主进程不构造 `RemoteGateway`（[桌面输入框草稿查找与官方触发器](../bug-fix/2026-08-21-desktop-composer-draft-and-official-triggers.md)）。
 
 ## 考虑过的替代
 

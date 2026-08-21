@@ -11,7 +11,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import { getPath } from '@deepseek-ai/dsh-client-schema-form'
 import { messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -44,6 +43,20 @@ export interface VisionModelPickerProps {
 /** Encode one route as a stable option value ('\n' cannot appear in either id). */
 function routeValue(provider: string, model: string): string {
   return `${provider}\n${model}`
+}
+
+/** Read a nested field from a settings namespace value. */
+function getPath(value: unknown, path: readonly string[]): unknown {
+  let current: unknown = value
+  for (const key of path) {
+    if (Array.isArray(current)) {
+      current = current[Number(key)]
+      continue
+    }
+    if (typeof current !== 'object' || current === null) return undefined
+    current = (current as Record<string, unknown>)[key]
+  }
+  return current
 }
 
 /** Flatten catalog groups into selectable image-capable routes in catalog order. */

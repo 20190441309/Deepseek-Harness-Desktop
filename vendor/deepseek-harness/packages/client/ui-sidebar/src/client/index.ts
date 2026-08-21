@@ -10,7 +10,8 @@ import { SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
 
 export type {
-  SidebarFooterActionOwnerProps, SidebarNavTabOwnerProps, SidebarPageOwnerProps,
+  SidebarBrandMarkOwnerProps, SidebarBrandNameOwnerProps, SidebarFooterActionOwnerProps,
+  SidebarNavTabOwnerProps, SidebarPageOwnerProps,
   SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
 } from './contract/slots.ts'
@@ -82,6 +83,8 @@ export function apply(ctx: ClientContext): void {
       // The shell owns geometry and optional region tabs; ui-workspace
       // registers the browsing region, ui-settings the foot trigger + panel.
       children: {
+        'sidebar.brand.mark': { kind: 'single', scope: 'root' },
+        'sidebar.brand.name': { kind: 'single', scope: 'root' },
         'sidebar.workspaces': { kind: 'single', scope: 'root' },
         'sidebar.nav.tab': { kind: 'list', scope: 'root' },
         'sidebar.page': { kind: 'keyed', scope: 'root' },

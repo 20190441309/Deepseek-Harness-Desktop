@@ -93,12 +93,16 @@ function adoptFromSeat(scroll: HTMLElement, card: HTMLElement): void {
  * @param enabled - Interface Settings `composerResize`.
  * @param cardRef - the composer card (`[data-composer-card]`).
  * @param scrollRef - the draft or approval scrollport.
+ * @param persisted - Host-remembered size applied when the seat has none yet.
+ * @param onCommit - durable write after a finished drag (pointer up).
  * @returns pointer handlers for the three edge handles.
  */
 export function useComposerResizeDrag(
   enabled: boolean,
   cardRef: RefObject<HTMLDivElement | null>,
   scrollRef: RefObject<HTMLDivElement | null>,
+  persisted: { height: number | null; width: number | null } = { height: null, width: null },
+  onCommit?: (size: Partial<{ height: number; width: number }>) => void,
 ): {
   onResizePointerDown: (event: PointerEvent<HTMLDivElement>) => void
   onResizePointerMove: (event: PointerEvent<HTMLDivElement>) => void
@@ -113,6 +117,8 @@ export function useComposerResizeDrag(
     originHeight: number
     maxWidth: number
   } | null>(null)
+  const onCommitRef = useRef(onCommit)
+  onCommitRef.current = onCommit
 
   useLayoutEffect(() => {
     const scroll = scrollRef.current
@@ -123,7 +129,13 @@ export function useComposerResizeDrag(
     }
     if (scroll === null || card === null) return
     adoptFromSeat(scroll, card)
-  }, [enabled, cardRef, scrollRef])
+    if (scroll.dataset.composerResized === undefined && persisted.height !== null) {
+      applyHeight(scroll, persisted.height)
+    }
+    if (card.dataset.composerResizedWidth === undefined && persisted.width !== null) {
+      applyWidth(card, persisted.width)
+    }
+  }, [enabled, cardRef, scrollRef, persisted.height, persisted.width])
 
   const onResizePointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
@@ -179,7 +191,21 @@ export function useComposerResizeDrag(
     resizeDrag.current = null
     /* v8 ignore next -- Pointer Capture is missing in jsdom; browsers have it */
     e.currentTarget.releasePointerCapture?.(e.pointerId)
-  }, [])
+    const scroll = scrollRef.current
+    const card = cardRef.current
+    const patch: { height?: number; width?: number } = {}
+    const height = scroll?.dataset.composerResized !== undefined
+      ? Number.parseFloat(scroll.style.height)
+      : Number.NaN
+    const width = card?.dataset.composerResizedWidth !== undefined
+      ? Number.parseFloat(card.style.width)
+      : Number.NaN
+    if (Number.isFinite(height)) patch.height = height
+    if (Number.isFinite(width)) patch.width = width
+    if (patch.height !== undefined || patch.width !== undefined) {
+      onCommitRef.current?.(patch)
+    }
+  }, [cardRef, scrollRef])
 
   return { onResizePointerDown, onResizePointerMove, onResizePointerUp }
 }

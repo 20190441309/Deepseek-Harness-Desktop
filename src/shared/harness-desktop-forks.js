@@ -78,7 +78,7 @@ function assertDesktopForks(vendorRoot, npmVersion) {
   };
   const clientTsconfig = readRel(vendorRoot, 'tsconfig.client.json');
   const layout = readRel(vendorRoot, 'packages/client/ui-layout/src/client/index.ts');
-  const scoped = readRel(vendorRoot, 'packages/client/web-react/src/scoped-slots.tsx');
+  const scoped = readRel(vendorRoot, 'packages/client/ui-renderer/src/client/scoped-slots.tsx');
 
   for (const pkg of DESKTOP_PACKAGES) {
     const manifestPath = path.join(vendorRoot, ...pkg.dir.split('/'), 'package.json');

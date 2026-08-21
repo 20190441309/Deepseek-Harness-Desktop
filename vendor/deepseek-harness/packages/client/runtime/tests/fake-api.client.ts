@@ -77,11 +77,11 @@ export class FakeApiClient implements IApiClient {
   onList: (payload: unknown) => Promise<RpcResponse<{ items: never[] }>> = () => Promise.resolve(ok({ items: [] }))
   onSearch: (payload: unknown) => Promise<RpcResponse<{ items: SessionSearchItem[]; hasMore: boolean }>> =
     () => Promise.resolve(ok({ items: [], hasMore: false }))
-  onCreate: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId }>> = () => Promise.resolve(ok({ sessionId: 'fk-new' as SessionId }))
+  onCreate: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId } & Record<string, unknown>>> =
+    () => Promise.resolve(ok({ sessionId: 'fk-new' as SessionId, blank: true }))
   readonly defaultModel: ModelSelection = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
   onRename: (payload: unknown) => Promise<RpcResponse<{ title: string; seq: number }>> = () => Promise.resolve(ok({ title: 'fk-renamed', seq: 0 }))
-  onFork: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId; blank: boolean }>> =
-    () => Promise.resolve(ok({ sessionId: 'fk-fork' as SessionId, blank: false }))
+  onFork: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId; blank: boolean }>> = () => Promise.resolve(ok({ sessionId: 'fk-fork' as SessionId, blank: false }))
   onHistory: (payload: { sessionId: SessionId; beforeSeq?: number; maxMessages?: number })
   => Promise<RpcResponse<{ events: never[]; hasMore: boolean }>> =
     () => Promise.resolve(ok({ events: [], hasMore: false }))
@@ -109,11 +109,12 @@ export class FakeApiClient implements IApiClient {
     version: string
     cwd: string
     attachedSessions: number
+    home: string
     canOpenPath: boolean
     scratchCwd: string
   }>> =
     () => Promise.resolve(ok({
-      version: '0-fake', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch',
+      version: '0-fake', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch',
     }))
   onPickDirectory: (payload: unknown) => Promise<RpcResponse<{ path: string | null }>> =
     () => Promise.resolve(ok({ path: null }))
@@ -145,7 +146,11 @@ export class FakeApiClient implements IApiClient {
       this.lastSearchSignal = signal
       return this.record('session.search', payload, this.onSearch(payload))
     },
-    create: (payload: unknown) => this.record('session.create', payload, this.onCreate(payload)),
+    create: (payload: unknown) => this.record('session.create', payload, this.onCreate(payload).then(response => (
+      response.result.ok
+        ? { ...response, result: { ok: true as const, value: { blank: true, ...response.result.value } } }
+        : response
+    )) as ReturnType<IApiClient['sessions']['create']>),
     history: (payload: { sessionId: SessionId; beforeSeq?: number; maxMessages?: number }) =>
       this.record('session.history', payload, this.onHistory(payload)),
     models: (payload: unknown) => this.record('session.models', payload, this.onModels(payload)),
@@ -185,7 +190,7 @@ export class FakeApiClient implements IApiClient {
   }
 
   // The archive-set field defaults at the binding below so list stubs keep
-  // the pre-archive `{ items }` shape; a stub carrying SessionId[] wins.
+  // the pre-archive `{ items }` shape; a stub carrying the field wins.
   onWorkspaceList: (payload: unknown) => Promise<RpcResponse<{ items: never[]; archivedSessionIds?: SessionId[] }>> =
     () => Promise.resolve(ok({ items: [] }))
   onWorkspaceCreate: (payload: unknown) => Promise<RpcResponse<{ workspace: WorkspaceView; created: boolean }>> =

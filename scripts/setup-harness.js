@@ -37,6 +37,18 @@ if (!fs.existsSync(path.join(vendor, 'package.json'))) {
 run(process.execPath, [pnpm, 'install', '--frozen-lockfile'], vendor);
 run(process.execPath, [pnpm, 'run', 'build'], vendor);
 
+// build:lib:client runs tsdown only; Ghostty wasm/font must land beside lib/client.js.
+const { ensureGhosttyAssetsInHarness, harnessHasGhosttyAssets, missingGhosttyAssetPaths } = require(
+  '../src/shared/ghostty-assets',
+);
+const ghostty = ensureGhosttyAssetsInHarness(vendor);
+if (!harnessHasGhosttyAssets(vendor)) {
+  console.error(`setup:harness 缺少终端 Ghostty 资源：${missingGhosttyAssetPaths(vendor).join(', ')}`);
+  console.error(ghostty.detail);
+  process.exit(1);
+}
+console.log(`Ghostty assets: ${ghostty.detail}`);
+
 const { installPluginRuntimeDeps } = require('./after-pack');
 const dshmarket = path.join(root, 'vendor', 'dshmarket');
 if (fs.existsSync(path.join(dshmarket, 'package.json'))) {

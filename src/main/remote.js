@@ -80,6 +80,22 @@ function shouldGzipProxy(headers, contentType) {
   return /javascript|text\/html|text\/css|image\/svg/i.test(String(contentType || ''));
 }
 
+/** Startup remote face: never listens and never creates an HTTP server. */
+function createDisabledRemote() {
+  const snapshot = () => ({
+    available: false,
+    enabled: false,
+    listening: false,
+  });
+  return {
+    sync() {
+      return snapshot();
+    },
+    stop() {},
+    snapshot,
+  };
+}
+
 function headerLines(headers) {
   return Object.entries(headers)
     .map(([key, value]) => {
@@ -666,6 +682,7 @@ class RemoteGateway extends EventEmitter {
 
 module.exports = {
   RemoteGateway,
+  createDisabledRemote,
   rewriteProxyHeaders,
   shouldGzipProxy,
   DEFAULT_PORT,

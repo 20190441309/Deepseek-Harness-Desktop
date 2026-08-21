@@ -9,7 +9,7 @@ const { ensureDshMarketPlugin } = require('./dshmarket-preset');
 const { ensureDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
-const { RemoteGateway } = require('./remote');
+const { createDisabledRemote } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, showMain } = require('./tray');
 const {
@@ -31,16 +31,11 @@ const {
 } = require('./window');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
+const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('./release-ui-walk');
+const { runComposerOfficialQa } = require('./composer-official-qa');
 
 const dsh = new DshManager();
-const remote = new RemoteGateway({
-  getTarget: () => (dsh.state === 'ready' && dsh.port ? { port: dsh.port } : null),
-  getConfig: loadConfig,
-  saveConfig,
-});
-remote.on('error', (error) => {
-  dsh.log(`手机 Remote 错误：${error.message || String(error)}`, 'error');
-});
+const remote = createDisabledRemote();
 let quitting = false;
 let stoppingForQuit = false;
 let desktopResources = null;
@@ -475,8 +470,10 @@ async function runSmoke(win) {
     pageErrors.push(`render-process-gone: ${details.reason}`);
   });
   wc.on('console-message', (details) => {
-    const message = details?.message;
-    if (String(message).includes('Uncaught')) pageErrors.push(String(message).slice(0, 500));
+    const message = String(details?.message || '');
+    if (message.includes('Uncaught') || /cannot get property ["']sessions["'] without inject/i.test(message)) {
+      pageErrors.push(message.slice(0, 500));
+    }
   });
   wc.on('did-fail-load', onError);
   try {
@@ -592,6 +589,33 @@ async function runSmoke(win) {
       }
     }
     console.log('[DSH_SMOKE_PTY]', ptyStatus);
+    let qaAttached = false;
+    const needsComposerQa = process.env.DSH_QA_COMPOSER === '1';
+    const needsReleaseQa = process.env.DSH_QA === '1';
+    if (needsReleaseQa || needsComposerQa) {
+      if (!wc.debugger.isAttached()) {
+        await wc.debugger.attach('1.3');
+        qaAttached = true;
+      }
+      if (!win.isDestroyed()) {
+        win.setSize(1680, 1000);
+        win.center();
+      }
+      const connectSteps = [];
+      try {
+        await connectConfiguredWorkspace(wc, {
+          pressEscape,
+          workspacePath: loadConfig().workspace,
+        }, makeRecorder(connectSteps));
+      } catch (error) {
+        connectSteps.push({
+          name: 'workspace.connected',
+          ok: false,
+          detail: String(error).slice(0, 400),
+        });
+      }
+      result.workspaceConnect = connectSteps;
+    }
     let titlebarHits = { hits: { surfaces: 0, branch: 0, git: 0 }, error: 'not-run' };
     try {
       titlebarHits = await probeTitlebarHits(wc);
@@ -600,6 +624,81 @@ async function runSmoke(win) {
     }
     result.titlebarHits = titlebarHits;
     console.log('[DSH_SMOKE_HITS]', JSON.stringify(titlebarHits));
+    if (needsComposerQa) {
+      try {
+        result.composerOfficialQa = await runComposerOfficialQa(wc, {
+          pressEscape,
+          clickTitlebarButton,
+          surfacesPattern: SMOKE_SURFACES,
+          terminalPattern: SMOKE_TERMINAL,
+          workspacePath: loadConfig().workspace,
+          workspaceConnected: Array.isArray(result.workspaceConnect)
+            && result.workspaceConnect.some((step) => step.name === 'workspace.connected' && step.ok),
+          pageErrors,
+          probeRemote: async () => {
+            if (!remote || typeof remote.snapshot !== 'function') {
+              return { available: false, enabled: false, listening: false };
+            }
+            if (typeof remote.sync === 'function') {
+              await remote.sync();
+            }
+            return remote.snapshot();
+          },
+        });
+      } catch (error) {
+        result.composerOfficialQa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['composer-official-threw'],
+        };
+      }
+      console.log('[DSH_QA_COMPOSER]', JSON.stringify(result.composerOfficialQa));
+      try {
+        const png = await wc.capturePage();
+        fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-composer-qa.png'), png.toPNG());
+      } catch {
+        // Screenshot is evidence, not the verdict.
+      }
+    }
+    if (needsReleaseQa) {
+      try {
+        result.qa = await runReleaseUiWalk(wc, {
+          pressEscape,
+          clickTitlebarButton,
+          surfacesPattern: SMOKE_SURFACES,
+          terminalPattern: SMOKE_TERMINAL,
+          workspacePath: loadConfig().workspace,
+          skipWorkspaceConnect: Array.isArray(result.workspaceConnect)
+            && result.workspaceConnect.some((step) => step.name === 'workspace.connected' && step.ok),
+          probeRemote: async () => {
+            if (!remote || typeof remote.snapshot !== 'function') {
+              return { available: false, enabled: false, listening: false };
+            }
+            if (typeof remote.sync === 'function') {
+              await remote.sync();
+            }
+            return remote.snapshot();
+          },
+        });
+      } catch (error) {
+        result.qa = { ok: false, error: String(error), steps: [], failed: ['walk-threw'] };
+      }
+      console.log('[DSH_QA]', JSON.stringify(result.qa));
+      try {
+        const png = await wc.capturePage();
+        fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-qa.png'), png.toPNG());
+      } catch {
+        // Screenshot is evidence, not the verdict.
+      }
+    }
+    if (qaAttached && wc.debugger.isAttached()) {
+      try {
+        wc.debugger.detach();
+      } catch {
+        // Detach is best-effort before process exit.
+      }
+    }
     if (process.env.DSH_THEME_SMOKE === '1') {
       try {
         result.themeSmoke = await probeThemeBackgrounds(wc);
@@ -628,6 +727,8 @@ async function runSmoke(win) {
       && titlebarHits.error == null
       && ptyStatus === 'echoed:ok'
       && (process.env.DSH_THEME_SMOKE !== '1' || result.themeSmoke?.ok === true)
+      && (process.env.DSH_QA !== '1' || result.qa?.ok === true)
+      && (process.env.DSH_QA_COMPOSER !== '1' || result.composerOfficialQa?.ok === true)
       && pageErrors.length === 0;
     try {
       fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));

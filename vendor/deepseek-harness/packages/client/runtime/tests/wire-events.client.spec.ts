@@ -127,9 +127,9 @@ describe('wire event bridge', () => {
     const bench = await mount()
     let resets = 0
     bench.ctx.on('connection/reset', () => { resets++ })
-    const description = { version: '0', cwd: '/f', attachedSessions: 0, canOpenPath: true, scratchCwd: '/scratch' }
-    await bench.sinks?.onConnected?.(description)
-    await bench.sinks?.onConnected?.(description) // second generation after a reconnect
+    const description = { version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' }
+    bench.sinks?.onConnected?.(description)
+    bench.sinks?.onConnected?.(description) // second generation after a reconnect
     expect(resets).toBe(2)
   })
 })

@@ -3,7 +3,6 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { apply, inject } from '../src/client/index.ts'
 import { FilePreview } from '../src/client/FilePreview.tsx'
 import { FilesPanel } from '../src/client/FilesPanel.tsx'
@@ -95,15 +94,15 @@ describe('ui-files apply', () => {
     await b.fiber.dispose()
   })
 
-  it('registers the @ path source when inputTriggers and sessions are present', async () => {
-    const registered: InputTriggerSource[] = []
+  it('does not register an @ path source when inputTriggers and sessions are present', async () => {
+    const registered: { trigger: string; name: string }[] = []
     const ctx = new Context()
     await ctx.plugin(SlotRegistry).await()
     const slots = ctx.get('slots') as SlotRegistry
     declare(slots)
     ctx.provide('locale', new LocaleRuntime(ctx))
     ctx.provide('inputTriggers', {
-      registerSource: (src: InputTriggerSource) => {
+      registerSource: (src: { trigger: string; name: string }) => {
         registered.push(src)
         return () => {}
       },
@@ -113,8 +112,10 @@ describe('ui-files apply', () => {
     })
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(registered).toHaveLength(1)
-    expect(registered[0]).toMatchObject({ trigger: '@', name: 'path', order: 1 })
+    expect(inject).not.toContain('sessions')
+    expect(inject).not.toContain('inputTriggers')
+    expect(registered).toEqual([])
+    expect(registered.filter(src => src.name === 'path')).toHaveLength(0)
     await fiber.dispose()
   })
 

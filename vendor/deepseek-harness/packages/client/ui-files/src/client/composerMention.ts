@@ -49,8 +49,8 @@ export function dataTransferHasComposerMention(types: readonly string[]): boolea
   return types.includes(COMPOSER_MENTION_DRAG_TYPE)
 }
 
-/** Composer token under the caret: `@path`, `$skill`, `/command`, or `/model`. */
-export type ComposerTriggerKind = 'path' | 'slash-command' | 'slash-model' | 'skill'
+/** Composer token under the caret: `@path`, `/command`, or `/model`. */
+export type ComposerTriggerKind = 'path' | 'slash-command' | 'slash-model'
 
 /** Standalone slash-command names the composer also recognizes (unused until a caller needs the parser). */
 export type ComposerSlashCommand = 'model' | 'plan' | 'default'
@@ -73,7 +73,7 @@ function isWhitespace(char: string): boolean {
 }
 
 /**
- * Detect an active trigger (@path, $skill, /command) at the cursor position.
+ * Detect an active trigger (@path, /command) at the cursor position.
  *
  * Accepts an optional `isWhitespaceChar` override so callers with inline
  * placeholder characters can treat those as token boundaries.
@@ -130,14 +130,6 @@ export function detectComposerTrigger(
   const tokenStart = tokenIdx + 1
 
   const token = text.slice(tokenStart, cursor)
-  if (token.startsWith('$')) {
-    return {
-      kind: 'skill',
-      query: token.slice(1),
-      rangeStart: tokenStart,
-      rangeEnd: cursor,
-    }
-  }
   if (!token.startsWith('@')) {
     return null
   }

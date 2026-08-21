@@ -29,14 +29,20 @@ describe('ui-conversation host', () => {
       viewTabs: DEFAULT_VIEW_TABS,
     })
     await ctx.settings.update(ns, {
-      busyEnter: 'steer', composerBeam: false, composerResize: true, statsLine: false, viewTabs: false,
+      busyEnter: 'steer', composerBeam: false, composerResize: true,
+      composerResizeHeight: 160, composerResizeWidth: 480,
+      statsLine: false, viewTabs: false,
     })
     expect(ctx.settings.get(ns)).toEqual({
-      busyEnter: 'steer', composerBeam: false, composerResize: true, statsLine: false, viewTabs: false,
+      busyEnter: 'steer', composerBeam: false, composerResize: true,
+      composerResizeHeight: 160, composerResizeWidth: 480,
+      statsLine: false, viewTabs: false,
     })
     await expect(ctx.settings.update(ns, { busyEnter: 'invalid' })).rejects.toThrow()
     await expect(ctx.settings.update(ns, { composerBeam: 'yes' })).rejects.toThrow()
     await expect(ctx.settings.update(ns, { composerResize: 'yes' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { composerResizeHeight: 'tall' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { composerResizeWidth: 'wide' })).rejects.toThrow()
     await expect(ctx.settings.update(ns, { statsLine: 'yes' })).rejects.toThrow()
     await expect(ctx.settings.update(ns, { viewTabs: 'yes' })).rejects.toThrow()
     await fiber.dispose()

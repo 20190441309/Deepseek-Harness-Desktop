@@ -107,7 +107,7 @@ function loadIpc(options = {}) {
     nativeTheme: { shouldUseDarkColors: false },
   });
   stub('./config', {
-    REMOTE_FEATURE_ENABLED: false,
+    REMOTE_FEATURE_ENABLED: options.remoteFeatureEnabled ?? false,
     loadConfig: () => ({
       githubToken: 'secret-token',
       locale: 'zh',
@@ -202,7 +202,7 @@ function loadIpc(options = {}) {
       startHarnessCalls += 1;
       return startHarnessImpl();
     },
-    remote: null,
+    remote: options.remote === undefined ? null : options.remote,
   });
 
   async function invoke(channel, event, ...args) {
@@ -499,5 +499,48 @@ test('shell:save-boot-log is boot-only and writes dsh.logs not a renderer path',
   } finally {
     ipc.restore();
     fs.rmSync(dest, { force: true });
+  }
+});
+
+test('shell:get-remote reports unavailable for the disabled remote stub even when the feature flag is on', async () => {
+  const { createDisabledRemote } = require('./remote');
+  let syncCalls = 0;
+  const remote = createDisabledRemote();
+  const wrapped = {
+    ...remote,
+    sync() {
+      syncCalls += 1;
+      return remote.sync();
+    },
+  };
+  const ipc = loadIpc({ remote: wrapped, remoteFeatureEnabled: true });
+  try {
+    const snap = await ipc.invoke('shell:get-remote', harnessEvent());
+    assert.deepEqual(snap, {
+      available: false,
+      enabled: false,
+      listening: false,
+    });
+    const saved = await ipc.invoke('shell:save-remote', harnessEvent(), { remoteEnabled: true });
+    assert.equal(saved.available, false);
+    assert.equal(saved.enabled, false);
+    assert.equal(saved.listening, false);
+    assert.equal(syncCalls, 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:get-remote stays unavailable when remote is null', async () => {
+  const ipc = loadIpc({ remote: null, remoteFeatureEnabled: true });
+  try {
+    const snap = await ipc.invoke('shell:get-remote', harnessEvent());
+    assert.deepEqual(snap, {
+      available: false,
+      enabled: false,
+      listening: false,
+    });
+  } finally {
+    ipc.restore();
   }
 });

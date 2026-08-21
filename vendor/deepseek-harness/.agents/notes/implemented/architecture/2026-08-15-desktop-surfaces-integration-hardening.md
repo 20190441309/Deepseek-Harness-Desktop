@@ -12,7 +12,7 @@ The surfaces branch passed its unit and browser suites, but a real Electron laun
 
 ## Decision
 
-**Session-maybe stores bind to the empty key.** `standardKit` skipped the store seat for `session-maybe` entries while no session was current, so `SurfacesRoot` and the terminal workspace mounted before a session existed and never received `useStore`. The renderer now resolves a `session-maybe` store with the empty string as the scope key; the surfaces and terminal stores key their own buckets by `sessionId ?? ''`, so the empty instance is correct until a session resolves. (`packages/client/web-react/src/scoped-slots.tsx`)
+**Session-maybe stores bind to the empty key.** `standardKit` skipped the store seat for `session-maybe` entries while no session was current, so `SurfacesRoot` and the terminal workspace mounted before a session existed and never received `useStore`. The renderer now resolves a `session-maybe` store with the empty string as the scope key; the surfaces and terminal stores key their own buckets by `sessionId ?? ''`, so the empty instance is correct until a session resolves. (`packages/client/ui-renderer/src/client/scoped-slots.tsx`)
 
 **One package owns each slot.** The catalog gate rejects a slot declared in two places. `ui-surfaces` owns the `surfaces.*` children and `ui-layout` owns `shell.titlebar.trailing` / `shell.terminalDrawer`; occupants import those owners' slot types instead of re-declaring the `SlotMap` keys.
 
@@ -40,7 +40,7 @@ The surfaces shell, terminal, and filesystem-backed controls now behave the same
 
 ## Testing
 
-`workspace-authority.test.js` pins root/subdirectory acceptance, a second harness-registered root, outsider rejection, and `..` / absolute / missing / file rejection. `pty.test.js` and `preview.test.js` pin `killAll` / `closeAll` and the IPC controller hand-back. `terminal-drawer` mocks xterm and asserts the write/data/resize wiring. Root `npm test` covers the desktop main-process modules; `desktop-chrome.e2e.ts` pins the assembled titlebar and five-card grid in the browser lane, and `DSH_SMOKE=1` pins the real Electron run end to end.
+`workspace-authority.test.js` pins root/subdirectory acceptance, a second harness-registered root, outsider rejection, and `..` / absolute / missing / file rejection. `pty.test.js` and `preview.test.js` pin `killAll` / `closeAll` and the IPC controller hand-back. `terminal-drawer` mocks xterm and asserts the write/data/resize wiring. Root `npm test` covers the desktop main-process modules and `src/shared/post-merge-ui.test.js` source markers. `desktop-chrome.e2e.ts` pins the assembled titlebar and five-card grid in the browser lane. `post-merge-desktop-ui.e2e.ts` walks composer mention, Files/Agents/terminal work loops, Appearance gallery sources, and MCP/Skills on that same lane. `DSH_SMOKE=1` pins launch chrome, titlebar hits, and a PTY round trip in real Electron. `DSH_QA=1` (`npm run qa:source`) walks the assembled desktop UI in that same `webContents`: composer, terminal drawer, Files/Agents/Diff/Browser/Terminal, Appearance gallery sources, MCP/Skills/Plugins/Market, and the dshbot plugin's sidebar contribution.
 
 ## Related
 

@@ -55,7 +55,7 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
     "    'shell.terminalDrawer': { kind: 'single', scope: 'session-maybe' },",
     '',
   ].join('\n'));
-  writeFile(root, 'packages/client/web-react/src/scoped-slots.tsx', [
+  writeFile(root, 'packages/client/ui-renderer/src/client/scoped-slots.tsx', [
     "  const store = host.storeOf(entry, scope === 'session-maybe' && scopeKey === undefined ? '' : scopeKey)",
     '',
   ].join('\n'));
@@ -73,7 +73,7 @@ test('assertDesktopForks throws when ui-titlebar is missing', (t) => {
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /ui-titlebar/);
 });
 
-test('assertDesktopForks accepts the current vendor tree at rc.7', () => {
+test('assertDesktopForks accepts the current vendor tree at rc.8', () => {
   const vendor = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
-  assertDesktopForks(vendor, '0.1.0-rc.7');
+  assertDesktopForks(vendor, '0.1.0-rc.8');
 });
