@@ -246,7 +246,7 @@
     },
     {
       "name": "read_image",
-      "description": "Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input.",
+      "description": "Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input; when a vision fallback model is designated, text-only models receive a generated description of the image instead.",
       "parameters": {
         "type": "object",
         "properties": {
