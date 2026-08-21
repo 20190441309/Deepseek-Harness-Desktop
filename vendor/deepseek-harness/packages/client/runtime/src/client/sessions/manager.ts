@@ -541,6 +541,7 @@ export class SessionManager {
       sessionId?: SessionId
       origin?: 'dshbot'
       agentPreset?: string
+      reuseWorkspaceBlank?: true
     } = {},
   ): Promise<RpcResult<{ sessionId: SessionId }>> {
     try {
@@ -548,6 +549,7 @@ export class SessionManager {
         ...(opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }),
         ...(opts.origin === undefined ? {} : { origin: opts.origin }),
         ...(opts.agentPreset === undefined ? {} : { agentPreset: opts.agentPreset }),
+        ...(opts.reuseWorkspaceBlank === undefined ? {} : { reuseWorkspaceBlank: opts.reuseWorkspaceBlank }),
       }
       const payload = opts.workspaceId !== undefined
         ? { workspaceId: opts.workspaceId, ...shared }

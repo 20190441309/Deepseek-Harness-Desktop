@@ -69,6 +69,7 @@
     - option "moonshotai-cn"
     - option "nvidia"
     - option "openai"
+    - option "openai-codex"
     - option "opencode"
     - option "opencode-go"
     - option "openrouter"

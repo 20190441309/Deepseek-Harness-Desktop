@@ -2,16 +2,17 @@
   - navigation "Session hierarchy":
     - button "Ask a research subagent to"
     - text: /
-    - button "event-sourcing researcher"
+    - 'button "Switch subagent: event-sourcing researcher"': event-sourcing researcher
     - text: /
-    - button "example editor" [disabled]
+    - 'button "Switch subagent: example editor"': example editor
+  - button "Session log":
+    - text: Session log
+    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Give one concrete event sourcing example. {{clock}}
 - button "Copy":
-  - img
-- button "Edit":
   - img
 - status:
   - strong: This subagent is read-only for now

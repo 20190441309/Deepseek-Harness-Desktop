@@ -490,6 +490,7 @@ export class SessionRuntime implements ISessions {
     sessionId?: SessionId
     origin?: 'dshbot'
     agentPreset?: string
+    reuseWorkspaceBlank?: true
   } = {}): Promise<SessionId> {
     const result = await this.manager.create(opts)
     if (!result.ok) throw new SessionCreateError(result.error, opts.sessionId)

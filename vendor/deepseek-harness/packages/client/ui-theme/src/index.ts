@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
-import { buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
+import { bootThemeInjection, buildThemeBootPayload } from './boot-theme.ts'
 import {
   THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, type ThemeSettings,
 } from './theme-settings.ts'
@@ -12,7 +12,7 @@ export {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, THEME_PREFERENCE_FIELD, THEME_PREFERENCES,
   THEME_SETTINGS_NAMESPACE, type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
-export { buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
+export { bootThemeInjection, buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
 export type { ThemeBootPayload } from './boot-theme.ts'
 
 const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE)
@@ -25,18 +25,16 @@ function readSection(ctx: Context): ThemeSettings | undefined {
 }
 
 /**
- * Register the durable theme section and initial-theme index transform when
- * their optional Host services are composed.
- * @param ctx - Host context that may acquire settings and HTTP services.
+ * Register the durable theme section when the optional settings service is
+ * composed, and answer every index injection collection with the current
+ * theme bootstrap row.
+ * @param ctx - Host context that may acquire the settings service.
  */
 export function apply(ctx: Context): void {
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.register(THEME_NAMESPACE, ThemeSettingsSchema)
   })
-  ctx.inject(['webServer'], (httpCtx) => {
-    httpCtx.effect(
-      () => httpCtx.webServer.tapIndex(html => injectBootTheme(html, buildThemeBootPayload(readSection(ctx)))),
-      'client-ui-theme: initial theme bootstrap',
-    )
+  ctx.on('webserver/index-inject', (table) => {
+    table.push(bootThemeInjection(buildThemeBootPayload(readSection(ctx))))
   })
 }

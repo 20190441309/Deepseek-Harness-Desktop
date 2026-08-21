@@ -1,11 +1,12 @@
 /**
- * Host-rendered theme bootstrap for the browser's pre-plugin interval. Each
- * index response embeds the current durable color scheme plus the already
- * derived alias tokens for both halves; the browser resolves only `system`,
- * then writes the same DOM fields ui-layout's ThemePresenter owns after the
+ * Theme bootstrap row for the browser's pre-plugin interval. Each index
+ * render embeds the current durable color scheme plus the already derived
+ * alias tokens for both halves; the browser resolves only `system`, then
+ * writes the same DOM fields ui-layout's ThemePresenter owns after the
  * client plugin tree activates.
  */
 
+import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { deriveThemeTokens } from './derive.ts'
 import { DEFAULT_FAMILY_ID, type ThemeTokens } from './theme-family.ts'
 import { resolveThemeFamily } from './builtin-families.ts'
@@ -50,9 +51,17 @@ export function buildThemeBootPayload(section: ThemeSettings | undefined): Theme
   }
 }
 
-/** Build the inline script for one schema-validated boot payload. */
+function resolveBootPayload(
+  payload: ThemeBootPayload | ThemePreference = DEFAULT_PREFERENCE,
+): ThemeBootPayload {
+  return typeof payload === 'string'
+    ? buildThemeBootPayload({ ...DEFAULT_THEME_SETTINGS, preference: payload })
+    : payload
+}
+
+/** Build the inline script body for one schema-validated boot payload. */
 function bootThemeScript(payload: ThemeBootPayload): string {
-  return `<script>(() => {
+  return `(() => {
   const preference = ${JSON.stringify(payload.preference)}
   const lightTokens = ${JSON.stringify(payload.lightTokens)}
   const darkTokens = ${JSON.stringify(payload.darkTokens)}
@@ -70,7 +79,7 @@ function bootThemeScript(payload: ThemeBootPayload): string {
     document.body.style.setProperty(name, value)
   }
   document.body.style.setProperty('--dsw-alias-glass-opacity', glassOpacity + '%')
-})()</script>`
+})()`
 }
 
 /**
@@ -86,12 +95,21 @@ export function injectBootTheme(
   html: string,
   payload: ThemeBootPayload | ThemePreference = DEFAULT_PREFERENCE,
 ): string {
-  const resolved: ThemeBootPayload = typeof payload === 'string'
-    ? buildThemeBootPayload({ ...DEFAULT_THEME_SETTINGS, preference: payload })
-    : payload
-  const script = bootThemeScript(resolved)
+  const script = `<script>${bootThemeScript(resolveBootPayload(payload))}</script>`
   const body = /<body(?:\s[^>]*)?>/i.exec(html)
   if (body === null) return `${html}${script}`
   const at = body.index + body[0].length
   return `${html.slice(0, at)}${script}${html.slice(at)}`
+}
+
+/**
+ * The theme bootstrap as an injection row: an inline script immediately after
+ * the opening body tag, before the shell mount and module script.
+ * @param payload - Current Host-backed boot fields, or a bare preference.
+ * @returns the body script row.
+ */
+export function bootThemeInjection(
+  payload: ThemeBootPayload | ThemePreference = DEFAULT_PREFERENCE,
+): IndexInjection {
+  return { kind: 'script', placement: 'body', text: bootThemeScript(resolveBootPayload(payload)) }
 }

@@ -39,12 +39,19 @@ export interface SessionsPort {
   /** Observable list snapshot (read face only; writes stay inside the sessions domain). */
   readonly list: ObservableSnapshot<SessionsPortList>
   /**
-   * Create a session on the host.
-   * @param opts - target workspace, or an explicit cwd for a Session that
-   *   is not a Workspace member.
-   * @returns the new session id.
+   * Create or explicitly adopt a session on the host.
+   * @param opts - target workspace or an explicit cwd, plus optional
+   *   confirmed blank-reuse id, desktop-plugin origin, and agent preset.
+   * @returns the created or adopted session id.
    */
-  create(opts: { workspaceId: WorkspaceId } | { cwd: string }): Promise<SessionId>
+  create(opts: {
+    workspaceId?: WorkspaceId
+    cwd?: string
+    sessionId?: SessionId
+    reuseWorkspaceBlank?: true
+    origin?: 'dshbot'
+    agentPreset?: string
+  }): Promise<SessionId>
   /**
    * Select a session as current.
    * @param id - session id (must exist in the list store).
