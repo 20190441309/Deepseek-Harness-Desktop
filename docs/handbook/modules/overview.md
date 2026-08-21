@@ -1,0 +1,35 @@
+# 模块：产品总览
+
+## 职责与非目标
+
+**职责：** 说明 Desktop 是什么、用户能看见哪些表面、与纯 `dsh web` / npx 的差别。  
+**非目标：** 不重述上游 agent-loop；不替代 README 营销页。
+
+## 用户可见行为
+
+- 安装即可用：本机起官方 Web UI，无需用户手跑 `dsh web`。
+- 主框：对话 + 工具审批 + 侧栏会话；`Ctrl+\` 右栏 Surfaces；`` Ctrl+` `` 底栏终端；`Ctrl+,` 设置。
+- 桌面增强：Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、托盘/更新、插件恢复、可选手机远程。
+
+## 架构要点
+
+见 [../blueprint.md](../blueprint.md)。官方 UI 在 BrowserView；壳只提供 boot、IPC、预置插件与打包。
+
+## 实现入口
+
+- 产品说明：[../../README.md](../../README.md)
+- 壳入口：`src/main/index.js`
+- 上游钉：`vendor/harness-upstream.json`
+
+## 不变量
+
+- 不另做一套聊天页皮肤；视觉跟 `dsh web`。
+- npx 官方包路径不承诺桌面 surfaces / Git / 终端。
+
+## 门槛
+
+- 发版总门禁：[../qa/production-acceptance-test-cases.md](../../qa/production-acceptance-test-cases.md) P0 全集
+
+## 延伸阅读
+
+- [boot-lifecycle.md](boot-lifecycle.md)、[design-and-spine.md](design-and-spine.md)
