@@ -243,7 +243,7 @@ describe('ModelsSection', () => {
   it('renders the unkeyed whole-section provider as an open setup card in the first-run posture', async () => {
     await mountFirstRun()
     // Nothing is reachable yet, and DeepSeek has no configured credential and
-    // no stored apiKey → setup card.
+    // no stored apiKey ? setup card.
     expect(screen.getByText('DeepSeek')).toBeTruthy()
     expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
     expect(screen.getByText('openai')).toBeTruthy()
@@ -621,7 +621,7 @@ describe('ModelsSection', () => {
     ['the composition entry', { models: [{ id: 'pinned-by-deployment' }] }],
   ])('restores %s the moment the override is dropped, not after a reload', async (_label, base) => {
     // The regression: reset read the EFFECTIVE value, which still carries the
-    // stored override until the unset is applied — so the rows did not change
+    // stored override until the unset is applied � so the rows did not change
     // and the catalog only looked restored after reopening the card.
     const { face } = scriptedFace()
     const stored = { models: [{ id: 'user-only-model', name: 'User Only' }] }
@@ -661,7 +661,7 @@ describe('ModelsSection', () => {
 
   it('keeps every row\'s unreadable text, not just the last one edited', async () => {
     // The regression: one active buffer meant editing a second row displaced
-    // the first, which then fell back to rendering its stored NaN as `NaN` —
+    // the first, which then fell back to rendering its stored NaN as `NaN` �
     // losing the text the user was told they could still correct.
     await mountDeepSeekCard()
     fireEvent.click(screen.getByText(en.customized))
@@ -709,7 +709,7 @@ describe('ModelsSection', () => {
 
   it('drops the typed text when reset replaces the rows it annotated', async () => {
     // The regression: reset removed the override but left the buffer, so an
-    // inherited row displayed text no settings layer stores — and because an
+    // inherited row displayed text no settings layer stores � and because an
     // unreadable buffer never settles, it stayed there indefinitely.
     const { mutate } = await mountDeepSeekCard({
       mutate: vi.fn(() => Promise.resolve(ok(wireNamespaces()[0]))),
@@ -921,9 +921,12 @@ describe('ModelsSection', () => {
   it('adds a dormant provider with a derived reference and stores its key', async () => {
     const { mutate, set } = await mountSection()
     fireEvent.click(screen.getByText(en.add))
-    const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
-    expect([...pick.options].map(option => option.value)).toEqual(['anthropic', 'broken', 'plain'])
-    expect(pick.value).toBe('anthropic')
+    const pick = await screen.findByLabelText(en.provider)
+    fireEvent.click(pick)
+    expect([...screen.getAllByRole('menuitem')].map(item => item.textContent)).toEqual([
+      'anthropic', 'broken', 'plain',
+    ])
+    expect(pick.textContent).toContain('anthropic')
     // A dormant profile has no endpoint anywhere: the pi-ai placeholder
     // falls back to the provider-default wording.
     fireEvent.click(screen.getByText(en.customized))
@@ -1001,10 +1004,12 @@ describe('ModelsSection', () => {
   it('switches the add card target and degrades unknown or broken targets loudly', async () => {
     await mountSection()
     fireEvent.click(screen.getByText(en.add))
-    const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
-    fireEvent.change(pick, { target: { value: 'broken' } })
+    const pick = await screen.findByLabelText(en.provider)
+    fireEvent.click(pick)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'broken' }))
     await screen.findByText(/unresolvable settings path/)
-    fireEvent.change(pick, { target: { value: 'plain' } })
+    fireEvent.click(await screen.findByLabelText(en.provider))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'plain' }))
     await waitFor(() => {
       expect(screen.getAllByText(content => content.includes(en.advancedHint)).length).toBeGreaterThan(0)
     })
@@ -1073,7 +1078,7 @@ describe('ModelsSection', () => {
     fireEvent.change(screen.getByLabelText<HTMLInputElement>(en.baseUrl), { target: { value: 'https://next' } })
     fireEvent.click(screen.getByText(en.apply))
     await screen.findByText('connection lost')
-    // Not stuck in `applying…`: the finally cleared busy, so Apply is live again.
+    // Not stuck in `applying�`: the finally cleared busy, so Apply is live again.
     expect(screen.getByText(en.apply)).toBeTruthy()
   })
 
@@ -1242,9 +1247,9 @@ describe('ModelsSection', () => {
 
     // The setup card is the first one on the page, above the add block.
     fireEvent.click(screen.getAllByText(en.cancel)[0] as HTMLElement)
-    // The add card kept its draft…
+    // The add card kept its draft�
     expect(screen.getByLabelText(en.provider)).toBeTruthy()
-    // …and DeepSeek collapsed to an ordinary row carrying the missing-key dot.
+    // �and DeepSeek collapsed to an ordinary row carrying the missing-key dot.
     expect(screen.getAllByLabelText(en.keyInput)).toHaveLength(1)
     expect(screen.getAllByRole('img', { name: en.credentialMissing })
       .some(dot => dot.closest('li')?.textContent?.includes('DeepSeek') === true)).toBe(true)
@@ -1373,8 +1378,7 @@ describe('input types', () => {
     fireEvent.click(screen.getByText(en.addModel))
     const ids = screen.getAllByLabelText(new RegExp(en.modelId))
     fireEvent.change(ids[0] as HTMLInputElement, { target: { value: 'vision-model' } })
-    expandRow(1)
-    // No declaration yet: the inheritance hint shows, and nothing is stored.
+    // Input types stay on the row � no advanced fold required.
     expect(screen.getByText(en.inputInherited)).toBeTruthy()
     fireEvent.click(screen.getByLabelText(`${en.inputImage} 1`))
     fireEvent.click(screen.getByText(en.apply))
@@ -1408,7 +1412,6 @@ describe('input types', () => {
       )
     }
     render(<StatefulListEditor />)
-    expandRow(1)
     const image = screen.getByLabelText(`${en.inputImage} 1`) as HTMLInputElement
     expect(image.checked).toBe(true)
     fireEvent.click(image)
@@ -1447,7 +1450,7 @@ describe('input types', () => {
 })
 
 describe('apiKeyFailure', () => {
-  it('treats a blank field as no failure — it means keep the stored key', () => {
+  it('treats a blank field as no failure � it means keep the stored key', () => {
     expect(apiKeyFailure('')).toBeUndefined()
   })
 

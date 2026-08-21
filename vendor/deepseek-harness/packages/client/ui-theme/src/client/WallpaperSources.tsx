@@ -2,7 +2,7 @@
  * Gallery-window wallpaper source list: add, edit, and delete named sources.
  */
 import { useState } from 'react'
-import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, Modal, SettingsSelect } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   sanitizeWallpaperSources,
   type WallpaperSource,
@@ -149,25 +149,30 @@ export function WallpaperSources({
           <div className={css.sourceForm}>
             <label className={css.field}>
               {t('wallpaper.sourceKind')}
-              <select
-                className={css.sourceSelect}
+              <SettingsSelect
+                variant="block"
                 aria-label={t('wallpaper.sourceKind')}
                 value={editor.kind}
                 disabled={editor.mode === 'edit'}
-                onChange={(event) => {
-                  const kind = event.currentTarget.value as WallpaperSourceKind
+                options={[
+                  {
+                    id: 'bing',
+                    label: t('wallpaper.sourceKindBing'),
+                    disabled: editor.mode === 'add' && occupied('bing'),
+                  },
+                  {
+                    id: 'wallhaven',
+                    label: t('wallpaper.sourceKindWallhaven'),
+                    disabled: editor.mode === 'add' && occupied('wallhaven'),
+                  },
+                  { id: 'catalog', label: t('wallpaper.sourceKindCatalog') },
+                ]}
+                onChange={(id) => {
+                  const kind = id as WallpaperSourceKind
                   const { error: _error, ...rest } = editor
                   setEditor({ ...rest, kind, name: defaultName(kind), url: '' })
                 }}
-              >
-                <option value="bing" disabled={editor.mode === 'add' && occupied('bing')}>
-                  {t('wallpaper.sourceKindBing')}
-                </option>
-                <option value="wallhaven" disabled={editor.mode === 'add' && occupied('wallhaven')}>
-                  {t('wallpaper.sourceKindWallhaven')}
-                </option>
-                <option value="catalog">{t('wallpaper.sourceKindCatalog')}</option>
-              </select>
+              />
             </label>
             <label className={css.field}>
               {t('wallpaper.sourceName')}

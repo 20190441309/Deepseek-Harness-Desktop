@@ -124,6 +124,7 @@ function mount(
   const setWallpaper = vi.fn()
   const setTypography = vi.fn()
   const setWallpaperSources = vi.fn()
+  const setWallpaperFavorites = vi.fn()
   if (wallpaper !== undefined) {
     Object.defineProperty(window, 'shell', { configurable: true, value: wallpaper })
   }
@@ -141,12 +142,12 @@ function mount(
     setGlassOpacity,
     setWallpaper,
     setTypography,
-    ...(wallpaper !== undefined ? { setWallpaperSources } : {}),
+    ...(wallpaper !== undefined ? { setWallpaperSources, setWallpaperFavorites } : {}),
   }
   const view = render(<AppearanceSection {...props} />)
   return {
     store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setWallpaper,
-    setTypography, setWallpaperSources, ...view,
+    setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
   }
 }
 
@@ -484,5 +485,136 @@ describe('AppearanceSection', () => {
         expect.objectContaining({ kind: 'catalog' }),
       ]),
     }))
+  })
+
+  it('lists bing today when the gallery opens', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({
+      items: [{
+        id: 'bing-1',
+        title: '晨湖',
+        copyright: '©',
+        thumbUrl: 'https://example.com/t.jpg',
+        imageUrl: 'https://example.com/f.jpg',
+        source: 'bing',
+      }],
+    }))
+    const downloadWallpaper = vi.fn(async () => ({ dataUrl: PNG }))
+    mount('system', {}, { listWallpaperCatalog, downloadWallpaper })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('button', { name: /晨湖/ })
+    expect(listWallpaperCatalog).toHaveBeenCalledWith(expect.objectContaining({ kind: 'bing' }))
+  })
+
+  it('requests wallhaven when that tab is selected', async () => {
+    const listWallpaperCatalog = vi.fn(async (query: { kind: string }) => (
+      query.kind === 'wallhaven'
+        ? {
+            items: [{
+              id: 'wallhaven-ab',
+              title: 'ab',
+              copyright: '',
+              thumbUrl: 'https://example.com/t.jpg',
+              imageUrl: 'https://example.com/f.jpg',
+              source: 'wallhaven',
+            }],
+          }
+        : { items: [] }
+    ))
+    const downloadWallpaper = vi.fn(async () => ({ dataUrl: PNG }))
+    mount('system', {}, { listWallpaperCatalog, downloadWallpaper })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('dialog', { name: '浏览图库' })
+    fireEvent.click(screen.getByRole('button', { name: 'Wallhaven' }))
+    await screen.findByRole('button', { name: /^ab$/ })
+    expect(listWallpaperCatalog).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'wallhaven',
+      categories: '100',
+      page: 1,
+    }))
+  })
+
+  it('filters bing rows by search text', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({
+      items: [
+        {
+          id: 'bing-1',
+          title: '晨湖',
+          copyright: '',
+          thumbUrl: 'https://example.com/t1.jpg',
+          imageUrl: 'https://example.com/f1.jpg',
+          source: 'bing',
+        },
+        {
+          id: 'bing-2',
+          title: '雪山',
+          copyright: '',
+          thumbUrl: 'https://example.com/t2.jpg',
+          imageUrl: 'https://example.com/f2.jpg',
+          source: 'bing',
+        },
+      ],
+    }))
+    mount('system', {}, { listWallpaperCatalog, downloadWallpaper: vi.fn() })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('button', { name: /晨湖/ })
+    fireEvent.change(screen.getByLabelText('搜索'), { target: { value: '雪' } })
+    expect(screen.getByRole('button', { name: /雪山/ })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /晨湖/ })).toBeNull()
+  })
+
+  it('stars a gallery item into favorites and shows it on the favorites tab', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({
+      items: [{
+        id: 'bing-1',
+        title: '晨湖',
+        copyright: '©',
+        thumbUrl: 'https://example.com/t.jpg',
+        imageUrl: 'https://example.com/f.jpg',
+        source: 'bing',
+      }],
+    }))
+    const b = mount('system', {}, { listWallpaperCatalog, downloadWallpaper: vi.fn() })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('button', { name: /晨湖/ })
+    fireEvent.click(screen.getByRole('button', { name: '收藏这张' }))
+    expect(b.setWallpaperFavorites).toHaveBeenCalledWith(expect.objectContaining({
+      wallpaperFavorites: [expect.objectContaining({
+        id: 'bing-1',
+        sourceId: 'bing',
+        title: '晨湖',
+        thumbUrl: 'https://example.com/t.jpg',
+        imageUrl: 'https://example.com/f.jpg',
+      })],
+    }))
+    const favorite = b.setWallpaperFavorites.mock.calls[0]![0].wallpaperFavorites[0]!
+    act(() => { b.store.actions.sync(snap({ wallpaperFavorites: [favorite] }), 1) })
+    fireEvent.click(screen.getByRole('button', { name: '收藏' }))
+    expect(screen.getByRole('button', { name: /晨湖/ })).toBeDefined()
+  })
+
+  it('confirms before downloading a gallery pick', async () => {
+    const listWallpaperCatalog = vi.fn(async () => ({
+      items: [{
+        id: 'bing-1',
+        title: '晨湖',
+        copyright: '',
+        thumbUrl: 'https://example.com/t.jpg',
+        imageUrl: 'https://example.com/f.jpg',
+        source: 'bing',
+      }],
+    }))
+    const downloadWallpaper = vi.fn(async () => ({ dataUrl: PNG }))
+    mount('system', {}, { listWallpaperCatalog, downloadWallpaper })
+    fireEvent.click(screen.getByRole('button', { name: '浏览图库' }))
+    await screen.findByRole('button', { name: /晨湖/ })
+    fireEvent.click(screen.getByRole('button', { name: /晨湖/ }))
+    const confirm = await screen.findByRole('dialog', { name: '将这张图设为背景？' })
+    fireEvent.click(within(confirm).getByRole('button', { name: '取消' }))
+    expect(downloadWallpaper).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /晨湖/ }))
+    const again = await screen.findByRole('dialog', { name: '将这张图设为背景？' })
+    fireEvent.click(within(again).getByRole('button', { name: '设为壁纸' }))
+    await vi.waitFor(() => { expect(downloadWallpaper).toHaveBeenCalledWith('https://example.com/f.jpg') })
+    expect(await screen.findByRole('dialog', { name: COPY['wallpaper.crop'] })).toBeDefined()
   })
 })

@@ -6,7 +6,6 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Rea
 import type { McpServerEntry, McpServerRecord, McpServerSnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   Button,
-  IconChevronDownOutline14,
   IconEditOutline16,
   IconPlusOutline16,
   IconRefreshOutline16,
@@ -16,6 +15,7 @@ import {
   Menu,
   Modal,
   Pill,
+  SettingsSelect,
   StateDot,
   Switch,
   type StateDotState,
@@ -763,22 +763,21 @@ function EditorModal({ open, draft, creating, t, onClose, onSave }: {
               </Field>
               <label className={styles.field}>
                 <span className={styles.label}>{t('transport')}</span>
-                <span className={styles.selectWrap}>
-                  <select
-                    aria-label={t('transport')}
-                    value={form.transport}
-                    disabled={pending}
-                    onChange={(event) => {
-                      const transport = event.currentTarget.value === 'streamable-http' ? 'streamable-http' : 'stdio'
-                      setForm(current => ({ ...current, transport }))
-                      setRemoteError(undefined)
-                    }}
-                  >
-                    <option value="stdio">{t('stdio')}</option>
-                    <option value="streamable-http">{t('http')}</option>
-                  </select>
-                  <IconChevronDownOutline14 aria-hidden="true" />
-                </span>
+                <SettingsSelect
+                  variant="block"
+                  aria-label={t('transport')}
+                  value={form.transport}
+                  disabled={pending}
+                  options={[
+                    { id: 'stdio', label: t('stdio') },
+                    { id: 'streamable-http', label: t('http') },
+                  ]}
+                  onChange={(id) => {
+                    const transport = id === 'streamable-http' ? 'streamable-http' : 'stdio'
+                    setForm(current => ({ ...current, transport }))
+                    setRemoteError(undefined)
+                  }}
+                />
               </label>
               <Field label={t('timeout')} hint={t('timeoutHint')} error={errors.timeout} id={`${fieldId}-timeout`}>
                 <Input

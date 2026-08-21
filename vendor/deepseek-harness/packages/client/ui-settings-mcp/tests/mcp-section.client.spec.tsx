@@ -92,6 +92,11 @@ function selectFilter(option: string): void {
   fireEvent.click(screen.getByRole('menuitem', { name: option }))
 }
 
+function pickTransport(dialog: HTMLElement, optionLabel: string): void {
+  fireEvent.click(within(dialog).getByLabelText(en.transport))
+  fireEvent.click(screen.getByRole('menuitem', { name: optionLabel }))
+}
+
 describe('McpSection', () => {
   it('searches name, ID, command, and URL and filters by enabled state', async () => {
     render(<McpSection {...props({ list: async () => ({ servers: [managedStdio, compositionHttp] }) })} />)
@@ -336,7 +341,7 @@ describe('McpSection', () => {
   it('validates URL and every KEY=value line with accessible field errors', async () => {
     const dialog = await openAddEditor()
     fireEvent.change(within(dialog).getByLabelText(en.id), { target: { value: 'remote' } })
-    fireEvent.change(within(dialog).getByLabelText(en.transport), { target: { value: 'streamable-http' } })
+    pickTransport(dialog, en.http)
     const url = within(dialog).getByLabelText(en.url)
     const headers = within(dialog).getByLabelText(en.headers)
     fireEvent.change(url, { target: { value: 'ftp://example.test/mcp' } })
@@ -353,20 +358,19 @@ describe('McpSection', () => {
 
   it('preserves independent stdio and HTTP drafts while switching transport branches', async () => {
     const dialog = await openAddEditor()
-    const transport = within(dialog).getByLabelText(en.transport)
     fireEvent.change(within(dialog).getByLabelText(en.command), { target: { value: 'npx preserved' } })
     fireEvent.click(within(dialog).getByRole('button', { name: en.envToggle }))
     fireEvent.change(within(dialog).getByLabelText(en.env), { target: { value: 'TOKEN=stdio' } })
 
-    fireEvent.change(transport, { target: { value: 'streamable-http' } })
+    pickTransport(dialog, en.http)
     fireEvent.change(within(dialog).getByLabelText(en.url), { target: { value: 'https://example.test/mcp' } })
     fireEvent.change(within(dialog).getByLabelText(en.headers), { target: { value: 'TOKEN=http' } })
 
-    fireEvent.change(transport, { target: { value: 'stdio' } })
+    pickTransport(dialog, en.stdio)
     expect(within(dialog).getByLabelText<HTMLInputElement>(en.command).value).toBe('npx preserved')
     expect(within(dialog).getByLabelText<HTMLTextAreaElement>(en.env).value).toBe('TOKEN=stdio')
 
-    fireEvent.change(transport, { target: { value: 'streamable-http' } })
+    pickTransport(dialog, en.http)
     expect(within(dialog).getByLabelText<HTMLInputElement>(en.url).value).toBe('https://example.test/mcp')
     expect(within(dialog).getByLabelText<HTMLTextAreaElement>(en.headers).value).toBe('TOKEN=http')
   })

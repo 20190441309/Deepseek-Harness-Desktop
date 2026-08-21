@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Model-list editing, endpoint interrogation, and hand-declared provider creation. */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { RpcResponse, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
@@ -13,8 +13,19 @@ import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/
 import { ModelsSettingsStore, deriveKeyRef, protocolChoices } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
 import { settingsSchema } from './settings-schema.client.ts'
+import {
+  resetModelsDevMetadataCache,
+  setModelsDevEnrichmentDisabledForTests,
+} from '../src/client/models-dev-metadata.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setModelsDevEnrichmentDisabledForTests(false)
+})
+
+beforeEach(() => {
+  setModelsDevEnrichmentDisabledForTests(true)
+})
 
 const t: ModelsSectionInjected['t'] = key => en[key]
 
@@ -165,10 +176,6 @@ function openEditor(provider: string): void {
   fireEvent.click(summary)
 }
 
-/** Open one model row's advanced fold, where the capacities live. */
-function expandModel(index: number): void {
-  fireEvent.click(screen.getByLabelText(`${en.modelAdvanced} ${index}`))
-}
 
 /** The button carrying `label`, typed so its disabled/title state is readable. */
 function buttonNamed(label: string): HTMLButtonElement {
@@ -202,7 +209,6 @@ describe('model list editing', () => {
 
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-large' } })
-    expandModel(1)
     fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 1`), { target: { value: '65536' } })
     fireEvent.change(screen.getByLabelText(`${en.modelName} 1`), { target: { value: 'Acme' } })
     // Clearing an optional field must drop it rather than store an empty value.
@@ -239,7 +245,6 @@ describe('model list editing', () => {
 
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
-    expandModel(1)
     fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 1`), { target: { value: '1M' } })
     fireEvent.change(screen.getByLabelText(`${en.modelMaxTokens} 1`), { target: { value: '32K' } })
 
@@ -262,7 +267,6 @@ describe('model list editing', () => {
 
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
-    expandModel(1)
     fireEvent.change(screen.getByLabelText(`${en.modelMaxTokens} 1`), { target: { value: 'abc' } })
 
     // Silently dropping it would store a route sized differently from what the
@@ -283,7 +287,6 @@ describe('model list editing', () => {
       },
     })
     openEditor('openai')
-    expandModel(1)
 
     // Opening a row reads the stored counts, which are plain integers; showing
     // them as such would make an already-configured route look unlike one the
@@ -298,7 +301,6 @@ describe('model list editing', () => {
     })
     openEditor('openai')
 
-    expandModel(2)
     fireEvent.change(screen.getByLabelText(`${en.modelMaxTokens} 2`), { target: { value: '2048' } })
     fireEvent.change(screen.getByLabelText(`${en.modelName} 2`), { target: { value: 'Second' } })
     fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 2`), { target: { value: '4096' } })
@@ -389,7 +391,7 @@ describe('model list editing', () => {
   })
 
 
-  it('keeps expansion on the row it belongs to after an earlier one is removed', async () => {
+  it('keeps capacity fields visible on every remaining row after a removal', async () => {
     await mountSection({
       providers: {
         openai: {
@@ -400,19 +402,15 @@ describe('model list editing', () => {
     })
     openEditor('openai')
 
-    // Expansion is keyed by position, so removing an earlier row shifts the
-    // rest down; without reindexing, row 3 would inherit row 2's open state.
-    expandModel(2)
+    expect(screen.getAllByLabelText(new RegExp(en.modelContextWindow))).toHaveLength(3)
     fireEvent.click(screen.getByLabelText(`${en.removeModel} 1`))
 
-    // 'second' now sits at position 1 and keeps its capacities open; 'third'
-    // moved to position 2 and stays folded.
     expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('second')
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 1`)).not.toBeNull()
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 2`)).toBeNull()
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 2`).value).toBe('third')
+    expect(screen.getAllByLabelText(new RegExp(en.modelContextWindow))).toHaveLength(2)
   })
 
-  it('leaves an earlier row expanded and forgets the removed row\u2019s own state', async () => {
+  it('reindexes capacity edit buffers when a middle row is removed', async () => {
     await mountSection({
       providers: {
         openai: {
@@ -423,17 +421,11 @@ describe('model list editing', () => {
     })
     openEditor('openai')
 
-    // A row before the removal keeps its own position and stays open.
-    expandModel(1)
+    fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 3`), { target: { value: '128K' } })
     fireEvent.click(screen.getByLabelText(`${en.removeModel} 2`))
     expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('first')
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 1`)).not.toBeNull()
-
-    // Removing the expanded row itself drops that state rather than handing it
-    // to whichever row slides into the position.
-    fireEvent.click(screen.getByLabelText(`${en.removeModel} 1`))
-    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 1`).value).toBe('third')
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 1`)).toBeNull()
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelId} 2`).value).toBe('third')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelContextWindow} 2`).value).toBe('128K')
   })
 
   it('separates emptying the list from restoring the adapter defaults', async () => {
@@ -560,6 +552,107 @@ describe('endpoint interrogation', () => {
     ])
   })
 
+  it('adopts models.dev capacities and thinking intensities when metadata matches', async () => {
+    setModelsDevEnrichmentDisabledForTests(false)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({
+        deepseek: {
+          id: 'deepseek',
+          models: {
+            'deepseek-reasoner': {
+              name: 'DeepSeek Reasoner',
+              limit: { context: 64_000, output: 8_000 },
+              reasoning_options: [{ type: 'effort', values: ['off', 'high', 'max'] }],
+            },
+          },
+        },
+      }),
+    })))
+    resetModelsDevMetadataCache()
+    const discover = vi.fn(() => Promise.resolve(ok({ models: [{ id: 'deepseek-reasoner' }] })))
+    const { mutate } = await mountSection({
+      discover,
+      providers: { openai: { baseURL: 'https://proxy.example/v1', models: [] } },
+    })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([
+      {
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek Reasoner',
+        contextWindow: 64_000,
+        maxTokens: 8_000,
+        reasoningEfforts: { off: null, high: 'high', max: 'max' },
+      },
+    ])
+  })
+
+  it('keeps discover capacities when models.dev also reports them', async () => {
+    setModelsDevEnrichmentDisabledForTests(false)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({
+        openai: {
+          id: 'openai',
+          models: {
+            'gpt-4o': {
+              name: 'GPT-4o',
+              limit: { context: 128_000, output: 16_384 },
+              reasoning: false,
+            },
+          },
+        },
+      }),
+    })))
+    resetModelsDevMetadataCache()
+    const discover = vi.fn(() => Promise.resolve(ok({
+      models: [{ id: 'gpt-4o', contextWindow: 999, maxTokens: 50 }],
+    })))
+    const { mutate } = await mountSection({
+      discover,
+      providers: { openai: { baseURL: 'https://proxy.example/v1', models: [] } },
+    })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        contextWindow: 999,
+        maxTokens: 50,
+        reasoningEfforts: false,
+      },
+    ])
+  })
+
+  it('adopts without invented efforts when models.dev is unreachable', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({ models: [{ id: 'acme-large' }] })))
+    const { mutate } = await mountSection({
+      discover,
+      providers: { openai: { baseURL: 'https://proxy.example/v1', models: [] } },
+    })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([{ id: 'acme-large' }])
+  })
+
   it('keeps the rows editable when the provider cannot be interrogated', async () => {
     const discover = vi.fn(() => Promise.resolve(
       fail('https://proxy.example/v1/models answered 401; check the API key', 'model-discovery-failed'),
@@ -627,18 +720,15 @@ describe('endpoint interrogation', () => {
     })
   })
 
-  it('folds a row\u2019s capacities away until they are asked for', async () => {
+  it('keeps capacity fields visible without a disclosure control', async () => {
     await mountSection({
       providers: { openai: { baseURL: 'https://proxy.example/v1', models: [{ id: 'only' }] } },
     })
     openEditor('openai')
 
-    // The row shows what identifies a model; capacities are the exception.
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 1`)).toBeNull()
-    expandModel(1)
     expect(screen.getByLabelText(`${en.modelContextWindow} 1`)).toBeTruthy()
-    expandModel(1)
-    expect(screen.queryByLabelText(`${en.modelContextWindow} 1`)).toBeNull()
+    expect(screen.getByLabelText(`${en.modelMaxTokens} 1`)).toBeTruthy()
+    expect(screen.queryByLabelText(new RegExp(en.modelAdvanced))).toBeNull()
   })
 
   it('closes the picker without adopting anything on cancel', async () => {
@@ -781,7 +871,6 @@ describe('hand-declared providers', () => {
     fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'gw-key' } })
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-large' } })
-    expandModel(1)
     fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 1`), { target: { value: '65536' } })
     fireEvent.click(screen.getByText(en.create))
 
@@ -812,7 +901,7 @@ describe('hand-declared providers', () => {
     // control could only be set to a value some of them reject — which would
     // take the whole provider out of the picker. The composer's model picker
     // owns the choice, and a switch there records provider+model+effort together.
-    const fields = () => [...document.querySelectorAll('input,select')]
+    const fields = () => [...document.querySelectorAll('input,button[aria-haspopup="menu"]')]
       .map(el => el.getAttribute('aria-label')).filter(Boolean)
 
     mountCard()
@@ -826,7 +915,7 @@ describe('hand-declared providers', () => {
     await mountSection({ providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } })
     openEditor('openai')
     fireEvent.click(screen.getByText(en.customized))
-    expect(fields()).toEqual([en.keyInput, en.baseUrl, en.inputText, en.inputImage])
+    expect(fields()).toEqual([en.keyInput, en.baseUrl])
     cleanup()
 
     // A hand-declared route named its own protocol at creation, so editing it
@@ -837,7 +926,7 @@ describe('hand-declared providers', () => {
     })
     openEditor('acme-gateway')
     expect(fields()).toEqual([
-      en.keyInput, en.customDisplayName, en.baseUrl, en.customApi, en.inputText, en.inputImage,
+      en.keyInput, en.customDisplayName, en.baseUrl, en.customApi,
     ])
   })
 
@@ -943,9 +1032,10 @@ describe('hand-declared providers', () => {
     })
     openEditor('acme-gateway')
 
-    const protocol = screen.getByLabelText<HTMLSelectElement>(en.customApi)
-    expect(protocol.value).toBe('openai-completions')
-    fireEvent.change(protocol, { target: { value: 'anthropic-messages' } })
+    const protocol = screen.getByLabelText(en.customApi)
+    expect(protocol.textContent).toContain('openai-completions')
+    fireEvent.click(protocol)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'anthropic-messages' }))
     fireEvent.click(screen.getByText(en.apply))
 
     await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
@@ -968,7 +1058,7 @@ describe('hand-declared providers', () => {
     })
     openEditor('acme-gateway')
 
-    expect(screen.getByLabelText<HTMLSelectElement>(en.customApi).value).toBe('')
+    expect(screen.getByLabelText(en.customApi).textContent).toContain(en.customApiUnset)
   })
 
   it('retries only the key after the profile landed, and reports the provider on cancel', async () => {
@@ -1108,7 +1198,6 @@ describe('hand-declared providers', () => {
     fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-large' } })
-    expandModel(1)
     fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} 1`), { target: { value: '64 KiB' } })
 
     expect(screen.getByText(`${en.model} 1: ${en.modelContextInvalid}`)).toBeTruthy()
@@ -1122,7 +1211,6 @@ describe('hand-declared providers', () => {
     for (const [at, id] of [[1, 'first'], [2, 'second'], [3, 'third']] as const) {
       fireEvent.click(screen.getByRole('button', { name: en.addModel }))
       fireEvent.change(screen.getByLabelText(`${en.modelId} ${String(at)}`), { target: { value: id } })
-      expandModel(at)
       // Deliberately mid-word: the buffer exists so text like this survives.
       fireEvent.change(screen.getByLabelText(`${en.modelContextWindow} ${String(at)}`),
         { target: { value: `${String(at)}.` } })
@@ -1257,7 +1345,8 @@ describe('hand-declared providers', () => {
 
     fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
     fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
-    fireEvent.change(screen.getByLabelText(en.customApi), { target: { value: 'anthropic-messages' } })
+    fireEvent.click(screen.getByLabelText(en.customApi))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'anthropic-messages' }))
     fireEvent.click(screen.getByRole('button', { name: en.addModel }))
     fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
     fireEvent.click(screen.getByText(en.create))
@@ -1276,7 +1365,10 @@ describe('hand-declared providers', () => {
 
   it('offers no protocol when the namespace declares none', () => {
     mountCard({ protocols: [] })
-    expect(screen.getByLabelText<HTMLSelectElement>(en.customApi).value).toBe('')
+    const protocol = screen.getByLabelText(en.customApi)
+    expect(protocol.textContent?.replace(/\s/g, '')).toBe('')
+    fireEvent.click(protocol)
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
   })
 
   it('closes without writing on cancel, and honors a read-only deployment', () => {

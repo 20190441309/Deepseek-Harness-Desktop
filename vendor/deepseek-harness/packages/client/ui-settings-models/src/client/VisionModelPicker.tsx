@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import { SettingsSelect } from '@deepseek-ai/dsh-client-ui-primitives'
 import { messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -152,26 +153,21 @@ export function VisionModelPicker(props: VisionModelPickerProps): ReactNode {
     <div className={styles['rowCard']}>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('visionModel')}</span>
-        <select
-          className={`${styles['input']} ${styles['selectInput']}`}
-          value={current}
+        <SettingsSelect
+          variant="block"
           aria-label={t('visionModel')}
+          value={current}
           disabled={!writable || saving}
-          onChange={(event) => { save(event.target.value) }}
-        >
-          <option value="">{t('visionModelOff')}</option>
-          {staleOption === undefined
-            ? null
-            : <option value={staleOption.value}>{staleOption.label}</option>}
-          {known.map(option => (
-            <option
-              key={routeValue(option.provider, option.model)}
-              value={routeValue(option.provider, option.model)}
-            >
-              {`${option.providerName} / ${option.modelName}`}
-            </option>
-          ))}
-        </select>
+          options={[
+            { id: '', label: t('visionModelOff') },
+            ...staleOption === undefined ? [] : [{ id: staleOption.value, label: staleOption.label }],
+            ...known.map(option => ({
+              id: routeValue(option.provider, option.model),
+              label: `${option.providerName} / ${option.modelName}`,
+            })),
+          ]}
+          onChange={save}
+        />
       </div>
       <p className={styles['advancedHint']}>{t('visionModelHint')}</p>
       {loadFailure === undefined

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import {
   IconCheckOutline16, IconCloseOutline16, IconCordisPluginOutline14, IconPlayOutline16,
-  IconStopFill16, IconTrashOutline16, Tooltip, useDismissOnOutsidePointer,
+  IconStopFill16, IconTrashOutline16, SettingsSelect, Tooltip, useDismissOnOutsidePointer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -251,20 +251,22 @@ export function CordisPanel({
         {listed !== undefined && listed.packages.length > 1 && selectedPackageId !== undefined && (
           <label className={css.versionPicker}>
             <span>{t('panel.version')}</span>
-            <select
+            <SettingsSelect
+              variant="block"
+              aria-label={t('panel.version')}
               value={selectedPackageId}
               disabled={busy}
-              onChange={(event) => {
+              options={listed.packages.map(pkg => ({
+                id: pkg.packageId,
+                label: `${pkg.name} · ${pkg.packageId}`,
+              }))}
+              onChange={(packageId) => {
                 setSelected(currentSelected => ({
                   ...currentSelected,
-                  [pluginId]: event.target.value as CordisDynamicPackageId,
+                  [pluginId]: packageId as CordisDynamicPackageId,
                 }))
               }}
-            >
-              {listed.packages.map(pkg => (
-                <option key={pkg.packageId} value={pkg.packageId}>{`${pkg.name} · ${pkg.packageId}`}</option>
-              ))}
-            </select>
+            />
           </label>
         )}
         <div className={css.rowDetail}>

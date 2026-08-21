@@ -68,14 +68,28 @@ function mount(options: {
   return { ...view, models, mutate, onSaved }
 }
 
+/** Open the SettingsSelect menu after the catalog has painted options. */
+async function openMenu() {
+  const trigger = await screen.findByLabelText(en.visionModel)
+  fireEvent.click(trigger)
+  return trigger
+}
+
+/** Choose a menu row by its visible label. */
+async function pick(label: string) {
+  await openMenu()
+  fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+}
+
 describe('VisionModelPicker', () => {
   it('lists only models that advertise image input', async () => {
     mount()
+    await openMenu()
 
-    expect(await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })).toBeTruthy()
-    expect(screen.queryByRole('option', { name: 'Codingplan / GLM 5.3' })).toBeNull()
-    expect(screen.queryByRole('option', { name: 'Codingplan / Bare' })).toBeNull()
-    expect(screen.getByRole('option', { name: en.visionModelOff })).toBeTruthy()
+    expect(await screen.findByRole('menuitem', { name: 'Codingplan / Doubao Seed' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'Codingplan / GLM 5.3' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Codingplan / Bare' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: en.visionModelOff })).toBeTruthy()
   })
 
   it('hides itself while the vision-fallback namespace is absent', () => {
@@ -86,23 +100,24 @@ describe('VisionModelPicker', () => {
   it('keeps a stored text-only route visible instead of snapping to off', async () => {
     mount({ stored: { provider: 'codingplan', model: 'glm-5.3' } })
 
-    const select = await screen.findByLabelText(en.visionModel) as HTMLSelectElement
-    expect(await screen.findByRole('option', { name: 'codingplan / glm-5.3' })).toBeTruthy()
-    expect(select.value).toBe('codingplan\nglm-5.3')
+    const trigger = await screen.findByLabelText(en.visionModel)
+    expect(trigger.textContent).toContain('codingplan / glm-5.3')
+    await openMenu()
+    expect(await screen.findByRole('menuitem', { name: 'codingplan / glm-5.3' })).toBeTruthy()
   })
 
   it('treats a half-stored route as off', async () => {
     mount({ stored: { provider: 'codingplan' } })
-    const select = await screen.findByLabelText(en.visionModel) as HTMLSelectElement
-    await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })
-    expect(select.value).toBe('')
-    expect(screen.queryByRole('option', { name: 'codingplan /' })).toBeNull()
+    const trigger = await screen.findByLabelText(en.visionModel)
+    await openMenu()
+    expect(await screen.findByRole('menuitem', { name: 'Codingplan / Doubao Seed' })).toBeTruthy()
+    expect(trigger.textContent).toContain(en.visionModelOff)
+    expect(screen.queryByRole('menuitem', { name: 'codingplan /' })).toBeNull()
   })
 
   it('persists a selected image-capable route', async () => {
     const { mutate, onSaved } = mount({ onSaved: vi.fn() })
-    await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })
-    fireEvent.change(screen.getByLabelText(en.visionModel), { target: { value: 'codingplan\ndoubao-seed' } })
+    await pick('Codingplan / Doubao Seed')
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
     expect(mutate.mock.calls[0]?.[0]).toEqual({
       ns: VISION_FALLBACK_NS,
@@ -117,8 +132,7 @@ describe('VisionModelPicker', () => {
 
   it('clears the stored route when the picker is turned off', async () => {
     const { mutate } = mount({ stored: { provider: 'codingplan', model: 'doubao-seed' } })
-    await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })
-    fireEvent.change(screen.getByLabelText(en.visionModel), { target: { value: '' } })
+    await pick(en.visionModelOff)
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
     expect(mutate.mock.calls[0]?.[0]).toEqual({
       ns: VISION_FALLBACK_NS,
@@ -145,22 +159,20 @@ describe('VisionModelPicker', () => {
       mutate: vi.fn(() => Promise.resolve(fail('revision conflict'))),
       onSaved: vi.fn(),
     })
-    await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })
-    fireEvent.change(screen.getByLabelText(en.visionModel), { target: { value: 'codingplan\ndoubao-seed' } })
+    await pick('Codingplan / Doubao Seed')
     expect(await screen.findByText(`${en.visionModelSaveFailed}: revision conflict`)).toBeTruthy()
     expect(onSaved).not.toHaveBeenCalled()
   })
 
   it('reports a save transport rejection', async () => {
     mount({ mutate: vi.fn(() => Promise.reject(new Error('connection lost'))) })
-    await screen.findByRole('option', { name: 'Codingplan / Doubao Seed' })
-    fireEvent.change(screen.getByLabelText(en.visionModel), { target: { value: 'codingplan\ndoubao-seed' } })
+    await pick('Codingplan / Doubao Seed')
     expect(await screen.findByText(`${en.visionModelSaveFailed}: connection lost`)).toBeTruthy()
   })
 
   it('disables the control while the document is read-only', async () => {
     mount({ writable: false })
-    expect((await screen.findByLabelText(en.visionModel) as HTMLSelectElement).disabled).toBe(true)
+    expect((await screen.findByLabelText(en.visionModel) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('ignores a catalog reply that lands after unmount', async () => {

@@ -700,6 +700,9 @@ export function apply(ctx: ClientContext): void {
         setWallpaperSources: (patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>) => {
           theme.setWallpaperSources(patch)
         },
+        setWallpaperFavorites: (patch: Pick<ThemeSettings, 'wallpaperFavorites'>) => {
+          theme.setWallpaperFavorites(patch)
+        },
       } : {}),
       setTypography: (patch) => { theme.setTypography(patch) },
     }

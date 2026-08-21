@@ -8,7 +8,7 @@ import {
   MAX_WALLPAPER_FILE_BYTES, WALLPAPER_EFFECT_STEP, WALLPAPER_HIGH_GLASS_HINT,
   encodeWallpaperFile, isWallpaperDataUrl,
 } from '../wallpaper.ts'
-import type { ThemeSettings } from '../theme-settings.ts'
+import type { ThemeSettings, WallpaperFavorite, WallpaperSource } from '../theme-settings.ts'
 import type { ThemeKey } from './locales.ts'
 import { sliderFillStyle } from './slider.ts'
 import { WallpaperCropModal } from './WallpaperCropModal.tsx'
@@ -32,24 +32,26 @@ export function WallpaperRow({
   wallpaperPixelate,
   glassOpacity,
   wallpaperSources,
+  wallpaperFavorites,
   t,
   setWallpaper,
   setWallpaperSources,
+  setWallpaperFavorites,
 }: {
   wallpaperImage: string
   wallpaperBlur: number
   wallpaperPixelate: number
   glassOpacity: number
-  wallpaperSources: readonly import('../theme-settings.ts').WallpaperSource[]
+  wallpaperSources: readonly WallpaperSource[]
+  wallpaperFavorites: readonly WallpaperFavorite[]
   t: (key: ThemeKey) => string
   setWallpaper: SetWallpaper
-  setWallpaperSources?: (patch: { wallpaperSources: import('../theme-settings.ts').WallpaperSource[] }) => void
+  setWallpaperSources?: (patch: { wallpaperSources: WallpaperSource[] }) => void
+  setWallpaperFavorites?: (patch: { wallpaperFavorites: WallpaperFavorite[] }) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const request = useRef(0)
   const [galleryOpen, setGalleryOpen] = useState(false)
-  const [galleryItems, setGalleryItems] = useState<readonly WallpaperCatalogItem[]>([])
-  const [galleryWarning, setGalleryWarning] = useState<string | undefined>(undefined)
   const [busyId, setBusyId] = useState<string | undefined>(undefined)
   const [cropImage, setCropImage] = useState<string | null>(null)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -83,21 +85,10 @@ export function WallpaperRow({
     setBusyId(undefined)
   }
 
-  const openGallery = async (): Promise<void> => {
+  const openGallery = (): void => {
     if (shell === null) return
-    const token = ++request.current
     setError(undefined)
     setGalleryOpen(true)
-    setGalleryItems([])
-    setGalleryWarning(undefined)
-    try {
-      const result = await shell.listWallpaperCatalog({ kind: 'bing' })
-      if (token !== request.current) return
-      setGalleryItems(result.items ?? [])
-      setGalleryWarning(result.warning)
-    } catch {
-      if (token === request.current) setGalleryWarning(t('wallpaper.galleryFailed'))
-    }
   }
 
   const pickGalleryItem = async (item: WallpaperCatalogItem): Promise<void> => {
@@ -148,7 +139,7 @@ export function WallpaperRow({
           </>
         ) : null}
         {shell !== null ? (
-          <Button type="button" variant="outline" onClick={() => { void openGallery() }}>
+          <Button type="button" variant="outline" onClick={() => { openGallery() }}>
             {t('wallpaper.browse')}
           </Button>
         ) : null}
@@ -227,17 +218,20 @@ export function WallpaperRow({
           </Button>
         </>
       ) : null}
-      <WallpaperGalleryModal
-        open={galleryOpen}
-        items={galleryItems}
-        warning={galleryWarning}
-        busyId={busyId}
-        wallpaperSources={wallpaperSources}
-        {...(setWallpaperSources === undefined ? {} : { setWallpaperSources })}
-        t={t}
-        onClose={closeGallery}
-        onPick={(item) => { void pickGalleryItem(item) }}
-      />
+      {shell !== null ? (
+        <WallpaperGalleryModal
+          open={galleryOpen}
+          busyId={busyId}
+          wallpaperSources={wallpaperSources}
+          wallpaperFavorites={wallpaperFavorites}
+          listWallpaperCatalog={shell.listWallpaperCatalog}
+          {...(setWallpaperSources === undefined ? {} : { setWallpaperSources })}
+          {...(setWallpaperFavorites === undefined ? {} : { setWallpaperFavorites })}
+          t={t}
+          onClose={closeGallery}
+          onPick={(item) => { void pickGalleryItem(item) }}
+        />
+      ) : null}
       <WallpaperCropModal
         open={cropImage !== null}
         image={cropImage ?? ''}

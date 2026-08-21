@@ -67,6 +67,8 @@ export interface AppearanceSectionInjected {
   setWallpaperSources?: (
     patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>,
   ) => void
+  /** Persist starred gallery items. */
+  setWallpaperFavorites?: (patch: Pick<ThemeSettings, 'wallpaperFavorites'>) => void
   /** Persist typography extras. */
   setTypography: (
     patch: Partial<Pick<ThemeSettings,
@@ -95,6 +97,7 @@ export function AppearanceSection({
   setGlassOpacity,
   setWallpaper,
   setWallpaperSources,
+  setWallpaperFavorites,
   setTypography,
 }: AppearanceSectionComponentProps) {
   const preference = useStore(s => s.preference)
@@ -108,6 +111,7 @@ export function AppearanceSection({
   const wallpaperBlur = useStore(s => s.wallpaperBlur)
   const wallpaperPixelate = useStore(s => s.wallpaperPixelate)
   const wallpaperSources = useStore(s => s.wallpaperSources)
+  const wallpaperFavorites = useStore(s => s.wallpaperFavorites)
   const fontFamilySans = useStore(s => s.fontFamilySans)
   const fontFamilyCode = useStore(s => s.fontFamilyCode)
   const fontSizeInterface = useStore(s => s.fontSizeInterface)
@@ -148,9 +152,11 @@ export function AppearanceSection({
         wallpaperPixelate={wallpaperPixelate}
         glassOpacity={glassOpacity}
         wallpaperSources={wallpaperSources}
+        wallpaperFavorites={wallpaperFavorites}
         t={t}
         setWallpaper={setWallpaper}
         {...(setWallpaperSources === undefined ? {} : { setWallpaperSources })}
+        {...(setWallpaperFavorites === undefined ? {} : { setWallpaperFavorites })}
       />
 
       <section className={css.block} aria-labelledby="appearance-glass-heading">

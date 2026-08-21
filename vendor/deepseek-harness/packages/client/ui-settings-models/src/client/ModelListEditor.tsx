@@ -16,10 +16,14 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { DiscoveredModelView, IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
+import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
+import {
+  enrichDiscoveredModelsBestEffort,
+  type EnrichedDiscoveredModel,
+} from './models-dev-metadata.ts'
 import { messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -87,18 +91,6 @@ export interface ModelListEditorProps {
   t: (key: keyof typeof en) => string
   /** Disable every control (read-only deployment or a pending write). */
   disabled: boolean
-}
-
-/** Disclosure chevron; rotates to point down while its row is open. */
-function IconChevron({ open }: { open: boolean }): ReactNode {
-  return (
-    <svg
-      width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden
-      style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' }}
-    >
-      <path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
 }
 
 /** Removal glyph for one model row. */
@@ -196,13 +188,17 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
-/** Adopt a candidate, keeping whatever capacities the provider disclosed. */
-function adopt(candidate: DiscoveredModelView): ModelDraft {
+/**
+ * Adopt a candidate, keeping disclosed capacities plus any models.dev fills
+ * (missing context/maxTokens and declared reasoning efforts).
+ */
+function adopt(candidate: EnrichedDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
     ...candidate.name === undefined ? {} : { name: candidate.name },
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
+    ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: candidate.reasoningEfforts },
   }
 }
 
@@ -215,11 +211,8 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const { models, onChange, probe, api, t, disabled } = props
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
-  const [candidates, setCandidates] = useState<readonly DiscoveredModelView[] | undefined>(undefined)
+  const [candidates, setCandidates] = useState<readonly EnrichedDiscoveredModel[] | undefined>(undefined)
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
-  // Rows carry an id and a name; capacities are the exception, so they stay
-  // folded until asked for rather than crowding every row with four inputs.
-  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
   // Capacities are edited as text, so a field's keystrokes are held here rather
   // than re-derived from the parsed count on every change — that would rewrite
   // `1000` to `1K` mid-word. Unreadable text is kept past blur so the refusal
@@ -253,14 +246,6 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
       next.set(at > index ? key.replace(/^\d+/, String(at - 1)) : key, value)
     }
     return next
-  }
-
-  const toggleExpanded = (index: number): void => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (!next.delete(index)) next.add(index)
-      return next
-    })
   }
 
   const patch = (index: number, next: Record<string, unknown>): void => {
@@ -315,11 +300,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         setFailure(t('fetchEmpty'))
         return
       }
+      // Fill missing capacities and thinking levels from models.dev when a
+      // record matches; a failed or unmatched catalog leaves rows as discovered.
+      const enriched = await enrichDiscoveredModelsBestEffort(found)
       // Everything already configured starts unchecked, so adopting a
       // selection never silently rewrites a capacity the user corrected.
       const known = new Set(models.map(model => textOf(model, 'id')))
-      setCandidates(found)
-      setPicked(new Set(found.filter(model => !known.has(model.id)).map(model => model.id)))
+      setCandidates(enriched)
+      setPicked(new Set(enriched.filter(model => !known.has(model.id)).map(model => model.id)))
     } catch (error) {
       // The transport rejected rather than answering; without this the button
       // would stay busy with nothing shown.
@@ -434,34 +422,15 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
             />
             <button
               type="button"
-              className={styles['iconButton']}
-              aria-label={`${t('modelAdvanced')} ${index + 1}`}
-              aria-expanded={expanded.has(index)}
-              title={t('modelAdvanced')}
-              onClick={() => { toggleExpanded(index) }}
-            >
-              <IconChevron open={expanded.has(index)} />
-            </button>
-            <button
-              type="button"
               className={`${styles['iconButton']} ${styles['iconButtonDanger']}`}
               aria-label={`${t('removeModel')} ${index + 1}`}
               title={t('removeModel')}
               disabled={disabled}
               onClick={() => {
                 onChange(models.filter((_model, at) => at !== index))
-                // Both stores are keyed by position, so every row after this
-                // one shifts down and would otherwise inherit its neighbour's
-                // state — a different row's capacities popping open, or its
-                // half-typed text appearing in another row's field.
-                setExpanded((current) => {
-                  const next = new Set<number>()
-                  for (const at of current) {
-                    if (at < index) next.add(at)
-                    else if (at > index) next.add(at - 1)
-                  }
-                  return next
-                })
+                // Capacity edit buffers are keyed by position, so every row
+                // after this one shifts down and would otherwise inherit its
+                // neighbour's half-typed text.
                 setEditing(current => reindexOnRemove(current, index))
               }}
             >
@@ -488,61 +457,59 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               })}
             </div>
           </fieldset>
-          {expanded.has(index)
-            ? (
-              <div className={styles['modelAdvanced']}>
-                <label className={styles['modelField']}>
-                  <span className={styles['modelFieldLabel']}>{t('modelContextWindow')}</span>
-                  <input
-                    className={styles['input']}
-                    type="text"
-                    inputMode="numeric"
-                    value={capacityText(model, index, 'contextWindow')}
-                    placeholder={CAPACITY_HINT.contextWindow}
-                    aria-label={`${t('modelContextWindow')} ${index + 1}`}
-                    disabled={disabled}
-                    onChange={(event) => { editCapacity(index, 'contextWindow', event.target.value) }}
-                  />
-                </label>
-                <label className={styles['modelField']}>
-                  <span className={styles['modelFieldLabel']}>{t('modelMaxTokens')}</span>
-                  <input
-                    className={styles['input']}
-                    type="text"
-                    inputMode="numeric"
-                    value={capacityText(model, index, 'maxTokens')}
-                    placeholder={CAPACITY_HINT.maxTokens}
-                    aria-label={`${t('modelMaxTokens')} ${index + 1}`}
-                    disabled={disabled}
-                    onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
-                  />
-                </label>
-                <fieldset className={styles['effortGroup']}>
-                  <legend className={styles['modelFieldLabel']}>{t('inputTitle')}</legend>
-                  <div className={styles['effortOptions']}>
-                    {INPUT_CHOICES.map((choice) => {
-                      const checked = (inputOf(model) ?? []).includes(choice.id)
-                      return (
-                        <label className={styles['effortOption']} key={choice.id}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={disabled}
-                            aria-label={`${t(choice.key)} ${index + 1}`}
-                            onChange={() => { toggleInput(index, model, choice.id) }}
-                          />
-                          <span>{t(choice.key)}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                  {inputOf(model) === undefined
-                    ? <span className={styles['modelFieldLabel']}>{t('inputInherited')}</span>
-                    : null}
-                </fieldset>
+          <fieldset className={`${styles['effortGroup']} ${styles['inputGroup']}`}>
+            <legend className={styles['modelFieldLabel']}>{t('inputTitle')}</legend>
+            <div className={styles['inputGroupBody']}>
+              <div className={styles['inputOptions']}>
+                {INPUT_CHOICES.map((choice) => {
+                  const checked = (inputOf(model) ?? []).includes(choice.id)
+                  return (
+                    <label className={styles['effortOption']} key={choice.id}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        aria-label={`${t(choice.key)} ${index + 1}`}
+                        onChange={() => { toggleInput(index, model, choice.id) }}
+                      />
+                      <span>{t(choice.key)}</span>
+                    </label>
+                  )
+                })}
               </div>
-            )
-            : null}
+              {inputOf(model) === undefined
+                ? <p className={styles['inputHint']}>{t('inputInherited')}</p>
+                : null}
+            </div>
+          </fieldset>
+          <div className={styles['modelAdvanced']}>
+            <label className={styles['modelField']}>
+              <span className={styles['modelFieldLabel']}>{t('modelContextWindow')}</span>
+              <input
+                className={styles['input']}
+                type="text"
+                inputMode="numeric"
+                value={capacityText(model, index, 'contextWindow')}
+                placeholder={CAPACITY_HINT.contextWindow}
+                aria-label={`${t('modelContextWindow')} ${index + 1}`}
+                disabled={disabled}
+                onChange={(event) => { editCapacity(index, 'contextWindow', event.target.value) }}
+              />
+            </label>
+            <label className={styles['modelField']}>
+              <span className={styles['modelFieldLabel']}>{t('modelMaxTokens')}</span>
+              <input
+                className={styles['input']}
+                type="text"
+                inputMode="numeric"
+                value={capacityText(model, index, 'maxTokens')}
+                placeholder={CAPACITY_HINT.maxTokens}
+                aria-label={`${t('modelMaxTokens')} ${index + 1}`}
+                disabled={disabled}
+                onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
+              />
+            </label>
+          </div>
         </div>
       ))}
       <button

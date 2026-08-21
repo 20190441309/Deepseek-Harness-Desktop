@@ -61,27 +61,16 @@ describe('ModelsSection theme styles', () => {
     expect(block('.rowCard')).not.toMatch(/\bbackground\s*:/)
   })
 
-  it('gives every dropdown the shared chevron instead of the OS arrow', () => {
-    // `select.input` caps the control at 240px, and the OS arrow is painted
-    // flush inside that shrunk right edge — visibly tighter than every other
-    // control on the page. `.selectInput` is what removes it, reserves the
-    // right pad, and paints the shared chevron; a `<select>` that takes
-    // `.input` alone silently keeps the OS one.
+  it('ships no native select controls in the settings models UI', () => {
+    // SettingsSelect (Menu + pill) owns every former dropdown; a leftover
+    // `<select>` would paint the OS panel again.
     const sources = readdirSync(fileURLToPath(new URL('../src/client/', import.meta.url)))
       .filter(name => name.endsWith('.tsx'))
-      .map(name => ({
-        name,
-        text: readFileSync(fileURLToPath(new URL(`../src/client/${name}`, import.meta.url)), 'utf8'),
-      }))
-    const bare = sources.flatMap(({ name, text }) => text
-      .split('<select')
-      .slice(1)
-      // The element's own attributes end at the first `>`; a child `<option>`
-      // carries no className of its own and must not answer for the select.
-      .map(rest => rest.slice(0, rest.indexOf('>')))
-      .filter(attributes => !attributes.includes('selectInput'))
-      .map(() => name))
-    expect(bare).toEqual([])
+      .flatMap(name => {
+        const text = readFileSync(fileURLToPath(new URL(`../src/client/${name}`, import.meta.url)), 'utf8')
+        return text.includes('<select') ? [name] : []
+      })
+    expect(sources).toEqual([])
   })
 
   it('lays thinking intensities as wrapping equal chips, not a three-column checkbox grid', () => {
