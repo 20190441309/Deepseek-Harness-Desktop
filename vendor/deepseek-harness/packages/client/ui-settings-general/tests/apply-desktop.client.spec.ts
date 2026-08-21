@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
+import { stubSettingsScope, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-settings-general/client'
 import { CloseBehaviorRow } from '../src/client/CloseBehaviorRow.tsx'
 
@@ -23,6 +23,9 @@ async function bench() {
     api: { settings: { describe: async () => ({ result: { ok: false } }) } },
     isLoopback: false,
   } as never)
+  // apply() injects `settingsScope` (the ui-settings domain service); the
+  // stub stands in for the binder the real settings plugin would provide.
+  ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
   return { ctx, slots: ctx.get('slots') as SlotRegistry }
 }
 
