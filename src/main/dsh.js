@@ -584,8 +584,13 @@ class DshManager extends EventEmitter {
       if (!nodeBin) {
         throw new Error('未找到 Node.js。请安装 Node.js 22.19+ 或 24+。');
       }
-      if (typeof source.root === 'string' && source.root) {
-        this._deps.ensureGhosttyAssetsInHarness(source.root);
+      if (typeof source.root !== 'string' || !source.root) {
+        throw new Error('终端 Ghostty 资源不完整，请运行 npm run setup:harness：缺少 harness 根路径');
+      }
+      const ghostty = this._deps.ensureGhosttyAssetsInHarness(source.root);
+      if (!ghostty || ghostty.ok !== true) {
+        const detail = ghostty && ghostty.detail ? String(ghostty.detail) : 'ensure 未返回 ok';
+        throw new Error(`终端 Ghostty 资源不完整，请运行 npm run setup:harness：${detail}`);
       }
       return {
         command: nodeBin,

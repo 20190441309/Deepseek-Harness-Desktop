@@ -19,7 +19,8 @@
 
 ## 实现入口
 
-- `src/main/pty.js`
+- `src/main/pty.js`：PTY 读写
+- `src/main/dsh.js`：源码启动时校验/拷贝 Ghostty wasm（`ghostty-assets.js`）；缺则拒绝 launch
 - Preload：`ptyCreate` / `ptyWrite` / `ptyResize` / `ptyKill` / `onPtyData` / `onPtyExit`
 
 ## 不变量

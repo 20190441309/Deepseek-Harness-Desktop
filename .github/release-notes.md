@@ -2,8 +2,9 @@
 
 ### 相对 0.2.6 的修复
 
-- 源码启动：`dsh.js` 在拉起 vendor harness 前把 Ghostty wasm/字体拷到 `lib/assets`
-- 打包门禁：`afterPack` 在归档前补齐并校验 `dirname(client.js)/assets`，缺文件则失败
+- 构建：根 `build:lib:client` 跑 `copy-ghostty-assets`，把 wasm/字体放到 `dirname(client.js)/assets`
+- 源码启动：拉起前校验并补齐 Ghostty 资源；缺则拒绝启动，不把 `libghostty-vt` 404 留给终端页
+- 安装包：`afterPack` 在归档前补齐并校验 `dirname(client.js)/assets`，缺文件则失败
 - 已安装不完整运行时（缺 wasm 导致 `Unable to load libghostty-vt (404)`）会在下次启动时重新解压
 
 ## 0.2.6

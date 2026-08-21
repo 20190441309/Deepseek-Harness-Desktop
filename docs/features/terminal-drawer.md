@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-21 — pin dsh-v0.1.1-rc.1; Ghostty wasm copy on source launch |
+| **last verified** | 2026-08-22 — source launch refuses incomplete Ghostty assets |
 
 ## User paths
 
@@ -16,12 +16,13 @@
 
 - 终端是工作环，不是空态说明卡片。
 - PTY 由桌面 `pty.js` 提供；UI 为官方终端组件语言（等宽网格 / Ghostty）。
-- `libghostty-vt` wasm 必须能从 `/plugins/<id>/assets/` 读到；源码启动会把 wasm 拷到 `lib/assets`。
+- `libghostty-vt` wasm 必须能从 `/plugins/<id>/assets/` 读到；源码启动会校验并把 wasm 拷到 `lib/assets`，缺则拒绝启动。
 - 不做未承诺的 GPU 终端嵌入。
 
 ## Allowed touch
 
 - `src/main/pty.js` 及 PTY 相关测试
+- `src/main/dsh.js`、`src/shared/ghostty-assets.js` 及对应测试（源码启动 Ghostty 校验/拷贝）
 - Harness `ui-user-terminal`（及桌面接线）
 - 本卡与 handbook terminal 章
 
@@ -34,7 +35,7 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `src/main/pty.test.js`；相关 client 终端单测 |
+| Automated | `src/main/pty.test.js`；`src/main/dsh.test.js`（源码 launch 拒绝缺 wasm）；`src/shared/ghostty-assets.test.js`；相关 client 终端单测 |
 | Manual / QA | `TC-TERM-001` … `TC-TERM-004`；`TC-CHAT-004` |
 
 ## Sources

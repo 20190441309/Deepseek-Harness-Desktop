@@ -480,9 +480,11 @@ test('every launch kind passes --no-open so dsh web does not open the OS browser
       present: true,
       installed: true,
       built: true,
+      root: 'C:/harness',
       bin: 'C:/harness/apps/cli/lib/bin.js',
     }),
     resolveNodeBin: () => process.execPath,
+    ensureGhosttyAssetsInHarness: () => ({ ok: true, roots: ['C:/harness'], detail: 'complete' }),
   });
   const sourceLaunch = source.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(sourceLaunch.kind, 'source');
@@ -522,11 +524,59 @@ test('source launch copies Ghostty assets beside client.js', () => {
       bin: 'C:/harness/apps/cli/lib/bin.js',
     }),
     resolveNodeBin: () => process.execPath,
-    ensureGhosttyAssetsInHarness: (root) => { seen = root; },
+    ensureGhosttyAssetsInHarness: (root) => {
+      seen = root;
+      return { ok: true, roots: [root], detail: 'complete' };
+    },
   });
   const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(launch.kind, 'source');
   assert.equal(seen, 'C:/harness');
+});
+
+test('source launch refuses when Ghostty assets are incomplete', () => {
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({
+      present: true,
+      installed: true,
+      built: true,
+      root: 'C:/harness',
+      bin: 'C:/harness/apps/cli/lib/bin.js',
+    }),
+    resolveNodeBin: () => process.execPath,
+    ensureGhosttyAssetsInHarness: () => ({ ok: false, roots: [], detail: 'missing source' }),
+  });
+  assert.throws(
+    () => manager.buildLaunch({ host: '127.0.0.1', port: 3080 }),
+    (error) => {
+      assert.match(String(error.message), /Ghostty/);
+      assert.match(String(error.message), /setup:harness/);
+      assert.match(String(error.message), /missing source/);
+      return true;
+    },
+  );
+});
+
+test('source launch refuses when harness root is missing', () => {
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({
+      present: true,
+      installed: true,
+      built: true,
+      bin: 'C:/harness/apps/cli/lib/bin.js',
+    }),
+    resolveNodeBin: () => process.execPath,
+    ensureGhosttyAssetsInHarness: () => {
+      throw new Error('ensure must not run without root');
+    },
+  });
+  assert.throws(
+    () => manager.buildLaunch({ host: '127.0.0.1', port: 3080 }),
+    (error) => {
+      assert.match(String(error.message), /Ghostty|setup:harness/);
+      return true;
+    },
+  );
 });
 
 test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (t) => {
