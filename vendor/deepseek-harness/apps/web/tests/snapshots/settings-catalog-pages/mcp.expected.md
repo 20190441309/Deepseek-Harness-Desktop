@@ -33,7 +33,7 @@
     - img
     - text: Close
   - heading "MCP servers" [level=2]
-  - paragraph: Manage local MCP servers. Managed rows write ~/.dsh/mcp-servers.yaml; composition rows are read-only.
+  - paragraph: Manage local MCP servers. Managed rows write ~/.dsh/mcp-servers.yaml. Sign in on an HTTP row so its tools are available in chat. Composition rows are read-only.
   - button "Add server":
     - img
   - button "Refresh":

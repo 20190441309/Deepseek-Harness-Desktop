@@ -60,6 +60,8 @@
    trigger rect. Portaled panels must layer above modal overlays (z 1000). */
 .notePanel {
   position: fixed;
+  /* Desktop caption band: fixed layers must punch a no-drag hole. */
+  -webkit-app-region: no-drag;
   z-index: 1100;
   box-sizing: border-box;
   width: 320px;

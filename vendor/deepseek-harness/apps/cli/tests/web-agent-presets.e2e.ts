@@ -89,11 +89,13 @@ async function bootWeb(
     { id: 'client-hmr', disabled: true },
     // The shipped `-auto` chooser resolves its interaction from a running
     // host and so waits for the webserver disabled above; the browse variant
-    // supplies `directoryPicker` without one.
+    // supplies `directoryPicker` without one. Desktop fork: the shipped base
+    // swaps this row's implementation to the browse host and already ships
+    // the client browse row, so only the host id is re-inserted — re-adding
+    // the client row would duplicate its loader entry id.
     { id: 'directory-picker', disabled: true },
     { insert: [
       { id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' },
-      { id: 'ui-directory-picker-browse', name: '@deepseek-ai/dsh-client-ui-directory-picker-browse' },
     ] },
     // The roster AppCLIEntry would patch in; only the shipped root, so a
     // developer's own `~/.dsh/.preset` cannot change this test's outcome.

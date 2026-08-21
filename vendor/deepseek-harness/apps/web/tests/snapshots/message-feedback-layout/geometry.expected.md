@@ -2,7 +2,7 @@
 
 | viewport | row overflow delta | row lines | items-outside delta | panel outside the column | panel within the viewport | panel-to-trigger gap |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1680px | 0px | 1 | 0 | true | true | 0px |
+| 1680px | 0px | 2 | 0 | true | true | 0px |
 | 1280px | 0px | 1 | 0 | true | true | 0px |
 | 1024px | 0px | 1 | 0 | true | true | 0px |
 | 900px | 0px | 1 | 0 | true | true | 0px |

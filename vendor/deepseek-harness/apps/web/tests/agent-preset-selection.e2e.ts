@@ -287,9 +287,9 @@ describe('web e2e: agent-preset selection', () => {
     await compareOrRefreshGolden(HEADER_EXPECTED, snapshot, MODE)
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('button "1 subagent"')
-    expect(snapshot.indexOf('Minimal mode')).toBeLessThan(snapshot.indexOf('button "1 subagent"'))
-    // The header's trailing utilities end with the subagent count; the Session
-    // log download moved to the titlebar capsule, so it no longer sits here.
+    // The subagent count sits inside the hierarchy nav, ahead of the mode chip.
+    expect(snapshot.indexOf('button "1 subagent"')).toBeLessThan(snapshot.indexOf('Minimal mode'))
+    // The Session log download moved to the titlebar capsule, so it no longer sits here.
     expect(snapshot.indexOf('button "Session log"')).toBe(-1)
     // Static chrome, not a control: the header can only report a composition
     // the host would refuse to change.

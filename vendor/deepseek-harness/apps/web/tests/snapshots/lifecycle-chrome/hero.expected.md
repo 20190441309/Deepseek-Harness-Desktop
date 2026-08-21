@@ -40,7 +40,9 @@
 - button "Send message" [disabled]
 - complementary:
   - separator "Resize terminal drawer"
-  - button "Split" [disabled]:
+  - button "Split left/right" [disabled]:
+    - img
+  - button "Split top/bottom" [disabled]:
     - img
   - button "Maximize":
     - img
@@ -63,7 +65,7 @@
 - button "Files Browse and read workspace files.":
   - img
   - text: Files Browse and read workspace files.
-- button "Diff Review git changes.":
+- button "Diff Review git changes." [disabled]:
   - img
   - text: Diff Review git changes.
 - button "Agents Inspect running agents.":
@@ -71,6 +73,10 @@
   - text: Agents Inspect running agents.
 - button "Session log":
   - text: Session log
+  - img
+- button "Switch branch":
+  - img
+  - text: Select branch
   - img
 - button "Commit" [disabled]:
   - img

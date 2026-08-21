@@ -1,14 +1,13 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Load the editing-cordis-compositions ski" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Load the editing-cordis-compositions skill with the skill tool, then reply DONE. {{date}} {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img

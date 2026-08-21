@@ -4,15 +4,30 @@
     - button "General":
       - img
       - text: General
+    - button "Appearance":
+      - img
+      - text: Appearance
+    - button "Interface":
+      - img
+      - text: Interface
     - button "Models":
       - img
       - text: Models
     - button "Plugins":
       - img
       - text: Plugins
+    - button "Skills":
+      - img
+      - text: Skills
+    - button "MCP":
+      - img
+      - text: MCP
     - button "Agent presets":
       - img
       - text: Agent presets
+    - button "About":
+      - img
+      - text: About
   - button "Open configuration file"
   - button "Close":
     - img
@@ -29,16 +44,6 @@
   - button "English":
     - text: English
     - img
-  - text: Appearance
-  - button "Light":
-    - img
-    - text: Light
-  - button "Dark":
-    - img
-    - text: Dark
-  - button "System" [pressed]:
-    - img
-    - text: System
   - text: Enter behavior while busy Busy only; Cmd/Ctrl+Enter uses the other behavior
   - button "Queue":
     - text: Queue

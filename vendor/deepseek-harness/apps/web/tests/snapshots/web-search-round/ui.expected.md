@@ -3,14 +3,13 @@
     - button "Use web_search once with queries" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Use web_search once with queries ["DeepSeek Harness snapshot search","DeepSeek Harness multi-query search"]. Then reply exactly SEARCH_DONE and stop. {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
