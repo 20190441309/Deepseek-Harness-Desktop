@@ -164,7 +164,7 @@ export function PermissionSelect({ value, locked, command, t }: PermissionSelect
             )}
             <FlipText
               className={css.triggerLabel}
-              text={current === undefined ? displayName(currentValue) : optionLabel(current)}
+              text={currentLabel}
             />
             {/* Same glyph + open rotation as the sibling ModelSelect trigger. */}
             <span className={clsx(css.chevron, open && css.chevronOpen)} aria-hidden>

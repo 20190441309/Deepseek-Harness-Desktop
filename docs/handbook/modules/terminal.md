@@ -13,8 +13,8 @@
 
 ## 架构要点
 
-- Main：`pty.js`（node-pty / Ghostty 资源路径见 `src/shared`）。  
-- UI：`dsh-client-ui-user-terminal` 等。  
+- Main：`pty.js`（node-pty）。Ghostty wasm/字体由 `src/shared/ghostty-assets.js` 放到 `dirname(client.js)/assets/`。  
+- UI：`dsh-client-ui-user-terminal`（Ghostty 网格，不是空态卡片）。  
 - Feature card：[../../features/terminal-drawer.md](../../features/terminal-drawer.md)
 
 ## 实现入口
@@ -25,7 +25,8 @@
 ## 不变量
 
 - 终端是工作环的一部分，与 surfaces note 一致。  
-- xterm 等宽网格，不套胶囊按钮皮。
+- 官方终端组件语言：等宽网格。源码启动与 `setup:harness` 必须能提供 `libghostty-vt` wasm，不能 404。  
+- 不做未承诺的 GPU 嵌入。
 
 ## 门槛
 

@@ -2,7 +2,7 @@
 
 ### 相对 0.2.6 的修复
 
-- 终端 Ghostty wasm/字体随客户端构建写入 `lib/assets`（根 `build:lib:client` 会跑 `copy-ghostty-assets`）
+- 源码启动：`dsh.js` 在拉起 vendor harness 前把 Ghostty wasm/字体拷到 `lib/assets`
 - 打包门禁：`afterPack` 在归档前补齐并校验 `dirname(client.js)/assets`，缺文件则失败
 - 已安装不完整运行时（缺 wasm 导致 `Unable to load libghostty-vt (404)`）会在下次启动时重新解压
 
@@ -26,4 +26,4 @@
 - 门禁检查依赖的真实 `exports` / `module` / `main` 文件，缺 `js-yaml.mjs` 这类入口则构建失败
 - 这些依赖若仍缺失，桌面不会把残缺市场插件写进 profile，Harness 还能启动（设置里暂时没有市场）
 
-0.2.3 / 0.2.4 的功能说明仍适用：内置插件市场、壁纸图库、用户插件树恢复、终端与 Files 工作循环、浏览器预览。已发布的 0.2.6 安装包当时钉的是 `0.1.0-rc.7`。当前仓库源码钉是 `0.1.0-rc.8`（`dsh-v0.1.0-rc.8` / `141eb6fef83422698aef7a981029e843e8161534`，见 `vendor/harness-upstream.json`）。不要把已发出的 0.2.6 安装包说成 rc.8。
+0.2.3 / 0.2.4 的功能说明仍适用：内置插件市场、壁纸图库、用户插件树恢复、终端与 Files 工作循环、浏览器预览。已发布的 0.2.6 安装包当时钉的是 `0.1.0-rc.7`。当前仓库源码钉是 `0.1.1-rc.1`（`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`，见 `vendor/harness-upstream.json`）。不要把已发出的 0.2.6 安装包说成 rc.1。

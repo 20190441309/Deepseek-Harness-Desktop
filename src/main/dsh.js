@@ -461,7 +461,7 @@ class DshManager extends EventEmitter {
    * @param {object} [options] 窄依赖注入；不传任何选项时全部使用生产默认实现。
    *   可注入：loadConfig、ensurePackagedHarness、spawnHarness、isReachable、
    *   sleep、readPidFile、writePidFile、clearPidFile、killTree、killOwnedListeners、
-   *   buildLaunch（测试需要绕过 electron 依赖时按需注入）。
+   *   buildLaunch（测试需要绕过 electron 依赖时按需注入）、ensureGhosttyAssetsInHarness。
    */
   constructor(options = {}) {
     super();
@@ -495,6 +495,10 @@ class DshManager extends EventEmitter {
       resolveNpx: options.resolveNpx || resolveNpx,
       resolveNodeBin: options.resolveNodeBin || resolveNodeBin,
       readPin: options.readPin || defaultReadPin,
+      ensureGhosttyAssetsInHarness: options.ensureGhosttyAssetsInHarness || ((root) => {
+        const { ensureGhosttyAssetsInHarness } = require('../shared/ghostty-assets');
+        return ensureGhosttyAssetsInHarness(root);
+      }),
     };
   }
 
@@ -579,6 +583,9 @@ class DshManager extends EventEmitter {
       }
       if (!nodeBin) {
         throw new Error('未找到 Node.js。请安装 Node.js 22.19+ 或 24+。');
+      }
+      if (typeof source.root === 'string' && source.root) {
+        this._deps.ensureGhosttyAssetsInHarness(source.root);
       }
       return {
         command: nodeBin,

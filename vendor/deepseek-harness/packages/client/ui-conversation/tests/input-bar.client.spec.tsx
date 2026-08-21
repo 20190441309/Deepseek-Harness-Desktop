@@ -93,6 +93,8 @@ interface BenchOptions {
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
+  origin?: 'dshbot'
+  agentPreset?: string
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
@@ -156,7 +158,19 @@ function bench(over?: BenchOptions) {
     SessionProvider: ({ children }) => children(SID),
     useSession: bindSnapshotSelector(session),
     useSessions: bindSnapshotSelector(createSnapshotStore({
-      ids: [], byId: {}, current: undefined, phase: 'ready',
+      ids: [SID],
+      byId: {
+        [SID]: {
+          id: SID,
+          displayTitle: 'bench',
+          running: over?.running ?? false,
+          blank: false,
+          updatedAt: 1,
+          ...(over?.origin === undefined ? {} : { origin: over.origin }),
+          ...(over?.agentPreset === undefined ? {} : { agentPreset: over.agentPreset }),
+        },
+      },
+      current: SID, phase: 'ready',
       subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
     })),
     useWorkspaces: bindSnapshotSelector(createSnapshotStore({

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-21 — card authored from AGENTS work-loops + QA §8 终端 |
+| **last verified** | 2026-08-21 — pin dsh-v0.1.1-rc.1; Ghostty wasm copy on source launch |
 
 ## User paths
 
@@ -15,7 +15,8 @@
 ## Invariants
 
 - 终端是工作环，不是空态说明卡片。
-- PTY 由桌面 `pty.js` 提供；UI 为官方终端组件语言（等宽网格）。
+- PTY 由桌面 `pty.js` 提供；UI 为官方终端组件语言（等宽网格 / Ghostty）。
+- `libghostty-vt` wasm 必须能从 `/plugins/<id>/assets/` 读到；源码启动会把 wasm 拷到 `lib/assets`。
 - 不做未承诺的 GPU 终端嵌入。
 
 ## Allowed touch

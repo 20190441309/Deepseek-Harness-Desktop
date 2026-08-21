@@ -511,6 +511,24 @@ test('every launch kind passes --no-open so dsh web does not open the OS browser
   assert.equal(npxLaunch.args.includes('--no-open'), true);
 });
 
+test('source launch copies Ghostty assets beside client.js', () => {
+  let seen;
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({
+      present: true,
+      installed: true,
+      built: true,
+      root: 'C:/harness',
+      bin: 'C:/harness/apps/cli/lib/bin.js',
+    }),
+    resolveNodeBin: () => process.execPath,
+    ensureGhosttyAssetsInHarness: (root) => { seen = root; },
+  });
+  const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
+  assert.equal(launch.kind, 'source');
+  assert.equal(seen, 'C:/harness');
+});
+
 test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (t) => {
   const h = makeHarness();
   t.after(h.cleanup);

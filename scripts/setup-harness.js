@@ -37,7 +37,7 @@ if (!fs.existsSync(path.join(vendor, 'package.json'))) {
 run(process.execPath, [pnpm, 'install', '--frozen-lockfile'], vendor);
 run(process.execPath, [pnpm, 'run', 'build'], vendor);
 
-// build:lib:client runs tsdown only; Ghostty wasm/font must land beside lib/client.js.
+// Root build:lib:client copies Ghostty wasm/font; still ensure lib/assets beside client.js.
 const { ensureGhosttyAssetsInHarness, harnessHasGhosttyAssets, missingGhosttyAssetPaths } = require(
   '../src/shared/ghostty-assets',
 );

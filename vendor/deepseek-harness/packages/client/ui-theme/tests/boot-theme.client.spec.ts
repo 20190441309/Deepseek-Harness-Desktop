@@ -100,4 +100,4 @@ describe('theme bootstrap row', () => {
     expect(document.body.style.getPropertyValue('--dsw-alias-bg-base')).toBe('#f3faf7')
     expect(document.body.style.getPropertyValue('--dsw-alias-glass-opacity')).toBe('70%')
   })
-}))
+})
