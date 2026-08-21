@@ -34,7 +34,7 @@ switch (invocation.mode) {
       profile: invocation.profile,
       patchFiles: invocation.patches,
       args: invocation.args,
-      skipUserPlugins: invocation.skipUserPlugins,
+      ...invocation.skipUserPlugins === undefined ? {} : { skipUserPlugins: invocation.skipUserPlugins },
     })
     break
   }

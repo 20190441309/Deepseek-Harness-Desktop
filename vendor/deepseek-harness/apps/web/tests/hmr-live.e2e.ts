@@ -23,6 +23,18 @@ function spawnSpec(argv: readonly string[], cwd: string, env?: Record<string, st
   }
 }
 
+/**
+ * Windows pnpm is a .cmd shim that node's spawn cannot resolve without a
+ * shell. Prefer the js entrypoint the package manager exported via
+ * `npm_execpath`; bare-vitest runs fall back to `cmd /c` on win32.
+ */
+function pnpmArgv(args: readonly string[]): string[] {
+  const entry = process.env.npm_execpath
+  if (entry !== undefined && entry !== '') return [process.execPath, entry, ...args]
+  if (process.platform === 'win32') return ['cmd', '/d', '/s', '/c', `pnpm ${args.join(' ')}`]
+  return ['pnpm', ...args]
+}
+
 function waitForOutput(child: SubprocessHandle, pattern: RegExp, label: string): Promise<string> {
   return new Promise((resolveReady, reject) => {
     let output = ''
@@ -93,7 +105,7 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   try {
     subprocessFiber = await subprocessCtx.plugin(LocalSubprocessRuntime)
     watcher = subprocessCtx.subprocess.spawn(spawnSpec(
-      ['pnpm', 'run', 'dev:web'],
+      pnpmArgv(['run', 'dev:web']),
       REPO_ROOT,
       { ...clientBuildEnvironment },
     ))
@@ -112,7 +124,10 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     const pageErrors: string[] = []
     page.on('pageerror', error => pageErrors.push(String(error)))
     await page.goto(baseUrl, { waitUntil: 'load' })
-    await page.getByText(oldText, { exact: true }).waitFor({ timeout: 15_000 })
+    // Dev-mode cold transform of the client graph can far exceed a CI-cold
+    // 15s on a local Windows machine; the identity check below is what the
+    // scenario actually asserts, so the first paint gets the wide budget.
+    await page.getByText(oldText, { exact: true }).waitFor({ timeout: 60_000 })
     const pageIdentity = await page.evaluate(() => {
       const identity = crypto.randomUUID()
       Object.defineProperty(window, '__dshHmrPageIdentity', { value: identity })
