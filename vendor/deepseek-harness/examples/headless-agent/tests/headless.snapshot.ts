@@ -57,8 +57,15 @@ const tsconfigPath = fileURLToPath(new URL('../../../tsconfig.json', import.meta
 const reasoningConfigPath = fileURLToPath(new URL('./fixtures/cli.cordis.yml', import.meta.url))
 const deepseekDefaultsConfigPath = fileURLToPath(new URL('./fixtures/deepseek-defaults.cordis.yml', import.meta.url))
 const headlessOverlayPath = fileURLToPath(new URL('./fixtures/headless-profile.cordis.yml', import.meta.url))
-const headlessSessionExpected = join(snapshotsDir, 'headless-profile', 'session.expected.jsonl')
+const headlessSessionExpected = join(
+  snapshotsDir,
+  'headless-profile',
+  process.platform === 'win32' ? 'session.expected.win32.jsonl' : 'session.expected.jsonl',
+)
 const headlessFailureExpected = join(snapshotsDir, 'headless-profile', 'stderr.expected.txt')
+/** Product profile boot plus default SERVER retry backoff exceeds the 30s loader-smoke process window. */
+const PRODUCT_HEADLESS_PROCESS_TIMEOUT_MS = 90_000
+const PRODUCT_HEADLESS_TEST_TIMEOUT_MS = PRODUCT_HEADLESS_PROCESS_TIMEOUT_MS + 15_000
 const cliMockLlmPluginPath = fileURLToPath(new URL('./fixtures/cli-mock-llm.ts', import.meta.url))
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
 
@@ -252,9 +259,11 @@ describe('headless stream-json snapshots', () => {
       configPath: headlessOverlayPath,
       binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, task],
       tsconfigPath,
+      processTimeoutMs: PRODUCT_HEADLESS_PROCESS_TIMEOUT_MS,
       env: {
         DSH_PERMISSION_MODE: 'danger-full-access',
         DSH_TELEMETRY_DISABLED: '1',
+        ...(process.platform === 'win32' ? { DSH_CLI_MOCK_SHELL: 'pwsh' } : {}),
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
       prepare: prepareCliMockFixture,
@@ -274,7 +283,7 @@ describe('headless stream-json snapshots', () => {
 
     expect(result.stdout).toBe('CLI tool round trip complete: CLI_TOOL_ROUND_TRIP\n')
     expect(result.stderr).toBe('')
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCT_HEADLESS_TEST_TIMEOUT_MS)
 
   it('prints a terminal model failure through the product headless profile command', async () => {
     const result = await runLoaderSmoke({
@@ -285,6 +294,7 @@ describe('headless stream-json snapshots', () => {
       binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, 'Trigger the keyless model failure.'],
       tsconfigPath,
       expectedExitCode: 1,
+      processTimeoutMs: PRODUCT_HEADLESS_PROCESS_TIMEOUT_MS,
       env: {
         DSH_CLI_MOCK_FAILURE: '1',
         DSH_TELEMETRY_DISABLED: '1',
@@ -295,7 +305,7 @@ describe('headless stream-json snapshots', () => {
 
     expect(result.stdout).toBe('\n')
     await expect(result.stderr).toMatchFileSnapshot(headlessFailureExpected)
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCT_HEADLESS_TEST_TIMEOUT_MS)
 
   it('prints the original Loader activation error through the assembled one-shot app', async () => {
     const result = await runLoaderSmoke({
@@ -353,7 +363,9 @@ describe('headless stream-json snapshots', () => {
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('recovers from context overflow through an assembled compaction', async () => {
+  // Recorded compaction premise uses POSIX `printf`. win32 resolves WSL bash,
+  // which fails with ERROR_PATH_NOT_FOUND, so the tool result diverges.
+  it.skipIf(process.platform === 'win32')('recovers from context overflow through an assembled compaction', async () => {
     const prompt = await scenarioPrompt(compactionScenarioDir, 'compaction-recovery')
     let expectedSession = await readFile(compactionSessionFixture, 'utf8')
     let runCwd = ''
