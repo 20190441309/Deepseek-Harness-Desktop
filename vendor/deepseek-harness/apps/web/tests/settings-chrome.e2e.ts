@@ -93,8 +93,8 @@ describe('web e2e: settings modal and General preferences', () => {
     const snapshot = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(DIALOG_EXPECTED, snapshot, MODE)
     // Section switch: aria-current moves (the Models page itself has its own scenario file).
-    await dialog.getByRole('button', { name: '模型' }).click()
-    await expect.poll(() => dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current'), { timeout: 5_000 }).toBe('true')
+    await dialog.getByRole('button', { name: '模型', exact: true }).click()
+    await expect.poll(() => dialog.getByRole('button', { name: '模型', exact: true }).getAttribute('aria-current'), { timeout: 5_000 }).toBe('true')
     expect(await dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current')).toBeNull()
     // Plugins is a read-only projection of the same assembled Loader tree.
     // Capture one stable shipped row rather than the whole inventory so adding
@@ -113,13 +113,17 @@ describe('web e2e: settings modal and General preferences', () => {
       .toBe(String(expectedPluginCount))
     expect(await dialog.getByRole('button', { name: '插件', exact: true }).getAttribute('aria-current')).toBe('true')
     expect(await dialog.getByRole('tab', { name: '插件列表', exact: true }).getAttribute('aria-selected')).toBe('true')
-    expect(await dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current')).toBeNull()
+    expect(await dialog.getByRole('button', { name: '模型', exact: true }).getAttribute('aria-current')).toBeNull()
     const pluginsSnapshot = await captureStableAria(
       page,
       PLUGIN_ROW_SELECTOR,
       scaffold.workspaceCwd,
     )
     await compareOrRefreshGolden(PLUGINS_EXPECTED, pluginsSnapshot, MODE)
+    // Desktop fork: the shell restores the last active section on reopen, and
+    // every spec below assumes General. Return there before closing.
+    await dialog.getByRole('button', { name: '通用设置' }).click()
+    await expect.poll(() => dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current'), { timeout: 5_000 }).toBe('true')
     // Close path 1: Escape.
     await page.keyboard.press('Escape')
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count(), { timeout: 5_000 }).toBe(0)
@@ -185,7 +189,10 @@ describe('web e2e: settings modal and General preferences', () => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const initialDialog = page.getByRole('dialog', { name: '设置' })
-    const darkCube = initialDialog.getByRole('button', { name: '深色' })
+    // Desktop fork: the scheme tiles live in the Appearance section, and the
+    // shell restores the last active section instead of defaulting to General.
+    await initialDialog.getByRole('button', { name: '外观', exact: true }).click()
+    const darkCube = initialDialog.getByRole('button', { name: '深色', exact: true })
     await darkCube.click()
     await expect.poll(() => darkCube.getAttribute('aria-pressed'), { timeout: 5_000 }).toBe('true')
     await expect.poll(async () => readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8'), { timeout: 5_000 })
@@ -205,7 +212,7 @@ describe('web e2e: settings modal and General preferences', () => {
     let reload: ReturnType<Page['reload']> | undefined
     try {
       reload = page.reload({ waitUntil: 'domcontentloaded' })
-      const loading = page.getByText('Loading plugins…', { exact: true })
+      const loading = page.getByText(/正在加载插件/)
       await loading.waitFor({ timeout: 10_000 })
       const state = await loading.evaluate((element) => {
         const boot = element.parentElement?.parentElement
@@ -231,7 +238,10 @@ describe('web e2e: settings modal and General preferences', () => {
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const restoredDialog = page.getByRole('dialog', { name: '设置' })
-    const systemCube = restoredDialog.getByRole('button', { name: '跟随系统' })
+    // Desktop fork: a full reload resets the dialog to General; the scheme
+    // tiles live in Appearance.
+    await restoredDialog.getByRole('button', { name: '外观', exact: true }).click()
+    const systemCube = restoredDialog.getByRole('button', { name: '跟随系统', exact: true })
     await systemCube.click()
     await expect.poll(() => systemCube.getAttribute('aria-pressed'), { timeout: 5_000 }).toBe('true')
     await expect.poll(() => page.evaluate(() => document.body.hasAttribute('data-ds-dark-theme')), {
@@ -279,7 +289,9 @@ describe('web e2e: settings modal and General preferences', () => {
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.waitFor({ timeout: 10_000 })
-    const darkCube = dialog.getByRole('button', { name: '深色' })
+    // Desktop fork: scheme tiles are in Appearance; see the note above.
+    await dialog.getByRole('button', { name: '外观', exact: true }).click()
+    const darkCube = dialog.getByRole('button', { name: '深色', exact: true })
     expect(await darkCube.getAttribute('aria-pressed')).toBe('false')
     await darkCube.click()
     // The full cascade: pressed state, Host-backed preference, body attribute,
@@ -329,7 +341,9 @@ describe('web e2e: settings modal and General preferences', () => {
 
     // `system` follows the emulated OS scheme (dark stays dark, light clears).
     await page.getByRole('button', { name: '设置', exact: true }).click()
-    const systemCube = page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '跟随系统' })
+    // Desktop fork: scheme tiles live in the Appearance section.
+    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '外观', exact: true }).click()
+    const systemCube = page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '跟随系统', exact: true })
     await systemCube.click()
     await expect.poll(() => systemCube.getAttribute('aria-pressed'), { timeout: 5_000 }).toBe('true')
     await expect.poll(async () => (await readState()).attr, { timeout: 5_000 }).toBe(false)
@@ -339,7 +353,7 @@ describe('web e2e: settings modal and General preferences', () => {
     expectThemeColorSynchronized(await readState())
     // Restore for the specs that follow: light preference beats the emulated
     // dark OS scheme, leaving the shared page in the light default.
-    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '浅色' }).click()
+    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '浅色', exact: true }).click()
     await expect.poll(async () => (await readState()).attr, { timeout: 5_000 }).toBe(false)
     expectThemeColorSynchronized(await readState())
     await page.keyboard.press('Escape')
@@ -351,6 +365,8 @@ describe('web e2e: settings modal and General preferences', () => {
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.waitFor({ timeout: 10_000 })
+    // Desktop fork: be explicit about the section; see the restore note above.
+    await dialog.getByRole('button', { name: '通用设置' }).click()
     await dialog.getByRole('button', { name: '排队发送' }).click()
     await page.getByRole('menuitem', { name: '插话发送' }).click()
     await dialog.getByRole('button', { name: '插话发送' }).waitFor({ timeout: 10_000 })
@@ -400,6 +416,8 @@ describe('web e2e: settings modal and General preferences', () => {
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const zhDialog = page.getByRole('dialog', { name: '设置' })
     await zhDialog.waitFor({ timeout: 10_000 })
+    // Desktop fork: be explicit about the section; see the restore note above.
+    await zhDialog.getByRole('button', { name: '通用设置' }).click()
     // The document language follows the active locale in the assembled app, not
     // only on a directly-mounted plugin. This is a zh browser, so the served
     // markup's `en` must already have been replaced — asserting it here (rather
