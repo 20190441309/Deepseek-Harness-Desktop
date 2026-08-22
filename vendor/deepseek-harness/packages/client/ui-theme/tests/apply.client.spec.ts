@@ -123,7 +123,10 @@ describe('ui-theme apply', () => {
     face.setTheme('system')
     expect(theme.getTheme().preference).toBe('system')
     expect(instance.getSnapshot().preference).toBe('system')
-    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
+    // Desktop fork: writes debounce 300ms per field, so the dark pick and the
+    // system pick collapse into ONE Host mutation carrying the final value.
+    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(1) })
+    expect(b.mutate.mock.calls.at(-1)?.[0].ops.at(-1)?.value).toBe('system')
   })
 
   it('loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local', async () => {
