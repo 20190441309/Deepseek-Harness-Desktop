@@ -503,14 +503,18 @@ describe('SessionPersistenceSqlite schema ownership', () => {
       attempts += 1
       return Object.assign(new Error('database is locked'), { errcode: 5 })
     })
+    // Desktop fork: 50ms barely survives Windows' slower pre-open work (the
+    // budget is consumed before the first busy error, collapsing to one
+    // attempt); 500ms keeps the pacing assertion meaningful everywhere, with
+    // the attempt cap scaled to the 10ms retry interval.
     await expect(openDatabase(
       BusyDatabase,
       await freshDbPath('dsh-sqlite-journal-paced-'),
       'wal',
-      50,
+      500,
     )).rejects.toThrow('database is locked')
     expect(attempts).toBeGreaterThan(1)
-    expect(attempts).toBeLessThanOrEqual(6)
+    expect(attempts).toBeLessThanOrEqual(50)
   })
 
   it('rejects unversioned, incompatible, and foreign-application databases', async () => {
