@@ -70,6 +70,8 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'packages/client/ui-theme/src/client/WallpaperRow.tsx': 'export const row = () => null\n',
       'apps/cli/src/args.ts': "program.option('--skip-user-plugins', 'boot the shipped bundle template')\n",
       'apps/cli/tests/web-agent-presets.e2e.ts': "    { insert: [\n      { id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' },\n    ] },\n",
+      'apps/web/tests/settings-chrome.e2e.ts': "const loading = page.getByText(/正在加载插件/)\n",
+      'apps/web/tests/models-settings.e2e.ts': "await page.route('**/api/llm.discoverModels', async (route) => {\n",
       'apps/web/tests/snapshots/agent-preset-selection/header.expected.md': '- navigation "Session hierarchy"\n',
     };
     writeFile(root, marker.file, content[marker.file] ?? 'export {}\n');

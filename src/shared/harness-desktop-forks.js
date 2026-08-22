@@ -63,6 +63,10 @@ const FORK_FILE_MARKERS = [
   // Desktop composition carries the browse rows in the shipped base, so the
   // upstream preset e2e must re-insert only the host row.
   { file: 'apps/cli/tests/web-agent-presets.e2e.ts', includes: ["{ id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' }"] },
+  // Desktop-forked settings e2e drivers (SettingsSelect menus, section
+  // navigation, zh boot copy, RPC interception).
+  { file: 'apps/web/tests/settings-chrome.e2e.ts', includes: ['正在加载插件'] },
+  { file: 'apps/web/tests/models-settings.e2e.ts', includes: ['llm.discoverModels'] },
   // Session log download lives in the desktop titlebar capsule, never in the conversation header.
   { file: 'apps/web/tests/snapshots/agent-preset-selection/header.expected.md', excludes: ['button "Session log"'] },
 ];
