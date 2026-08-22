@@ -259,14 +259,16 @@ describe('connection lifecycle', () => {
     }
   })
 
-  it('rejects a generation whose streams end during readiness and retries', async () => {
+  it('rejects a generation whose handshake fails and retries', async () => {
+    // Desktop fork: the handshake is unary-first (host.describe settles before
+    // any stream opens), so a broken generation is injected at describe rather
+    // than at stream level — the old readiness window no longer exists.
     const api = new FakeApiClient()
-    const firstDescribe = deferred<Awaited<ReturnType<FakeApiClient['onDescribe']>>>()
     let describeCalls = 0
     api.onDescribe = () => {
       describeCalls++
       return describeCalls === 1
-        ? firstDescribe.promise
+        ? Promise.resolve({ rpcId: undefined as never, result: { ok: false, error: { code: 'network', message: 'unary handshake broken' } } })
         : Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' }))
     }
     const states: ConnectionState[] = []
@@ -278,10 +280,6 @@ describe('connection lifecycle', () => {
     }, FAST)
     controller.start()
     try {
-      await vi.waitFor(() => { expect(api.openMuxCount).toBe(1) })
-      api.endStreams()
-      firstDescribe.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' }))
-
       await vi.waitFor(() => { expect(describeCalls).toBe(2) })
       await vi.waitFor(() => { expect(connected).toBe(1) })
       expect(states).toEqual(['reconnecting', 'connected'])
