@@ -128,8 +128,10 @@ describe('wire event bridge', () => {
     let resets = 0
     bench.ctx.on('connection/reset', () => { resets++ })
     const description = { version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' }
-    bench.sinks?.onConnected?.(description)
-    bench.sinks?.onConnected?.(description) // second generation after a reconnect
+    // Desktop fork: onConnected awaits session/workspace hydration before the
+    // reset broadcast, so each generation is awaited rather than synchronous.
+    await bench.sinks?.onConnected?.(description)
+    await bench.sinks?.onConnected?.(description) // second generation after a reconnect
     expect(resets).toBe(2)
   })
 })
