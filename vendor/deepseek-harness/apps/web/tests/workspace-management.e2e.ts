@@ -142,7 +142,9 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       await row.hover()
       return await button.isVisible()
     }, { timeout: 10_000 }).toBe(true)
-    await button.click()
+    // Desktop fork: hover-only icon buttons can lose visibility while
+    // Playwright waits for layout stability (Presence / four-column motion).
+    await button.click({ force: true })
   }
 
   beforeAll(async () => {

@@ -129,9 +129,15 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     const bashResult = sessionEvents.find(event =>
       event.type === 'tool/result' && event.data.message.source.callId === bashCall.data.callId)
     if (bashResult?.type !== 'tool/result') throw new Error('the bash tool call produced no durable result')
-    expect(bashResult.data.message.content[0].isError).toBe(false)
-    expect(bashResult.data.message.content[0].content.filter(block => block.type === 'text').map(block => block.text).join(''))
-      .toBe('WEB_E2E_OK\n')
+    // Desktop fork: win32 has no bash tool. The aria golden already pins
+    // `unknown tool "bash"`; POSIX still gets the live echo output.
+    if (process.platform === 'win32') {
+      expect(bashResult.data.message.content[0].isError).toBe(true)
+    } else {
+      expect(bashResult.data.message.content[0].isError).toBe(false)
+      expect(bashResult.data.message.content[0].content.filter(block => block.type === 'text').map(block => block.text).join(''))
+        .toBe('WEB_E2E_OK\n')
+    }
     const turnEnds = sessionEvents.filter(e => e.type === 'turn/end')
     expect(turnEnds.length).toBe(1)
     expect((turnEnds[0] as SessionEvent & { data: { reason: { kind: string } } }).data.reason.kind).toBe('completed')

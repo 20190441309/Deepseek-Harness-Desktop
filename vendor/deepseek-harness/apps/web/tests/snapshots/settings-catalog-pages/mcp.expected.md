@@ -40,5 +40,7 @@
     - img
   - img
   - searchbox "Search name, ID, command, or URL"
-  - button "Enabled state": All
+  - button "Enabled state":
+    - text: All
+    - img
   - paragraph: No MCP servers yet. Add one to connect local tools or a remote service.

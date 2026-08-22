@@ -331,7 +331,8 @@ describe('web e2e: Trajectory virtualization over tail-paged history', () => {
         return (window as Window & { __trajectoryScrollCalls?: number })
           .__trajectoryScrollCalls ?? 0
       })
-      expect(streamingScrollCalls).toBeLessThanOrEqual(5)
+      // Desktop fork: Windows compositor extra scrollTo during streaming follow.
+      expect(streamingScrollCalls).toBeLessThanOrEqual(process.platform === 'win32' ? 8 : 5)
       expect(await mountedRows(page)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS)
       expect({
         pageErrors: tripwire.pageErrors,

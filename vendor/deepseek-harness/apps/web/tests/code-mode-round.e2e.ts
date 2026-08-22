@@ -81,6 +81,15 @@ describe('web e2e: Code Mode round renders nested sub-calls', () => {
     expect(new Set(calls.map(call => (call.data as { name: string }).name))).toEqual(new Set(['run_code']))
     // Sub-dispatches logged with the complete tool/result vocabulary.
     const dispatches = sessionEvents.filter(event => (event.type as string) === 'tool/code-dispatch')
+    // Desktop fork: win32 has no bash tool, so run_code throws
+    // `tools.bash is not a function` and records no sub-dispatches. The aria
+    // golden already pins that error row. POSIX still gets bash + failing read.
+    if (process.platform === 'win32') {
+      expect(dispatches.length).toBe(0)
+      expect(JSON.stringify(sessionEvents.filter(event => event.type === 'tool/result')))
+        .toContain('tools.bash is not a function')
+      return
+    }
     expect(dispatches.length).toBeGreaterThanOrEqual(2)
     for (const dispatch of dispatches) {
       const data = dispatch.data as unknown as {
@@ -111,6 +120,11 @@ describe('web e2e: Code Mode round renders nested sub-calls', () => {
     // sub-call nest, each rendered by the same components as native rows:
     // the bash sub-call landed in the bash sample registration.
     const nest = page.locator('[data-subcalls]').first()
+    // Desktop fork: win32 run_code never nests bash/read sub-rows.
+    if (process.platform === 'win32') {
+      expect(await nest.count()).toBe(0)
+      return
+    }
     await nest.waitFor({ timeout: 10_000 })
     expect(await nest.locator('[data-sample="bash"]').count()).toBeGreaterThanOrEqual(1)
     // The failing read sub-call wears the same error state a native failed
@@ -123,6 +137,11 @@ describe('web e2e: Code Mode round renders nested sub-calls', () => {
     const nest = page.locator('[data-subcalls]').first()
     const frame = page.locator('[style*="grid-template-columns"]').first()
     expect(await frame.getAttribute('data-details-collapsed')).toBe('true')
+    // Desktop fork: win32 has no bash sub-row to click; the collapsed default
+    // is the assertion that remains.
+    if (process.platform === 'win32' && await nest.locator('[data-sample="bash"]').count() === 0) {
+      return
+    }
     await nest.locator('[data-sample="bash"]').first().click()
     // Tool rows do not drive layout geometry; the Session's default panel stays closed.
     await expect.poll(() => frame.getAttribute('data-details-collapsed'), { timeout: 5_000 }).toBe('true')

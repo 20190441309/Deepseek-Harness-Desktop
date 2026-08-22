@@ -81,6 +81,7 @@ describe('web e2e: shipped MCP and Skills settings catalogs', () => {
       expect(await mcpNav.getAttribute('aria-current')).toBe('true')
       expect(await skillsNav.getAttribute('aria-current')).toBeNull()
       expect(await dialog.getByRole('alert').count()).toBe(0)
+      // Desktop fork: filter chips are SettingsSelect pills (button + img).
       const mcpSnapshot = await scaffoldApi.captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
       await scaffoldApi.compareOrRefreshGolden(MCP_EXPECTED, mcpSnapshot, mode)
 

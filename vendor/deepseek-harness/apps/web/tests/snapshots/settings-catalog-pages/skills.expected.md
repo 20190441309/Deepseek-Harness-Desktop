@@ -40,7 +40,9 @@
     - img
   - img
   - searchbox "Search skills"
-  - button "Source": All
+  - button "Source":
+    - text: All
+    - img
   - paragraph: 1 workspace and personal skills
   - list:
     - listitem:

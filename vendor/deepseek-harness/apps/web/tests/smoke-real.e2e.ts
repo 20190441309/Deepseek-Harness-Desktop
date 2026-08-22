@@ -295,6 +295,8 @@ describe('dsh web keyless CLI smoke', () => {
     }
   })
 
+  // Desktop fork: spawning `dsh web` on Windows exceeds the 30s budget
+  // (waitForReadyLine alone is 90s).
   it('retries a partial transport failure through the shipped Web composition', async () => {
     requireDist()
     const workspace = mkdtempSync(join(tmpdir(), 'dsh-web-retry-'))
@@ -385,7 +387,7 @@ describe('dsh web keyless CLI smoke', () => {
       await new Promise<void>(resolveClose => provider.close(() => { resolveClose() }))
       rmSync(workspace, { recursive: true, force: true })
     }
-  }, 30_000)
+  }, 180_000)
 
   it('DSH_TOOLS_MODE=code collapses the provider wire tools to run_code with the SDK prompt section', async () => {
     requireDist()
