@@ -203,11 +203,14 @@ const SCENARIOS: Scenario[] = [
     overridden: true,
     configPath: SESSION_TITLE_CONFIG,
   },
-  { name: 'tool-call-turn', hasModelTurn: true, recorded: true },
+  // Recorded bash transcripts assume POSIX shell output. On win32 the bash
+  // tool resolves WSL, which fails with ERROR_PATH_NOT_FOUND, so the tool
+  // result diverges. Same class as jsonrpc persistent-tools skipOnWin32.
+  { name: 'tool-call-turn', hasModelTurn: true, recorded: true, posixOnly: true },
   // Authored from the real PACKED_CHUNKS_SOURCE recording under the ordinary
   // app composition. The contract below pins decoded equality and all three
   // row kinds; replay additionally proves the assembled app re-packs identically.
-  { name: 'packed-chunks', hasModelTurn: true, recorded: false },
+  { name: 'packed-chunks', hasModelTurn: true, recorded: false, posixOnly: true },
   // The fs overlay only adds the spill stack (the sandboxed filesystem tools
   // live in the base tree), so these scenarios share the default header class.
   {
@@ -216,7 +219,7 @@ const SCENARIOS: Scenario[] = [
     recorded: false,
     configPath: FS_CONFIG,
   },
-  { name: 'bash-spill', hasModelTurn: true, recorded: false, configPath: FS_CONFIG },
+  { name: 'bash-spill', hasModelTurn: true, recorded: false, configPath: FS_CONFIG, posixOnly: true },
   {
     name: 'session-query-spill',
     hasModelTurn: true,
@@ -276,7 +279,7 @@ const SCENARIOS: Scenario[] = [
     headerClass: 'pty',
     configPath: PTY_CONFIG,
   },
-  { name: 'bash-tool-turn', hasModelTurn: true, recorded: true },
+  { name: 'bash-tool-turn', hasModelTurn: true, recorded: true, posixOnly: true },
   {
     name: 'background-job-admission',
     hasModelTurn: true,
@@ -358,6 +361,7 @@ const SCENARIOS: Scenario[] = [
     name: 'workspace-edit',
     hasModelTurn: true,
     recorded: true,
+    posixOnly: true,
   },
   // The real Loader/app/subprocess path executes the PACKAGED ripgrep binary
   // against a prepared workspace whose fixed mtimes pin the
@@ -403,7 +407,7 @@ const SCENARIOS: Scenario[] = [
   },
   { name: 'fs-read-window', hasModelTurn: true, recorded: true },
   { name: 'fs-policy-reject', hasModelTurn: true, recorded: true },
-  { name: 'fs-delete-recreate', hasModelTurn: true, recorded: true },
+  { name: 'fs-delete-recreate', hasModelTurn: true, recorded: true, posixOnly: true },
   { name: 'multi-turn', hasModelTurn: true, recorded: true },
   { name: 'error-finish', hasModelTurn: true, recorded: false, overridden: true },
   // Keyless, authored (like error-finish): a live provider cannot be coaxed
@@ -585,8 +589,10 @@ const SCENARIOS: Scenario[] = [
   // Prompt-submit blocks are authored keylessly with malformed matcher fields,
   // which these matcherless events must ignore. Admission rejects before a turn
   // opens, so only the ACP stop reason is observable and no log is harvested.
-  { name: 'hook-cc-promptsubmit-block', hasModelTurn: false, recorded: false },
-  { name: 'hook-codex-promptsubmit-block', hasModelTurn: false, recorded: false },
+  // Hook `command` strings are POSIX shell (`echo ... >&2; exit 2`); win32 cannot
+  // execute them, so the hook either passes with exit 1 or fails to block.
+  { name: 'hook-cc-promptsubmit-block', hasModelTurn: false, recorded: false, posixOnly: true },
+  { name: 'hook-codex-promptsubmit-block', hasModelTurn: false, recorded: false, posixOnly: true },
   // Each invalid matcher follows a runnable prompt blocker. Reaching the replay
   // model without any hook audit rows proves config loading is atomic through
   // the real Loader/app path, rather than retaining the earlier valid group.
@@ -597,21 +603,21 @@ const SCENARIOS: Scenario[] = [
   // SessionStart/SubagentStart are excluded because detached injection races log
   // order; SubagentStop writes no transcript, so an expected output could not prove it ran.
   // Unit tests cover those points; the hook-snapshot-matrix Agent Note owns the rationale.
-  { name: 'hook-cc-promptsubmit-context', hasModelTurn: true, recorded: true },
-  { name: 'hook-cc-pretool-deny', hasModelTurn: true, recorded: true },
-  { name: 'hook-cc-pretool-ask', hasModelTurn: true, recorded: true },
-  { name: 'hook-cc-posttool-block', hasModelTurn: true, recorded: true },
-  { name: 'hook-cc-posttool-context', hasModelTurn: true, recorded: true },
-  { name: 'hook-cc-stop-continue', hasModelTurn: true, recorded: true },
-  { name: 'hook-codex-promptsubmit-context', hasModelTurn: true, recorded: true },
-  { name: 'hook-codex-pretool-block', hasModelTurn: true, recorded: true },
-  { name: 'hook-codex-posttool-block', hasModelTurn: true, recorded: true },
-  { name: 'hook-codex-posttool-context', hasModelTurn: true, recorded: true },
-  { name: 'hook-codex-stop-continue', hasModelTurn: true, recorded: true },
+  { name: 'hook-cc-promptsubmit-context', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-cc-pretool-deny', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-cc-pretool-ask', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-cc-posttool-block', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-cc-posttool-context', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-cc-stop-continue', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-codex-promptsubmit-context', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-codex-pretool-block', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-codex-posttool-block', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-codex-posttool-context', hasModelTurn: true, recorded: true, posixOnly: true },
+  { name: 'hook-codex-stop-continue', hasModelTurn: true, recorded: true, posixOnly: true },
   // Code Mode: the registry in `mode: code` — the wire tool list collapses to [run_code], the
   // tools:sdk section rides in the prompt, and the program's tool calls land as
   // tool/code-dispatch events. Each overlay composes and pins its own header class.
-  { name: 'code-mode-turn', hasModelTurn: true, recorded: true, pinsHeader: true, headerClass: 'code', configPath: CODE_MODE_CONFIG },
+  { name: 'code-mode-turn', hasModelTurn: true, recorded: true, pinsHeader: true, headerClass: 'code', configPath: CODE_MODE_CONFIG, posixOnly: true },
   {
     name: 'code-mode-read-image',
     hasModelTurn: true,
@@ -646,6 +652,7 @@ const SCENARIOS: Scenario[] = [
     pinsHeader: true,
     headerClass: 'both',
     configPath: BOTH_MODE_CONFIG,
+    posixOnly: true,
   },
   // Machine permission scenarios use an explicit deployment policy; there is
   // no session-scoped UI picker on the automation protocol.
@@ -658,6 +665,7 @@ const SCENARIOS: Scenario[] = [
     systemPromptSource: 'text-turn',
     toolSchemasSource: 'text-turn',
     env: { DSH_PERMISSION_MODE: 'workspace-write' },
+    posixOnly: true,
   },
   {
     name: 'escalation-rejected',
@@ -806,7 +814,7 @@ it('pins native DeepSeek image offload in the request sent by the assembled app'
     )))]
     let toolContent = toolMessage.content
     for (const cwd of cwdSpellings) toolContent = toolContent.replaceAll(cwd, '{{cwd}}')
-    toolMessage.content = toolContent
+    toolMessage.content = toolContent.replaceAll('\\', '/')
     expect(followup).toEqual([
       {
         role: 'user',

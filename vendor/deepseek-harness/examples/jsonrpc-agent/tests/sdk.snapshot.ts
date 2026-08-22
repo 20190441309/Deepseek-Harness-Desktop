@@ -97,6 +97,9 @@ const SCENARIOS: SdkScenario[] = [
     prompt: 'Run this exact command with your bash tool, then reply with its stdout only: echo dsh-sdk-proof-7391',
     sessionId: 'sdk-snapshot-bash',
     children: 0,
+    // Recorded stdout is POSIX `echo` (`dsh-sdk-proof-7391\n`). win32 resolves
+    // WSL bash, which fails with ERROR_PATH_NOT_FOUND, so the tool round diverges.
+    skipOnWin32: true,
   },
   {
     name: 'subagent-spawn-in-process',

@@ -408,6 +408,30 @@ describe('normalizeSessionLog', () => {
     expect(out).toContain('"durationMs":88')
   })
 
+  it('tokenizes JSON-escaped Windows cwd inside nested JSON tool text', () => {
+    const windowsCtx: NormalizeContext = {
+      sessionIds: [],
+      cwd: String.raw`C:\Users\runner\AppData\Local\Temp\acp-snap-cwd-abc123`,
+    }
+    const escaped = JSON.stringify(windowsCtx.cwd).slice(1, -1)
+    const inner = `{\n  "path": "${escaped}\\\\nested\\\\task.txt"\n}`
+    const raw = [
+      JSON.stringify({ type: 'session', version: 0, createdAt: 1, cwd: windowsCtx.cwd }),
+      JSON.stringify({
+        type: 'tool/result',
+        seq: 1,
+        time: 2,
+        data: { content: [{ type: 'text', text: inner }] },
+      }),
+    ].join('\n')
+    const out = normalizeSessionLog(raw, windowsCtx)
+    const result = JSON.parse(out.trimEnd().split('\n')[1] as string) as {
+      data: { content: Array<{ text: string }> }
+    }
+    expect(result.data.content[0]?.text).toContain('"path": "{{cwd}}/nested/task.txt"')
+    expect(out).not.toContain('C:')
+  })
+
   it('handles complete envelopes when optional normalized fields are absent', () => {
     const bareHeader = JSON.stringify({ type: 'session', id: 's' })
     const bareHook = JSON.stringify({ type: 'hook/result', seq: 2, time: 5, data: { decision: 'allow' } })
@@ -511,6 +535,25 @@ describe('tokenizeSessionFixtureCwd', () => {
     expect(resultText).toContain('/tmp/authored.txt')
     expect(resultText).not.toContain(`${reportedCwd}/proof.txt`)
     expect(tokenizeSessionFixtureCwd(out)).toBe(out)
+  })
+
+  it('tokenizes JSON-escaped Windows cwd in runtime-context prose', () => {
+    const cwd = String.raw`C:\Users\runner\AppData\Local\Temp\acp-snap-cwd-abc123`
+    const escaped = JSON.stringify(cwd).slice(1, -1)
+    const raw = [
+      JSON.stringify({ type: 'session', id: 's', createdAt: 1, cwd }),
+      JSON.stringify({
+        type: 'user/message',
+        data: { content: [{ type: 'text', text: `workspace: "${escaped}"` }] },
+      }),
+      '',
+    ].join('\n')
+    const out = tokenizeSessionFixtureCwd(raw)
+    const result = JSON.parse(out.split('\n')[1] as string) as {
+      data: { content: Array<{ text: string }> }
+    }
+    expect(result.data.content[0]?.text).toBe('workspace: "{{cwd}}"')
+    expect(out).not.toContain('C:')
   })
 
   it('collapses a residual macOS realpath prefix around an existing cwd token', () => {
