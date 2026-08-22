@@ -30,6 +30,15 @@ afterEach(cleanup)
 // selection after an edit it performed itself. Every case here runs against a
 // zero rect; the reveal case below substitutes its own and restores this one.
 const ZERO_RECT = (): DOMRect => ({ top: 0, bottom: 0 }) as DOMRect
+
+/**
+ * Desktop fork: labels render through FlipText, which keeps the outgoing
+ * string mounted (aria-hidden) for the motion window — read the current part
+ * for an immediate post-switch assertion.
+ */
+function currentLabel(element: HTMLElement): string {
+  return element.querySelector('[data-dsh-motion-part="current"]')?.textContent ?? element.textContent ?? ''
+}
 Range.prototype.getBoundingClientRect = ZERO_RECT
 
 // Read through the descriptor so the native method is never referenced unbound;
@@ -1535,7 +1544,7 @@ describe('command launcher chrome and control seats', () => {
     fireEvent.click(items[1]!)
     // Optimistic pick + disable until admission resolves (command stub resolves true).
     const busy = view.getByLabelText(/^访问模式/) as HTMLButtonElement
-    expect(busy.textContent).toBe('可写入工作区')
+    expect(currentLabel(busy)).toBe('可写入工作区')
     expect(busy.disabled).toBe(true)
     expect(command).toHaveBeenCalledWith('/permission workspace-write')
     await act(async () => {})
@@ -1586,7 +1595,7 @@ describe('command launcher chrome and control seats', () => {
     expect(command).toHaveBeenCalledOnce()
     expect(command).toHaveBeenCalledWith('/permission danger-full-access')
     expect(view.queryByRole('dialog')).toBeNull()
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).textContent).toBe('完全权限')
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('完全权限')
     await act(async () => {})
   })
 
@@ -1687,7 +1696,9 @@ describe('command launcher chrome and control seats', () => {
       planEntry: <i data-testid="plan-entry" />,
       modelEntry: <i data-testid="model-entry" />,
     })
-    expect(slotCalls.map(call => call.key)).toEqual([])
+    // Desktop fork: the attachments seat is session-agnostic (bots accept
+    // images via the vision-fallback path); plan/model/command stay absent.
+    expect(slotCalls.map(call => call.key)).toEqual(['conversation.input.attachments'])
     expect(view.queryByTestId('plan-entry')).toBeNull()
     expect(view.queryByTestId('model-entry')).toBeNull()
     expect(view.queryByLabelText('命令')).toBeNull()
@@ -1700,7 +1711,7 @@ describe('command launcher chrome and control seats', () => {
       planEntry: <i data-testid="plan-entry" />,
       modelEntry: <i data-testid="model-entry" />,
     })
-    expect(slotCalls.map(call => call.key)).toEqual(['conversation.input.plan'])
+    expect(slotCalls.map(call => call.key)).toEqual(['conversation.input.attachments', 'conversation.input.plan'])
     expect(view.getByTestId('plan-entry')).toBeTruthy()
     expect(view.queryByTestId('model-entry')).toBeNull()
     expect(view.getByLabelText('命令')).toBeTruthy()
