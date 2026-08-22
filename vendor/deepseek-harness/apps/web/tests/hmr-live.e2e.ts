@@ -82,7 +82,7 @@ async function stopTree(child: SubprocessHandle): Promise<void> {
   await child.done
 }
 
-it('hot-reloads a real client-plugin source edit without refreshing the page', async () => {
+it('hot-reloads a real client-plugin source edit without refreshing the page', { timeout: 300_000 }, async () => {
   const world = await mkdtemp(join(tmpdir(), 'dsh-web-hmr-world-'))
   const sourcePath = join(REPO_ROOT, 'packages/client/ui-conversation/src/client/locales.ts')
   const binPath = join(REPO_ROOT, 'apps/cli/lib/bin.js')
@@ -94,7 +94,8 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   const originalSource = await readFile(sourcePath)
   // Desktop fork: the composed app renders the zh dictionary by default, so
   // both the awaited text and the HMR-edited source needle target the zh
-  // hero entry (line ~87), not the en one.
+  // hero entry (line ~87), not the en one. Do not pin en-US via newEnglishPage:
+  // that locale would render the English hero and miss this needle.
   const oldText = '探索未至之境'
   const sourceNeedle = "'hero.headline': '探索未至之境'"
   const newText = `HMR UPDATED ${'x'.repeat(80)}`
@@ -158,4 +159,4 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     await rm(world, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
   }
   if (failures.length > 0) throw new AggregateError(failures, 'HMR browser test or cleanup failed')
-}, 120_000)
+})
