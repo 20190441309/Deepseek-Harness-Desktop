@@ -35,10 +35,9 @@
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
   - text: 识图模型
-  - combobox "识图模型":
-    - option "不启用" [selected]
-    - option "DeepSeek / DeepSeek-V4-Flash"
-    - option "DeepSeek / DeepSeek-V4-Pro"
+  - button "识图模型":
+    - text: 不启用
+    - img
   - paragraph: 主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。
   - list:
     - listitem:
@@ -46,55 +45,12 @@
       - img "API 密钥缺失"
       - button "编辑 DeepSeek (deepseek-official)": 编辑
   - text: 提供方
-  - combobox "提供方":
-    - option "amazon-bedrock"
-    - option "ant-ling"
-    - option "anthropic"
-    - option "azure-openai-responses"
-    - option "cerebras"
-    - option "cloudflare-ai-gateway"
-    - option "cloudflare-workers-ai"
-    - option "deepseek"
-    - option "fireworks"
-    - option "github-copilot"
-    - option "google"
-    - option "google-vertex"
-    - option "groq"
-    - option "huggingface"
-    - option "kimi-coding"
-    - option "minimax"
-    - option "minimax-cn" [selected]
-    - option "mistral"
-    - option "moonshotai"
-    - option "moonshotai-cn"
-    - option "nvidia"
-    - option "openai"
-    - option "openai-codex"
-    - option "opencode"
-    - option "opencode-go"
-    - option "openrouter"
-    - option "qwen-token-plan"
-    - option "qwen-token-plan-cn"
-    - option "together"
-    - option "vercel-ai-gateway"
-    - option "xai"
-    - option "xiaomi"
-    - option "xiaomi-token-plan-ams"
-    - option "xiaomi-token-plan-cn"
-    - option "xiaomi-token-plan-sgp"
-    - option "zai"
-    - option "zai-coding-cn"
+  - button "提供方":
+    - text: minimax-cn
+    - img
   - text: API 密钥
   - textbox "API 密钥":
     - /placeholder: 输入 API 密钥，或留空使用环境认证
-  - group:
-    - text: 自定义设置 API 地址
-    - textbox "API 地址":
-      - /placeholder: 提供方默认
-    - region "模型目录":
-      - text: 模型目录 正在使用适配器默认模型
-      - button "获取可用模型"
-      - paragraph: 模型选择器中将不显示任何模型；目录外 ID 仍可直接发送。
-      - button "添加模型"
+  - group: 自定义设置
   - button "取消"
   - button "保存"

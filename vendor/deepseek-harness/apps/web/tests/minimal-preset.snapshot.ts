@@ -8,6 +8,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { assertFixtureInventory, launchWebScaffold, type WebScaffold } from './scaffold.ts'
+import { SHELL_TOOL } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/minimal-preset', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.jsonl')
@@ -66,18 +67,25 @@ describe('minimal agent preset', () => {
     const stateDir = join(scaffold.workspaceCwd, 'persistent-state')
     await mkdir(stateDir)
     const signal = new AbortController().signal
+    // Desktop fork: win32 mounts persistent pwsh; POSIX keeps bash.
+    const setupCommand = process.platform === 'win32'
+      ? `Set-Location ${JSON.stringify(stateDir)}; $env:DSH_MINIMAL_STATE='PERSISTED'`
+      : `cd ${JSON.stringify(stateDir)} && export DSH_MINIMAL_STATE=PERSISTED`
+    const readCommand = process.platform === 'win32'
+      ? 'Write-Output ("{0}:{1}" -f $env:DSH_MINIMAL_STATE, (Get-Location).Path)'
+      : 'printf \'%s:%s\\n\' "$DSH_MINIMAL_STATE" "$PWD"'
     await scaffold.ctx.tools.execute({
       signal,
       callId: CallId('minimal-bash-state-setup'),
-      name: 'bash',
-      arguments: { command: `cd ${JSON.stringify(stateDir)} && export DSH_MINIMAL_STATE=PERSISTED` },
+      name: SHELL_TOOL,
+      arguments: { command: setupCommand },
       agent: agentHandle.agent,
     })
     const bash = await scaffold.ctx.tools.execute({
       signal,
       callId: CallId('minimal-bash-state-read'),
-      name: 'bash',
-      arguments: { command: 'printf \'%s:%s\n\' "$DSH_MINIMAL_STATE" "$PWD"' },
+      name: SHELL_TOOL,
+      arguments: { command: readCommand },
       agent: agentHandle.agent,
     })
     const seedPath = join(scaffold.workspaceCwd, 'preset-smoke.txt')
@@ -95,6 +103,7 @@ describe('minimal agent preset', () => {
       .map(block => block.text)
       .join('')
       .replaceAll(scaffold.workspaceCwd, '{{cwd}}')
+      .replaceAll('\\', '/')
       .trimEnd()
 
     expect({
@@ -102,19 +111,12 @@ describe('minimal agent preset', () => {
       tools: requestHeader.tools?.map(tool => tool.name),
       bash: text(bash),
       editor: text(editor),
-    }).toMatchInlineSnapshot(`
-      {
-        "bash": "PERSISTED:{{cwd}}/persistent-state",
-        "editor": "Here's the content of {{cwd}}/preset-smoke.txt with line numbers (which has a total of 2 lines):
-           1  MINIMAL_EDITOR_OK
-           2",
-        "prompt": "You are a helpful software engineer assistant.",
-        "tools": [
-          "bash",
-          "str_replace_editor",
-        ],
-      }
-    `)
+    }).toEqual({
+      bash: 'PERSISTED:{{cwd}}/persistent-state',
+      editor: 'Here\'s the content of {{cwd}}/preset-smoke.txt with line numbers (which has a total of 2 lines):\n     1  MINIMAL_EDITOR_OK\n     2',
+      prompt: 'You are a helpful software engineer assistant.',
+      tools: [SHELL_TOOL, 'str_replace_editor'],
+    })
     expect(requestHeader.tools?.toSorted((left, right) => left.name.localeCompare(right.name)))
       .toEqual(scaffold.ctx.tools.schemas(agentHandle.agent).toSorted((left, right) => left.name.localeCompare(right.name)))
     await assertFixtureInventory(SNAPSHOT_DIR, ['session.jsonl'])

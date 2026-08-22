@@ -20,7 +20,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, REPO_ROOT, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, REPO_ROOT, saveFailureShot, SHELL_TOOL } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/fresh-round-trip', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('./snapshots/fresh-round-trip/session.jsonl', import.meta.url))
@@ -99,15 +99,18 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     const result = await scaffold.ctx.tools.execute({
       signal: AbortSignal.timeout(5_000),
       callId: CallId('web-url-probe'),
-      name: 'bash',
+      name: SHELL_TOOL,
       arguments: {
-        command: 'printf \'%s\\n\' "$DSH_WEB_URL"',
+        command: process.platform === 'win32'
+          ? 'Write-Output $env:DSH_WEB_URL'
+          : 'printf \'%s\\n\' "$DSH_WEB_URL"',
         description: 'Print current Web runtime',
       },
       agent,
     })
     expect(result.isError).toBe(false)
-    expect(result.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+    expect(result.content.filter(block => block.type === 'text').map(block => block.text).join('')
+      .replaceAll('\r\n', '\n'))
       .toBe(`${scaffold.baseUrl}\n`)
   })
 

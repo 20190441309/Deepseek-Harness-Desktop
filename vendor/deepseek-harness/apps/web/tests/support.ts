@@ -11,6 +11,12 @@ export const DIST_INDEX = fileURLToPath(new URL('../dist/index.html', import.met
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 
 /**
+ * Shipped Web presets disable `tool-bash` on win32 and mount `tool-pwsh`
+ * instead (see `apps/cli/config/agent-presets/standard/agent.cordis.yml`).
+ */
+export const SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash'
+
+/**
  * Browser language a page must advertise to boot into the product's Chinese
  * surface: with no stored preference the client derives its initial locale
  * from the browser, and Playwright's default browser asks for English.

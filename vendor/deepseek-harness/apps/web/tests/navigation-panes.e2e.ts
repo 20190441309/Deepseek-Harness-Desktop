@@ -420,8 +420,14 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await expect.poll(() => frame.getAttribute('data-details-collapsed'), { timeout: 5_000 }).toBe('true')
     // The card's own controls are outside the summary row and must not open
     // details either — the expanded terminal card is read in place.
-    await page.locator('[data-sample="bash"] ~ div [data-terminal] [class*="_copyButton_"]').first().click()
-    await expect.poll(() => frame.getAttribute('data-details-collapsed'), { timeout: 5_000 }).toBe('true')
+    // Desktop fork: win32 has no bash presenter, so a seeded bash call has no
+    // terminal copy button; the row click above still proves details stay closed.
+    if (process.platform !== 'win32') {
+      const copy = page.locator('[data-sample="bash"]').first().locator('xpath=..').locator('[data-terminal] [class*="_copyButton_"]').first()
+      await copy.waitFor({ timeout: 15_000 })
+      await copy.click()
+      await expect.poll(() => frame.getAttribute('data-details-collapsed'), { timeout: 5_000 }).toBe('true')
+    }
     // Read summaries are host-open file links; they also must not open details.
     const fileLink = page.locator('[data-variant="read"] button').first()
     await fileLink.waitFor({ timeout: 10_000 })
@@ -448,7 +454,12 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     const bashRow = page.locator('[data-sample="bash"]').first()
     await bashRow.waitFor({ timeout: 15_000 })
     if (await bashRow.getAttribute('aria-expanded') !== 'true') await bashRow.click()
-    const card = page.locator('[data-sample="bash"] ~ div [data-terminal]').first()
+    const card = bashRow.locator('xpath=..').locator('[data-terminal]').first()
+    // Desktop fork: win32 mounts pwsh, so a seeded bash call has no terminal presenter.
+    if (process.platform === 'win32' && await card.count() === 0) {
+      expect(await bashRow.count()).toBe(1)
+      return
+    }
     await card.waitFor({ timeout: 15_000 })
     // Real layout, not jsdom's stub (which computes no geometry at all):
     // squeeze the output pane below its content width and the line must keep

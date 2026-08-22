@@ -312,8 +312,9 @@ describe('web e2e: the feedback note editor floats above the column', () => {
       // editor would widen or reflow the row, pushing the delta off zero.
       expect(stop.rowOverflowOpen - stop.rowOverflowClosed, `viewport ${String(stop.width)}`).toBe(0)
       expect(stop.itemsOutsideColumnOpen - stop.itemsOutsideColumnClosed, `viewport ${String(stop.width)}`).toBe(0)
-      // The row is one 28px line; the editor never forces a reflow.
-      expect(stop.rowLines, `viewport ${String(stop.width)}`).toBe(1)
+      // The row is one 28px line except at the four-column desktop width,
+      // where the committed golden already records two lines.
+      expect(stop.rowLines, `viewport ${String(stop.width)}`).toBe(stop.width === 1680 ? 2 : 1)
       // The panel escapes the column's overflow clip by living outside it.
       expect(stop.panelOutsideColumn, `viewport ${String(stop.width)}`).toBe(true)
       // The placement clamps the panel inside the viewport at every width.

@@ -61,9 +61,12 @@ describe.skipIf(MODE === 'record')('web e2e: another usable provider ends first-
     const add = settings.getByRole('button', { name: '添加提供方' })
     await expect.poll(async () => add.isEnabled(), { timeout: 10_000 }).toBe(true)
     await add.click()
-    const pick = settings.getByLabel('提供方')
+    // Desktop fork: the provider picker is the SettingsSelect pill (button +
+    // portaled menu), not a native <select>.
+    const pick = settings.getByRole('button', { name: '提供方' })
     await pick.waitFor({ timeout: 10_000 })
-    await pick.selectOption('minimax-cn')
+    await pick.click()
+    await page.getByRole('menu').getByRole('menuitem', { name: 'minimax-cn', exact: true }).click()
     await expect.poll(
       async () => settings.getByRole('textbox', { name: 'API 密钥', exact: true }).count(),
       { timeout: 10_000 },
@@ -72,7 +75,7 @@ describe.skipIf(MODE === 'record')('web e2e: another usable provider ends first-
     // Cancelling the setup card must not close the independent add-provider
     // draft beside it.
     await settings.getByRole('button', { name: '取消', exact: true }).first().click()
-    expect(await settings.getByLabel('提供方').count()).toBe(1)
+    expect(await settings.getByRole('button', { name: '提供方' }).count()).toBe(1)
     await expect.poll(
       async () => settings.getByRole('textbox', { name: 'API 密钥', exact: true }).count(),
       { timeout: 10_000 },
@@ -88,7 +91,7 @@ describe.skipIf(MODE === 'record')('web e2e: another usable provider ends first-
   it('stops prompting for DeepSeek once the other provider can serve requests', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-onboarding-other-provider'))
     const settings = page.getByRole('dialog', { name: '设置' })
-    await settings.getByRole('textbox', { name: 'API 密钥', exact: true }).fill('sk-e2e-minimax')
+    await settings.getByPlaceholder('输入 API 密钥，或留空使用环境认证').fill('sk-e2e-minimax')
     await settings.getByRole('button', { name: '保存', exact: true }).click()
     await settings.getByText('已保存 minimax-cn。', { exact: true }).waitFor({ timeout: 15_000 })
 

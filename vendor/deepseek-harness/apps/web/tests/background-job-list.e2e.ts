@@ -17,7 +17,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, saveFailureShot, SHELL_TOOL } from './support.ts'
 
 const FIXTURE = fileURLToPath(new URL('./snapshots/fresh-round-trip/session.jsonl', import.meta.url))
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/background-job-list', import.meta.url))
@@ -95,13 +95,13 @@ describe.skipIf(MODE === 'record')('web e2e: background job list', () => {
     const started = await scaffold.ctx.tools.execute({
       signal: new AbortController().signal,
       callId: CallId('background-job-list-e2e'),
-      name: 'bash',
+      name: SHELL_TOOL,
       arguments: { command: COMMAND, description: 'Hold a background slot open', run_in_background: true },
       agent,
     })
     const reported = started.content.map(block => block.type === 'text' ? block.text : '').join('')
-    const matched = /\bbash-\d+\b/.exec(reported)
-    if (matched === null) throw new Error(`background bash reported no job id: ${reported}`)
+    const matched = new RegExp(`\\b${SHELL_TOOL}-\\d+\\b`).exec(reported)
+    if (matched === null) throw new Error(`background ${SHELL_TOOL} reported no job id: ${reported}`)
     jobId = JobId(matched[0])
 
     await trigger.waitFor({ timeout: 15_000 })
@@ -110,7 +110,8 @@ describe.skipIf(MODE === 'record')('web e2e: background job list', () => {
     await row.waitFor({ timeout: 10_000 })
     await expect.poll(() => row.textContent()).toContain(COMMAND)
 
-    const snapshot = await captureStableAria(page, '[class*="menu"]', scaffold.workspaceCwd)
+    const snapshot = (await captureStableAria(page, '[class*="menu"]', scaffold.workspaceCwd))
+      .split(SHELL_TOOL).join('{{shell}}')
     await compareOrRefreshGolden(RUNNING_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
@@ -125,7 +126,9 @@ describe.skipIf(MODE === 'record')('web e2e: background job list', () => {
     const idle = page.getByRole('button', { name: '1 background job' })
     await idle.waitFor({ timeout: 20_000 })
 
-    const snapshot = await captureStableAria(page, '[class*="menu"]', scaffold.workspaceCwd)
+    const snapshot = (await captureStableAria(page, '[class*="menu"]', scaffold.workspaceCwd))
+      .split(SHELL_TOOL).join('{{shell}}')
+      .replace(/signal: SIGTERM|killed before exit/g, '{{killed}}')
     await compareOrRefreshGolden(SETTLED_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

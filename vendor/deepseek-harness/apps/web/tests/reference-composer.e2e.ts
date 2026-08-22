@@ -230,12 +230,14 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
 
   it('renders the durable direct-message then recall order', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-reference-order'))
-    const group = page.getByRole('treeitem', { name: /Ungrouped/ })
-    await group.waitFor({ timeout: 15_000 })
-    if (await group.getAttribute('aria-expanded') !== 'true') await group.click()
-    const target = page.getByRole('treeitem').filter({ hasText: /^dsh-web-e2e-ws-/ }).first()
-    await target.waitFor({ timeout: 15_000 })
-    await target.click()
+    // Desktop fork: sessions live under the Tasks/workspace group, not Ungrouped.
+    const searchButton = page.getByRole('button', { name: 'Search sessions' })
+    if (await searchButton.getAttribute('aria-expanded') !== 'true') await searchButton.click()
+    const search = page.getByPlaceholder('Search sessions', { exact: false })
+    await search.fill('Research notes what changed')
+    const result = page.getByRole('tree', { name: 'Search results' }).getByRole('treeitem')
+    await expect.poll(() => result.count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
+    await result.first().click()
     await page.getByRole('button', { name: /^Session recall\s*Research notes$/ }).waitFor({ timeout: 15_000 })
 
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
