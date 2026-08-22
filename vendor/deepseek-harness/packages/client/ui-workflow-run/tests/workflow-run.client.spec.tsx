@@ -302,7 +302,7 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
 }
 
 describe('WorkflowRunPanel', () => {
-  it('keeps live run and phase controls manual across ordinary updates and outer hiding', () => {
+  it('keeps live run and phase controls manual across ordinary updates and outer hiding', async () => {
     const running: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase({ key: 'research', phase: 'Research' })],
     }
@@ -315,7 +315,7 @@ describe('WorkflowRunPanel', () => {
 
     fireEvent.click(phaseHeader)
     expect(phaseHeader.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('worker')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('worker')).toBeNull() })
     fireEvent.click(runHeader)
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
 
@@ -330,7 +330,7 @@ describe('WorkflowRunPanel', () => {
       })],
     })} />)
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('button', { name: /Research/ })).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByRole('button', { name: /Research/ })).toBeNull() })
     fireEvent.keyDown(runHeader, { key: 'ArrowDown' })
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
     fireEvent.keyDown(runHeader, { key: ' ' })
@@ -343,12 +343,12 @@ describe('WorkflowRunPanel', () => {
 
     fireEvent.click(runHeader)
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('button', { name: /Research/ })).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByRole('button', { name: /Research/ })).toBeNull() })
     fireEvent.keyDown(runHeader, { key: ' ' })
     expect(screen.getByRole('button', { name: /Research/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('folds each normal completion once and opens a new same-key activity cycle', () => {
+  it('folds each normal completion once and opens a new same-key activity cycle', async () => {
     const running: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase()],
     }
@@ -369,7 +369,7 @@ describe('WorkflowRunPanel', () => {
     view.rerender(<WorkflowRunPanel {...panelProps(phaseCompleted)} />)
     const phaseHeader = screen.getByRole('button', { name: /未分阶段/ })
     expect(phaseHeader.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('done')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('done')).toBeNull() })
     fireEvent.click(phaseHeader)
     expect(screen.getByText('done')).toBeTruthy()
 
@@ -424,7 +424,7 @@ describe('WorkflowRunPanel', () => {
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('refolds a phase when a complete activity cycle arrives as one clean update', () => {
+  it('refolds a phase when a complete activity cycle arrives as one clean update', async () => {
     const firstMember = {
       seq: 1, label: 'first', childId: 'child-1' as SessionId, status: 'completed' as const,
     }
@@ -446,8 +446,8 @@ describe('WorkflowRunPanel', () => {
     })} />)
     expect(runHeader.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('first')).toBeNull()
-    expect(screen.queryByText('second')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('first')).toBeNull() })
+    await vi.waitFor(() => { expect(screen.queryByText('second')).toBeNull() })
 
     phaseView.rerender(<WorkflowRunPanel {...panelProps({
       ...phaseClean,
@@ -459,7 +459,7 @@ describe('WorkflowRunPanel', () => {
       }] })],
     })} />)
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('button', { name: /未分阶段/ })).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByRole('button', { name: /未分阶段/ })).toBeNull() })
   })
 
   it('initializes a newly observed phase before it becomes interactive', () => {
@@ -484,7 +484,7 @@ describe('WorkflowRunPanel', () => {
     expect(build.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('derives the zero-member running and completed states from the current run status', () => {
+  it('derives the zero-member running and completed states from the current run status', async () => {
     const running: WorkflowRunChatData = { name: 'empty', status: 'running', phases: [] }
     const view = render(<WorkflowRunPanel {...panelProps(running)} />)
     expect(screen.getByRole('button', { name: /^empty/ }).getAttribute('aria-expanded')).toBe('true')
@@ -492,7 +492,7 @@ describe('WorkflowRunPanel', () => {
     view.rerender(<WorkflowRunPanel {...panelProps({ ...running, status: 'completed' })} />)
     const header = screen.getByRole('button', { name: /^empty/ })
     expect(header.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText('没有启动成员')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('没有启动成员')).toBeNull() })
     fireEvent.click(header)
     expect(screen.getByText('没有启动成员')).toBeTruthy()
   })
@@ -552,7 +552,7 @@ describe('WorkflowRunPanel', () => {
     expect(screen.getByText('失败 1 · 已取消 1')).toBeTruthy()
   })
 
-  it('keeps clean sibling phases independent and preserves empty versus absent names', () => {
+  it('keeps clean sibling phases independent and preserves empty versus absent names', async () => {
     render(<WorkflowRunPanel {...panelProps({
       name: 'audit', status: 'completed',
       phases: [
@@ -570,20 +570,20 @@ describe('WorkflowRunPanel', () => {
     expect(cleanPhase.getAttribute('aria-expanded')).toBe('false')
     const activePhase = screen.getByRole('button', { name: /未分阶段/ })
     expect(activePhase.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.queryByText('空成员名')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('空成员名')).toBeNull() })
     expect(screen.getByText('second')).toBeTruthy()
     fireEvent.click(cleanPhase)
     expect(screen.getByText('空成员名')).toBeTruthy()
     expect(screen.getByText('second')).toBeTruthy()
     fireEvent.click(activePhase)
-    expect(screen.queryByText('second')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('second')).toBeNull() })
     expect(screen.getByText('空成员名')).toBeTruthy()
     fireEvent.click(runHeader)
     fireEvent.click(runHeader)
     expect(screen.getByRole('button', { name: /空阶段名/ }).getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(screen.getByRole('button', { name: /空阶段名/ }))
-    expect(screen.queryByText('空成员名')).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByText('空成员名')).toBeNull() })
   })
 
   it('renders mixed and interrupted aggregate status while attention stays visible', () => {
@@ -618,7 +618,7 @@ describe('WorkflowRunPanel', () => {
     expect(interruptedView.container.querySelectorAll('[data-state="warning"]')).toHaveLength(2)
   })
 
-  it('defers normal completion collapse until focused member content loses focus', () => {
+  it('defers normal completion collapse until focused member content loses focus', async () => {
     const sessions = listState({
       ids: [PARENT_ID, CHILD_ID, SECOND_ID],
       byId: {
@@ -680,7 +680,7 @@ describe('WorkflowRunPanel', () => {
     const completedPhase = screen.getByRole('button', { name: /未分阶段/ })
     expect(completedPhase.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(completedPhase)
-    expect(screen.queryByRole('button', { name: '打开 worker' })).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByRole('button', { name: '打开 worker' })).toBeNull() })
     expect(screen.getByText('worker')).toBeTruthy()
     outside.remove()
   })
@@ -748,7 +748,7 @@ describe('WorkflowRunPanel', () => {
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('settles a deferred phase close when the user hides the outer run', () => {
+  it('settles a deferred phase close when the user hides the outer run', async () => {
     const running: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase()],
     }
@@ -763,8 +763,15 @@ describe('WorkflowRunPanel', () => {
     })} />)
     const runHeader = screen.getByRole('button', { name: /^audit/ })
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('true')
+    // Desktop fork: the motion presence keeps the phase content mounted (and
+    // focused) through the hide tick, so the settle edge needs the focus to
+    // leave first — upstream gets this for free from the synchronous unmount.
+    ;(document.activeElement as HTMLElement | null)?.blur()
     fireEvent.click(runHeader)
     expect(runHeader.getAttribute('aria-expanded')).toBe('false')
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('button', { name: /未分阶段/ })).toBeNull()
+    })
     fireEvent.click(runHeader)
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('false')
   })
@@ -792,12 +799,12 @@ describe('WorkflowRunPanel', () => {
     expect(openSession).toHaveBeenCalledWith('child-1')
   })
 
-  it('promotes a running member when its ordinary Session row arrives', () => {
+  it('promotes a running member when its ordinary Session row arrives', async () => {
     const data: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase()],
     }
     const view = render(<WorkflowRunPanel {...panelProps(data, listState({ ids: [PARENT_ID] }))} />)
-    expect(screen.queryByRole('button', { name: '打开 worker' })).toBeNull()
+    await vi.waitFor(() => { expect(screen.queryByRole('button', { name: '打开 worker' })).toBeNull() })
     view.rerender(<WorkflowRunPanel {...panelProps(data, listState())} />)
     expect(screen.getByRole('button', { name: '打开 worker' })).toBeTruthy()
   })
