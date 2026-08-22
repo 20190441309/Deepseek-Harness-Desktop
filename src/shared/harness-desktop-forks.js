@@ -51,9 +51,15 @@ const LAYOUT_MARKERS = ['surfaces', 'shell.titlebar.trailing', 'shell.terminalDr
 // cannot see these: sync:harness keeps them only via git merge, so a conflict
 // resolved towards upstream would drop them without failing any other assert.
 const FORK_FILE_MARKERS = [
-  // Parked settings UI (wip park commit on dsh-v0.1.1-rc.1).
+  // SettingsSelect: official Menu pill for every settings value dropdown.
   { file: 'packages/client/ui-primitives/src/index.ts', includes: ['export { SettingsSelect }'] },
   { file: 'packages/client/ui-settings-mcp/src/client/McpSection.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-settings-skills/src/client/SkillsSection.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-settings-general/src/client/CloseBehaviorRow.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-settings-general/src/client/HarnessRestartRow.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/locale/src/client/LanguageRow.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-permission-presets/src/client/PermissionRow.tsx', includes: ['SettingsSelect'] },
   { file: 'packages/client/ui-settings-models/src/client/models-dev-metadata.ts', includes: ['models.dev'] },
   { file: 'packages/client/ui-settings-models/scripts/live-fetch-enrich-probe.ts', includes: [] },
   // Standing wallpaper fork on the upstream ui-theme package.

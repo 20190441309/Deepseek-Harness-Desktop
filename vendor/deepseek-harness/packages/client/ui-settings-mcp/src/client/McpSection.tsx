@@ -12,7 +12,6 @@ import {
   IconSearchOutline16,
   IconTrashOutline16,
   Input,
-  Menu,
   Modal,
   Pill,
   SettingsSelect,
@@ -105,7 +104,6 @@ export function McpSection(props: McpSectionProps) {
   const [request, setRequest] = useState(0)
   const [query, setQuery] = useState('')
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>('all')
-  const [filterOpen, setFilterOpen] = useState(false)
   const [editor, setEditor] = useState<EditorTarget | undefined>()
   const [deleting, setDeleting] = useState<McpServerEntry | undefined>()
   const [deletePending, setDeletePending] = useState(false)
@@ -277,7 +275,6 @@ export function McpSection(props: McpSectionProps) {
     ['enabled', t('filterEnabledOnly')],
     ['disabled', t('filterDisabledOnly')],
   ] as const
-  const filterLabel = filterOptions.find(([id]) => id === enabledFilter)?.[1] ?? t('filterAll')
 
   return (
     <div className={styles.section} aria-busy={view.status === 'loading'}>
@@ -332,29 +329,12 @@ export function McpSection(props: McpSectionProps) {
               aria-label={t('search')}
               onChange={(event) => { setQuery(event.currentTarget.value) }}
             />
-            <Menu
-              open={filterOpen}
-              onClose={() => { setFilterOpen(false) }}
-              items={filterOptions.map(([id, copy]) => ({ id, label: copy }))}
-              selectedId={enabledFilter}
-              onSelect={(id) => {
-                setEnabledFilter(id as EnabledFilter)
-                setFilterOpen(false)
-              }}
-              portal
+            <SettingsSelect
               align="end"
-              anchor={(
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={t('filterEnabled')}
-                  aria-haspopup="menu"
-                  aria-expanded={filterOpen}
-                  onClick={() => { setFilterOpen(current => !current) }}
-                >
-                  {filterLabel}
-                </Button>
-              )}
+              aria-label={t('filterEnabled')}
+              value={enabledFilter}
+              options={filterOptions.map(([id, copy]) => ({ id, label: copy }))}
+              onChange={(id) => { setEnabledFilter(id as EnabledFilter) }}
             />
           </div>
           {servers.length === 0 ? <p className={styles.empty}>{t('empty')}</p> : null}

@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SettingsSelect } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   desktopShell,
@@ -35,8 +35,6 @@ export function HarnessRestartRow({ t }: HarnessRestartRowProps) {
   const [config, setConfig] = useState<HarnessRestartConfig | null>(null)
   const [phase, setPhase] = useState<RowPhase>('loading')
   const [error, setError] = useState('')
-  const [attemptsOpen, setAttemptsOpen] = useState(false)
-  const [delayOpen, setDelayOpen] = useState(false)
   const current = config ?? normalizeHarnessRestart(undefined)
 
   useEffect(() => {
@@ -98,63 +96,34 @@ export function HarnessRestartRow({ t }: HarnessRestartRowProps) {
         <div className={css.pickers}>
           <div className={css.picker}>
             <span className={css.pickerLabel}>{t('harnessRestart.maxAttempts')}</span>
-            <Menu
-              open={attemptsOpen}
-              onClose={() => { setAttemptsOpen(false) }}
-              items={HARNESS_RESTART_MAX_ATTEMPTS.map(attempts => ({ id: String(attempts), label: String(attempts) }))}
-              selectedId={String(current.harnessRestartMaxAttempts)}
-              onSelect={(id) => {
-                setAttemptsOpen(false)
+            <SettingsSelect
+              align="end"
+              aria-label={t('harnessRestart.maxAttempts')}
+              disabled={busy}
+              value={String(current.harnessRestartMaxAttempts)}
+              options={HARNESS_RESTART_MAX_ATTEMPTS.map(attempts => ({
+                id: String(attempts),
+                label: String(attempts),
+              }))}
+              onChange={(id) => {
                 void save({ harnessRestartMaxAttempts: Number(id) })
               }}
-              align="end"
-              portal
-              anchor={(
-                <button
-                  type="button"
-                  className={css.selector}
-                  aria-haspopup="menu"
-                  aria-expanded={attemptsOpen}
-                  aria-label={t('harnessRestart.maxAttempts')}
-                  disabled={busy}
-                  onClick={() => { setAttemptsOpen(true) }}
-                >
-                  {current.harnessRestartMaxAttempts}
-                  <IconChevronDownOutline14 className={css.chevron} />
-                </button>
-              )}
             />
           </div>
           <div className={css.picker}>
             <span className={css.pickerLabel}>{t('harnessRestart.baseDelay')}</span>
-            <Menu
-              open={delayOpen}
-              onClose={() => { setDelayOpen(false) }}
-              items={HARNESS_RESTART_BASE_DELAYS_MS.map(ms => ({
+            <SettingsSelect
+              align="end"
+              aria-label={t('harnessRestart.baseDelay')}
+              disabled={busy}
+              value={String(current.harnessRestartBaseDelayMs)}
+              options={HARNESS_RESTART_BASE_DELAYS_MS.map(ms => ({
                 id: String(ms),
                 label: t('harnessRestart.delay', { count: String(ms / 1000) }),
               }))}
-              selectedId={String(current.harnessRestartBaseDelayMs)}
-              onSelect={(id) => {
-                setDelayOpen(false)
+              onChange={(id) => {
                 void save({ harnessRestartBaseDelayMs: Number(id) })
               }}
-              align="end"
-              portal
-              anchor={(
-                <button
-                  type="button"
-                  className={css.selector}
-                  aria-haspopup="menu"
-                  aria-expanded={delayOpen}
-                  aria-label={t('harnessRestart.baseDelay')}
-                  disabled={busy}
-                  onClick={() => { setDelayOpen(true) }}
-                >
-                  {t('harnessRestart.delay', { count: String(current.harnessRestartBaseDelayMs / 1000) })}
-                  <IconChevronDownOutline14 className={css.chevron} />
-                </button>
-              )}
             />
           </div>
         </div>

@@ -12,6 +12,12 @@
   width: 100%;
 }
 
+.menuFill {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
 .trigger {
   display: inline-flex;
   align-items: center;

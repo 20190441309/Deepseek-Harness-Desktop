@@ -43,6 +43,6 @@ Gate: <卡上 gates>
 | [surfaces-work-loops](surfaces-work-loops.md) | 右栏工作环，非空态卡片 | preview / ui-files | TC-SURF-001…007 |
 | [boot-page](boot-page.md) | 仪器启动画布 + 插件进度/恢复 | `boot.*` / harness-controller | TC-INST-003…007 |
 | [terminal-drawer](terminal-drawer.md) | 底栏 PTY 工作环 | `pty.js` / ui-user-terminal | TC-TERM-001…004 |
-| [settings-select](settings-select.md) | 停放：设置页统一下拉原语；MCP 传输下拉首个使用点 | `ui-primitives` / `McpSection` | vendor vitest（手动） |
+| [settings-select](settings-select.md) | 设置内值选择统一为官方胶囊 + Menu | `SettingsSelect` | vendor client spec |
 | [mobile-remote](mobile-remote.md) | 侧栏远程弹窗 + `mobile/web` SPA；默认关、开才监听 | `RemoteGateway` / `ui-settings-remote` | TC-NEG-001、TC-REM-001…003 |
 | [dshbot](dshbot.md) | 停放：侧栏机器人入口隐藏；插件源仍打包 | `hideDshbotPlugin` | TC-EXT-007（负向） |

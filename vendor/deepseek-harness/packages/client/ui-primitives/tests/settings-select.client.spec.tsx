@@ -70,4 +70,46 @@ describe('SettingsSelect', () => {
     )
     expect(screen.getByRole('button', { name: 'Pick' }).textContent).toContain('stale')
   })
+
+  it('sizes a block menu to the trigger width', () => {
+    render(
+      <SettingsSelect
+        variant="block"
+        aria-label="Pick"
+        value="a"
+        options={OPTIONS}
+        onChange={() => {}}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'Pick' })
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      width: 480,
+      height: 36,
+      top: 10,
+      left: 20,
+      bottom: 46,
+      right: 500,
+      x: 20,
+      y: 10,
+      toJSON() {},
+    } as DOMRect)
+    fireEvent.click(trigger)
+    const menu = screen.getByRole('menu')
+    expect(menu.style.width).toBe('480px')
+    expect(menu.style.maxWidth).toBe('none')
+  })
+
+  it('opens with end-aligned menus', () => {
+    render(
+      <SettingsSelect
+        align="end"
+        aria-label="Pick"
+        value="a"
+        options={OPTIONS}
+        onChange={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
 })

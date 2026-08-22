@@ -51,6 +51,16 @@
   -webkit-app-region: no-drag;
 }
 
+/* Form-field menus: width comes from the anchor rect (inline style). Drop
+ * the 218px cap so a wide trigger is not left with an empty side. Fill with
+ * the same module-platform token as the SettingsSelect pill so wallpaper
+ * does not show through the 80% glass menu surface. */
+.list.matchAnchor {
+  min-width: 0;
+  max-width: none;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
 /* Open above the anchor (empty-state workspace chip: figma 122:9481). */
 .sideTop {
   top: auto;

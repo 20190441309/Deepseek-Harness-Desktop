@@ -18,9 +18,9 @@ import {
   IconSkillOutline16,
   IconTrashOutline16,
   Input,
-  Menu,
   Modal,
   Pill,
+  SettingsSelect,
   Switch,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -125,7 +125,6 @@ export function SkillsSection(props: SkillsSectionProps) {
   const [view, setView] = useState<View>({ status: 'loading' })
   const [query, setQuery] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
-  const [sourceMenuOpen, setSourceMenuOpen] = useState(false)
   const [details, setDetails] = useState<Readonly<Record<string, SkillInventoryDetail>>>({})
   const [pendingRows, setPendingRows] = useState<Readonly<Record<string, RowAction | undefined>>>({})
   const [rowErrors, setRowErrors] = useState<Readonly<Record<string, string | undefined>>>({})
@@ -264,7 +263,6 @@ export function SkillsSection(props: SkillsSectionProps) {
     ['bundled', t('sourceBundled')],
     ['other', t('sourceOther')],
   ] as const
-  const sourceLabelText = sourceOptions.find(([id]) => id === sourceFilter)?.[1] ?? t('filterAll')
 
   return (
     <div className={styles.section}>
@@ -311,26 +309,12 @@ export function SkillsSection(props: SkillsSectionProps) {
           placeholder={t('searchPlaceholder')}
           onChange={(event) => { setQuery(event.target.value) }}
         />
-        <Menu
-          open={sourceMenuOpen}
+        <SettingsSelect
           align="end"
-          portal
-          anchor={(
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label={t('sourceFilter')}
-              aria-haspopup="menu"
-              aria-expanded={sourceMenuOpen}
-              onClick={() => { setSourceMenuOpen(open => !open) }}
-            >
-              {sourceLabelText}
-            </Button>
-          )}
-          items={sourceOptions.map(([id, label]) => ({ id, label }))}
-          selectedId={sourceFilter}
-          onSelect={(id) => { setSourceFilter(id as SourceFilter); setSourceMenuOpen(false) }}
-          onClose={() => { setSourceMenuOpen(false) }}
+          aria-label={t('sourceFilter')}
+          value={sourceFilter}
+          options={sourceOptions.map(([id, label]) => ({ id, label }))}
+          onChange={(id) => { setSourceFilter(id as SourceFilter) }}
         />
       </div>
 

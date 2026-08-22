@@ -4,7 +4,7 @@
  * uses the shared menu surface instead of the OS dropdown.
  */
 
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { IconChevronDownOutline14 } from './icons/index.tsx'
@@ -43,6 +43,11 @@ export interface SettingsSelectProps {
    * `block` — full-width trigger for form fields (vision model, protocol, …).
    */
   variant?: 'inline' | 'block'
+  /**
+   * Menu alignment relative to the trigger.
+   * Trailing Setting-Cell pills use `end` so the list stays on the control.
+   */
+  align?: 'start' | 'end'
   /** Extra class on the outer wrapper. */
   className?: string | undefined
 }
@@ -60,14 +65,18 @@ export function SettingsSelect({
   disabled = false,
   placeholder = '',
   variant = 'inline',
+  align = 'start',
   className,
 }: SettingsSelectProps): ReactNode {
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const getTriggerRect = useCallback(() => triggerRef.current?.getBoundingClientRect() ?? null, [])
   const selected = options.find(option => option.id === value)
   const label = selected?.label ?? (value === '' ? placeholder : value)
+  const block = variant === 'block'
 
   return (
-    <div className={clsx(css.root, variant === 'block' && css.block, className)}>
+    <div className={clsx(css.root, block && css.block, className)}>
       <Menu
         open={open && !disabled}
         onClose={() => { setOpen(false) }}
@@ -81,10 +90,14 @@ export function SettingsSelect({
           onChange(id)
           setOpen(false)
         }}
-        align="start"
+        align={align}
         portal
+        matchAnchorWidth={block}
+        getAnchorRect={getTriggerRect}
+        className={block ? css.menuFill : undefined}
         anchor={(
           <button
+            ref={triggerRef}
             type="button"
             className={css.trigger}
             aria-label={ariaLabel}

@@ -96,12 +96,15 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * the trigger (render-prop anchors, effect-positioned proxies — measuring the
  * wrapper there races the host's layout effects). Called on open and on every
  * scroll/resize; return null to skip placement for that frame.
+ * @param props.matchAnchorWidth - portal mode only: set the list width to the
+ * anchor rect width. Default false keeps the 218px design card. Form fields
+ * (SettingsSelect `block`) opt in so the open list covers the trigger.
  * @param props.filter - optional search field pinned above the scrolling items.
  * @param props.footer - rows pinned below the scrolling items area; they stay
  * visible while the items above scroll.
  * @returns anchor wrapper with the conditional list.
  */
-export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, getAnchorRect, filter, footer, className }: {
+export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, getAnchorRect, matchAnchorWidth = false, filter, footer, className }: {
   open: boolean
   anchor: ReactNode
   items: readonly MenuEntry[]
@@ -118,6 +121,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
   dense?: boolean
   compact?: boolean
   getAnchorRect?: () => DOMRect | null
+  matchAnchorWidth?: boolean
   className?: string | undefined
 }) {
   const rootRef = useRef<HTMLSpanElement>(null)
@@ -147,7 +151,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       const vw = window.innerWidth
       const vh = window.innerHeight
       const listEl = listRef.current
-      const lw = listEl?.offsetWidth ?? 0
+      const lw = matchAnchorWidth ? r.width : (listEl?.offsetWidth ?? 0)
       const lh = listEl?.offsetHeight ?? 0
 
       let x: number
@@ -155,7 +159,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       if (side === 'right') {
         x = r.right + 4
         y = r.top
-      } else if (align === 'start') {
+      } else if (matchAnchorWidth || align === 'start') {
         x = r.left
         y = side === 'bottom' ? r.bottom + 4 : r.top - lh - 4
       } else {
@@ -166,7 +170,13 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       if (lw > 0) x = Math.min(Math.max(x, MARGIN), vw - lw - MARGIN)
       if (lh > 0) y = Math.min(Math.max(y, MARGIN), vh - lh - MARGIN)
 
-      setFixedPos({ left: x, top: y })
+      const pos: CSSProperties = { left: x, top: y }
+      if (matchAnchorWidth) {
+        pos.width = `${r.width}px`
+        pos.maxWidth = 'none'
+        pos.minWidth = '0'
+      }
+      setFixedPos(pos)
     }
     // First run measures the hidden pre-render (same commit as `open`), so
     // end/top alignment and clamping use real dimensions before anything
@@ -178,7 +188,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [mounted, portal, align, side, getAnchorRect])
+  }, [mounted, portal, align, side, getAnchorRect, matchAnchorWidth])
 
   useEffect(() => {
     if (!open) {
@@ -290,7 +300,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
   const list = mounted && (
     <div
       ref={listRef}
-      className={clsx(css.list, dense && css.denseList, compact && css.compactList, scrollable && css.scrollable, portal && css.portal, side === 'top' && !portal && css.sideTop, align === 'end' && !portal && css.alignEnd)}
+      className={clsx(css.list, dense && css.denseList, compact && css.compactList, scrollable && css.scrollable, portal && css.portal, matchAnchorWidth && css.matchAnchor, side === 'top' && !portal && css.sideTop, align === 'end' && !portal && css.alignEnd)}
       style={portal ? fixedPos ?? MEASURE_STYLE : undefined}
       data-dsh-motion="popover"
       data-state={state}

@@ -295,6 +295,26 @@ describe('Menu', () => {
     expect(screen.queryByRole('menuitem', { name: 'Create ok' })).toBeNull()
   })
 
+  it('portal matchAnchorWidth sizes the list to the anchor rect width', () => {
+    const rect = { left: 40, right: 520, top: 100, bottom: 136, width: 480, height: 36, x: 40, y: 100, toJSON: () => ({}) } as DOMRect
+    render(
+      <Menu
+        portal
+        open
+        matchAnchorWidth
+        getAnchorRect={() => rect}
+        anchor={null}
+        items={items}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />)
+    const menu = screen.getByRole('menu')
+    expect(menu.style.width).toBe('480px')
+    expect(menu.style.maxWidth).toBe('none')
+    expect(menu.style.left).toBe('40px')
+    expect(menu.style.top).toBe('140px')
+  })
+
   it('portal mode prefers getAnchorRect over measuring its own wrapper', () => {
     const rect = { left: 40, right: 72, top: 100, bottom: 128, width: 32, height: 28, x: 40, y: 100, toJSON: () => ({}) } as DOMRect
     render(
