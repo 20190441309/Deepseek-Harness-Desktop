@@ -1,8 +1,14 @@
 # 生产验收执行报告 · 2026-08-22
 
-**结论：源码树本轮不可按「安装包可交付」签字。** dsh-home 隔离与 `qa:source` / `qa:composer` 源码实机已过；未打含本变更的 Setup，未做覆盖升级/卸载/应用内附录工具卡。
+**结论：含 dsh-home 的 `dist/win-unpacked` 已冒烟通过；NSIS Setup 未打出，覆盖升级仍未测，不能按 GitHub Release 签字。**
 
 Touching: `dsh-home`
+
+落地提交：`4f76c3cd34` `feature(dsh-home): 桌面 Harness 家目录与官方 ~/.dsh 隔离`；`f54e96cb54` 记下 vendor 测试债计划。
+
+后续补测（同日）：`npm test` **686 / 686**；`npm run pack` 成功；`npm run smoke:packaged` **PASS**（解包 exe 写出 `user-data/dsh-home`，Electron `DSH_HOME` 为空，Web UI 就绪；标题栏 Git 菜单曾 flake 一次，重跑通过）。`npm run dist` 在 NSIS 阶段失败：`Cannot read properties of undefined (reading 'ReadWrite')`（electron-builder 26.15.3 `electronGet.resolveCacheMode`）。vendor Phase B 六份 spec **221 passed / 2 skipped**。web replay 与装配快照未跑。
+
+Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairing token。
 
 ---
 
@@ -11,11 +17,11 @@ Touching: `dsh-home`
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-08-22 |
-| 测的是什么 | 当前 git 工作区源码 + 本地 Electron（`electron .`），**不是** GitHub Release Setup |
-| HEAD | `971a77ac42`（已提交基线；其上有未提交的 dsh-home 与本次冒烟修正） |
+| 测的是什么 | 源码 Electron + 当日 `dist/win-unpacked`；**不是** NSIS Setup / GitHub Release |
+| HEAD | `4f76c3cd34`（dsh-home）+ `f54e96cb54`（vendor 测试债计划） |
 | package.json | `0.2.6` |
 | 已装 Setup | `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\`，exe 时间 2026-08-20，**不含** dsh-home |
-| `dist/win-unpacked` | 2026-08-21，**未用**（早于本隔离） |
+| `dist/win-unpacked` | 2026-08-22 23:29，含隔离；`smoke:packaged` PASS |
 | OS | Windows 10.0.26200 x64 |
 | 模型网关 | `https://ayase.cn/v1` / `grok-4.6`（附录 A；密钥未入本报告） |
 | 证据目录 | `docs/qa/results/2026-08-22/` |
@@ -28,12 +34,14 @@ Touching: `dsh-home`
 
 | 批次 | 命令/方式 | 结果 |
 | --- | --- | --- |
-| A | `npm test` | **PASS**（684 / 684） |
+| A | `npm test` | **PASS**（落地后 **686 / 686**） |
 | B | TC-INST-011 毒化 `~/.dsh/profiles/web` 后源码冷启动 | **PASS**（隔离；标题栏 Git 菜单冒烟仍 flake，不计入本条） |
 | C | `DSH_SMOKE_KEEP=1 npm run qa:source` | **PASS**（必过步骤全绿，含 Surfaces / 终端 / Browser URL） |
 | D | `DSH_SMOKE_KEEP=1 npm run qa:composer` | **PASS**（11/11；Remote 已监听） |
 | E | `scripts/run-acceptance-appendix-a.mjs`（网关多轮） | **PASS**（5/5） |
-| F | 新 Setup / `npm run pack` / 覆盖升级 / 卸载 | **未做** |
+| F | `npm run pack` + `smoke:packaged` | **PASS**（解包隔离） |
+| F2 | `npm run dist`（NSIS Setup） | **FAIL**（`ReadWrite` / electron-builder 26.15.3） |
+| F3 | 覆盖升级 / 卸载 | **未做** |
 | G | 应用内附录 A 工具卡（读文件 / 跑命令 / 审批） | **未做** |
 
 冒烟脚本不再向 Electron 注入 `DSH_HOME`；`dshd-smoke.json` 记录 `desktopHome`、`homeLog`、`electronEnv.DSH_HOME`。Composer 将 Remote 快照里的空字符串 `error` 视为无错误（先前假失败）。
@@ -56,7 +64,7 @@ Touching: `dsh-home`
 
 | ID | 结果 | 依据 |
 | --- | --- | --- |
-| TC-INST-001 | Partial | 源码 Electron 可进四栏；本变更未打 Setup |
+| TC-INST-001 | Partial | 源码 + `win-unpacked` 可进四栏；NSIS Setup 未打出 |
 | TC-INST-002 | N/A | 未专项双开 |
 | TC-INST-003 | Pass | 冷启动进 Web UI（INST-011 + qa:source） |
 | TC-INST-004～007 | Blocked | 未造恢复/倒计时障 |
@@ -134,7 +142,7 @@ Touching: `dsh-home`
 
 | 门禁项 | 状态 |
 | --- | --- |
-| 含 dsh-home 的安装包可启动 | **未测**（无新包） |
+| 含 dsh-home 的安装包可启动 | **解包 PASS**；NSIS Setup 未打出 |
 | 源码四栏 + PTY | Pass |
 | 官方 `~/.dsh` 毒化不能拖死桌面 | Pass |
 | Composer 官方边界 + Mention/终端送对话 | Pass |
@@ -146,14 +154,14 @@ Touching: `dsh-home`
 | 覆盖升级须重配（TC-INST-009） | **未测** |
 | 托盘/卸载/识图 | 未测 |
 
-**可交付签字：否。**
+**可交付签字：否**（解包隔离已过；缺 NSIS Setup、覆盖升级、应用内工具卡）。
 
-建议下一步（若要签安装包）：
+建议下一步：
 
-1. `npm run dist` 打 Windows Setup，对**新包**再跑 INST-001 / packaged smoke / INST-011。  
-2. 旧 0.2.6 → 新包覆盖升级（INST-009）：壳层 key 仍在；会话/主题/自定义模型须在桌面重配。  
+1. 修 electron-builder NSIS `ReadWrite` 后再 `npm run dist`。  
+2. 旧 0.2.6 → 新 Setup 覆盖升级（INST-009）。  
 3. 应用内附录 A 第 3～5 轮（工具卡 + 审批）。  
-4. 托盘关闭行为各 1 条。
+4. vendor web replay / 装配快照（计划已入库）。
 
 ---
 
@@ -173,10 +181,10 @@ Touching: `dsh-home`
 
 | 项 | 内容 |
 | --- | --- |
-| 安装包文件名 | （无新包） |
-| 应用 About 版本 | 源码 `0.2.6` |
+| 安装包文件名 | `dist/win-unpacked/Deepseek-Harness-Desktop.exe`（无 Setup） |
+| 应用 About 版本 | `0.2.6` |
 | 模型 | ayase / `grok-4.6` @ `https://ayase.cn/v1` 已用于网关附录 |
 | 附录 A 五轮 | 网关全过；应用内工具卡未跑 |
-| P0 结果 | 有 Blocked（升级/安装包）+ Partial（对话在网关） |
-| 结论 | **不可交付**（源码隔离与 UI 冒烟可通过；安装包门禁未关） |
-| 测试执行 | 2026-08-22 · 本机源码实机 |
+| P0 结果 | 解包隔离 Pass；NSIS / 覆盖升级 Blocked；对话 Partial（网关） |
+| 结论 | **不可按 Release 交付**（解包隔离与源码 UI 冒烟可通过） |
+| 测试执行 | 2026-08-22 · 源码实机 + 当日 unpacked 冒烟 |

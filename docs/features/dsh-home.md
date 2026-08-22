@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-22 — unit 686；TC-INST-011；`qa:source` / `qa:composer` 源码实机 |
+| **last verified** | 2026-08-22 — unit 686；TC-INST-011；`qa:source` / `qa:composer`；`smoke:packaged` on `win-unpacked` |
 
 ## User paths
 
