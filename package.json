@@ -34,6 +34,11 @@
     "electron-builder": "^26.15.3",
     "pnpm": "11.8.0"
   },
+  "overrides": {
+    "app-builder-lib": {
+      "@electron/get": "5.1.0"
+    }
+  },
   "build": {
     "appId": "ai.deepseek.harness.gui",
     "productName": "Deepseek-Harness-Desktop",

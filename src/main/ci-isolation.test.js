@@ -122,3 +122,32 @@ test('setup-harness uses the lockfile-installed pnpm executable', () => {
   const source = fs.readFileSync(path.join(ROOT, 'scripts', 'setup-harness.js'), 'utf8');
   assert.match(source, /node_modules['"], ['"]pnpm['"], ['"]bin['"], ['"]pnpm\.cjs/);
 });
+
+test('electron-builder app-builder-lib resolves @electron/get with ElectronDownloadCacheMode', () => {
+  const builderPkg = path.dirname(require.resolve('electron-builder/package.json'));
+  const libEntry = require.resolve('app-builder-lib', { paths: [builderPkg] });
+  const from = path.join(path.dirname(libEntry), 'util');
+  const resolved = require.resolve('@electron/get', { paths: [from] });
+  const get = require(resolved);
+  assert.equal(
+    typeof get.ElectronDownloadCacheMode?.ReadWrite,
+    'number',
+    `@electron/get at ${resolved} must export ElectronDownloadCacheMode (NSIS/DMG tool download)`,
+  );
+});
+
+test('pnpm workspace pins app-builder-lib away from @electron/get 3.0.0', () => {
+  const yaml = fs.readFileSync(path.join(ROOT, 'pnpm-workspace.yaml'), 'utf8');
+  assert.match(yaml, /allowBuilds:/);
+  assert.match(yaml, /\bnode-pty:/);
+  assert.match(yaml, /app-builder-lib>@electron\/get:\s*5\.1\.0/);
+  const lock = fs.readFileSync(path.join(ROOT, 'pnpm-lock.yaml'), 'utf8');
+  assert.match(
+    lock,
+    /app-builder-lib@26\.15\.3[\s\S]*?'@electron\/get': 5\.1\.0/,
+  );
+  assert.doesNotMatch(
+    lock,
+    /app-builder-lib@26\.15\.3\(dmg-builder@26\.15\.3\)[\s\S]*?'@electron\/get': 3\.0\.0/,
+  );
+});
