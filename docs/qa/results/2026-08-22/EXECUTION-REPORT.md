@@ -1,12 +1,12 @@
 # 生产验收执行报告 · 2026-08-22
 
-**结论：含 dsh-home 的 `dist/win-unpacked` 已冒烟通过；NSIS Setup 未打出，覆盖升级仍未测，不能按 GitHub Release 签字。**
+**结论：NSIS Setup 已打出并完成对本机 8/20 安装的静默覆盖升级；冷启动写出 `%APPDATA%\Deepseek-Harness-Desktop\dsh-home`，壳层 `credentials.json` / `config.json` 仍在。应用内附录工具卡未跑。vendor Phase A 已吸收 7 份 replay 失败；仍红 `built-boot.snapshot.ts` 与 `approval-composer.e2e.ts`。**
 
 Touching: `dsh-home`
 
 落地提交：`4f76c3cd34` `feature(dsh-home): 桌面 Harness 家目录与官方 ~/.dsh 隔离`；`f54e96cb54` 记下 vendor 测试债计划。
 
-后续补测（同日）：`npm test` **686 / 686**；`npm run pack` 成功；`npm run smoke:packaged` **PASS**（解包 exe 写出 `user-data/dsh-home`，Electron `DSH_HOME` 为空，Web UI 就绪；标题栏 Git 菜单曾 flake 一次，重跑通过）。`npm run dist` 在 NSIS 阶段失败：`Cannot read properties of undefined (reading 'ReadWrite')`（electron-builder 26.15.3 `electronGet.resolveCacheMode`）。vendor Phase B 六份 spec **221 passed / 2 skipped**。web replay 与装配快照未跑。
+后续补测（同日深夜）：根因是 pnpm 隔离的 `app-builder-lib` 解析到 `@electron/get@3.0.0`（无 `ElectronDownloadCacheMode`）。钉到 `5.1.0` 后 `npm run dist` **PASS**，产物 `dist/Deepseek-Harness-Desktop-Setup-0.2.6.exe`（约 469 MB）。对本机 `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\` 静默 `/S` 覆盖：exe 时间 2026-08-23 00:06；首次启动约 2s 创建 `dsh-home/profiles/web`；credentials/config 仍在；官方 `~/.dsh` 仍在。vendor Phase D 装配快照 **88 passed / 33 skipped**；Phase B6 sdk/server 判定为 waitFor flake，**keep** `assertToolTranscriptValid`。Phase A 首轮 9 红 / 76 绿；吸收 SettingsSelect 金标、win32 bash/`run_code`、trajectory 滚动上限、workspace hover `force` click、smoke-real 180s 后 7 文件重跑绿。仍红：`built-boot.snapshot.ts`（需完整 `pnpm run build` 记录）、`approval-composer.e2e.ts`（win32 无 bash，无审批面板；未在代码里 skip）。未跑 `hmr-live` / `cordis-tool-round`。
 
 Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairing token。
 
@@ -17,10 +17,10 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-08-22 |
-| 测的是什么 | 源码 Electron + 当日 `dist/win-unpacked`；**不是** NSIS Setup / GitHub Release |
+| 测的是什么 | 源码 + `win-unpacked` + 当日 NSIS Setup 覆盖本机安装 |
 | HEAD | `4f76c3cd34`（dsh-home）+ `f54e96cb54`（vendor 测试债计划） |
 | package.json | `0.2.6` |
-| 已装 Setup | `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\`，exe 时间 2026-08-20，**不含** dsh-home |
+| 已装 Setup | `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\`，exe 时间 **2026-08-23 00:06**（覆盖升级后，含 dsh-home） |
 | `dist/win-unpacked` | 2026-08-22 23:29，含隔离；`smoke:packaged` PASS |
 | OS | Windows 10.0.26200 x64 |
 | 模型网关 | `https://ayase.cn/v1` / `grok-4.6`（附录 A；密钥未入本报告） |
@@ -34,14 +34,14 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 
 | 批次 | 命令/方式 | 结果 |
 | --- | --- | --- |
-| A | `npm test` | **PASS**（落地后 **686 / 686**） |
+| A | `npm test` | **PASS**（落地后 686；钉 NSIS 后 **688 / 688**） |
 | B | TC-INST-011 毒化 `~/.dsh/profiles/web` 后源码冷启动 | **PASS**（隔离；标题栏 Git 菜单冒烟仍 flake，不计入本条） |
 | C | `DSH_SMOKE_KEEP=1 npm run qa:source` | **PASS**（必过步骤全绿，含 Surfaces / 终端 / Browser URL） |
 | D | `DSH_SMOKE_KEEP=1 npm run qa:composer` | **PASS**（11/11；Remote 已监听） |
 | E | `scripts/run-acceptance-appendix-a.mjs`（网关多轮） | **PASS**（5/5） |
 | F | `npm run pack` + `smoke:packaged` | **PASS**（解包隔离） |
-| F2 | `npm run dist`（NSIS Setup） | **FAIL**（`ReadWrite` / electron-builder 26.15.3） |
-| F3 | 覆盖升级 / 卸载 | **未做** |
+| F2 | `npm run dist`（NSIS Setup） | **PASS**（钉 `@electron/get@5.1.0` 后） |
+| F3 | 覆盖升级 TC-INST-009 | **PASS**（`/S` 覆盖；`dsh-home` 新建；壳层凭据仍在） |
 | G | 应用内附录 A 工具卡（读文件 / 跑命令 / 审批） | **未做** |
 
 冒烟脚本不再向 Electron 注入 `DSH_HOME`；`dshd-smoke.json` 记录 `desktopHome`、`homeLog`、`electronEnv.DSH_HOME`。Composer 将 Remote 快照里的空字符串 `error` 视为无错误（先前假失败）。
@@ -52,7 +52,7 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 
 - **`qa:source` 由 Fail 转为 Pass。** 上次失败的 `terminal.drawer` / `agents.empty` / `diff.panel` / `browser.url` / `terminal.surface` 本次均为 PASS。
 - **dsh-home：** 毒化官方 `~/.dsh` 后仍 `Web UI 就绪`；桌面家目录在隔离 `userData/dsh-home`；`~/.dsh/settings.yaml` 哈希未变；测后已还原 profile manifest。
-- 产品 AppData（`%APPDATA%\Deepseek-Harness-Desktop`）在测前**没有** `dsh-home`（旧装仍走 `~/.dsh`）。本次源码实机只写了临时 `--user-data-dir`。
+- 产品 AppData 在测前没有 `dsh-home`。覆盖升级后首次启动约 2s 写出 `%APPDATA%\Deepseek-Harness-Desktop\dsh-home\profiles\web`；壳层 `credentials.json` / `config.json` 仍在；官方 `~/.dsh` 仍在。
 
 ---
 
@@ -64,12 +64,12 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 
 | ID | 结果 | 依据 |
 | --- | --- | --- |
-| TC-INST-001 | Partial | 源码 + `win-unpacked` 可进四栏；NSIS Setup 未打出 |
+| TC-INST-001 | Pass | 源码 + `win-unpacked` + NSIS Setup；覆盖后冷启动进 Web UI |
 | TC-INST-002 | N/A | 未专项双开 |
 | TC-INST-003 | Pass | 冷启动进 Web UI（INST-011 + qa:source） |
 | TC-INST-004～007 | Blocked | 未造恢复/倒计时障 |
 | TC-INST-008 | Partial | 源码 0.2.6；未对 Release 安装包逐条核对 |
-| TC-INST-009 | Blocked | 未覆盖升级；预期升级后须在桌面 `dsh-home` 重配会话/主题/自定义模型 |
+| TC-INST-009 | Pass | `/S` 覆盖 8/20 安装；exe 2026-08-23 00:06；`dsh-home` 新建（须在桌面重配会话/主题）；壳层凭据仍在；未卸载 |
 | TC-INST-010 | N/A | 未卸载 |
 | TC-INST-011 | Pass | 毒化 `dsh.profile.bundles` 后仍 `hasFrame` + `Web UI 就绪`；`homeLog` 指向 `userData/dsh-home`；Electron `DSH_HOME` 为空；官方 settings 未改写；测后还原。PTY 未在抽屉里实跑官方 `dsh` CLI（机制：不注入桌面 home） |
 
@@ -142,7 +142,7 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 
 | 门禁项 | 状态 |
 | --- | --- |
-| 含 dsh-home 的安装包可启动 | **解包 PASS**；NSIS Setup 未打出 |
+| 含 dsh-home 的安装包可启动 | **解包 PASS**；NSIS Setup PASS（本地 `dist/`） |
 | 源码四栏 + PTY | Pass |
 | 官方 `~/.dsh` 毒化不能拖死桌面 | Pass |
 | Composer 官方边界 + Mention/终端送对话 | Pass |
@@ -151,17 +151,17 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 | 附录 A 网关多轮 | Pass |
 | 应用内完整附录 A（含工具卡） | **未完成** |
 | `qa:source` 全绿 | Pass |
-| 覆盖升级须重配（TC-INST-009） | **未测** |
+| 覆盖升级须重配（TC-INST-009） | Pass（`dsh-home` 空家目录；壳层凭据仍在） |
 | 托盘/卸载/识图 | 未测 |
 
-**可交付签字：否**（解包隔离已过；缺 NSIS Setup、覆盖升级、应用内工具卡）。
+**可交付签字：否**（Setup 与覆盖升级已过；应用内工具卡未跑；vendor 仍有 `built-boot` / `approval-composer` 红；本 Setup 是本地 `dist/`，不是 GitHub Release）。
 
 建议下一步：
 
-1. 修 electron-builder NSIS `ReadWrite` 后再 `npm run dist`。  
-2. 旧 0.2.6 → 新 Setup 覆盖升级（INST-009）。  
-3. 应用内附录 A 第 3～5 轮（工具卡 + 审批）。  
-4. vendor web replay / 装配快照（计划已入库）。
+1. 应用内附录 A 第 3～5 轮（工具卡 + 审批）。  
+2. vendor 完整 `pnpm run build` 后再跑 `built-boot.snapshot.ts`；`approval-composer` 需 pwsh 重录或 Trent 允许 win32 skip。  
+3. Phase C：`hmr-live.e2e.ts`（勿与 replay 池并行）。  
+4. GitHub Release 另走签字流程（本 Setup 未签名发布）。
 
 ---
 
@@ -181,10 +181,10 @@ Remote QA 日志改为 `summarizeRemoteQaDetail`，不再 `JSON.stringify` pairi
 
 | 项 | 内容 |
 | --- | --- |
-| 安装包文件名 | `dist/win-unpacked/Deepseek-Harness-Desktop.exe`（无 Setup） |
+| 安装包文件名 | `dist/Deepseek-Harness-Desktop-Setup-0.2.6.exe`（本地 NSIS，未作 GitHub Release） |
 | 应用 About 版本 | `0.2.6` |
 | 模型 | ayase / `grok-4.6` @ `https://ayase.cn/v1` 已用于网关附录 |
 | 附录 A 五轮 | 网关全过；应用内工具卡未跑 |
-| P0 结果 | 解包隔离 Pass；NSIS / 覆盖升级 Blocked；对话 Partial（网关） |
-| 结论 | **不可按 Release 交付**（解包隔离与源码 UI 冒烟可通过） |
-| 测试执行 | 2026-08-22 · 源码实机 + 当日 unpacked 冒烟 |
+| P0 结果 | 解包隔离 Pass；NSIS Pass；INST-009 Pass；对话 Partial（网关） |
+| 结论 | **不可按 Release 交付**（本地 Setup 与覆盖升级可通过；缺应用内工具卡与签名发布） |
+| 测试执行 | 2026-08-22～23 · 源码 + unpacked + 本地 Setup 覆盖 |

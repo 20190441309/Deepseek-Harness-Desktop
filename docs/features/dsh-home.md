@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-22 — unit 686；TC-INST-011；`qa:source` / `qa:composer`；`smoke:packaged` on `win-unpacked` |
+| **last verified** | 2026-08-23 — unit 688；TC-INST-011；`qa:source` / `qa:composer`；`smoke:packaged`；NSIS Setup；TC-INST-009 overlay |
 
 ## User paths
 
