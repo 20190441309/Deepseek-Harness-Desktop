@@ -22,11 +22,11 @@ test('assertReleaseQaResult fails on a required step miss or omission', () => {
     /files\.panel/,
   );
   const steps = QA_REQUIRED_STEPS
-    .filter((name) => name !== 'plugin.dshbot.tab')
+    .filter((name) => name !== 'plugin.dshbot.tabAbsent')
     .map((name) => ({ name, ok: true, detail: '' }));
   assert.throws(
     () => assertReleaseQaResult({ qa: { ok: true, failed: [], steps } }),
-    /plugin\.dshbot\.tab/,
+    /plugin\.dshbot\.tabAbsent/,
   );
 });
 
@@ -40,7 +40,8 @@ test('release walk helpers stay injectable into the harness page', () => {
   assert.ok(QA_REQUIRED_STEPS.includes('gallery.sources'));
   assert.ok(QA_REQUIRED_STEPS.includes('market.discover'));
   assert.ok(QA_REQUIRED_STEPS.includes('browser.url'));
-  assert.ok(QA_REQUIRED_STEPS.includes('plugin.dshbot.tab'));
+  assert.ok(QA_REQUIRED_STEPS.includes('plugin.dshbot.tabAbsent'));
+  assert.equal(QA_REQUIRED_STEPS.includes('plugin.dshbot.tab'), false);
   assert.ok(QA_REQUIRED_STEPS.includes('market.installed'));
   assert.ok(QA_REQUIRED_STEPS.includes('files.mentionAppended'));
   assert.ok(QA_REQUIRED_STEPS.includes('files.mentionVisible'));

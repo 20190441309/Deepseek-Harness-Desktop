@@ -98,10 +98,60 @@ function ensureDshbotPlugin(options = {}) {
   };
 }
 
+function removeDshbotFromProfileManifest(profileDir) {
+  const file = path.join(profileDir, 'package.json');
+  if (!fs.existsSync(file)) {
+    return { removed: false };
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { removed: false, error: 'invalid-profile' };
+  }
+  let changed = false;
+  if (manifest.dependencies && Object.prototype.hasOwnProperty.call(manifest.dependencies, DSHBOT_PACKAGE)) {
+    delete manifest.dependencies[DSHBOT_PACKAGE];
+    changed = true;
+  }
+  const current = manifest.dsh?.profile?.bundles;
+  if (Array.isArray(current) && current.includes(DSHBOT_PACKAGE)) {
+    manifest.dsh = {
+      ...manifest.dsh,
+      profile: {
+        ...manifest.dsh.profile,
+        bundles: current.filter((name) => name !== DSHBOT_PACKAGE),
+      },
+    };
+    changed = true;
+  }
+  if (changed) {
+    fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  }
+  return { removed: changed };
+}
+
+/**
+ * Stop loading the bundled dshbot plugin so the sidebar Bots tab stays absent.
+ * Leaves `vendor/dshbot` and any already-copied profile files in place.
+ * @param {{ profileDir?: string }} [options]
+ */
+function hideDshbotPlugin(options = {}) {
+  const profileDir = options.profileDir || webProfileDir();
+  const patchFile = path.join(profileDir, 'cordis.patch.yml');
+  const stripped = stripBlockFromFile(patchFile, DSHBOT_BEGIN, DSHBOT_END);
+  const manifest = removeDshbotFromProfileManifest(profileDir);
+  if (manifest.error) {
+    return { ok: false, stripped, manifestRemoved: false, error: manifest.error };
+  }
+  return { ok: true, stripped, manifestRemoved: Boolean(manifest.removed) };
+}
+
 module.exports = {
   DSHBOT_PACKAGE,
   DSHBOT_BEGIN,
   DSHBOT_END,
   ROOM_PRESET_ID,
   ensureDshbotPlugin,
+  hideDshbotPlugin,
 };

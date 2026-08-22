@@ -112,8 +112,7 @@ const QA_REQUIRED_STEPS = [
   'market.section',
   'market.discover',
   'market.installed',
-  'plugin.dshbot.tab',
-  'plugin.dshbot.page',
+  'plugin.dshbot.tabAbsent',
 ];
 
 function sleep(ms) {
@@ -782,23 +781,16 @@ async function runReleaseUiWalk(wc, helpers) {
   await dismiss();
   await sleep(300);
 
-  const botsClicked = await pageEval(wc, () => {
+  const botsTab = await pageEval(wc, () => {
     const tab = Array.from(document.querySelectorAll('[role="tab"]')).find((el) =>
       dshShown(el) && /(bots|机器人)/i.test(dshLabel(el)));
-    if (!tab) return false;
-    tab.click();
-    return true;
+    return Boolean(tab);
   });
-  const bots = await waitUntil(() => pageEval(wc, () => {
-    const tab = Array.from(document.querySelectorAll('[role="tab"]')).find((el) =>
-      /(bots|机器人)/i.test(dshLabel(el)));
-    const selected = Boolean(tab && tab.getAttribute('aria-selected') === 'true');
-    const text = document.body.innerText || '';
-    const page = /no bots yet|还没有机器人|new bot|添加新 bot|add bot/i.test(text);
-    return selected || page ? { selected, page } : null;
-  }), 8_000);
-  rec('plugin.dshbot.tab', Boolean(botsClicked || bots), botsClicked ? 'plugin sidebar contribution' : 'dshbot plugin tab missing');
-  rec('plugin.dshbot.page', Boolean(bots?.page || bots?.selected), '');
+  rec(
+    'plugin.dshbot.tabAbsent',
+    !botsTab,
+    botsTab ? 'dshbot sidebar tab still visible' : '',
+  );
   } catch (error) {
     rec('walk.uncaught', false, error && error.stack ? error.stack : String(error));
   }

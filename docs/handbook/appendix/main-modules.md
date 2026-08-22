@@ -43,7 +43,7 @@
 | `dshmarket-preset.js` / `desktop-install-control.js` | 预置与安装控制 |
 | `plugins.js` / `plugin-runtime-files.js` | 插件列表与运行时文件 |
 | `plugin-tree-failure.js` / `plugin-recovery-actions.js` | 启动失败恢复 |
-| `dshbot-preset.js` | dshbot 预置 |
+| `dshbot-preset.js` | dshbot 预置隐藏 |
 | `harness-extract.js` | 打包 harness 提取 |
 
 ## 壁纸 / 远程 / 桌面壳

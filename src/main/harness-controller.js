@@ -45,8 +45,8 @@ class HarnessController extends EventEmitter {
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
     this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
       || (async () => ({ ok: true, added: false }));
-    this.ensureDshbotPlugin = options.ensureDshbotPlugin
-      || (async () => ({ ok: true, added: false }));
+    this.hideDshbotPlugin = options.hideDshbotPlugin
+      || (async () => ({ ok: true, stripped: false }));
     this.ensureWorkspace = options.ensureWorkspace;
     this.setTimer = options.setTimer || setTimeout;
     this.clearTimer = options.clearTimer || clearTimeout;
@@ -419,13 +419,15 @@ class HarnessController extends EventEmitter {
       this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
     }
     try {
-      const dshbot = await this.ensureDshbotPlugin();
+      const dshbot = await this.hideDshbotPlugin();
       this.assertOperationCurrent(generation);
       if (dshbot && dshbot.ok === false) {
-        this.dsh.log(`预置 dshbot 失败：${dshbot.error || 'unknown'}`, 'app');
+        this.dsh.log(`隐藏 dshbot 失败：${dshbot.error || 'unknown'}`, 'app');
+      } else if (dshbot && (dshbot.stripped || dshbot.manifestRemoved)) {
+        this.dsh.log('已隐藏预置 dshbot 侧栏入口', 'app');
       }
     } catch (error) {
-      this.dsh.log(`预置 dshbot 失败：${errorMessage(error)}`, 'app');
+      this.dsh.log(`隐藏 dshbot 失败：${errorMessage(error)}`, 'app');
     }
     const startOptions = {
       ...target,

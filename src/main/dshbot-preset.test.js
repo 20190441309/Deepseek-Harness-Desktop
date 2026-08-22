@@ -9,6 +9,7 @@ const {
   DSHBOT_BEGIN,
   DSHBOT_END,
   ensureDshbotPlugin,
+  hideDshbotPlugin,
 } = require('./dshbot-preset');
 
 function writeSource(dir) {
@@ -186,4 +187,58 @@ test('repo vendors dshbot for offline profile copy', () => {
   assert.equal(fs.existsSync(path.join(root, 'lib', 'index.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'cordis.patch.yml')), true);
   assert.equal(fs.existsSync(path.join(root, 'presets', 'dshbot-room', 'agent.cordis.yml')), true);
+});
+
+test('hideDshbotPlugin strips the managed patch after ensure', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    ensureDshbotPlugin({ sourceDir: source, profileDir });
+    const result = hideDshbotPlugin({ profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(result.stripped, true);
+    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
+    assert.equal(patch.includes(DSHBOT_BEGIN), false);
+    assert.equal(patch.includes('id: dsh-bot'), false);
+    assert.equal(fs.existsSync(path.join(profileDir, 'desktop-plugins', 'dshbot', 'package.json')), true);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('hideDshbotPlugin drops dshbot from profile bundles and dependencies', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({
+      dependencies: { dshbot: '0.1.0', other: '1.0.0' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app', 'dshbot'] } },
+    }, null, 2)}\n`, 'utf8');
+    const result = hideDshbotPlugin({ profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(result.manifestRemoved, true);
+    const manifest = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'));
+    assert.equal(Object.prototype.hasOwnProperty.call(manifest.dependencies, 'dshbot'), false);
+    assert.equal(manifest.dependencies.other, '1.0.0');
+    assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-web-app']);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('hideDshbotPlugin is a no-op when the profile has no dshbot insert', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    const result = hideDshbotPlugin({ profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(result.stripped, false);
+    assert.equal(result.manifestRemoved, false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });

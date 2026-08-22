@@ -239,7 +239,7 @@ test('logs and continues when the dshmarket preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
 });
 
-test('awaits the dshbot preset after dshmarket and before Harness start', async () => {
+test('hides dshbot after dshmarket and before Harness start', async () => {
   const order = [];
   const f = fixture({
     ensureDesktopInstallPlugin: () => {
@@ -250,9 +250,9 @@ test('awaits the dshbot preset after dshmarket and before Harness start', async 
       order.push('dshmarket');
       return { ok: true, added: true };
     },
-    ensureDshbotPlugin: async () => {
-      order.push('dshbot');
-      return { ok: true, added: true };
+    hideDshbotPlugin: async () => {
+      order.push('dshbot-hide');
+      return { ok: true, stripped: true };
     },
   });
   const origStart = f.dsh.start.bind(f.dsh);
@@ -261,16 +261,17 @@ test('awaits the dshbot preset after dshmarket and before Harness start', async 
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'dshbot', 'start']);
+  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'dshbot-hide', 'start']);
+  assert.ok(f.dsh.logs.some((line) => /已隐藏预置 dshbot/.test(line)));
 });
 
-test('logs and continues when the dshbot preset fails', async () => {
+test('logs and continues when hiding dshbot fails', async () => {
   const f = fixture({
-    ensureDshbotPlugin: async () => ({ ok: false, error: 'offline' }),
+    hideDshbotPlugin: async () => ({ ok: false, error: 'invalid-profile' }),
   });
   await f.controller.start();
   assert.equal(f.dsh.startCalls, 1);
-  assert.ok(f.dsh.logs.some((line) => /dshbot/.test(line) && /offline/.test(line)));
+  assert.ok(f.dsh.logs.some((line) => /dshbot/.test(line) && /invalid-profile/.test(line)));
 });
 
 test('plugin-tree startup failure retries once with the official template overlay', async () => {
