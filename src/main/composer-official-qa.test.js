@@ -18,8 +18,8 @@ test('composer official cases cover the plan claims', () => {
   assert.ok(ids.includes('case.dollar.noLocalSkillMenu'));
   assert.ok(ids.includes('case.at.noDesktopPathSource'));
   assert.ok(ids.includes('case.terminal.addToChat'));
-  assert.ok(ids.includes('case.remote.unavailable'));
-  assert.ok(ids.includes('case.remote.notListening'));
+  assert.ok(ids.includes('case.remote.available'));
+  assert.ok(ids.includes('case.remote.listening'));
   assert.equal(new Set(ids).size, ids.length);
 });
 
@@ -37,11 +37,11 @@ test('assertComposerOfficialQaResult rejects missing or failed cases', () => {
     /case\.mention\.writesMarkdown/,
   );
   const steps = COMPOSER_OFFICIAL_CASES
-    .filter((c) => c.id !== 'case.remote.notListening')
+    .filter((c) => c.id !== 'case.remote.listening')
     .map((c) => ({ name: c.id, ok: true, detail: '' }));
   assert.throws(
     () => assertComposerOfficialQaResult({ ok: true, failed: [], steps }),
-    /case\.remote\.notListening/,
+    /case\.remote\.listening/,
   );
   assert.doesNotThrow(() => assertComposerOfficialQaResult({
     ok: true,

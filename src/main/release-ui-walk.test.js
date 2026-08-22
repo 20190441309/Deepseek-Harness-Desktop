@@ -46,7 +46,7 @@ test('release walk helpers stay injectable into the harness page', () => {
   assert.ok(QA_REQUIRED_STEPS.includes('files.mentionVisible'));
   assert.ok(QA_REQUIRED_STEPS.includes('composer.skillMenuAbsent'));
   assert.ok(QA_REQUIRED_STEPS.includes('composer.pathSourceAbsent'));
-  assert.ok(QA_REQUIRED_STEPS.includes('remote.unavailable'));
+  assert.ok(QA_REQUIRED_STEPS.includes('remote.available'));
   assert.ok(QA_REQUIRED_STEPS.includes('remote.notListening'));
 });
 
@@ -62,6 +62,6 @@ test('release walk source clicks Mention and asserts the composer markdown link'
   assert.match(walk, /composer\.pathSourceAbsent/);
   assert.match(walk, /data-source="path"/);
   assert.match(walk, /probeRemote/);
-  assert.match(walk, /remote\.unavailable/);
+  assert.match(walk, /remote\.available/);
   assert.match(walk, /\$fo/);
 });

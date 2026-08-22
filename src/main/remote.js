@@ -234,6 +234,7 @@ class RemoteGateway extends EventEmitter {
     const relay = this.relay ? this.relay.snapshot() : { connected: false, url: '', error: '' };
     const relayDown = mode === 'relay' && Boolean(config.remoteEnabled) && !relay.connected;
     return {
+      available: true,
       enabled: Boolean(config.remoteEnabled),
       listening: Boolean(this.server && this.port),
       port,

@@ -71,7 +71,7 @@ const QA_REQUIRED_STEPS = [
   'composer.access',
   'composer.skillMenuAbsent',
   'composer.pathSourceAbsent',
-  'remote.unavailable',
+  'remote.available',
   'remote.notListening',
   'titlebar.sessionLog',
   'titlebar.branch',
@@ -400,8 +400,8 @@ async function runReleaseUiWalk(wc, helpers) {
     ? await helpers.probeRemote()
     : null;
   rec(
-    'remote.unavailable',
-    remoteSnap != null && remoteSnap.available === false && remoteSnap.enabled === false,
+    'remote.available',
+    remoteSnap != null && remoteSnap.available === true && remoteSnap.enabled === false,
     remoteSnap ? JSON.stringify(remoteSnap).slice(0, 200) : 'helpers.probeRemote missing',
   );
   rec(
@@ -414,7 +414,7 @@ async function runReleaseUiWalk(wc, helpers) {
     if (trigger && dshShown(trigger)) return 'trigger';
     return dshFind('^remote$|^远程$') ? 'label' : null;
   });
-  rec('remote.footerAbsent', remoteFooter == null, remoteFooter || 'no remote footer', true);
+  rec('remote.footerPresent', remoteFooter != null, remoteFooter || 'no remote footer', true);
 
   const commandsClicked = await clickNamed(wc, '^commands$|^命令$');
   if (commandsClicked) {

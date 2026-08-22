@@ -50,6 +50,7 @@ describe('RemoteSection', () => {
       saveRemote: vi.fn(async (patch: RemotePatch) => snap({ enabled: patch.remoteEnabled ?? false })),
     })
     const trigger = await screen.findByRole('button', { name: en.trigger })
+    expect(trigger.getAttribute('data-dsh-remote-trigger')).toBe('')
     expect(trigger.getAttribute('data-on')).toBeNull()
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByRole('radio', { name: en.enabledOn }))

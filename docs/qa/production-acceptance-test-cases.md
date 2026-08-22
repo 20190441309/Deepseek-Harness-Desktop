@@ -663,11 +663,29 @@
 
 ## 12. 负向、远程与韧性
 
-### TC-NEG-001 · Remote 不可用且不监听 · P0
+### TC-NEG-001 · 远程默认关闭且不监听 · P0
 
-**步骤：** 查看远程相关状态（即使磁盘曾 `remoteEnabled: true`）；用资源监视器/netstat 确认无产品意外监听。
+**步骤：** 全新配置（不要打开侧栏远程）；用资源监视器/netstat 确认 3180。
 
-**期望：** 快照 unavailable；**不**开 HTTP 监听；设置中无已启用远程控制面（`ui-settings-remote` 未加载）。
+**期望：** 侧栏有手机 **远程** 入口；快照 `available`；`enabled` 为关；**不**开 HTTP 监听。磁盘若曾 `remoteEnabled: true` 则走 TC-REM-001，不走本条。
+
+### TC-REM-001 · 打开局域网远程并出现二维码 · P0
+
+**步骤：** 侧栏底部手机图标 → 远程弹窗 → 开 → 局域网。
+
+**期望：** 3180 监听；弹窗显示配对二维码（URL 在 `#offer=`）；关闭远程后停止监听。
+
+### TC-REM-002 · 手机浏览器打开 SPA · P0
+
+**步骤：** 系统相机 / 浏览器扫码（或粘贴配对 URL）→ 进入会话。
+
+**期望：** 打开的是 `mobile/web` 连接/对话壳，不是官方四栏；能列出 Host 会话并发送一条文本。
+
+### TC-REM-003 · 审批允许一次 / 拒绝 · P1
+
+**步骤：** 从手机发一条会触发审批的请求；在输入区接管条点允许一次或拒绝。
+
+**期望：** 审批不另开整页模态；结果回到对话。中继 HTTPS 可选测；HTTP 中继 origin 不得生效。
 
 ### TC-NEG-002 · Harness 崩溃恢复 · P0（造障）
 
@@ -710,7 +728,6 @@
 | GPU 终端嵌入 | 非承诺 |
 | Git worktree 工作循环 | 非承诺 |
 | turn-diff / review-comment pick | 非承诺 |
-| 手机远程 SPA / 远程网关正路径 | 当前桌面为 Remote **stub**；只测负向 TC-NEG-001 |
 | npx 官方 `@deepseek-ai/dsh` | 无标题栏 Git / surfaces / 终端；本表测安装包路径 |
 | Intel Mac / Linux 安装包 | 本轮 Windows 门禁外 |
 | 自动化 API 级 preview automation | 非日常用户路径；P2 已覆盖可见截图/PiP/录制即可 |
@@ -722,7 +739,7 @@
 | 自动化 | 覆盖 | 实机仍须人确认 |
 | --- | --- | --- |
 | `qa:source` | 控件存在、图库入口、市场分区、dshbot tab、Files Mention 等 | 安装包、升级卸载、附录多轮 API、Git 写、托盘菜单、更新安装、识图/思考强度 |
-| `qa:composer` | Mention/预览/终端送对话、禁 `$`、Remote stub | 同上 |
+| `qa:composer` | Mention/预览/终端送对话、禁 `$`、Remote 默认关 / 开启后监听 | 同上 |
 
 发版建议：本表 P0 全绿（或合法豁免）**且**可选在源码树跑通两条自动化。
 
@@ -816,6 +833,9 @@
 | TC-DESK-007 | P2 |  |  |  |  |
 | TC-DESK-008 | P1 |  |  |  |  |
 | TC-NEG-001 | P0 |  |  |  |  |
+| TC-REM-001 | P0 |  |  |  |  |
+| TC-REM-002 | P0 |  |  |  |  |
+| TC-REM-003 | P1 |  |  |  |  |
 | TC-NEG-002 | P0 造障 |  |  |  |  |
 | TC-NEG-003 | P1 |  |  |  |  |
 | TC-NEG-004 | P2 |  |  |  |  |

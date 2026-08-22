@@ -2,7 +2,7 @@
 
 /**
  * Real-machine Electron cases for the composer draft crash fix and the
- * official-@ / official-/ / no-local-$ / Remote-gateway-stopped decisions.
+ * official-@ / official-/ / no-local-$ / Remote-gateway-on decisions.
  *
  * Unlike the broad release UI walk, every case here is one product claim:
  * clear the composer, drive one interaction on the live harness page, assert
@@ -29,8 +29,8 @@ const COMPOSER_OFFICIAL_CASES = Object.freeze([
   { id: 'case.at.noDesktopPathSource', title: 'Typing @ does not register a desktop path source' },
   { id: 'case.terminal.addToChat', title: 'Terminal selection Add to chat writes a terminal fence' },
   { id: 'case.terminal.noSessionsCrash', title: 'Terminal Add to chat does not trip sessions-without-inject' },
-  { id: 'case.remote.unavailable', title: 'Remote snapshot stays unavailable with remoteEnabled on disk' },
-  { id: 'case.remote.notListening', title: 'Remote sync does not open a listener' },
+  { id: 'case.remote.available', title: 'Remote snapshot is available after Harness is ready' },
+  { id: 'case.remote.listening', title: 'Remote sync opens a listener when remoteEnabled is on disk' },
 ]);
 
 function sleep(ms) {
@@ -582,7 +582,7 @@ async function runComposerOfficialQa(wc, helpers) {
     terminalTrip.length ? terminalTrip.join(' | ') : 'no sessions-without-inject console error',
   );
 
-  // --- Remote gateway stays down even after sync ---
+  // --- Remote gateway is available and listens when enabled ---
   let remoteSnap = null;
   try {
     remoteSnap = await helpers.probeRemote();
@@ -590,16 +590,15 @@ async function runComposerOfficialQa(wc, helpers) {
     remoteSnap = { error: String(error) };
   }
   rec(
-    'case.remote.unavailable',
+    'case.remote.available',
     remoteSnap
-      && remoteSnap.available === false
-      && remoteSnap.enabled === false
+      && remoteSnap.available === true
       && remoteSnap.error == null,
     JSON.stringify(remoteSnap),
   );
   rec(
-    'case.remote.notListening',
-    remoteSnap != null && remoteSnap.listening !== true && remoteSnap.error == null,
+    'case.remote.listening',
+    remoteSnap != null && remoteSnap.listening === true && remoteSnap.error == null,
     remoteSnap ? `listening=${remoteSnap.listening}` : 'no snapshot',
   );
 

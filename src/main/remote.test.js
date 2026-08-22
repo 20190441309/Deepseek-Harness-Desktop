@@ -70,11 +70,21 @@ test('disabled remote stub does not listen or create an HTTP server', () => {
   }
 });
 
-test('main process constructs the disabled remote stub instead of RemoteGateway', () => {
+test('live gateway snapshot marks the remote face available', () => {
+  const gateway = new RemoteGateway({
+    getConfig: () => ({ remoteEnabled: false }),
+  });
+  const snap = gateway.snapshot();
+  assert.equal(snap.available, true);
+  assert.equal(snap.enabled, false);
+  assert.equal(snap.listening, false);
+});
+
+test('main process constructs RemoteGateway instead of the disabled stub', () => {
   const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /createDisabledRemote/);
-  assert.doesNotMatch(index, /new RemoteGateway/);
-  assert.match(index, /const remote = createDisabledRemote\(\)/);
+  assert.match(index, /new RemoteGateway/);
+  assert.doesNotMatch(index, /createDisabledRemote/);
+  assert.match(index, /getTarget:/);
 });
 
 test('relay close destroys upgraded clients and completes pending responses', async () => {

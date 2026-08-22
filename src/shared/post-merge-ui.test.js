@@ -148,9 +148,10 @@ const UI_FEATURES = [
     excludes: ['createPathTriggerSource', 'inputTriggers', "name: 'path'"],
   },
   {
-    name: 'web-app keeps ui-settings-remote commented',
+    name: 'web-app loads ui-settings-remote',
     file: 'packages/bundle/web-app/cordis.patch.yml',
-    includes: ['# - id: ui-settings-remote'],
+    includes: ['- id: ui-settings-remote', "'@deepseek-ai/dsh-client-ui-settings-remote'"],
+    excludes: ['# - id: ui-settings-remote'],
   },
 ];
 
@@ -188,10 +189,10 @@ test('desktop path and local $ trigger modules stay deleted', () => {
   }
 });
 
-test('main process boots the disabled remote stub', () => {
+test('main process boots RemoteGateway', () => {
   const index = readRel(ROOT, 'src/main/index.js');
-  assert.match(index, /createDisabledRemote/);
-  assert.doesNotMatch(index, /new RemoteGateway/);
+  assert.match(index, /new RemoteGateway/);
+  assert.doesNotMatch(index, /createDisabledRemote/);
 });
 
 test('dshbot plugin remains outside the vendor prefix', () => {

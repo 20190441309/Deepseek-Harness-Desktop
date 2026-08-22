@@ -9,7 +9,7 @@ const { ensureDshMarketPlugin } = require('./dshmarket-preset');
 const { ensureDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
-const { createDisabledRemote } = require('./remote');
+const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, showMain } = require('./tray');
 const {
@@ -35,7 +35,17 @@ const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('
 const { runComposerOfficialQa } = require('./composer-official-qa');
 
 const dsh = new DshManager();
-const remote = createDisabledRemote();
+const remote = new RemoteGateway({
+  getConfig: loadConfig,
+  saveConfig,
+  getTarget: () => {
+    if (dsh.state !== 'ready') {
+      return null;
+    }
+    const port = Number(dsh.port);
+    return port ? { host: '127.0.0.1', port } : null;
+  },
+});
 let quitting = false;
 let stoppingForQuit = false;
 let desktopResources = null;

@@ -153,6 +153,10 @@ function harnessApi(renderer) {
     previewClose: invoke(renderer, 'shell:preview-close'),
     onPreviewStateChange: subscribe(renderer, 'shell:preview-state-change'),
     onOpenPreviewUrl: subscribe(renderer, 'shell:open-preview-url'),
+    getRemote: invoke(renderer, 'shell:get-remote'),
+    saveRemote: invoke(renderer, 'shell:save-remote'),
+    rotateRemoteToken: invoke(renderer, 'shell:rotate-remote-token'),
+    unbindRemoteDevice: invoke(renderer, 'shell:unbind-remote-device'),
   };
 }
 

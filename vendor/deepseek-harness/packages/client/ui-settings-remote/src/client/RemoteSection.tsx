@@ -163,6 +163,7 @@ export function RemoteSection({
       <button
         type="button"
         className={css.trigger}
+        data-dsh-remote-trigger=""
         data-on={enabled || undefined}
         aria-haspopup="dialog"
         aria-expanded={open}

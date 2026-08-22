@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Real-machine Electron suite for composer draft + official triggers + Remote stop.
+ * Real-machine Electron suite for composer draft + official triggers + Remote on.
  *
  * Starts a fresh Electron with remoteEnabled=true on disk, walks only the
  * composer-official cases, and fails if any required case is missing or red.
@@ -87,7 +87,7 @@ function printStepTable(qa) {
 }
 
 function writeComposerQaConfig(userData, workspace, port) {
-  // remoteEnabled:true on disk proves the gateway still does not listen.
+  // remoteEnabled:true on disk proves the gateway listens after Harness is ready.
   writeFileSync(path.join(userData, 'config.json'), JSON.stringify({
     workspace,
     host: '127.0.0.1',
@@ -113,7 +113,7 @@ try {
   writeComposerQaConfig(dirs.userData, dirs.workspace, port)
 
   console.log(`Composer official QA: ${executable}`)
-  console.log(`Config forces remoteEnabled=true; gateway must still stay down.`)
+  console.log(`Config forces remoteEnabled=true; gateway must listen after Harness is ready.`)
   const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], {
     ...process.env,
     DSH_HOME: dirs.dshHome,

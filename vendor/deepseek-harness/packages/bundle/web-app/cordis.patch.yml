@@ -237,10 +237,8 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
-    # Phone-remote UI is hidden for this release; re-enable in the next one.
-    # The plugin stays built and tested, only the composition row is gated.
-    # - id: ui-settings-remote
-    #   name: '@deepseek-ai/dsh-client-ui-settings-remote'
+    - id: ui-settings-remote
+      name: '@deepseek-ai/dsh-client-ui-settings-remote'
 
     - id: ui-settings-mcp
       name: '@deepseek-ai/dsh-client-ui-settings-mcp'

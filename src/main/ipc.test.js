@@ -531,6 +531,26 @@ test('shell:get-remote reports unavailable for the disabled remote stub even whe
   }
 });
 
+test('shell:get-remote reports available for a live gateway snapshot', async () => {
+  const remote = {
+    snapshot() {
+      return { enabled: false, listening: false };
+    },
+    async sync() {
+      return this.snapshot();
+    },
+  };
+  const ipc = loadIpc({ remote, remoteFeatureEnabled: true });
+  try {
+    const snap = await ipc.invoke('shell:get-remote', harnessEvent());
+    assert.equal(snap.available, true);
+    assert.equal(snap.enabled, false);
+    assert.equal(snap.listening, false);
+  } finally {
+    ipc.restore();
+  }
+});
+
 test('shell:get-remote stays unavailable when remote is null', async () => {
   const ipc = loadIpc({ remote: null, remoteFeatureEnabled: true });
   try {

@@ -24,7 +24,7 @@
 
 ## 门槛
 
-- 以 mobile design 与当轮 QA 为准；改 UI 遵守 design-language 手机例外段。
+- 以 [手机远程 Feature 卡](../../features/mobile-remote.md) 与当轮 QA 为准；改 UI 遵守 design-language 手机例外段。
 
 ## 延伸阅读
 
