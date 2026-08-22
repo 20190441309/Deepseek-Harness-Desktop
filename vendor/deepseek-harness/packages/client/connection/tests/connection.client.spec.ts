@@ -268,7 +268,13 @@ describe('connection lifecycle', () => {
     api.onDescribe = () => {
       describeCalls++
       return describeCalls === 1
-        ? Promise.resolve({ rpcId: undefined as never, result: { ok: false, error: { code: 'network', message: 'unary handshake broken' } } })
+        ? Promise.resolve({
+          rpcId: 'bad-describe' as never,
+          result: {
+            ok: false as const,
+            error: { code: 'network' as never, message: 'unary handshake broken', details: {} },
+          },
+        })
         : Promise.resolve(ok({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true, scratchCwd: '/scratch' }))
     }
     const states: ConnectionState[] = []
