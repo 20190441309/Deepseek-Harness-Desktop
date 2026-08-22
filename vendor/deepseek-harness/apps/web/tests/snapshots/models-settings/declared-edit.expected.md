@@ -35,9 +35,9 @@
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
   - text: 识图模型
-  - combobox "识图模型":
-    - option "不启用" [selected]
-    - option "DeepSeek / DeepSeek-V4-Flash"
+  - button "识图模型":
+    - text: 不启用
+    - img
   - paragraph: 主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。
   - list:
     - listitem:
@@ -62,10 +62,9 @@
           - /placeholder: https://gateway.acme.example/v1
           - text: https://gateway.acme.example/v1
         - text: API 协议
-        - combobox "API 协议":
-          - option "openai-completions" [selected]
-          - option "openai-responses"
-          - option "anthropic-messages"
+        - button "API 协议":
+          - text: openai-completions
+          - img
         - region "模型目录":
           - text: 模型目录 已自定义模型目录
           - button "恢复默认模型"
@@ -75,24 +74,36 @@
             - text: acme-large
           - textbox "显示名称 1":
             - /placeholder: 显示名称
-          - button "容量 1"
           - button "删除模型 1"
-          - group "思考强度":
-            - text: 思考强度
-            - checkbox "关闭 1"
-            - text: 关闭
-            - checkbox "极低 1"
-            - text: 极低
-            - checkbox "低 1"
-            - text: 低
-            - checkbox "中 1"
-            - text: 中
-            - checkbox "高 1"
-            - text: 高
-            - checkbox "很高 1"
-            - text: 很高
-            - checkbox "最大 1"
-            - text: 最大
+          - group "Supported thinking intensity":
+            - text: Supported thinking intensity
+            - checkbox "Off 1"
+            - text: "Off"
+            - checkbox "Minimal 1"
+            - text: Minimal
+            - checkbox "Low 1"
+            - text: Low
+            - checkbox "Medium 1"
+            - text: Medium
+            - checkbox "High 1"
+            - text: High
+            - checkbox "Extra High 1"
+            - text: Extra High
+            - checkbox "Max 1"
+            - text: Max
+          - group "输入类型":
+            - text: 输入类型
+            - checkbox "文本 1"
+            - text: 文本
+            - checkbox "图像 1"
+            - text: 图像
+            - paragraph: 未设置——继承提供方默认值。
+          - text: 上下文窗口
+          - textbox "上下文窗口 1":
+            - /placeholder: 256K
+          - text: 最大输出 token
+          - textbox "最大输出 token 1":
+            - /placeholder: 32K
           - button "添加模型"
       - button "取消"
       - button "保存"

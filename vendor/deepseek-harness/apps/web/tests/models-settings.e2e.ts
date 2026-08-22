@@ -70,13 +70,18 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     // The button enables once the dormant catalog lands in the join.
     await expect.poll(async () => add.isEnabled(), { timeout: 10_000 }).toBe(true)
     await add.click()
-    const pick = dialog.getByLabel('提供方')
+    // Desktop fork: the provider picker is the SettingsSelect pill (button +
+    // portaled menu), not a native <select>.
+    const pick = dialog.getByRole('button', { name: '提供方' })
     await pick.waitFor({ timeout: 10_000 })
-    await expect.poll(async () => pick.locator('option').count(), { timeout: 10_000 }).toBeGreaterThan(30)
-    const options = await pick.locator('option').allTextContents()
-    expect(options).toContain('anthropic')
-    expect(options).toContain('minimax-cn')
-    await pick.selectOption('minimax-cn')
+    await expect.poll(async () => pick.isEnabled(), { timeout: 10_000 }).toBe(true)
+    await pick.click()
+    const providerMenu = page.getByRole('menu')
+    await expect.poll(async () => providerMenu.getByRole('menuitem').count(), { timeout: 10_000 }).toBeGreaterThan(30)
+    const optionNames = await providerMenu.getByRole('menuitem').allTextContents()
+    expect(optionNames).toContain('anthropic')
+    expect(optionNames).toContain('minimax-cn')
+    await providerMenu.getByRole('menuitem', { name: 'minimax-cn', exact: true }).click()
     await dialog.getByRole('textbox', { name: 'API 密钥', exact: true }).waitFor({ timeout: 10_000 })
     const snapshot = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(EMPTY_EXPECTED, snapshot, MODE)
@@ -190,6 +195,29 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     const settingsDialog = page.getByRole('dialog', { name: '设置' })
     await settingsDialog.getByRole('button', { name: '编辑 minimax-cn' }).click()
     await settingsDialog.getByText('自定义设置').click()
+    // Desktop fork: the gateway URL saved earlier is unreachable from the test
+    // machine, so serve the discovery answer at the RPC boundary — the same
+    // envelope pattern the settings-chrome spec uses for settings.openDocument.
+    await page.route('**/api/llm.discoverModels', async (route) => {
+      const envelope = route.request().postDataJSON() as { rpcId: string }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          type: 'server-response',
+          rpcId: envelope.rpcId,
+          result: {
+            ok: true,
+            value: {
+              models: [
+                { id: 'minimax-m1', name: 'MiniMax M1' },
+                { id: 'minimax-m2', name: 'MiniMax M2', contextWindow: 200000 },
+              ],
+            },
+          },
+        }),
+      })
+    })
     await settingsDialog.getByRole('button', { name: '获取可用模型' }).click()
 
     const picker = page.getByRole('dialog', { name: '选择要添加的模型' })
@@ -219,6 +247,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     )
     await picker.getByRole('button', { name: '取消', exact: true }).click()
     await settingsDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await page.unroute('**/api/llm.discoverModels')
   }, 60_000)
 
   it('declares a route the adapter does not ship', async () => {
@@ -268,18 +297,21 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     // The create card asked this route for a name and a protocol because
     // nothing can default them; the editor reaches the same two fields rather
     // than sending the user to settings.yaml for what only this route names.
-    const protocol = dialog.getByLabel('API 协议')
+    // Desktop fork: the protocol field is the SettingsSelect pill — the
+    // trigger's visible label is the selected protocol id.
+    const protocol = dialog.getByRole('button', { name: 'API 协议' })
     await protocol.waitFor({ timeout: 10_000 })
-    expect(await protocol.inputValue()).toBe('openai-completions')
+    await expect.poll(async () => (await protocol.textContent())?.trim(), { timeout: 5_000 }).toBe('openai-completions')
     const name = dialog.getByLabel('显示名称', { exact: true })
     expect(await name.inputValue()).toBe('Acme Gateway')
     const snapshot = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(DECLARED_EDIT_EXPECTED, snapshot, MODE)
 
-    await protocol.selectOption('anthropic-messages')
+    await protocol.click()
+    await page.getByRole('menuitem', { name: 'anthropic-messages', exact: true }).click()
     await name.fill('Acme 网关')
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect.poll(async () => dialog.getByLabel('API 协议').count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => dialog.getByRole('button', { name: 'API 协议' }).count(), { timeout: 10_000 }).toBe(0)
     // The adapter re-resolved the route under the new protocol and re-registered
     // it under the new name: an unserviceable profile would have been refused
     // at the write instead, and a rename that did not re-register would leave

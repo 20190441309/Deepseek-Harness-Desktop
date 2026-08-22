@@ -6,13 +6,10 @@
   - button "全选"
   - list:
     - listitem:
-      - checkbox "MiniMax-M2.7"
-      - text: MiniMax-M2.7
+      - checkbox "minimax-m1"
+      - text: minimax-m1
     - listitem:
-      - checkbox "MiniMax-M2.7-highspeed"
-      - text: MiniMax-M2.7-highspeed
-    - listitem:
-      - checkbox "MiniMax-M3"
-      - text: MiniMax-M3
+      - checkbox "minimax-m2"
+      - text: minimax-m2
   - button "取消"
   - button "添加所选"

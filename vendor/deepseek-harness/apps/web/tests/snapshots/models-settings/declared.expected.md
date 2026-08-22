@@ -41,9 +41,10 @@
   - paragraph: 主模型不支持图片时，先由该模型识别图片内容，再把描述交给主模型处理。请选择一个支持图片输入的模型。
   - list:
     - listitem:
-      - text: amazon-bedrock
-      - button "编辑 amazon-bedrock": 编辑
-      - button "删除 amazon-bedrock": 删除
+      - text: minimax-cn
+      - img "API 密钥已配置"
+      - button "编辑 minimax-cn": 编辑
+      - button "删除 minimax-cn": 删除
     - listitem:
       - text: Acme Gateway 自定义
       - button "编辑 Acme Gateway (acme-gateway)": 编辑
