@@ -1,6 +1,6 @@
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { tryGetDesktopDshHome } = require('./dsh-home');
 
 const DEFAULT_FAMILY_ID = 'deepseek';
 
@@ -48,11 +48,7 @@ const THEMES = Object.entries(FAMILY_SEEDS).flatMap(([id, family]) => ([
 ]));
 
 function dshHome() {
-  const fromEnv = process.env.DSH_HOME;
-  if (typeof fromEnv === 'string' && fromEnv.trim()) {
-    return path.resolve(fromEnv.trim());
-  }
-  return path.join(os.homedir(), '.dsh');
+  return tryGetDesktopDshHome();
 }
 
 function parseScalar(raw) {
@@ -130,7 +126,9 @@ function parseSimpleYaml(text) {
 }
 
 function readHarnessThemeSettings() {
-  const file = path.join(dshHome(), 'settings.yaml');
+  const home = dshHome();
+  if (!home) return {};
+  const file = path.join(home, 'settings.yaml');
   try {
     const doc = parseSimpleYaml(fs.readFileSync(file, 'utf8'));
     return doc['ui-theme'] && typeof doc['ui-theme'] === 'object' ? doc['ui-theme'] : {};

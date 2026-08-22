@@ -32,6 +32,18 @@ The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applicatio
 
 `Ctrl+,` opens Settings.
 
+## Data directory
+
+The desktop Harness **does not read** the official CLI `~/.dsh`. Sessions, settings, and marketplace plugins live in `dsh-home` under the app data directory:
+
+| | |
+| --- | --- |
+| Windows | `%APPDATA%\Deepseek-Harness-Desktop\dsh-home` |
+| macOS | `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home` |
+| Plugins | `dsh-home/profiles/web` |
+
+Workspace path and the shell API key stay in `config.json` / `credentials.json` one level up. Official `dsh` typed in the bottom terminal still uses `~/.dsh`.
+
 <table>
   <tr>
     <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="Chat and Files column" /></td>

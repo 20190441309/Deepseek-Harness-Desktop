@@ -14,6 +14,7 @@ const path = require('node:path');
 
 const { DshManager } = require('./dsh');
 const { readPin } = require('../shared/harness-upstream');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
 const EXPECTED_URL = 'http://127.0.0.1:3080';
 const CHILD_PID = 4242;
@@ -71,6 +72,8 @@ function makeHarness(overrides = {}) {
   };
   let reachable = false;
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-test-'));
+  const desktopHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-desktop-home-'));
+  setDesktopDshHome(desktopHome);
   const deps = {
     loadConfig: () => ({ workspace, host: '127.0.0.1', port: 3080 }),
     ensurePackagedHarness: async () => null,
@@ -114,7 +117,11 @@ function makeHarness(overrides = {}) {
     ...overrides.deps,
   };
   const manager = new DshManager(deps);
-  const cleanup = () => fs.rmSync(workspace, { recursive: true, force: true });
+  const cleanup = () => {
+    clearDesktopDshHome();
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(desktopHome, { recursive: true, force: true });
+  };
   return {
     manager,
     spawned,
@@ -580,4 +587,20 @@ test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (
   assert.equal(h.spawned.length, 2);
   assert.notEqual(h.lastChild(), childA);
   assert.equal(h.manager.baseUrl, EXPECTED_URL);
+});
+
+test('spawnEnv overwrites inherited DSH_HOME with the desktop home', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-desktop-home-'));
+  const previous = process.env.DSH_HOME;
+  setDesktopDshHome(home);
+  process.env.DSH_HOME = path.join(os.homedir(), '.dsh');
+  try {
+    const env = new DshManager({ loadConfig: () => ({}) }).spawnEnv({}, null);
+    assert.equal(env.DSH_HOME, path.resolve(home));
+  } finally {
+    clearDesktopDshHome();
+    if (previous === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previous;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });

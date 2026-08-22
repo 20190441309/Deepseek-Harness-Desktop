@@ -60,6 +60,27 @@ function dshHeading(pattern, root) {
 }
 `;
 
+/**
+ * QA log line for a Remote snapshot. Never includes token or pairing URLs.
+ * @param {object | null | undefined} snap
+ * @returns {string}
+ */
+function summarizeRemoteQaDetail(snap) {
+  if (snap == null) return 'no snapshot';
+  const parts = [
+    `available=${snap.available === true}`,
+    `enabled=${snap.enabled === true}`,
+    `listening=${snap.listening === true}`,
+  ];
+  if (snap.port != null) parts.push(`port=${snap.port}`);
+  if (snap.mode) parts.push(`mode=${snap.mode}`);
+  parts.push(`tokenPresent=${Boolean(snap.token)}`);
+  if (Array.isArray(snap.urls)) parts.push(`urls=${snap.urls.length}`);
+  const err = typeof snap.error === 'string' ? snap.error.trim() : '';
+  if (err) parts.push(`error=${err}`);
+  return parts.join(' ');
+}
+
 const QA_REQUIRED_STEPS = [
   'workspace.picker',
   'workspace.connected',
@@ -401,7 +422,7 @@ async function runReleaseUiWalk(wc, helpers) {
   rec(
     'remote.available',
     remoteSnap != null && remoteSnap.available === true && remoteSnap.enabled === false,
-    remoteSnap ? JSON.stringify(remoteSnap).slice(0, 200) : 'helpers.probeRemote missing',
+    remoteSnap ? summarizeRemoteQaDetail(remoteSnap) : 'helpers.probeRemote missing',
   );
   rec(
     'remote.notListening',
@@ -830,4 +851,5 @@ module.exports = {
   assertReleaseQaResult,
   QA_REQUIRED_STEPS,
   PAGE_HELPERS,
+  summarizeRemoteQaDetail,
 };

@@ -22,6 +22,7 @@
 | 工作区 | 本地 Git 仓库（含未提交改动更好）；另备非 Git 空目录；可选：旧版已装环境做升级测 |
 | 网络 | 可访问模型网关与壁纸源（Bing / Wallhaven） |
 | 账号 | 无需产品登录；模型密钥见 §0.3 |
+| 家目录 | 本包桌面 Harness **不读** `~/.dsh`。会话/插件在 `userData/dsh-home`（Windows：`%APPDATA%\Deepseek-Harness-Desktop\dsh-home`）。官方 CLI 仍用 `~/.dsh`。详见 [handbook/modules/dsh-home.md](../handbook/modules/dsh-home.md) |
 
 ### 0.2 缺陷分级与门禁
 
@@ -49,7 +50,7 @@
 | 模型 | `grok-4.6`（至少一条） |
 | API 密钥 | **仅本机 / 安全通道**；禁止写入仓库、截图、Issue、PR、提交说明 |
 
-密钥保存后只显示脱敏描述符。若网关拒绝 `developer` role 或 `max_completion_tokens`，按官方「配置模型」指南在 `$DSH_HOME/settings.yaml` 对该路由补 `compat` 后重测。
+密钥保存后只显示脱敏描述符。若网关拒绝 `developer` role 或 `max_completion_tokens`，按官方「配置模型」指南在桌面 `$DSH_HOME/settings.yaml`（应用数据目录下的 `dsh-home/settings.yaml`，不是官方 `~/.dsh`）对该路由补 `compat` 后重测。
 
 **多轮对话 P0 门禁（唯一标准）：** 同一会话内 **附录 A 五轮脚本全部成功**（含记忆、读文件工具、终端/命令工具、综合汇总）。消耗不设上限。不得用「随便聊两句」代替附录。
 
@@ -141,13 +142,26 @@
 
 **步骤：** 运行新 Setup 覆盖安装 → 启动 → 打开原工作区与会话。
 
-**期望：** 升级无半残；能进主界面；会话/主题/密钥引用仍可用（或明确「须重配」且不崩）；市场不因依赖残缺导致一打开即 `dsh 进程结束`。
+**期望：** 升级无半残；能进主界面；壳层已存默认 API key 与工作区路径仍可用。会话、主题、自定义模型、MCP、技能在 `userData/dsh-home`，与升级前写在 `~/.dsh` 的数据分开，**须在桌面里重配**（明确提示或不崩即可）；市场不因依赖残缺导致一打开即 `dsh 进程结束`。
 
 ### TC-INST-010 · 卸载 · P1
 
 **步骤：** 系统「应用和功能」卸载 → 确认快捷方式移除 → 可选查安装目录。
 
 **期望：** 卸载完成；快捷方式消失；无托盘幽灵进程（允许短延迟）。用户数据目录是否保留按产品实际记录，不当作失败除非产品承诺清除。
+
+### TC-INST-011 · 官方 `~/.dsh` 插件不能拖死桌面新装 · P0（造障）
+
+**前置：** 本机已有官方 `~/.dsh/profiles/web`（或手动建一份），在其 `package.json` 的 `dsh.profile.bundles` 写入一个无法解析的第三方包名。
+
+**步骤：**
+
+1. 安装或冷启动本包桌面应用。  
+2. 观察启动页能否进入官方 Web UI。  
+3. 确认肇事 `~/.dsh` 文件仍在、桌面未改写它。  
+4. 底栏终端运行官方 `dsh`（若已安装）：仍使用 `~/.dsh`，进程环境没有被桌面改成 `userData/dsh-home`。
+
+**期望：** 桌面进主界面（或走 skip-user-plugins 后仍可用）；失败不得归因于官方 home 里那条坏 bundle。Boot 日志出现桌面 `Harness 家目录` 且路径在应用数据目录下的 `dsh-home`。
 
 ---
 
@@ -737,8 +751,8 @@
 
 | 自动化 | 覆盖 | 实机仍须人确认 |
 | --- | --- | --- |
-| `qa:source` | 控件存在、图库入口、市场分区、dshbot 侧栏缺席、Files Mention 等 | 安装包、升级卸载、附录多轮 API、Git 写、托盘菜单、更新安装、识图/思考强度 |
-| `qa:composer` | Mention/预览/终端送对话、禁 `$`、Remote 默认关 / 开启后监听 | 同上 |
+| `qa:source` | 控件存在、图库入口、市场分区、dshbot 侧栏缺席、Files Mention；须在 `userData/dsh-home` 起 Harness，**禁止**向 Electron 注入 `DSH_HOME` | 安装包、升级卸载、附录多轮 API、Git 写、托盘菜单、更新安装、识图/思考强度 |
+| `qa:composer` | Mention/预览/终端送对话、禁 `$`、Remote 默认关 / 开启后监听；同样不得注入 `DSH_HOME` | 同上 |
 
 发版建议：本表 P0 全绿（或合法豁免）**且**可选在源码树跑通两条自动化。
 
@@ -758,6 +772,7 @@
 | TC-INST-008 | P0 |  |  |  |  |
 | TC-INST-009 | P0 |  |  |  |  |
 | TC-INST-010 | P1 |  |  |  |  |
+| TC-INST-011 | P0 造障 |  |  |  |  |
 | TC-MODEL-001 | P0 |  |  |  |  |
 | TC-MODEL-002 | P1 |  |  |  |  |
 | TC-MODEL-003 | P0 |  |  |  |  |

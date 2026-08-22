@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseSimpleYaml, resolveTheme, FAMILY_SEEDS, listThemes } = require('./themes');
+const { clearDesktopDshHome } = require('./dsh-home');
 
 test('parseSimpleYaml reads a ui-theme section with custom families', () => {
   const doc = parseSimpleYaml(`
@@ -45,4 +46,12 @@ test('resolveTheme follows system preference and lists builtin families', () => 
   const dark = resolveTheme({}, { harness: { preference: 'system' }, systemDark: true });
   assert.equal(dark.scheme, 'dark');
   assert.ok(listThemes().some((item) => item.id === 'paper'));
+});
+
+test('resolveTheme without a desktop home does not require ~/.dsh', () => {
+  delete process.env.DSHD_HOME;
+  clearDesktopDshHome();
+  const theme = resolveTheme({}, { systemDark: true });
+  assert.equal(theme.id, 'deepseek');
+  assert.equal(theme.scheme, 'dark');
 });

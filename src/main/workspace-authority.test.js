@@ -9,6 +9,7 @@ const {
   readHarnessRegisteredWorkspacePaths,
   scratchWorkspacePath,
 } = require('./workspace-authority');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
 function makeRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-auth-'));
@@ -170,7 +171,6 @@ test('PTY authority can include the Host-owned no-workspace scratch cwd', () => 
   const home = makeRoot();
   const boot = makeRoot();
   const previousConfig = require.cache[require.resolve('./config')];
-  const previousHome = process.env.DSH_HOME;
   try {
     const scratch = scratchWorkspacePath(home);
     fs.mkdirSync(scratch);
@@ -180,7 +180,7 @@ test('PTY authority can include the Host-owned no-workspace scratch cwd', () => 
       loaded: true,
       exports: { loadConfig: () => ({ workspace: boot }) },
     };
-    process.env.DSH_HOME = home;
+    setDesktopDshHome(home);
 
     const ptyAuthority = loadWorkspaceAuthority({ allowScratchCwd: true });
     assert.equal(ptyAuthority.resolveAuthorizedCwd(scratch), canonical(scratch));
@@ -189,8 +189,7 @@ test('PTY authority can include the Host-owned no-workspace scratch cwd', () => 
   } finally {
     if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
     else delete require.cache[require.resolve('./config')];
-    if (previousHome === undefined) delete process.env.DSH_HOME;
-    else process.env.DSH_HOME = previousHome;
+    clearDesktopDshHome();
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(boot, { recursive: true, force: true });
   }

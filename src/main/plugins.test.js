@@ -9,11 +9,24 @@ const { pathToFileURL } = require('url');
 const {
   ensureDesktopInstallPlugin,
   healDanglingBundles,
+  webProfileDir,
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
   LEGACY_DESKTOP_INSTALL_BEGIN,
   LEGACY_DESKTOP_INSTALL_END,
 } = require('./plugins');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
+
+test('webProfileDir lives under the desktop home, not ~/.dsh', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  setDesktopDshHome(home);
+  try {
+    assert.equal(webProfileDir(), path.join(home, 'profiles', 'web'));
+  } finally {
+    clearDesktopDshHome();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test('healDanglingBundles removes only unresolved user bundles and preserves dependencies', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));

@@ -1,0 +1,15 @@
+---
+description: Desktop Harness home is userData/dsh-home, never official ~/.dsh
+alwaysApply: true
+---
+
+# Desktop Harness home
+
+Desktop `$DSH_HOME` is `userData/dsh-home` only (`DSHD_HOME` for debug). Do not read, write, migrate, or clean official `~/.dsh`.
+
+Marketplace / `dsh plugin` installs into `dsh-home/profiles/web`. Do not set Electron `process.env.DSH_HOME`; PTY must not inject it. `dsh web` and `dsh plugin` children overwrite `DSH_HOME` to the desktop home.
+
+Ignore inherited `DSH_HOME`. Profile name stays `web`. Skip-user-plugins FSM unchanged.
+
+Full card: [docs/features/dsh-home.md](../../docs/features/dsh-home.md)
+Handbook: [docs/handbook/modules/dsh-home.md](../../docs/handbook/modules/dsh-home.md)

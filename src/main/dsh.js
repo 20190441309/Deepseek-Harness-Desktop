@@ -7,6 +7,7 @@ const { loadConfig, configPath } = require('./config');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 const { prependPath } = require('../shared/env-path');
+const { applyDesktopDshHome } = require('../shared/dsh-home');
 const { desktopInstallEnv } = require('./desktop-install-control');
 const { readPin } = require('../shared/harness-upstream');
 
@@ -633,7 +634,7 @@ class DshManager extends EventEmitter {
   }
 
   spawnEnv(config, nodeBin) {
-    const env = { ...process.env };
+    const env = applyDesktopDshHome({ ...process.env });
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_NO_ASAR;
     if (config.apiKey) {

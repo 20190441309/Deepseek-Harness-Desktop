@@ -23,6 +23,7 @@
 ## 不变量
 
 - 市场在设置内，无独立市场窗（见 [marketplace.md](marketplace.md)）。
+- 模型 / MCP / 技能写桌面 `dsh-home`，不写 `~/.dsh`（[dsh-home.md](dsh-home.md)）。
 
 ## 门槛
 

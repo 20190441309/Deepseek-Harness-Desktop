@@ -2,6 +2,8 @@
 
 const { describe, test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const os = require('node:os');
+const path = require('node:path');
 const {
   startDesktopInstallControl,
   stopDesktopInstallControl,
@@ -9,6 +11,7 @@ const {
   desktopInstallEnv,
 } = require('./desktop-install-control');
 const { DshManager } = require('./dsh');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
 async function postInstall(url, token, body) {
   return fetch(new URL('/install', url), {
@@ -24,6 +27,7 @@ async function postInstall(url, token, body) {
 describe('desktop install control', { concurrency: false }, () => {
   afterEach(() => {
     stopDesktopInstallControl();
+    clearDesktopDshHome();
   });
 
   test('a successful install responds before Harness restart is scheduled', async () => {
@@ -141,8 +145,10 @@ describe('desktop install control', { concurrency: false }, () => {
     const injected = desktopInstallEnv();
     assert.match(injected.DSH_DESKTOP_INSTALL_URL, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.equal(injected.DSH_DESKTOP_INSTALL_TOKEN.length, 64);
+    setDesktopDshHome(os.tmpdir());
     const env = new DshManager({ loadConfig: () => ({}) }).spawnEnv({}, null);
     assert.equal(env.DSH_DESKTOP_INSTALL_URL, injected.DSH_DESKTOP_INSTALL_URL);
     assert.equal(env.DSH_DESKTOP_INSTALL_TOKEN, injected.DSH_DESKTOP_INSTALL_TOKEN);
+    assert.equal(env.DSH_HOME, path.resolve(os.tmpdir()));
   });
 });

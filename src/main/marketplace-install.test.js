@@ -137,11 +137,11 @@ function recordRunner(onAdd) {
 
 test.beforeEach(() => {
   dshHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
-  process.env.DSH_HOME = dshHomeDir;
+  process.env.DSHD_HOME = dshHomeDir;
 });
 
 test.afterEach(() => {
-  delete process.env.DSH_HOME;
+  delete process.env.DSHD_HOME;
   fs.rmSync(dshHomeDir, { recursive: true, force: true });
   try {
     fs.unlinkSync(cacheFile());

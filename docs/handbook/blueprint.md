@@ -50,11 +50,14 @@ flowchart TB
 
 | 状态 | 权威存储 |
 | --- | --- |
-| 主题、壁纸图、frost/pixelate、图源、收藏 | Harness Host `ui-theme` 设置（非桌面 `config.json`） |
-| 工作区路径、关闭行为、远程配对等壳配置 | 桌面 `config.js` / 用户配置目录 |
-| 会话、模型、MCP、技能 | Harness 侧（`$DSH_HOME` 等） |
-| 市场目录缓存 / 安装进度 | main 市场模块 + 安装到 profile |
+| 主题、壁纸图、frost/pixelate、图源、收藏 | 桌面 `userData/dsh-home/settings.yaml`，不是 `~/.dsh` |
+| 工作区路径、关闭行为、远程配对等壳配置 | `userData/config.json` |
+| 会话、模型、MCP、技能、市场插件 | 桌面 `userData/dsh-home`（插件在 `profiles/web`）；官方 CLI 仍用 `~/.dsh` |
+| 壳层默认 API key | `userData/credentials.json` |
+| 市场目录缓存 / 安装进度 | main 市场模块 + 安装到桌面 profile |
 | PTY / preview 会话 | main 进程内，随窗口生命周期 |
+
+路径明细：[modules/dsh-home.md](modules/dsh-home.md)。安装后桌面 Harness **不读** `~/.dsh`。
 
 ## 安全边界（摘要）
 

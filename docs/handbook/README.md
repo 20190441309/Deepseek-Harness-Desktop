@@ -7,6 +7,7 @@
 | 你想… | 先读 |
 | --- | --- |
 | 搞清进程与表面怎么拼起来 | [blueprint.md](blueprint.md) |
+| 搞清会话/插件目录在哪、是否读 `~/.dsh` | [modules/dsh-home.md](modules/dsh-home.md) |
 | 跟一条端到端用户路径 | [flows/](flows/boot-to-ready.md) |
 | 改某一能力、找文件与门槛 | [modules/](modules/overview.md) |
 | 查 `window.shell` / 设置 id / main 文件 | [appendix/](appendix/shell-api.md) |
@@ -41,6 +42,7 @@
 ### 模块
 
 - [产品总览](modules/overview.md)
+- [桌面 Harness 家目录](modules/dsh-home.md)
 - [启动与 Harness 生命周期](modules/boot-lifecycle.md)
 - [窗口与 Chrome](modules/window-chrome.md)
 - [Preload 与 IPC](modules/ipc-preload.md)

@@ -15,6 +15,7 @@ const {
   createTerminalSpawnEnv,
   resolveShellCandidates,
 } = require('./pty.js');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
 // One shared workspace root for the whole suite; cwd checks resolve inside it.
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pty-ws-'));
@@ -209,6 +210,18 @@ test('createTerminalSpawnEnv copies overlay env and AppImage scrub', () => {
   assert.equal('APPIMAGE' in env, false);
   assert.equal('APPDIR' in env, false);
   assert.equal('ARGV0' in env, false);
+});
+
+test('terminal spawn env does not inject the desktop DSH_HOME', () => {
+  const desktopHome = path.join(os.tmpdir(), 'desktop-dsh-home');
+  setDesktopDshHome(desktopHome);
+  try {
+    const env = createTerminalSpawnEnv({ PATH: '/usr/bin', KEEP: 'yes' });
+    assert.equal(env.KEEP, 'yes');
+    assert.equal('DSH_HOME' in env, false);
+  } finally {
+    clearDesktopDshHome();
+  }
 });
 
 test('resolveShellCandidates copies Windows and Unix lists', () => {

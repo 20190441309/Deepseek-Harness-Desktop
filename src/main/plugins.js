@@ -1,8 +1,8 @@
 const fs = require('fs');
 const { createRequire } = require('module');
-const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { getDesktopDshHome } = require('../shared/dsh-home');
 
 const PROFILE = 'web';
 const DROPPED = [
@@ -25,11 +25,7 @@ const OFFICIAL_TEMPLATE_BUNDLES = new Set([
 ]);
 
 function dshHome() {
-  const fromEnv = process.env.DSH_HOME;
-  if (typeof fromEnv === 'string' && fromEnv.trim()) {
-    return path.resolve(fromEnv.trim());
-  }
-  return path.join(os.homedir(), '.dsh');
+  return getDesktopDshHome();
 }
 
 function webProfileDir() {

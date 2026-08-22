@@ -46,3 +46,4 @@ Gate: <卡上 gates>
 | [settings-select](settings-select.md) | 设置内值选择统一为官方胶囊 + Menu | `SettingsSelect` | vendor client spec |
 | [mobile-remote](mobile-remote.md) | 侧栏远程弹窗 + `mobile/web` SPA；默认关、开才监听 | `RemoteGateway` / `ui-settings-remote` | TC-NEG-001、TC-REM-001…003 |
 | [dshbot](dshbot.md) | 停放：侧栏机器人入口隐藏；插件源仍打包 | `hideDshbotPlugin` | TC-EXT-007（负向） |
+| [dsh-home](dsh-home.md) | 桌面 `userData/dsh-home`，安装后不读官方 `~/.dsh` | `dsh-home.js` / spawnEnv | TC-INST-009、TC-INST-011 |

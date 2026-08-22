@@ -5,7 +5,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  assertSmokeResult, createSmokeDirs, initGitWorkspace, reservePort, writeSmokeConfig,
+  assertDesktopHarnessHome, assertSmokeResult, createSmokeDirs, electronSpawnEnv,
+  initGitWorkspace, reservePort, writeSmokeConfig,
 } from './smoke-workspace.mjs'
 
 const require = createRequire(import.meta.url)
@@ -97,18 +98,17 @@ try {
   writeSmokeConfig(dirs.userData, dirs.workspace, port)
 
   console.log(`Source release QA: ${executable}`)
-  const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], {
-    ...process.env,
-    DSH_HOME: dirs.dshHome,
+  const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
     DSH_QA: '1',
-  })
+  }))
 
   if (!existsSync(dirs.resultPath)) {
     throw new Error(`QA result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
   }
   const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
   printStepTable(result.result?.qa || result.qa)
+  assertDesktopHarnessHome(dirs.userData, result)
   assertSmokeResult(outcome, result)
   assertReleaseQaResult({ qa: result.result?.qa || result.qa, ...result })
   console.log(`Source release QA passed on port ${port}.`)

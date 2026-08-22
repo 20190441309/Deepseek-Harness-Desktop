@@ -64,5 +64,7 @@ test('release walk source clicks Mention and asserts the composer markdown link'
   assert.match(walk, /data-source="path"/);
   assert.match(walk, /probeRemote/);
   assert.match(walk, /remote\.available/);
+  assert.match(walk, /summarizeRemoteQaDetail/);
+  assert.doesNotMatch(walk, /JSON\.stringify\(remoteSnap\)/);
   assert.match(walk, /\$fo/);
 });

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import net from 'node:net'
 import os from 'node:os'
@@ -21,15 +21,12 @@ export function createSmokeDirs(prefix) {
   const smokeRoot = mkdtempSync(path.join(os.tmpdir(), prefix))
   const userData = path.join(smokeRoot, 'user-data')
   const workspace = path.join(smokeRoot, 'workspace')
-  const dshHome = path.join(smokeRoot, 'dsh-home')
   mkdirSync(userData, { recursive: true })
   mkdirSync(workspace, { recursive: true })
-  mkdirSync(dshHome, { recursive: true })
   return {
     smokeRoot,
     userData,
     workspace,
-    dshHome,
     resultPath: path.join(userData, 'dshd-smoke.json'),
   }
 }
@@ -67,6 +64,36 @@ export function initGitWorkspace(workspace) {
     '-m',
     'smoke',
   ])
+}
+
+export function electronSpawnEnv(extra = {}) {
+  const env = { ...process.env, ...extra }
+  delete env.DSH_HOME
+  delete env.DSHD_HOME
+  return env
+}
+
+export function assertDesktopHarnessHome(userData, result = {}) {
+  const home = path.join(userData, 'dsh-home')
+  if (!existsSync(home)) {
+    throw new Error(`desktop Harness home was not created at ${home}`)
+  }
+  const recorded = typeof result.desktopHome === 'string' ? result.desktopHome : ''
+  if (recorded && path.resolve(recorded) !== path.resolve(home)) {
+    throw new Error(`desktopHome mismatch: recorded=${recorded} expected=${home}`)
+  }
+  if (result.electronEnv?.DSH_HOME) {
+    throw new Error(`Electron process.env.DSH_HOME leaked: ${result.electronEnv.DSH_HOME}`)
+  }
+  const logs = Array.isArray(result.bootLogs) ? result.bootLogs : []
+  const homeLog = result.homeLog || logs.find((line) => /Harness \u5bb6\u76ee\u5f55/.test(String(line)))
+  if (!homeLog) {
+    throw new Error('boot logs missing Harness 家目录')
+  }
+  if (!String(homeLog).toLowerCase().includes('dsh-home')) {
+    throw new Error(`Harness 家目录 is not under dsh-home: ${homeLog}`)
+  }
+  return home
 }
 
 export function assertSmokeResult(outcome, result) {

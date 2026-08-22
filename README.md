@@ -52,6 +52,18 @@ macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applica
 
 `Ctrl+,` 打开设置。
 
+## 数据目录
+
+桌面 Harness **不读** 官方 CLI 的 `~/.dsh`。会话、设置、市场插件在应用数据目录的 `dsh-home`：
+
+| | |
+| --- | --- |
+| Windows | `%APPDATA%\Deepseek-Harness-Desktop\dsh-home` |
+| macOS | `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home` |
+| 插件 | `dsh-home/profiles/web` |
+
+工作区路径和壳层 API key 在上一层目录的 `config.json` / `credentials.json`。底栏终端里自己跑的官方 `dsh` 仍用 `~/.dsh`。
+
 <table>
   <tr>
     <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="对话与右栏" /></td>

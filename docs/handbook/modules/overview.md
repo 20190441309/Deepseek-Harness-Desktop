@@ -7,7 +7,7 @@
 
 ## 用户可见行为
 
-- 安装即可用：本机起官方 Web UI，无需用户手跑 `dsh web`。
+- 安装即可用：本机起官方 Web UI，无需用户手跑 `dsh web`。桌面 Harness **不读** 官方 `~/.dsh`；数据在 `userData/dsh-home`（见 [dsh-home.md](dsh-home.md)）。
 - 主框：对话 + 工具审批 + 侧栏会话；`Ctrl+\` 右栏 Surfaces；`` Ctrl+` `` 底栏终端；`Ctrl+,` 设置。
 - 桌面增强：Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、托盘/更新、插件恢复、可选手机远程。
 
@@ -32,4 +32,4 @@
 
 ## 延伸阅读
 
-- [boot-lifecycle.md](boot-lifecycle.md)、[design-and-spine.md](design-and-spine.md)
+- [dsh-home.md](dsh-home.md)、[boot-lifecycle.md](boot-lifecycle.md)、[design-and-spine.md](design-and-spine.md)

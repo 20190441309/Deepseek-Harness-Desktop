@@ -23,6 +23,7 @@
 
 - 无独立市场窗口（`TC-EXT-002`）。  
 - 安装失败要可见失败反馈，不静默。
+- `dsh plugin --profile web` 打进 `userData/dsh-home/profiles/web`，不是官方 `~/.dsh`（[dsh-home.md](dsh-home.md)）。
 
 ## 门槛
 

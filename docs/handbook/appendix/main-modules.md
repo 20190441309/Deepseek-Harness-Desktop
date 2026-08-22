@@ -13,6 +13,7 @@
 | `chrome.js` / `harness-chrome-inject.js` | 桌面 chrome 注入 |
 | `closing-overlay.js` | 关闭遮罩 |
 | `paths.js` / `config.js` | 路径与壳配置 |
+| `../shared/dsh-home.js` | 桌面 Harness 家目录：`userData/dsh-home`，不读 `~/.dsh`；章：[modules/dsh-home.md](../modules/dsh-home.md) |
 | `local-url.js` | loopback URL 策略 |
 
 ## IPC 与权威

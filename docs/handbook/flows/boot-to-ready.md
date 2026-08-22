@@ -3,7 +3,7 @@
 ## 步骤
 
 1. 用户启动应用（安装包或 `npm start`）。单实例锁：已有实例则聚焦已有窗口。
-2. Main 创建窗口，加载 boot 页（`src/renderer/boot.html`）；preload 角色为 **boot**。
+2. `whenReady` 绑定桌面 `$DSH_HOME` 为 `userData/dsh-home` 并建目录（不读 `~/.dsh`，见 [../modules/dsh-home.md](../modules/dsh-home.md)）；加载 boot 页（`src/renderer/boot.html`）；preload 角色为 **boot**。
 3. `HarnessController.start()`：起 `dsh web`、订端口、准备 BrowserView（尚可不露出）。
 4. Boot UI 显示状态戳（BOOT）与等宽日志；订阅 `onState` / `onLog` / `onPluginBoot`。
 5. Harness HTTP 起来后，客户端插件仍在后台 BrowserView 装载；状态行写「正在加载插件 n/m」，**不**切到官方「正在加载插件」页。
@@ -18,6 +18,7 @@ sequenceDiagram
   participant Dsh as dsh_web
   participant BV as BrowserView
   User->>Main: launch
+  Main->>Main: bind userData/dsh-home
   Main->>Boot: load boot.html
   Main->>Dsh: start
   Dsh-->>Main: HTTP ready
@@ -29,9 +30,9 @@ sequenceDiagram
 
 ## 门槛
 
-- QA：`TC-INST-001` … `TC-INST-004`，`TC-INST-003`（插件进度留在启动页）
+- QA：`TC-INST-001` … `TC-INST-004`，`TC-INST-003`（插件进度留在启动页），`TC-INST-011`（官方 `~/.dsh` 不能拖死桌面）
 
 ## 入口
 
-- `src/main/index.js`、`harness-controller.js`、`window.js`、`dsh.js`
+- `src/main/index.js`、`harness-controller.js`、`window.js`、`dsh.js`、`src/shared/dsh-home.js`
 - `src/renderer/boot.js`、`boot-recovery.js`

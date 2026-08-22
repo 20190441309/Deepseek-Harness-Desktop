@@ -38,7 +38,12 @@ apps/mobile/dist/
 
 # Local agent/QA artifacts
 gui-test-screenshots/
-.cursor/
+.cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/*.mdc
+.tmp/
+docs/qa/results/**/*.orig
 .zcode/
 plugins/
 .final-gates/

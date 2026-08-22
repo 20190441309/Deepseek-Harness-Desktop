@@ -28,6 +28,7 @@
 - 终端是工作环的一部分，与 surfaces note 一致。  
 - 官方终端组件语言：等宽网格。源码启动与 `setup:harness` 必须能提供 `libghostty-vt` wasm，不能 404。  
 - 不做未承诺的 GPU 嵌入。
+- PTY 不注入桌面 `$DSH_HOME`；终端里的官方 `dsh` 仍走 `~/.dsh`（[dsh-home.md](dsh-home.md)）。
 
 ## 门槛
 

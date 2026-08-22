@@ -4,7 +4,8 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  assertSmokeResult, createSmokeDirs, initGitWorkspace, reservePort, writeSmokeConfig,
+  assertDesktopHarnessHome, assertSmokeResult, createSmokeDirs, electronSpawnEnv,
+  initGitWorkspace, reservePort, writeSmokeConfig,
 } from './smoke-workspace.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -84,17 +85,16 @@ try {
   writeSmokeConfig(dirs.userData, dirs.workspace, port)
 
   console.log(`Packaged smoke: ${executable}`)
-  const outcome = await run(executable, [`--user-data-dir=${dirs.userData}`, '--no-first-run'], {
-    ...process.env,
-    DSH_HOME: dirs.dshHome,
+  const outcome = await run(executable, [`--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
-  })
+  }))
 
   if (!existsSync(dirs.resultPath)) {
     throw new Error(`Smoke result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
   }
   const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
   assertSmokeResult(outcome, result)
+  assertDesktopHarnessHome(dirs.userData, result)
   console.log(`Packaged smoke passed on port ${port}; UI, titlebar hits, and PTY probes are healthy.`)
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error))

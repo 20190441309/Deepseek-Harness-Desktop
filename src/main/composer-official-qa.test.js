@@ -8,6 +8,8 @@ const {
   COMPOSER_OFFICIAL_CASES,
   SESSIONS_INJECT_TRIPWIRE,
   assertComposerOfficialQaResult,
+  remoteHasError,
+  summarizeRemoteQaDetail,
 } = require('./composer-official-qa');
 
 test('composer official cases cover the plan claims', () => {
@@ -50,12 +52,42 @@ test('assertComposerOfficialQaResult rejects missing or failed cases', () => {
   }));
 });
 
+test('remoteHasError treats an empty string as no error', () => {
+  assert.equal(remoteHasError({ error: '' }), false);
+  assert.equal(remoteHasError({ error: '   ' }), false);
+  assert.equal(remoteHasError({ error: 'boom' }), true);
+  assert.equal(remoteHasError({ error: null }), false);
+  assert.equal(remoteHasError(null), false);
+});
+
+test('summarizeRemoteQaDetail keeps status and strips pairing secrets', () => {
+  const detail = summarizeRemoteQaDetail({
+    available: true,
+    enabled: true,
+    listening: true,
+    port: 3180,
+    token: 'secret-token-value',
+    mode: 'lan',
+    error: '',
+    urls: [{
+      address: '10.0.0.4',
+      url: 'http://10.0.0.4:3180/',
+      pairingUrl: 'http://10.0.0.4:3180/#offer=secret-token-value',
+    }],
+  });
+  assert.match(detail, /available=true/);
+  assert.match(detail, /listening=true/);
+  assert.match(detail, /tokenPresent=true/);
+  assert.doesNotMatch(detail, /secret-token-value/);
+  assert.doesNotMatch(detail, /pairingUrl/);
+  assert.doesNotMatch(detail, /#offer=/);
+});
+
 test('composer official QA module is wired into the main process smoke path', () => {
   const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
   assert.match(index, /runComposerOfficialQa/);
   assert.match(index, /DSH_QA_COMPOSER/);
-  const runner = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'run-composer-official-qa.mjs'), 'utf8');
-  assert.match(runner, /DSH_QA_COMPOSER/);
-  assert.match(runner, /remoteEnabled:\s*true/);
-  assert.match(runner, /assertComposerOfficialQaResult/);
+  const source = fs.readFileSync(path.join(__dirname, 'composer-official-qa.js'), 'utf8');
+  assert.match(source, /summarizeRemoteQaDetail\(remoteSnap\)/);
+  assert.doesNotMatch(source, /JSON\.stringify\(remoteSnap\)/);
 });

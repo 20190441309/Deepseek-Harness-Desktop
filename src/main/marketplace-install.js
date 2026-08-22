@@ -6,6 +6,7 @@ const { app } = require('electron');
 const { loadConfig } = require('./config');
 const { resolveNodeBin, sourceHarnessStatus } = require('./dsh');
 const { projectRoot, harnessRoot } = require('./paths');
+const { applyDesktopDshHome } = require('../shared/dsh-home');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha, getMarketplacePlugin } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
@@ -84,7 +85,7 @@ function ensurePnpmShim(nodeBin) {
 
 function pluginEnv(nodeBin) {
   const config = loadConfig();
-  const env = { ...process.env };
+  const env = applyDesktopDshHome({ ...process.env });
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_NO_ASAR;
   if (config.apiKey) {

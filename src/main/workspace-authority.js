@@ -1,6 +1,6 @@
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const { getDesktopDshHome } = require('../shared/dsh-home');
 
 /**
  * Workspace authority: the trust roots for desktop capabilities that touch
@@ -167,21 +167,12 @@ function containedIn(root, candidate) {
 }
 
 function dshHome() {
-  const fromEnv = process.env.DSH_HOME;
-  if (typeof fromEnv === 'string' && fromEnv.trim()) {
-    const raw = fromEnv.trim();
-    if (raw === '~') return os.homedir();
-    if (raw.startsWith('~/') || raw.startsWith('~\\')) {
-      return path.resolve(path.join(os.homedir(), raw.slice(2)));
-    }
-    return path.resolve(raw);
-  }
-  return path.join(os.homedir(), '.dsh');
+  return getDesktopDshHome();
 }
 
 /**
  * Host-owned cwd used by sessions that are not attached to a Workspace.
- * @param {string} [homeDir] - harness home; defaults to `$DSH_HOME` or `~/.dsh`.
+ * @param {string} [homeDir] - harness home; defaults to the desktop DSH home.
  * @returns {string} the no-workspace scratch directory.
  */
 function scratchWorkspacePath(homeDir = dshHome()) {
@@ -192,7 +183,7 @@ function scratchWorkspacePath(homeDir = dshHome()) {
  * Paths persisted by `dsh-workspace` under `$DSH_HOME/storages/workspace.json`.
  * Missing, unreadable, or malformed files yield an empty list rather than
  * disabling the boot workspace.
- * @param {string} [homeDir] - harness home; defaults to `$DSH_HOME` or `~/.dsh`.
+ * @param {string} [homeDir] - harness home; defaults to the desktop DSH home.
  * @returns {string[]} registered workspace paths.
  */
 function readHarnessRegisteredWorkspacePaths(homeDir = dshHome()) {

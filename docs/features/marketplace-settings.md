@@ -17,6 +17,7 @@
 
 - 市场是设置内 section，**无**独立 Electron 市场窗。
 - 安装走桌面 IPC / catalog id，不往 Composer 塞安装草稿。
+- 安装落点是桌面 `dsh-home/profiles/web`，不是官方 `~/.dsh`（见 [dsh-home](dsh-home.md)）。
 - Harness 未就绪时不以空市场窗硬装。
 - 失败可见（Modal 或等价），不静默。
 

@@ -2,6 +2,7 @@ const { app, dialog, globalShortcut, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig } = require('./config');
+const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin } = require('./plugins');
@@ -741,7 +742,19 @@ async function runSmoke(win) {
       && (process.env.DSH_QA_COMPOSER !== '1' || result.composerOfficialQa?.ok === true)
       && pageErrors.length === 0;
     try {
-      fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({ ok, result, ptyStatus, pageErrors }, null, 2));
+      fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({
+        ok,
+        result,
+        ptyStatus,
+        pageErrors,
+        desktopHome: tryGetDesktopDshHome(),
+        homeLog: (Array.isArray(dsh.logs) ? dsh.logs : []).find((line) => /Harness \u5bb6\u76ee\u5f55/.test(String(line))) || '',
+        electronEnv: {
+          DSH_HOME: process.env.DSH_HOME || '',
+          DSHD_HOME: process.env.DSHD_HOME || '',
+        },
+        bootLogs: Array.isArray(dsh.logs) ? dsh.logs.slice(-80) : [],
+      }, null, 2));
     } catch {
       // Best-effort: the exit code still carries the verdict.
     }
@@ -776,6 +789,9 @@ if (!gotLock) {
   app.setAppUserModelId('ai.deepseek.harness.gui');
 
   app.whenReady().then(async () => {
+    const desktopHome = setDesktopDshHome(desktopDshHomeFromUserData(app.getPath('userData')));
+    fs.mkdirSync(desktopHome, { recursive: true });
+    dsh.log(`Harness 家目录 ${desktopHome}`, 'app');
     const config = loadConfig();
     fs.mkdirSync(config.workspace, { recursive: true });
     saveConfig({ workspace: config.workspace });

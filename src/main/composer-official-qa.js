@@ -10,7 +10,7 @@
  * console tripwire.
  */
 
-const { PAGE_HELPERS } = require('./release-ui-walk');
+const { PAGE_HELPERS, summarizeRemoteQaDetail } = require('./release-ui-walk');
 
 /** Console substrings that prove the old draft crash path. */
 const SESSIONS_INJECT_TRIPWIRE = /cannot get property ["']sessions["'] without inject/i;
@@ -207,6 +207,11 @@ async function openTerminalDrawer(wc, helpers) {
     }), 15_000);
   }
   return true;
+}
+
+function remoteHasError(snap) {
+  const err = snap?.error;
+  return typeof err === 'string' ? err.trim().length > 0 : err != null;
 }
 
 /**
@@ -593,12 +598,12 @@ async function runComposerOfficialQa(wc, helpers) {
     'case.remote.available',
     remoteSnap
       && remoteSnap.available === true
-      && remoteSnap.error == null,
-    JSON.stringify(remoteSnap),
+      && !remoteHasError(remoteSnap),
+    summarizeRemoteQaDetail(remoteSnap),
   );
   rec(
     'case.remote.listening',
-    remoteSnap != null && remoteSnap.listening === true && remoteSnap.error == null,
+    remoteSnap != null && remoteSnap.listening === true && !remoteHasError(remoteSnap),
     remoteSnap ? `listening=${remoteSnap.listening}` : 'no snapshot',
   );
 
@@ -616,4 +621,6 @@ module.exports = {
   SESSIONS_INJECT_TRIPWIRE,
   runComposerOfficialQa,
   assertComposerOfficialQaResult,
+  remoteHasError,
+  summarizeRemoteQaDetail,
 };

@@ -11,7 +11,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  assertSmokeResult, createSmokeDirs, initGitWorkspace, reservePort,
+  assertDesktopHarnessHome, assertSmokeResult, createSmokeDirs, electronSpawnEnv,
+  initGitWorkspace, reservePort,
 } from './smoke-workspace.mjs'
 
 const require = createRequire(import.meta.url)
@@ -114,12 +115,10 @@ try {
 
   console.log(`Composer official QA: ${executable}`)
   console.log(`Config forces remoteEnabled=true; gateway must listen after Harness is ready.`)
-  const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], {
-    ...process.env,
-    DSH_HOME: dirs.dshHome,
+  const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
     DSH_QA_COMPOSER: '1',
-  })
+  }))
 
   if (!existsSync(dirs.resultPath)) {
     throw new Error(`QA result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
@@ -127,6 +126,7 @@ try {
   const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
   const qa = result.result?.composerOfficialQa || result.composerOfficialQa
   printStepTable(qa)
+  assertDesktopHarnessHome(dirs.userData, result)
   assertSmokeResult(outcome, result)
   assertComposerOfficialQaResult(qa)
   console.log(`Composer official QA passed on port ${port}.`)
