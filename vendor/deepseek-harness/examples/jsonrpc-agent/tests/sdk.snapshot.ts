@@ -67,6 +67,8 @@ interface SdkScenario {
   sessionId: string
   /** How many child sessions the turn persists (subagent scenarios). */
   children: number
+  /** Skip on win32: the recorded transcript assumes POSIX shell semantics. */
+  skipOnWin32?: boolean
   /** Optional scenario-specific live and replay compositions. */
   configs?: { live: string; replay: string }
   /** Environment overrides passed to the runtime subprocess. */
@@ -107,6 +109,9 @@ const SCENARIOS: SdkScenario[] = [
     prompt: 'Prove that bash state persists. Then create {{cwd}}/note.txt with a tab-indented line, view it, replace that literal tab-indented line, and make the persistent shell exit with code 9.',
     sessionId: 'persistent-tools-snapshot',
     children: 0,
+    // The recorded command transcript assumes POSIX bash paths and semantics
+    // (`CWD=/tmp`); win32 resolves pwsh, so the real tool round diverges.
+    skipOnWin32: true,
     configs: { live: minimalLiveConfig, replay: minimalReplayConfig },
     environment: { DSH_SYSTEM_PROMPT: MINIMAL_SYSTEM_PROMPT },
     expectedFiles: { 'note.txt': 'target:\n\tnew\n' },
@@ -212,9 +217,12 @@ function contextOfContents(contents: readonly string[]): NormalizeContext {
 async function hydrateReplayFixtures(scenario: SdkScenario, cwd: string): Promise<string[]> {
   const root = join(cwd, '.replay-fixtures')
   await mkdir(root, { recursive: true })
+  // The templates are JSONL: a raw Windows path would inject invalid escape
+  // sequences into string values, so substitute the JSON-escaped form.
+  const jsonCwd = JSON.stringify(cwd).slice(1, -1)
   return Promise.all(fixtureFiles(scenario).map(async (source) => {
     const destination = join(root, basename(source))
-    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', cwd))
+    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', jsonCwd))
     return destination
   }))
 }
@@ -347,7 +355,7 @@ function fixtureFiles(scenario: SdkScenario): string[] {
 
 describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
   for (const scenario of SCENARIOS) {
-    it(`replays ${scenario.name} through the SDK`, async () => {
+    it.skipIf(scenario.skipOnWin32 === true && process.platform === 'win32')(`replays ${scenario.name} through the SDK`, async () => {
       const scenarioDir = join(snapshotsDir, scenario.name)
       const notificationsExpectedPath = join(scenarioDir, 'notifications.expected.jsonl')
       const resultExpectedPath = join(scenarioDir, 'result.expected.json')

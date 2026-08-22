@@ -3,9 +3,6 @@
     - button "Use only Cordis tools. First" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
-    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
@@ -77,6 +74,8 @@
   - img
 - text: {{clock}} Ran for {{duration}} Use only Cordis tools. Call cordis_stop with pluginId "snap-1". After it succeeds, reply exactly CORDIS_UI_DONE and stop. {{clock}}
 - button "Copy":
+  - img
+- button "Edit":
   - img
 - img
 - text: Stop Cordis Plugin snap-1
