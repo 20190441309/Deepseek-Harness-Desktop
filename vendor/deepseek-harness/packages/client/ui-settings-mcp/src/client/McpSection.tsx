@@ -6,6 +6,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Rea
 import type { McpServerEntry, McpServerRecord, McpServerSnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   Button,
+  IconCloseOutline16,
   IconEditOutline16,
   IconPlusOutline16,
   IconRefreshOutline16,
@@ -455,6 +456,38 @@ function needsSignIn(entry: McpServerEntry): boolean {
   return health !== 'connected' && health !== 'connecting' && health !== 'reconnecting'
 }
 
+function ToolsDialog({
+  open, name, tools, t, onClose,
+}: {
+  open: boolean
+  name: string
+  tools: string[]
+  t: McpSectionInjected['t']
+  onClose: () => void
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={format(t('toolsTitle'), { name })}
+      headless
+      className={styles.toolsDialog}
+    >
+      <div className={styles.toolsDialogHeader}>
+        <h2 className={styles.toolsDialogTitle}>{format(t('toolsTitle'), { name })}</h2>
+        <button type="button" className={styles.toolsDialogClose} aria-label={t('close')} onClick={onClose}>
+          <IconCloseOutline16 size={14} />
+        </button>
+      </div>
+      <ul className={styles.toolsDialogList}>
+        {tools.map((tool) => (
+          <li key={tool} className={styles.toolsDialogItem}>{tool}</li>
+        ))}
+      </ul>
+    </Modal>
+  )
+}
+
 function ServerRow({
   entry, pending, failure, t, onToggleEnabled, onEdit, onDelete, signingIn, onSignIn,
 }: {
@@ -479,6 +512,7 @@ function ServerRow({
     ? `${status}: ${connection.lastError}`
     : status
   const name = entry.spec.serverName
+  const [toolsOpen, setToolsOpen] = useState(false)
   return (
     <li className={styles.row}>
       <div className={styles.rowMain}>
@@ -493,9 +527,18 @@ function ServerRow({
             <span className={styles.lastError}>{connection.lastError}</span>
           )}
           {connection?.tools === undefined || connection.tools.length === 0 ? null : (
-            <span className={styles.tools}>
-              {format(t('toolCount'), { count: String(connection.tools.length) })}
-            </span>
+            <>
+              <button type="button" className={styles.tools} onClick={() => { setToolsOpen(true) }}>
+                {format(t('toolCount'), { count: String(connection.tools.length) })}
+              </button>
+              <ToolsDialog
+                open={toolsOpen}
+                name={name}
+                tools={connection.tools}
+                t={t}
+                onClose={() => { setToolsOpen(false) }}
+              />
+            </>
           )}
         </span>
         <Pill>{entry.origin === 'managed' ? t('managed') : t('composition')}</Pill>
