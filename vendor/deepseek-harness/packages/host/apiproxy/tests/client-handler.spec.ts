@@ -61,6 +61,7 @@ function scriptedApi(overrides: {
       }),
       updateQueue: r => ok(r, { accepted: true as const }),
       cancel: r => ok(r, { accepted: true as const }),
+      delete: r => ok(r, { deletedSessionIds: [], archivedSessionIds: [] }),
       ...overrides.sessions,
     },
     subagents: {
@@ -463,6 +464,8 @@ describe('workspace domain round trip', () => {
     expect(archivedResponse.result).toEqual({ ok: true, value: { archivedSessionIds: ['s-arch'] } })
     const unarchivedResponse = await c.workspace.unarchiveSession({ sessionId: 's-arch' as never })
     expect(unarchivedResponse.result).toEqual({ ok: true, value: { archivedSessionIds: [] } })
+    const deleted = await c.sessions.delete({ sessionId: 's-arch' as never })
+    expect(deleted.result).toEqual({ ok: true, value: { deletedSessionIds: [], archivedSessionIds: [] } })
   })
 
   it('rejects a pathless create payload at the handler schema', async () => {

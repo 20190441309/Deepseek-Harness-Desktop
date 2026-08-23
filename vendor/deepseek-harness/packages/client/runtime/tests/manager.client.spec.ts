@@ -404,6 +404,27 @@ describe('subagent catalogs', () => {
     })
   })
 
+  it('drops every summary on host/session-deleted, including former subagents', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({ items: [
+      summary(S1),
+      summary(S2, { parentSessionId: S1, origin: 'subagent' }),
+    ] as never[] }))
+    const manager = new SessionManager(api, fakeRemote())
+    await manager.refreshList()
+    expect(manager.getListSnapshot().items.map(item => item.sessionId).sort()).toEqual([S1, S2].sort())
+    manager.handleHostEnvelope({
+      rpcId: 'hard-delete-child' as never,
+      payload: { type: 'host/session-deleted', sessionId: S2 },
+    })
+    manager.handleHostEnvelope({
+      rpcId: 'hard-delete-root' as never,
+      payload: { type: 'host/session-deleted', sessionId: S1 },
+    })
+    expect(manager.getListSnapshot().items.find(item => item.sessionId === S2)).toBeUndefined()
+    expect(manager.getListSnapshot().items.find(item => item.sessionId === S1)).toBeUndefined()
+  })
+
   it('refetches debounced membership only while the parent catalog is open', async () => {
     vi.useFakeTimers()
     try {

@@ -6,7 +6,8 @@ import {
 } from '../src/api/rpc.schema.ts'
 import { z } from 'zod'
 import {
-  contentBlockSchema, sessionCancelRequestSchema, sessionCancelValueSchema, sessionCreateRequestSchema,
+  contentBlockSchema, sessionCancelRequestSchema, sessionCancelValueSchema,
+  sessionDeleteRequestSchema, sessionDeleteValueSchema, sessionCreateRequestSchema,
   sessionCreateValueSchema, sessionEventSchema, sessionHistoryRequestSchema, sessionHistoryValueSchema,
   sessionIdSchema, sessionListRequestSchema, sessionListValueSchema, sessionModelsRequestSchema,
   sessionModelsValueSchema, sessionPromptRequestSchema, sessionPromptValueSchema,
@@ -294,6 +295,12 @@ describe('sessions domain schemas', () => {
       sessionId: 's1', itemId: 'i1', action: { kind: 'promote' },
     })).toThrow()
     expect(sessionCancelValueSchema.parse({ accepted: true }).accepted).toBe(true)
+    expect(sessionDeleteRequestSchema.parse({ sessionId: 's1' }).sessionId).toBe('s1')
+    expect(() => sessionDeleteRequestSchema.parse({})).toThrow()
+    expect(sessionDeleteValueSchema.parse({
+      deletedSessionIds: ['s1', 's2'], archivedSessionIds: ['s3'],
+    }).deletedSessionIds).toEqual(['s1', 's2'])
+    expect(() => sessionDeleteValueSchema.parse({ deletedSessionIds: 's1' })).toThrow()
     expect(sessionUpdateQueueValueSchema.parse({ accepted: true }).accepted).toBe(true)
     expect(contentBlockSchema.parse({ type: 'text', text: 'x', extra: 1 })).toMatchObject({ extra: 1 })
   })
@@ -535,6 +542,7 @@ describe('events frame schemas', () => {
       { type: 'host/session-added', sessionId: 's', blank: true, parentSessionId: 'p' },
       { type: 'host/session-added', sessionId: 's', blank: true },
       { type: 'host/session-removed', sessionId: 's' },
+      { type: 'host/session-deleted', sessionId: 's' },
       { type: 'host/session-status', sessionId: 's', running: true },
       { type: 'host/agent-error', sessionId: 's', message: 'boom' },
       { type: 'host/workspace-changed', workspace: {

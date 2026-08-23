@@ -108,6 +108,12 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async cancel(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { accepted: true as const } } }
       },
+      async delete(request) {
+        return {
+          rpcId: request.rpcId,
+          result: { ok: true, value: { deletedSessionIds: [request.payload.sessionId], archivedSessionIds: [] } },
+        }
+      },
     },
     subagents: {
       async list(request) {
@@ -367,6 +373,8 @@ describe('unary round trip (handler ⇄ client, no network)', () => {
       action: { kind: 'remove' },
     })).result.ok).toBe(true)
     expect((await c.sessions.cancel({ sessionId: 's' as never })).result.ok).toBe(true)
+    expect((await c.sessions.delete({ sessionId: 's' as never })).result)
+      .toEqual({ ok: true, value: { deletedSessionIds: ['s'], archivedSessionIds: [] } })
     expect((await c.host.describe({})).result.ok).toBe(true)
   })
 

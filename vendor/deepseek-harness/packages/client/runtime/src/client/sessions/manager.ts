@@ -840,6 +840,30 @@ export class SessionManager {
         }
         return
       }
+      case 'host/session-deleted': {
+        this.recordMutation({ kind: 'remove', sessionId: frame.sessionId })
+        this.updateCatalogActivity(frame.sessionId, false)
+        this.sessions.get(frame.sessionId)?.handleRemoved()
+        this.pendingBuffers.delete(frame.sessionId)
+        this.pendingInteractions.delete(frame.sessionId)
+        this.jobsBySession.delete(frame.sessionId)
+        this.projectionStores.delete(frame.sessionId)
+        this.addresses.delete(frame.sessionId)
+        const inflightCatalog = this.catalogInflight.get(frame.sessionId)
+        if (inflightCatalog !== undefined) {
+          inflightCatalog.parentAvailableOverride = false
+          this.catalogStale.add(frame.sessionId)
+        }
+        const ownedCatalog = this.catalogs.get(frame.sessionId)
+        if (ownedCatalog !== undefined && ownedCatalog.parentAvailable) {
+          this.catalogs.set(frame.sessionId, { ...ownedCatalog, parentAvailable: false })
+        }
+        for (const [childId, address] of this.addresses) {
+          if (address.parentSessionId !== frame.sessionId) continue
+          this.sessions.get(childId)?.handleSubagentParentAvailable(false)
+        }
+        return
+      }
       case 'host/session-removed': {
         const summary = this.summaries.find(candidate => candidate.sessionId === frame.sessionId)
         const durableSubagent = summary?.origin === 'subagent' || this.addresses.has(frame.sessionId)
