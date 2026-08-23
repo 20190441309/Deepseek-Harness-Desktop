@@ -112,11 +112,6 @@ function isENOENT(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 }
 
-/** Whether a filesystem error means the directory still has entries. */
-function isENOTEMPTY(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'ENOTEMPTY'
-}
-
 /**
  * The JSONL persistence backend. Load as a plugin; it registers as
  * `ctx.sessionPersistence` and (via the coordinator) installs the write-path
@@ -465,9 +460,9 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
 
   /**
    * Remove the session-owned directory. An empty project directory is then
-   * removed best-effort.
+   * removed best-effort; any project-directory rmdir failure is swallowed.
    * @param id - session whose stored directory is deleted.
-   * @returns resolution after directory removal.
+   * @returns resolution after the session directory is gone, or when no log exists.
    */
   async deleteStored(id: SessionId): Promise<void> {
     const path = await this.findLog(id)
@@ -477,10 +472,9 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     await rm(sessionDirectory, { recursive: true, force: true })
     try {
       await rmdir(projectDirectory)
-    } catch (error: unknown) {
-      // Best-effort empty-project cleanup: ENOTEMPTY means sibling session
-      // directories remain; ENOENT means the project directory is already gone.
-      if (!isENOENT(error) && !isENOTEMPTY(error)) throw error
+    } catch {
+      // Best-effort empty-project cleanup only. The session directory is already
+      // gone; a leftover project directory must not fail delete.
     }
   }
 

@@ -765,7 +765,7 @@ describe('SessionPersistenceSqlite edge behavior', () => {
     await store.close()
   })
 
-  it('rolls deleteStored back when the schema check fails after events are removed', async () => {
+  it('rejects deleteStored when the schema check fails and leaves the session listed', async () => {
     const path = await freshDbPath('dsh-sqlite-delete-rollback-')
     const store = new SqliteStore({ path, journalMode: 'wal', busyTimeoutMs: DEFAULT_BUSY_TIMEOUT_MS })
     const header = meta('delete-rollback')

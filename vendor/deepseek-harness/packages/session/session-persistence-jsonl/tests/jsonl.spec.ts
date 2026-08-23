@@ -335,13 +335,23 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     await expect(stat(sessionDir(root, '/work', m.id))).rejects.toThrow()
   })
 
-  it('delete surfaces unexpected project-directory rmdir failures', async () => {
+  it('delete succeeds when project-directory rmdir fails after the session directory is gone', async () => {
     const m = meta('rmdir-eperm', '/work')
+    const seen: SessionId[] = []
+    ctx.on('session-persistence/deleted', (id) => { seen.push(id) })
     await ctx.sessionPersistence.create(m)
     await ctx.sessionPersistence.append(m.id, oneTurnLog())
     rmdirProbe.path = projectDir(root, '/work')
     rmdirProbe.code = 'EPERM'
-    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toMatchObject({ code: 'EPERM' })
+    await ctx.sessionPersistence.delete(m.id)
+    await expect(stat(sessionDir(root, '/work', m.id))).rejects.toThrow()
+    expect((await ctx.sessionPersistence.list()).map(h => h.id)).not.toContain(m.id)
+    expect(seen).toEqual([m.id])
+  })
+
+  it('deleteStored resolves when the session log is already absent', async () => {
+    const persistence = ctx.sessionPersistence as JsonlSessionPersistence
+    await expect(persistence.deleteStored(SessionId('ghost'))).resolves.toBeUndefined()
   })
 
   it('readRaw returns the stored artifact text verbatim with its original filename', async () => {
