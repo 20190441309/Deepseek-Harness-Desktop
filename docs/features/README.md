@@ -47,4 +47,5 @@ Gate: <卡上 gates>
 | [mobile-remote](mobile-remote.md) | 停放：侧栏远程入口隐藏；网关不监听 | `REMOTE_FEATURE_ENABLED` / preload | TC-NEG-001（负向）；TC-REM-001…003 N/A |
 | [dshbot](dshbot.md) | 停放：侧栏机器人入口隐藏；插件源仍打包 | `hideDshbotPlugin` | TC-EXT-007（负向） |
 | [dsh-home](dsh-home.md) | 桌面 `userData/dsh-home`，安装后不读官方 `~/.dsh` | `dsh-home.js` / spawnEnv | TC-INST-009、011；TC-WS-006 |
+| [session-archive](session-archive.md) | 归档隐藏；已归档里恢复/删除 | ui-workspace / workspace RPC | TC-CHAT-010、011 |
 | [git-titlebar](git-titlebar.md) | 标题栏分支/提交/推拉；登记工作区即授权 | `git.js` / workspace-authority | TC-WS-006、TC-GIT-001…007 |
