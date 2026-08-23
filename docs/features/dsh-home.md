@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — spawnEnv 仅在官方 `api.deepseek.com`（或空 baseUrl）写入 `DEEPSEEK_*`；Ayase 等第三方网关不串线 |
+| **last verified** | 2026-08-23 — applyDesktopDshHome case-fold + spawn env assert; TC-INST-011b added |
 
 ## User paths
 

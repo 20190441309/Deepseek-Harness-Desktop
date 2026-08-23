@@ -184,7 +184,20 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 3. 确认肇事 `~/.dsh` 文件仍在、桌面未改写它。  
 4. 底栏终端运行官方 `dsh`（若已安装）：仍使用 `~/.dsh`，进程环境没有被桌面改成 `userData/dsh-home`。
 
-**期望：** 桌面进主界面（或走 skip-user-plugins 后仍可用）；失败不得归因于官方 home 里那条坏 bundle。Boot 日志出现桌面 `Harness 家目录` 且路径在应用数据目录下的 `dsh-home`。
+**期望：** 桌面进主界面（或走 skip-user-plugins 后仍可用）；失败不得归因于官方 home 里那条 bad bundle。Boot 日志出现桌面 `Harness 家目录` 且路径在应用数据目录下的 `dsh-home`。
+
+### TC-INST-011b · 官方 credentials.yaml 毒化不能拖死桌面 · P0（造障）
+
+**前置：** 官方 `~/.dsh/.credentials.yaml` 写入非 string 的 `refs` 值（issue #19 形态）。桌面包为 v0.2.7+。
+
+**步骤：**
+
+1. 冷启动桌面应用。
+2. 读 Boot 日志里的 `Harness 家目录` 与 `子进程 DSH_HOME`。
+3. 确认官方 `~/.dsh/.credentials.yaml` 字节未改。
+4. 底栏终端运行官方 `dsh`（若已安装）：仍使用 `~/.dsh`。
+
+**期望：** 进入 Web UI。两行 home 都在 `%APPDATA%\Deepseek-Harness-Desktop\dsh-home`（或测试 `DSHD_HOME`）。stderr / 子进程输出不得含 `\.dsh\.credentials.yaml`。官方文件未改写。
 
 ### TC-INST-012 · 同版本 overlay 必须重解压 Harness · P0
 
@@ -855,6 +868,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-INST-009 | P0 | Pass | CI SHA + 已装 exe | 同号 0.2.6 `/S` overlay | Trent | 2026-08-23 |
 | TC-INST-010 | P1 |  |  | 本轮未卸载 | Trent | 2026-08-23 |
 | TC-INST-011 | P0 造障 | Blocked | CI SHA + 已装 exe | 未造官方 ~/.dsh 坏 bundle | Trent | 2026-08-23 |
+| TC-INST-011b | P0 造障 |  |  | 未造官方 ~/.dsh credentials 毒化 | Trent | 2026-08-23 |
 | TC-INST-012 | P0 | Pass | CI SHA + 已装 exe | stamp 在；无 --no-open | Trent | 2026-08-23 |
 | TC-INST-013 | P0 | Pass | CI SHA + 已装 exe | resources\\node.exe v22.23.2 | Trent | 2026-08-23 |
 | TC-MODEL-001 | P0 | Pass | CI SHA + 已装 exe | ayase 已配置；密钥 password 占位 | Trent | 2026-08-23 |
