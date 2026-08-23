@@ -50,9 +50,10 @@ function collectFiles(
 
 /**
  * Workspace file tree occupant of `surfaces.files`. Clicking a file opens a
- * `file:` surface through the owner `openFile` callback. Refresh reloads the
- * root listing; while a search query is active it re-walks that search instead
- * of dropping nested matches. Mention is omitted without a session id. A nested
+ * `file:` surface through the owner `openFile` callback. A root listing in
+ * flight shows `listing` instead of `empty.dir`. Refresh reloads the root
+ * listing; while a search query is active it re-walks that search instead of
+ * dropping nested matches. Mention is omitted without a session id. A nested
  * `listDir` failure keeps the tree and shows a banner; only the workspace-root
  * listing replaces the tree.
  * @param props - session-maybe seats, listing IPC, locale, and openFile.
@@ -72,6 +73,7 @@ export function FilesPanel({
 }: FilesPanelProps): ReactNode {
   const cwd = currentCwd(useSessions)
   const [root, setRoot] = useState<TreeEntry[]>([])
+  const [listing, setListing] = useState<'pending' | 'settled'>('pending')
   const [childrenByPath, setChildrenByPath] = useState<Record<string, TreeEntry[]>>({})
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -85,21 +87,26 @@ export function FilesPanel({
       setRoot([])
       setChildrenByPath({})
       setError(null)
+      setListing('settled')
       return
     }
+    setListing('pending')
     let cancelled = false
     void listDir(cwd, '').then((result) => {
       if (cancelled) return
       if (!result.ok) {
         setError(result.message ?? t('error.list'))
         setRoot([])
+        setListing('settled')
         return
       }
       setError(null)
       setRoot(toTree('', result.entries ?? []))
+      setListing('settled')
     }).catch(() => {
       if (!cancelled) {
         setError(t('error.list'))
+        setListing('settled')
       }
     })
     return () => { cancelled = true }
@@ -218,6 +225,8 @@ export function FilesPanel({
           <p className={css.message}>{t('empty.cwd')}</p>
         ) : error !== null ? (
           <p className={css.message}>{error}</p>
+        ) : listing === 'pending' && root.length === 0 ? (
+          <p className={css.message}>{t('listing')}</p>
         ) : root.length === 0 ? (
           <p className={css.message}>{t('empty.dir')}</p>
         ) : (

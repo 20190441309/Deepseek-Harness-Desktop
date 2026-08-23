@@ -157,6 +157,30 @@ function catalogError(source, detail) {
   return `壁纸目录 ${host} ${detail}`;
 }
 
+function isCatalogErrorMessage(message) {
+  return typeof message === 'string' && message.startsWith('壁纸目录 ');
+}
+
+/**
+ * Map undici / Abort / DNS failures to a short Chinese detail.
+ * Catalog errors already produced by this module are left intact.
+ * @param {unknown} error
+ * @returns {string}
+ */
+function fetchFailureDetail(error) {
+  if (!(error instanceof Error)) return '网络失败';
+  if (error.name === 'AbortError' || error.name === 'TimeoutError') return '超时';
+  const cause = error.cause instanceof Error ? error.cause : undefined;
+  const text = [error.message, cause && cause.message, cause && cause.code, error.code]
+    .filter(Boolean)
+    .join(' ');
+  if (/aborted|timeout|timed out|ABORT_ERR/i.test(text)) return '超时';
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|UND_ERR|network|CERT_|UNABLE_TO_VERIFY/i.test(text)) {
+    return '网络失败';
+  }
+  return error.message || '网络失败';
+}
+
 function resolveAgainst(url, base) {
   try {
     return new URL(url, base).href;
@@ -420,10 +444,10 @@ async function fetchBuffer(url, { maxBytes, timeoutMs }, hops = 0) {
     const buffer = await readLimitedBody(response, maxBytes, url);
     return { buffer, contentType: response.headers.get('content-type') || '', finalUrl: response.url || parsed.href };
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(catalogError(url, '超时'));
+    if (error instanceof Error && isCatalogErrorMessage(error.message)) {
+      throw error;
     }
-    throw error;
+    throw new Error(catalogError(url, fetchFailureDetail(error)));
   } finally {
     clearTimeout(timer);
   }
@@ -569,4 +593,5 @@ module.exports = {
   listWallpaperCatalog,
   downloadWallpaper,
   isAllowedWallpaperUrl,
+  fetchFailureDetail,
 };

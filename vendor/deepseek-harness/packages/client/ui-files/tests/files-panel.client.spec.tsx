@@ -392,6 +392,36 @@ describe('FilesPanel', () => {
     expect(screen.getByText('A workspace is required to browse files.')).toBeTruthy()
   })
 
+  it('does not paint empty-directory while the root listing is in flight', async () => {
+    let finish!: (value: ListDirResult) => void
+    const pending = new Promise<ListDirResult>((resolve) => { finish = resolve })
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={() => {}}
+        listDir={() => pending}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    expect(screen.getByText('Listing directory…')).toBeTruthy()
+    expect(screen.queryByText('This directory is empty.')).toBeNull()
+    await act(async () => {
+      finish({ ok: true, entries: FAKE_ROOT })
+    })
+    expect(await screen.findByText('README.md')).toBeTruthy()
+    expect(screen.queryByText('Listing directory…')).toBeNull()
+  })
+
   it('shows the empty-directory message when listing returns no entries', async () => {
     render(
       <FilesPanel

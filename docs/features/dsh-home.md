@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
+| **last verified** | 2026-08-23 — spawnEnv 仅在官方 `api.deepseek.com`（或空 baseUrl）写入 `DEEPSEEK_*`；Ayase 等第三方网关不串线 |
 
 ## User paths
 
@@ -19,11 +19,13 @@
 - 桌面进程不读、不写、不迁移、不清理 `~/.dsh`。
 - 不把桌面 home 写进 Electron `process.env.DSH_HOME`；PTY 不注入该值。
 - `dsh web` 与 `dsh plugin` 子进程的 `DSH_HOME` 覆盖为桌面 home。
+- 子进程 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` 仅在壳层 `baseUrl` 为空或主机为 `api.deepseek.com` 时写入；第三方网关只留给自定义提供方。
 - `--skip-user-plugins` 恢复状态机不变。
 
 ## Allowed touch
 
 - `src/shared/dsh-home.js` 与其单测
+- `src/shared/official-deepseek-env.js` 与其单测
 - `src/main/index.js`、`dsh.js`、`plugins.js`、`marketplace-install.js`、`workspace-authority.js`
 - `src/shared/themes.js` 读 `settings.yaml` 的路径
 - `scripts/smoke-workspace.mjs` 与 `qa:source` / `qa:composer` / `qa:packaged` / packaged smoke 的 spawn 环境
@@ -40,7 +42,7 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `dsh-home` / spawnEnv / workspace-authority 单测；冒烟不得注入 `DSH_HOME`；`qa:packaged` 可 rehearsal 预写兄弟仓（**不能**当发版 Pass） |
+| Automated | `dsh-home` / `official-deepseek-env` / spawnEnv / workspace-authority 单测；冒烟不得注入 `DSH_HOME`；`qa:packaged` 可 rehearsal 预写兄弟仓（**不能**当发版 Pass） |
 | Manual / QA | 每次发布前 `TC-INST-009`、`TC-INST-011`、`TC-WS-006` |
 
 ## Sources

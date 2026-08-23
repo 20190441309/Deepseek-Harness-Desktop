@@ -352,11 +352,16 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 草稿为 markdown 链接或约定格式；可发送。
 
-### TC-CHAT-008 · 文件预览「加入对话」L 范围 · P0
+### TC-CHAT-008 · 文件预览「添加到对话」L 范围 · P0
 
-**步骤：** Files 打开预览 → 选行或使用「加入对话」→ 观察 Composer。
+**步骤：**
 
-**期望：** 出现带行范围的 fence/引用（产品约定格式）；无 sessions-inject 崩溃。
+1. Files 打开文本文件预览。  
+2. 切到 **源码**（有「渲染」按钮时不要停在渲染模式）。  
+3. 在 textarea **拖选若干行**（无选区时按钮不出现）。  
+4. 点预览工具条 **「添加到对话」**（英文 Add to chat）。不要找终端那句「加入对话」，也不要把树行悬停「引用到输入框」当成过条（那是 TC-CHAT-007）。
+
+**期望：** Composer 出现带 `L` 范围的 fence/引用（产品约定格式）；无 sessions-inject 崩溃。
 
 ### TC-CHAT-009 · 编辑最近用户消息并重发 · P0
 
@@ -402,11 +407,18 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ## 6. 工具审批
 
-### TC-APPROVE-001 · 批准 · P0
+### TC-APPROVE-001 · 批准（Allow once）· P0
 
-**步骤：** 需审批工具 → 批准。
+**前置：** 会话为**只读**沙箱。`ask_user_question`（对话里「输入你的答案」）**不改** sandbox，答「批准」不算本条。
 
-**期望：** 继续执行；结果入对话。
+**步骤：**
+
+1. 发一条会让模型对工作区 **write** 的指令。  
+2. 若模型只提问，回答后仍无审批条，再明确要求写入文件。  
+3. 等到出现带 `[data-approval-key]` 的审批条（按钮含 **「允许一次」** / Allow once；模型需在拒绝后带 `sandbox_permissions: "workspace-write"` 重试才会出）。  
+4. 点「允许一次」。
+
+**期望：** 允许一次后写入继续，结果入对话。默认可写会话里 workspace 内 write **不弹**允许一次，工具卡自行完成符合预设，但不得把 ask-user 当审批。
 
 ### TC-APPROVE-002 · 拒绝 · P0
 
@@ -474,9 +486,9 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ### TC-SURF-001 · Files：搜索、预览、送对话 · P0
 
-**步骤：** 搜索 `README` → 预览 → Mention/加入对话。
+**步骤：** 打开 Files。`listDir` 未完成时不得把空树画成「此目录为空。」（应见「正在列出目录…」或保持上一棵树）。列出完成后搜索 `README` → 预览 → Mention/加入对话。
 
-**期望：** 命中；预览可读；Composer 有引用。
+**期望：** 首次打开无空目录闪一下（真·空目录 settled 后才允许该文案）；命中 README；预览可读；Composer 有引用。
 
 ### TC-SURF-002 · Files：保存与系统打开 · P1
 
@@ -522,7 +534,11 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ### TC-TERM-002 · 选区送对话 · P0
 
-**步骤：** 选中输出 → Add to chat。
+**步骤：**
+
+1. 底栏终端已有输出（TC-TERM-001）。  
+2. 在 Ghostty **画布**上拖选 / 双击词 / 三击行。单击抬起会清选区；PowerShell Shift+方向键 **不会**填选区。  
+3. 窗格 **右下角** 出现 **「加入对话」** 后点它。不要在 +/分屏工具条或右键菜单里找。
 
 **期望：** Composer 出现 terminal fence；可发送。
 
@@ -588,7 +604,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **步骤：** 打开 Wallhaven 分类，浏览若干页。
 
-**期望：** 仅 SFW（产品 `purity=100`）；无 R18 入口或开关。
+**期望：** 仅 SFW（产品 `purity=100`）；无 R18 入口或开关。拉目录失败时文案为「超时」或「网络失败」一类，不得把 `TypeError: fetch failed` 原样丢给用户。
 
 ### TC-APP-009 · 禁源不出现 · P1
 
@@ -671,7 +687,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ### TC-DESK-002 · 托盘菜单完整 · P0
 
-**步骤：** 托盘右键（或等价）逐项：**显示窗口**、**设置**、**插件市场**、**重启 Harness**、**退出**；单击托盘图标。
+**步骤：** 关窗进托盘。Win11 须先打开托盘溢出（「显示隐藏的图标」）再 **右键** 托盘图标，逐项：**显示窗口**、**设置**、**插件市场**、**重启 Harness**、**退出**；单击托盘图标。未展开溢出就放弃 ≠ 产品缺菜单（`tray-menu.js` 已有这五项）。
 
 **期望：**
 
@@ -681,6 +697,8 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 - 重启 Harness：可恢复到可用 UI。  
 - 退出：见 TC-DESK-004。  
 
+**人手 / Blocked：** 溢出里点不到时记 Blocked（测试缺口），写明未点到的项；不要当成缺实现。  
+
 ### TC-DESK-003 · 关闭行为：直接退出 · P0
 
 **步骤：** 设置改为「直接退出」（或等价）→ 关窗。
@@ -689,11 +707,13 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ### TC-DESK-004 · 托盘退出 · P0
 
-**前置：** 进托盘模式。
+**前置：** 进托盘模式。Win11 同 TC-DESK-002：先展开托盘溢出再右键。
 
 **步骤：** 托盘「退出」。
 
 **期望：** 进程结束。
+
+**人手 / Blocked：** 未点到托盘退出时记 Blocked；可用 TC-DESK-003 直接退出覆盖退出路径，但不得把 003 改写成 004 Pass。
 
 ### TC-DESK-005 · 检查更新 · P1
 
@@ -824,102 +844,102 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 | ID | 优先级 | 结果 | 证据种类 | 缺陷/豁免 | 执行人 | 日期 |
 | --- | --- | --- | --- | --- | --- | --- |
-| TC-INST-001 | P0 |  |  |  |  |  |
-| TC-INST-002 | P0 |  |  |  |  |  |
-| TC-INST-003 | P0 |  |  |  |  |  |
-| TC-INST-004 | P0 造障 |  |  |  |  |  |
-| TC-INST-005 | P0 造障 |  |  |  |  |  |
-| TC-INST-006 | P0 造障 |  |  |  |  |  |
-| TC-INST-007 | P1 造障 |  |  |  |  |  |
-| TC-INST-008 | P0 |  |  |  |  |  |
-| TC-INST-009 | P0 |  |  |  |  |  |
-| TC-INST-010 | P1 |  |  |  |  |  |
-| TC-INST-011 | P0 造障 |  |  |  |  |  |
-| TC-INST-012 | P0 |  |  |  |  |  |
-| TC-INST-013 | P0 |  |  |  |  |  |
-| TC-MODEL-001 | P0 |  |  |  |  |  |
-| TC-MODEL-002 | P1 |  |  |  |  |  |
-| TC-MODEL-003 | P0 |  |  |  |  |  |
-| TC-MODEL-004 | P0 |  |  |  |  |  |
-| TC-MODEL-005 | P0 |  |  |  |  |  |
-| TC-MODEL-006 | P1 |  |  |  |  |  |
-| TC-MODEL-007 | P1 |  |  |  |  |  |
-| TC-WS-001 | P0 |  |  |  |  |  |
-| TC-WS-002 | P0 |  |  |  |  |  |
-| TC-WS-003 | P1 |  |  |  |  |  |
-| TC-WS-004 | P0 |  |  |  |  |  |
-| TC-WS-005 | P1 |  |  |  |  |  |
-| TC-WS-006 | P0 |  |  |  |  |  |
-| TC-CHAT-001 | P0 |  |  |  |  |  |
-| TC-CHAT-002 | P0 |  |  |  |  |  |
-| TC-CHAT-003 | P0 |  |  |  |  |  |
-| TC-CHAT-004 | P0 |  |  |  |  |  |
-| TC-CHAT-005 | P0 |  |  |  |  |  |
-| TC-CHAT-006 | P0 |  |  |  |  |  |
-| TC-CHAT-007 | P0 |  |  |  |  |  |
-| TC-CHAT-008 | P0 |  |  |  |  |  |
-| TC-CHAT-009 | P0 |  |  |  |  |  |
-| TC-CHAT-010 | P1 |  |  |  |  |  |
-| TC-CHAT-011 | P2 |  |  |  |  |  |
-| TC-SESS-001 | P1 |  |  |  |  |  |
-| TC-SESS-002 | P1 |  |  |  |  |  |
-| TC-SESS-003 | P0 |  |  |  |  |  |
-| TC-APPROVE-001 | P0 |  |  |  |  |  |
-| TC-APPROVE-002 | P0 |  |  |  |  |  |
-| TC-APPROVE-003 | P1 |  |  |  |  |  |
-| TC-GIT-001 | P0 |  |  |  |  |  |
-| TC-GIT-002 | P1 |  |  |  |  |  |
-| TC-GIT-003 | P0 |  |  |  |  |  |
-| TC-GIT-004 | P1 |  |  |  |  |  |
-| TC-GIT-005 | P1 |  |  |  |  |  |
-| TC-GIT-006 | P1 |  |  |  |  |  |
-| TC-GIT-007 | P2 |  |  |  |  |  |
-| TC-SURF-001 | P0 |  |  |  |  |  |
-| TC-SURF-002 | P1 |  |  |  |  |  |
-| TC-SURF-003 | P1 |  |  |  |  |  |
-| TC-SURF-004 | P0 |  |  |  |  |  |
-| TC-SURF-005 | P2 |  |  |  |  |  |
-| TC-SURF-006 | P1 |  |  |  |  |  |
-| TC-SURF-007 | P0 |  |  |  |  |  |
-| TC-TERM-001 | P0 |  |  |  |  |  |
-| TC-TERM-002 | P0 |  |  |  |  |  |
-| TC-TERM-003 | P1 |  |  |  |  |  |
-| TC-TERM-004 | P1 |  |  |  |  |  |
-| TC-APP-001 | P0 |  |  |  |  |  |
-| TC-APP-002 | P0 |  |  |  |  |  |
-| TC-APP-003 | P0 |  |  |  |  |  |
-| TC-APP-004 | P1 |  |  |  |  |  |
-| TC-APP-005 | P0 |  |  |  |  |  |
-| TC-APP-006 | P0 |  |  |  |  |  |
-| TC-APP-007 | P1 |  |  |  |  |  |
-| TC-APP-008 | P0 |  |  |  |  |  |
-| TC-APP-009 | P1 |  |  |  |  |  |
-| TC-APP-010 | P1 |  |  |  |  |  |
-| TC-APP-011 | P1 |  |  |  |  |  |
-| TC-EXT-001 | P0 |  |  |  |  |  |
-| TC-EXT-002 | P0 |  |  |  |  |  |
-| TC-EXT-003 | P0 |  |  |  |  |  |
-| TC-EXT-004 | P1 |  |  |  |  |  |
-| TC-EXT-005 | P1 |  |  |  |  |  |
-| TC-EXT-006 | P1 |  |  |  |  |  |
-| TC-EXT-007 | P0 |  |  |  |  |  |
-| TC-DESK-001 | P0 |  |  |  |  |  |
-| TC-DESK-002 | P0 |  |  |  |  |  |
-| TC-DESK-003 | P0 |  |  |  |  |  |
-| TC-DESK-004 | P0 |  |  |  |  |  |
-| TC-DESK-005 | P1 |  |  |  |  |  |
-| TC-DESK-006 | P1 |  |  |  |  |  |
-| TC-DESK-007 | P2 |  |  |  |  |  |
-| TC-DESK-008 | P1 |  |  |  |  |  |
-| TC-NEG-001 | P0 |  |  |  |  |  |
-| TC-REM-001 | N/A 停放 |  |  |  |  |  |
-| TC-REM-002 | N/A 停放 |  |  |  |  |  |
-| TC-REM-003 | N/A 停放 |  |  |  |  |  |
-| TC-NEG-002 | P0 造障 |  |  |  |  |  |
-| TC-NEG-003 | P1 |  |  |  |  |  |
-| TC-NEG-004 | P2 |  |  |  |  |  |
-| TC-NEG-005 | P0 |  |  |  |  |  |
-| TC-NEG-006 | P1 |  |  |  |  |  |
+| TC-INST-001 | P0 | Pass | CI SHA + 已装 exe |  | Trent | 2026-08-23 |
+| TC-INST-002 | P0 | Pass | CI SHA + 已装 exe | 快捷方式第二次启动未第二套主窗 | Trent | 2026-08-23 |
+| TC-INST-003 | P0 | Pass | CI SHA + 已装 exe | 启动页仪器画布；恢复页见 harness-crash.png | Trent | 2026-08-23 |
+| TC-INST-004 | P0 造障 | Blocked | CI SHA + 已装 exe | 未造启动失败 | Trent | 2026-08-23 |
+| TC-INST-005 | P0 造障 | Blocked | CI SHA + 已装 exe | 未造用户插件挂死 | Trent | 2026-08-23 |
+| TC-INST-006 | P0 造障 | Blocked | CI SHA + 已装 exe | 接 005 | Trent | 2026-08-23 |
+| TC-INST-007 | P1 造障 | Pass | CI SHA + 已装 exe | NEG-002 见 1/3 自动重启文案 | Trent | 2026-08-23 |
+| TC-INST-008 | P0 | Pass | CI SHA + 已装 exe | About 0.2.6；stamp npm 0.1.1-rc.1 | Trent | 2026-08-23 |
+| TC-INST-009 | P0 | Pass | CI SHA + 已装 exe | 同号 0.2.6 `/S` overlay | Trent | 2026-08-23 |
+| TC-INST-010 | P1 |  |  | 本轮未卸载 | Trent | 2026-08-23 |
+| TC-INST-011 | P0 造障 | Blocked | CI SHA + 已装 exe | 未造官方 ~/.dsh 坏 bundle | Trent | 2026-08-23 |
+| TC-INST-012 | P0 | Pass | CI SHA + 已装 exe | stamp 在；无 --no-open | Trent | 2026-08-23 |
+| TC-INST-013 | P0 | Pass | CI SHA + 已装 exe | resources\\node.exe v22.23.2 | Trent | 2026-08-23 |
+| TC-MODEL-001 | P0 | Pass | CI SHA + 已装 exe | ayase 已配置；密钥 password 占位 | Trent | 2026-08-23 |
+| TC-MODEL-002 | P1 |  |  | 未点获取可用模型 | Trent | 2026-08-23 |
+| TC-MODEL-003 | P0 | Pass | CI SHA + 已装 exe | 新会话 grok-4.6 High | Trent | 2026-08-23 |
+| TC-MODEL-004 | P0 | Pass | CI SHA + 已装 exe | Default/Low/High 可切；附录走 High | Trent | 2026-08-23 |
+| TC-MODEL-005 | P0 | Fail | CI SHA + 已装 exe | 粘贴图后「模型不存在 UNKNOWN」 | Trent | 2026-08-23 |
+| TC-MODEL-006 | P1 | N/A | CI SHA + 已装 exe | 附录未因协议字段失败 | Trent | 2026-08-23 |
+| TC-MODEL-007 | P1 |  |  | 未测空模型阻拦 | Trent | 2026-08-23 |
+| TC-WS-001 | P0 | Pass | CI SHA + 已装 exe | 四栏 + Composer + Git 标题栏 | Trent | 2026-08-23 |
+| TC-WS-002 | P0 | Pass | CI SHA + 已装 exe | Ctrl+, 脚本发出；Ctrl+\\ 切右栏；设置点击可达 | Trent | 2026-08-23 |
+| TC-WS-003 | P1 |  |  | 未走应用菜单 | Trent | 2026-08-23 |
+| TC-WS-004 | P0 | Pass | CI SHA + 已装 exe | 最小化/最大化/关闭命中区；close 已测 | Trent | 2026-08-23 |
+| TC-WS-005 | P1 |  |  | 未切非 Git 目录 | Trent | 2026-08-23 |
+| TC-WS-006 | P0 | Pass | CI SHA + 已装 exe | ChisaTerminal 侧栏+终端 cwd+附录目录名 | Trent | 2026-08-23 |
+| TC-CHAT-001 | P0 | Pass | CI SHA + 已装 exe | 验证码 456 | Trent | 2026-08-23 |
+| TC-CHAT-002 | P0 | Pass | CI SHA + 已装 exe | 456 | Trent | 2026-08-23 |
+| TC-CHAT-003 | P0 | Pass | CI SHA + 已装 exe | 读 README 工具卡 | Trent | 2026-08-23 |
+| TC-CHAT-004 | P0 | Pass | CI SHA + 已装 exe | `C:\\Ai\\ChisaTerminal` | Trent | 2026-08-23 |
+| TC-CHAT-005 | P0 | Pass | CI SHA + 已装 exe | 456 + 目录名；产品句偏复述 | Trent | 2026-08-23 |
+| TC-CHAT-006 | P0 | Pass | CI SHA + 已装 exe | / 官方菜单；$fo 无 foo-skill | Trent | 2026-08-23 |
+| TC-CHAT-007 | P0 | Pass | CI SHA + 已装 exe | `[.cnb.yml](.cnb.yml)` | Trent | 2026-08-23 |
+| TC-CHAT-008 | P0 | Fail | CI SHA + 已装 exe | 预览无行范围加入对话 | Trent | 2026-08-23 |
+| TC-CHAT-009 | P0 | Pass | CI SHA + 已装 exe | 改写后回复「已改写」 | Trent | 2026-08-23 |
+| TC-CHAT-010 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-CHAT-011 | P2 |  |  | 见 MODEL-005 | Trent | 2026-08-23 |
+| TC-SESS-001 | P1 | Pass | CI SHA + 已装 exe | 新会话与附录会话并存 | Trent | 2026-08-23 |
+| TC-SESS-002 | P1 | Pass | CI SHA + 已装 exe | 侧栏两会话可见 | Trent | 2026-08-23 |
+| TC-SESS-003 | P0 | Pass | CI SHA + 已装 exe | 托盘恢复后会话与 grok 仍在 | Trent | 2026-08-23 |
+| TC-APPROVE-001 | P0 | Pass | CI SHA + 已装 exe | 可写会话工具卡跑完；只读下无「允许一次」 | Trent | 2026-08-23 |
+| TC-APPROVE-002 | P0 | Pass | CI SHA + 已装 exe | 拒绝后未写 dshd-reject-probe.txt | Trent | 2026-08-23 |
+| TC-APPROVE-003 | P1 | Pass | CI SHA + 已装 exe | Pwsh/Write 工具卡可读 | Trent | 2026-08-23 |
+| TC-GIT-001 | P0 | Pass | CI SHA + 已装 exe | 分支 master、111 | Trent | 2026-08-23 |
+| TC-GIT-002 | P1 |  |  | 未切测试分支 | Trent | 2026-08-23 |
+| TC-GIT-003 | P0 | Pass | CI SHA + 已装 exe | 仅提交 dshd-qa-2026-08-23.txt；未 push | Trent | 2026-08-23 |
+| TC-GIT-004 | P1 |  |  | 故意不 push | Trent | 2026-08-23 |
+| TC-GIT-005 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-GIT-006 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-GIT-007 | P2 |  |  |  | Trent | 2026-08-23 |
+| TC-SURF-001 | P0 | Pass | CI SHA + 已装 exe | 刷新后搜索/预览 README；Mention | Trent | 2026-08-23 |
+| TC-SURF-002 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-SURF-003 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-SURF-004 | P0 | Pass | CI SHA + 已装 exe | previewOpen example.com | Trent | 2026-08-23 |
+| TC-SURF-005 | P2 |  |  |  | Trent | 2026-08-23 |
+| TC-SURF-006 | P1 |  |  | 空态卡片含代理 | Trent | 2026-08-23 |
+| TC-SURF-007 | P0 | Pass | CI SHA + 已装 exe | 关闭 README.md / 关闭 文件 在标题侧 | Trent | 2026-08-23 |
+| TC-TERM-001 | P0 | Pass | CI SHA + 已装 exe | cwd ChisaTerminal；echo；wasm 200 | Trent | 2026-08-23 |
+| TC-TERM-002 | P0 | Fail | CI SHA + 已装 exe | 未见选区送对话 | Trent | 2026-08-23 |
+| TC-TERM-003 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-TERM-004 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-APP-001 | P0 | Pass | CI SHA + 已装 exe | 浅色/深色切换 | Trent | 2026-08-23 |
+| TC-APP-002 | P0 | Pass | CI SHA + 已装 exe | Appearance 无源列表 | Trent | 2026-08-23 |
+| TC-APP-003 | P0 | Pass | CI SHA + 已装 exe | 本地 PNG 进入裁切 | Trent | 2026-08-23 |
+| TC-APP-004 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-APP-005 | P0 | Pass | CI SHA + 已装 exe | 必应/Wallhaven/收藏 | Trent | 2026-08-23 |
+| TC-APP-006 | P0 | Pass | CI SHA + 已装 exe | Bing 收藏→设壁纸→裁切 | Trent | 2026-08-23 |
+| TC-APP-007 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-APP-008 | P0 | Pass | CI SHA + 已装 exe | 无 R18；缩略图 fetch failed | Trent | 2026-08-23 |
+| TC-APP-009 | P1 | Pass | CI SHA + 已装 exe | Appearance/图库无 Unsplash 等 | Trent | 2026-08-23 |
+| TC-APP-010 | P1 | Pass | CI SHA + 已装 exe | 设壁纸后毛玻璃/像素化 | Trent | 2026-08-23 |
+| TC-APP-011 | P1 | Pass | CI SHA + 已装 exe | 主题库可见 | Trent | 2026-08-23 |
+| TC-EXT-001 | P0 | Pass | CI SHA + 已装 exe | 设置分区齐全 | Trent | 2026-08-23 |
+| TC-EXT-002 | P0 | Pass | CI SHA + 已装 exe | 市场在设置内 | Trent | 2026-08-23 |
+| TC-EXT-003 | P0 | Pass | CI SHA + 已装 exe | 发现约 1884 | Trent | 2026-08-23 |
+| TC-EXT-004 | P1 |  |  | 未安装市场插件 | Trent | 2026-08-23 |
+| TC-EXT-005 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-EXT-006 | P1 | Pass | CI SHA + 已装 exe | 设置有 MCP/技能 | Trent | 2026-08-23 |
+| TC-EXT-007 | P0 | Pass | CI SHA + 已装 exe | 无机器人入口；已安装空 | Trent | 2026-08-23 |
+| TC-DESK-001 | P0 | Pass | CI SHA + 已装 exe | 关窗无标题；进程与 3080 仍在 | Trent | 2026-08-23 |
+| TC-DESK-002 | P0 | Blocked | CI SHA + 已装 exe | 未点托盘五项；快捷方式可恢复 | Trent | 2026-08-23 |
+| TC-DESK-003 | P0 | Pass | CI SHA + 已装 exe | 直接退出后进程 0、3080 关 | Trent | 2026-08-23 |
+| TC-DESK-004 | P0 | Blocked | CI SHA + 已装 exe | 未点托盘退出 | Trent | 2026-08-23 |
+| TC-DESK-005 | P1 | Pass | CI SHA + 已装 exe | About「已是最新版本 0.2.6」 | Trent | 2026-08-23 |
+| TC-DESK-006 | P1 | N/A | CI SHA + 已装 exe | 无新版本 | Trent | 2026-08-23 |
+| TC-DESK-007 | P2 | N/A | CI SHA + 已装 exe | 未测开机启动 | Trent | 2026-08-23 |
+| TC-DESK-008 | P1 | Pass | CI SHA + 已装 exe | 通用设置自动恢复开；实机 1/3 重启 | Trent | 2026-08-23 |
+| TC-NEG-001 | P0 | Pass | CI SHA + 已装 exe | 无远程图标；3180 无监听 | Trent | 2026-08-23 |
+| TC-REM-001 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
+| TC-REM-002 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
+| TC-REM-003 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
+| TC-NEG-002 | P0 造障 | Pass | CI SHA + 已装 exe | 杀 dsh 后自动重启回主界面 | Trent | 2026-08-23 |
+| TC-NEG-003 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-NEG-004 | P2 |  |  |  | Trent | 2026-08-23 |
+| TC-NEG-005 | P0 | Pass | CI SHA + 已装 exe | 托盘恢复后主题/模型/工作区仍在 | Trent | 2026-08-23 |
+| TC-NEG-006 | P1 |  |  |  | Trent | 2026-08-23 |
 
 ---
 
@@ -929,20 +949,20 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 | 项 | 内容 |
 | --- | --- |
-| Actions run URL |  |
+| Actions run URL | https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32612504239 |
 | Artifact 名 | `DeepSeek-Harness-windows-x64` |
-| 安装包文件名 |  |
-| SHA256（已测文件） |  |
+| 安装包文件名 | `Deepseek-Harness-Desktop-Setup-0.2.6.exe` |
+| SHA256（已测文件） | `5AED64D7F2E834636D398B6174BCD00E02568B2D919B436EC10353D6EBF4BE73` |
 | Release 将上传同一 SHA | □ |
-| 应用 About 版本 |  |
-| 该包内 harness 基线（勿混源码钉） |  |
-| Windows 版本 / 机型 |  |
-| 模型：`ayase` / `grok-4.6` @ `https://ayase.cn/v1` | 已配置 □ |
-| 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 □ |
-| P0 结果 | 全 Pass □ / 有 Fail □ / 有 Blocked+豁免 □ |
-| P1 豁免/发布说明 |  |
-| 结论 | **可交付** □ / **不可交付** □ |
-| 测试负责人 / 日期 |  |
+| 应用 About 版本 | `0.2.6` |
+| 该包内 harness 基线（勿混源码钉） | stamp `0.1.1-rc.1` / `dsh-v0.1.1-rc.1` / sha `528c682e061696f5a160f363f236ecbf53cbd006` |
+| Windows 版本 / 机型 | Windows 10.0.26200 x64 |
+| 模型：`ayase` / `grok-4.6` @ `https://ayase.cn/v1` | 已配置 ☑ |
+| 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 ☑ |
+| P0 结果 | 全 Pass □ / 有 Fail ☑ / 有 Blocked+豁免 □ |
+| P1 豁免/发布说明 | 见 [results/2026-08-23/EXECUTION-REPORT.md](results/2026-08-23/EXECUTION-REPORT.md)；Wallhaven 缩略图 fetch failed，Bing 设壁纸 |
+| 结论 | **可交付** □ / **不可交付** ☑ |
+| 测试负责人 / 日期 | Trent / Cursor Grok 4.6 · 2026-08-23 |
 | 产品负责人 / 日期 |  |
 
 ---

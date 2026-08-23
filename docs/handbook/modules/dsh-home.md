@@ -16,7 +16,7 @@
 
 `whenReady` 最先 `setDesktopDshHome(userData/dsh-home)` 并建目录，早于 IPC 与 `dsh web`。解析顺序：非空 `DSHD_HOME` → 已绑定路径 → throw。永不回落 `~/.dsh`，也不读环境里的 `DSH_HOME`。
 
-`dsh web` 与 `dsh plugin` 的子进程环境覆盖 `DSH_HOME` 为桌面 home。Electron `process.env` 与 PTY **不**写入该值。
+`dsh web` 与 `dsh plugin` 的子进程环境覆盖 `DSH_HOME` 为桌面 home。Electron `process.env` 与 PTY **不**写入该值。`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` 仅在壳层 `baseUrl` 为空或主机为 `api.deepseek.com` 时写入；Ayase 等第三方网关不得别名到这两项。
 
 ## 落点
 
@@ -37,7 +37,7 @@ macOS：`~/Library/Application Support/Deepseek-Harness-Desktop/`
 
 ## 实现入口
 
-- `src/shared/dsh-home.js`
+- `src/shared/dsh-home.js`、`src/shared/official-deepseek-env.js`
 - `src/main/index.js` `whenReady`；`dsh.js` `spawnEnv`；`marketplace-install.js` `pluginEnv`；`plugins.js` `webProfileDir`；`workspace-authority.js`；`src/shared/themes.js`
 
 ## 不变量

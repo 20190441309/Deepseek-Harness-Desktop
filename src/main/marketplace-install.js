@@ -7,6 +7,7 @@ const { loadConfig } = require('./config');
 const { resolveNodeBin, sourceHarnessStatus } = require('./dsh');
 const { projectRoot, harnessRoot } = require('./paths');
 const { applyDesktopDshHome } = require('../shared/dsh-home');
+const { applyOfficialDeepSeekSpawnEnv } = require('../shared/official-deepseek-env');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha, getMarketplacePlugin } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
@@ -88,9 +89,7 @@ function pluginEnv(nodeBin) {
   const env = applyDesktopDshHome({ ...process.env });
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_NO_ASAR;
-  if (config.apiKey) {
-    env.DEEPSEEK_API_KEY = config.apiKey;
-  }
+  applyOfficialDeepSeekSpawnEnv(env, config);
   env.npm_config_update_notifier = 'false';
   env.CI = env.CI || '1';
   const extras = [];

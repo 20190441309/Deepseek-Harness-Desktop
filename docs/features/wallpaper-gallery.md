@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `wallpaper-gallery` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — catalog 拒绝私网 / link-local / loopback HTTPS（测试机 `DSHD_WALLPAPER_ALLOW_HTTP=1` 除外） |
+| **last verified** | 2026-08-23 — catalog `fetch failed` / 超时解包为「网络失败」「超时」 |
 
 ## User paths
 

@@ -31,5 +31,5 @@ Substituted description text becomes part of the assembled prefix; a new descrip
 ## Known Limitations and Deferred Work
 
 - Descriptions are substituted whole; there is no per-image size cap beyond `maxOutputTokens`.
-- A failed vision call fails the main request loudly instead of degrading to a placeholder.
+- A failed vision call fails the main request as an `LlmError` (the provider code, or `INVALID_REQUEST`) instead of flattening to `UNKNOWN`.
 - The Models page picker lists only catalog rows whose `inputModalities` include `'image'`. A stored designation missing from that list stays selected. Hand-written `settings.yaml` can still name a text-only route, and `configured()` stays true regardless of that route's advertised modalities.

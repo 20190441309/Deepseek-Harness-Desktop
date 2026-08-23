@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   bingCatalogUrls,
   downloadWallpaper,
+  fetchFailureDetail,
   listWallpaperCatalog,
   parseCatalogJson,
 } = require('./wallpaper-catalog');
@@ -536,5 +537,58 @@ test('listWallpaperCatalog bing year keeps 500 items and drops the rest', async 
   } finally {
     if (previousArchive === undefined) delete process.env.DSHD_BING_ARCHIVE_URL;
     else process.env.DSHD_BING_ARCHIVE_URL = previousArchive;
+  }
+});
+
+test('fetchFailureDetail unwraps undici TypeError and AbortError', () => {
+  assert.equal(fetchFailureDetail(undefined), '网络失败');
+  const failed = new TypeError('fetch failed');
+  failed.cause = Object.assign(new Error('getaddrinfo ENOTFOUND wallhaven.cc'), { code: 'ENOTFOUND' });
+  assert.equal(fetchFailureDetail(failed), '网络失败');
+  const aborted = new Error('The operation was aborted');
+  aborted.name = 'AbortError';
+  assert.equal(fetchFailureDetail(aborted), '超时');
+  const timed = new Error('timeout');
+  timed.name = 'TimeoutError';
+  assert.equal(fetchFailureDetail(timed), '超时');
+  assert.equal(fetchFailureDetail(new Error('weird provider text')), 'weird provider text');
+});
+
+test('listWallpaperCatalog maps fetch failed to 网络失败 instead of the raw TypeError', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const err = new TypeError('fetch failed');
+    err.cause = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+    throw err;
+  };
+  try {
+    const result = await listWallpaperCatalog({
+      kind: 'catalog',
+      url: 'https://example.com/pack.json',
+    });
+    assert.equal(result.items.length, 0);
+    assert.match(result.warning, /网络失败/);
+    assert.doesNotMatch(result.warning, /fetch failed/);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('listWallpaperCatalog maps AbortError to 超时', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    throw err;
+  };
+  try {
+    const result = await listWallpaperCatalog({
+      kind: 'catalog',
+      url: 'https://example.com/pack.json',
+    });
+    assert.equal(result.items.length, 0);
+    assert.match(result.warning, /超时/);
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });

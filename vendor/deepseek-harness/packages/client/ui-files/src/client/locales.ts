@@ -4,6 +4,7 @@
 export const zh = {
   'empty.cwd': '没有工作区，无法浏览文件。',
   'empty.dir': '此目录为空。',
+  'listing': '正在列出目录…',
   'error.list': '无法读取目录。',
   'error.read': '无法读取文件。',
   'preview.binary': '无法预览二进制文件。',
@@ -38,6 +39,7 @@ export type FilesKey = keyof typeof zh
 export const en = {
   'empty.cwd': 'A workspace is required to browse files.',
   'empty.dir': 'This directory is empty.',
+  'listing': 'Listing directory…',
   'error.list': 'Could not list the directory.',
   'error.read': 'Could not read the file.',
   'preview.binary': 'This binary file cannot be previewed.',

@@ -7,7 +7,7 @@ alwaysApply: true
 
 Desktop `$DSH_HOME` is `userData/dsh-home` only (`DSHD_HOME` for debug). Do not read, write, migrate, or clean official `~/.dsh`.
 
-Marketplace / `dsh plugin` installs into `dsh-home/profiles/web`. Do not set Electron `process.env.DSH_HOME`; PTY must not inject it. `dsh web` and `dsh plugin` children overwrite `DSH_HOME` to the desktop home.
+Marketplace / `dsh plugin` installs into `dsh-home/profiles/web`. Do not set Electron `process.env.DSH_HOME`; PTY must not inject it. `dsh web` and `dsh plugin` children overwrite `DSH_HOME` to the desktop home. Child `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` only when shell `baseUrl` is empty or `api.deepseek.com`.
 
 Ignore inherited `DSH_HOME`. Profile name stays `web`. Skip-user-plugins FSM unchanged.
 

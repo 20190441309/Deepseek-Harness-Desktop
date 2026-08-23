@@ -18,11 +18,12 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { BlockAssembler, contentHasImage, createUserMessage, deepFreeze } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, FinishReason, GenerateOptions, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, contentHasImage, createUserMessage, deepFreeze, LlmError } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { finishError } from './finish-error.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -94,27 +95,6 @@ const DESCRIBE_SYSTEM = [
 
 /** Fixed user instruction accompanying the image in the describe call. */
 const DESCRIBE_INSTRUCTION = '请按要求描述这张图片。'
-
-/** Translate terminal finish reasons of the describe call into a failure. */
-function finishError(finish: FinishReason): Error | undefined {
-  switch (finish.kind) {
-    case 'stop':
-    case 'max-tokens':
-      // A truncated description is still the faithful prefix of one; the
-      // configured cap is the deployment's chosen bound, not an error.
-      return undefined
-    case 'error':
-    case 'aborted': {
-      const error = new Error(finish.failure.message) as Error & { code?: string }
-      error.code = finish.failure.code
-      return error
-    }
-    case 'tool-calls':
-      return new Error('vision-fallback: the vision model unexpectedly requested a tool')
-    default:
-      return new Error(`vision-fallback: unsupported finish reason "${String((finish as { kind?: unknown }).kind)}"`)
-  }
-}
 
 /** Model-facing framing of one substituted description. Images may come from user attachments or tool reads, so the framing never claims a source. */
 function substitutionText(name: string | undefined, description: string): string {
@@ -283,7 +263,9 @@ export class VisionFallback extends Service {
       .map(candidate => candidate.text)
       .join('\n')
       .trim()
-    if (text.length === 0) throw new Error('vision-fallback: the vision model produced no description text')
+    if (text.length === 0) {
+      throw new LlmError('vision-fallback: the vision model produced no description text', 'INVALID_REQUEST')
+    }
     const name = this.attachmentName(block)
     session.append('vision/describe', {
       attachmentId: String(block.attachment.attachmentId),

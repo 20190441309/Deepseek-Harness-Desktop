@@ -589,6 +589,60 @@ test('restart 不死锁：stop→start 完整往返，新 child 就绪', async (
   assert.equal(h.manager.baseUrl, EXPECTED_URL);
 });
 
+test('spawnEnv does not alias a third-party gateway as DEEPSEEK_BASE_URL', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-desktop-home-'));
+  const previousHome = process.env.DSH_HOME;
+  const previousBase = process.env.DEEPSEEK_BASE_URL;
+  const previousKey = process.env.DEEPSEEK_API_KEY;
+  setDesktopDshHome(home);
+  delete process.env.DEEPSEEK_BASE_URL;
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const env = new DshManager({ loadConfig: () => ({}) }).spawnEnv({
+      apiKey: 'ayase-key',
+      baseUrl: 'https://ayase.cn/v1',
+    }, null);
+    assert.equal(env.DEEPSEEK_BASE_URL, undefined);
+    assert.equal(env.DEEPSEEK_API_KEY, undefined);
+  } finally {
+    clearDesktopDshHome();
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+    if (previousBase === undefined) delete process.env.DEEPSEEK_BASE_URL;
+    else process.env.DEEPSEEK_BASE_URL = previousBase;
+    if (previousKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previousKey;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('spawnEnv writes official DeepSeek key and base URL', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-desktop-home-'));
+  const previousHome = process.env.DSH_HOME;
+  const previousBase = process.env.DEEPSEEK_BASE_URL;
+  const previousKey = process.env.DEEPSEEK_API_KEY;
+  setDesktopDshHome(home);
+  delete process.env.DEEPSEEK_BASE_URL;
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const env = new DshManager({ loadConfig: () => ({}) }).spawnEnv({
+      apiKey: 'sk-official',
+      baseUrl: 'https://api.deepseek.com',
+    }, null);
+    assert.equal(env.DEEPSEEK_API_KEY, 'sk-official');
+    assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com');
+  } finally {
+    clearDesktopDshHome();
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+    if (previousBase === undefined) delete process.env.DEEPSEEK_BASE_URL;
+    else process.env.DEEPSEEK_BASE_URL = previousBase;
+    if (previousKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previousKey;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('spawnEnv overwrites inherited DSH_HOME with the desktop home', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-desktop-home-'));
   const previous = process.env.DSH_HOME;

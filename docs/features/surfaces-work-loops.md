@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — Files 关闭在标题右侧；Browser 访客 `contextIsolation`；artifact 仅 `preview-recordings` |
+| **last verified** | 2026-08-23 — FilesPanel `listDir` pending 不画 empty.dir |
 
 ## User paths
 
