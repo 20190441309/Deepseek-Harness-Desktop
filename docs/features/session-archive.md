@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — C1c sidebar Archived section + unarchive |
+| **last verified** | 2026-08-23 — C1d docs + TC-CHAT-010 |
 
 ## User paths
 
