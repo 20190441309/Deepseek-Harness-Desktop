@@ -30,7 +30,7 @@
 
 ## 安装
 
-到 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest) 下载，装完不需要本机 Node。
+到 [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest) 下载，装完不需要本机 Node。当前发布是 **0.2.7**。
 
 | | |
 | --- | --- |
@@ -38,7 +38,21 @@
 | macOS Apple Silicon | `Deepseek-Harness-Desktop-*-mac-arm64.dmg` |
 | Intel Mac、Linux | [从源码运行](#从源码运行) |
 
-macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`。请不要安装已撤回的 v0.2.0。
+macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applications/Deepseek-Harness-Desktop.app`。
+
+## 本版更新
+
+- **Harness `0.1.1-rc.1`** — 桌面安装包钉官方 `dsh-v0.1.1-rc.1`。
+- **独立家目录** — 会话、设置、市场插件只在应用数据下的 `dsh-home`，不读、不迁、不改官方 CLI 的 `~/.dsh`。
+- **设置选择** — 设置里的值选择改为官方胶囊 + 菜单。
+- **终端资源** — Ghostty 的 wasm 和字体打进安装包；源码启动缺资源则拒绝启动。
+
+### 修复
+
+- 自定义网关不会写入官方 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`。主模型不识图时，识图走官方兜底（需要官方 key）；缺 key 报缺凭证。
+- Files 正在列出目录时不会显示成空目录。
+- Wallhaven 网络失败或超时给出可读说明。
+- 安装包缺 Ghostty 资源则打包失败；不完整的 runtime 会在下次启动时重新解压。
 
 ## 功能
 
@@ -93,7 +107,7 @@ npm start
 
 改界面请改 `vendor/deepseek-harness`，并遵守 [设计语言](docs/design-language.md) 和 [动效](docs/motion.md)。产品蓝图、流程与模块入口见 [产品手册](docs/handbook/README.md)；改行为契约见 [Feature Spine](docs/features/README.md)。改完客户端源码后，在该目录执行 `pnpm run build:lib:client` 再重启桌面端。
 
-当前官方基线写在 `vendor/harness-upstream.json`，现为 `0.1.1-rc.1`（`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`）。npx 兜底是官方 `@deepseek-ai/dsh@0.1.1-rc.1`，不含标题栏、Git、右栏 surfaces 和底栏终端；那些只在源码启动和安装包路径里。SQLite 会话库与 rc.7 不兼容。0.2.7 安装包按此钉；不要把已发出的 0.2.6 安装包说成 rc.1。
+当前官方基线写在 `vendor/harness-upstream.json`，现为 `0.1.1-rc.1`（`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`）。npx 兜底是官方 `@deepseek-ai/dsh@0.1.1-rc.1`，不含标题栏、Git、右栏 surfaces 和底栏终端；那些只在源码启动和安装包路径里。
 
 ```powershell
 npm test              # 桌面壳单测

@@ -10,7 +10,7 @@ Download, install, and run — DSH is bundled.
 
 ## Install
 
-Grab a build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest). No local Node required.
+Grab a build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest). No local Node required. Current release is **0.2.7**.
 
 | | |
 | --- | --- |
@@ -19,6 +19,20 @@ Grab a build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desk
 | Intel Mac, Linux | [Run from source](#run-from-source) |
 
 The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`.
+
+## What's new
+
+- **Harness `0.1.1-rc.1`** — the desktop installer pins official `dsh-v0.1.1-rc.1`.
+- **Separate home** — sessions, settings, and marketplace plugins live in `dsh-home` under app data. The app does not read, migrate, or change the official CLI `~/.dsh`.
+- **Settings controls** — value picks in Settings use the official capsule + menu.
+- **Terminal assets** — Ghostty wasm and fonts ship in the installer. A source launch with missing assets refuses to start.
+
+### Fixes
+
+- A custom gateway is not written into official `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`. When the main model cannot see images, vision fallback uses the official route (needs an official key) and reports missing credentials if the key is absent.
+- Files no longer paints an empty directory while a listing is in progress.
+- Wallhaven network failures and timeouts show a readable message.
+- Packing fails if Ghostty assets are missing. An incomplete runtime is extracted again on the next launch.
 
 ## Features
 
@@ -73,7 +87,7 @@ The first `setup:harness` builds the vendored `vendor/deepseek-harness` — slow
 
 Edit the UI in `vendor/deepseek-harness`. Follow the [design language](docs/design-language.en.md) and [motion](docs/motion.en.md). After changing client sources, run `pnpm run build:lib:client` there and restart the desktop app.
 
-The current official baseline is `vendor/harness-upstream.json`: `0.1.1-rc.1` (`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`). The npx fallback is official `@deepseek-ai/dsh@0.1.1-rc.1` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths. SQLite session databases are incompatible with rc.7. The 0.2.7 installer follows this pin; do not describe the shipped 0.2.6 installer as rc.1.
+The current official baseline is `vendor/harness-upstream.json`: `0.1.1-rc.1` (`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`). The npx fallback is official `@deepseek-ai/dsh@0.1.1-rc.1` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths.
 
 ```powershell
 npm test              # desktop unit tests
