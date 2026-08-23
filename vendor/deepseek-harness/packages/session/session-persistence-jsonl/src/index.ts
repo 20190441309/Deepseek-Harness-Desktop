@@ -9,7 +9,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { readdirSync } from 'node:fs'
-import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { open, mkdir, readFile, readdir, realpath, link, rm, rmdir, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -112,6 +112,11 @@ function isENOENT(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 }
 
+/** Whether a filesystem error means the directory still has entries. */
+function isENOTEMPTY(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === 'ENOTEMPTY'
+}
+
 /**
  * The JSONL persistence backend. Load as a plugin; it registers as
  * `ctx.sessionPersistence` and (via the coordinator) installs the write-path
@@ -179,6 +184,16 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
 
   append(id: SessionId, events: readonly SessionEvent[]): Promise<void> {
     return this.coordinator.append(id, events)
+  }
+
+  /**
+   * Remove one session's durable log. Unknown id rejects.
+   * An un-materialized create cancels and resolves.
+   * @param id - session to delete.
+   * @returns resolution after durability.
+   */
+  delete(id: SessionId): Promise<void> {
+    return this.coordinator.delete(id)
   }
 
   override prepare(id: SessionId, signal?: AbortSignal): Promise<SessionPreparation> {
@@ -446,6 +461,27 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
   /** List valid unique stored sessions' metadata (header line only — no full-log parse). */
   async list(signal?: AbortSignal): Promise<SessionHeader[]> {
     return (await this.listArtifacts(signal)).map(artifact => artifact.header)
+  }
+
+  /**
+   * Remove the session-owned directory. An empty project directory is then
+   * removed best-effort.
+   * @param id - session whose stored directory is deleted.
+   * @returns resolution after directory removal.
+   */
+  async deleteStored(id: SessionId): Promise<void> {
+    const path = await this.findLog(id)
+    if (path === undefined) return
+    const sessionDirectory = dirname(path)
+    const projectDirectory = dirname(sessionDirectory)
+    await rm(sessionDirectory, { recursive: true, force: true })
+    try {
+      await rmdir(projectDirectory)
+    } catch (error: unknown) {
+      // Best-effort empty-project cleanup: ENOTEMPTY means sibling session
+      // directories remain; ENOENT means the project directory is already gone.
+      if (!isENOENT(error) && !isENOTEMPTY(error)) throw error
+    }
   }
 
   /** List metadata plus a stat-derived identity for each append-only log. */

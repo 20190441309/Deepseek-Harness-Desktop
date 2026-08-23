@@ -428,5 +428,44 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
         await dispose()
       }
     })
+
+    it('delete removes a materialized session from load and list', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const m = meta('to-delete', '/work')
+        await persistence.create(m)
+        await persistence.append(m.id, oneTurnLog())
+        await persistence.delete(m.id)
+        await expect(persistence.load(m.id)).rejects.toThrow()
+        expect((await persistence.list()).map(h => h.id)).not.toContain(m.id)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it('delete of an unknown id rejects', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        await expect(persistence.delete(SessionId('ghost'))).rejects.toThrow()
+      } finally {
+        await dispose()
+      }
+    })
+
+    it('delete of an un-materialized create cancels and resolves', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const m = meta('lazy-delete', '/work')
+        await persistence.create(m)
+        await persistence.delete(m.id)
+        await expect(persistence.load(m.id)).rejects.toThrow()
+        expect((await persistence.list()).map(h => h.id)).not.toContain(m.id)
+        await persistence.create(m)
+        await persistence.append(m.id, oneTurnLog())
+        expect((await persistence.load(m.id)).meta.id).toBe(m.id)
+      } finally {
+        await dispose()
+      }
+    })
   })
 }

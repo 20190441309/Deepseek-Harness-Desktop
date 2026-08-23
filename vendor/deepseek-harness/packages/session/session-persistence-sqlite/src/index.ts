@@ -102,6 +102,16 @@ export class SqliteSessionPersistence extends SessionPersistence {
     return this.coordinator.append(id, events)
   }
 
+  /**
+   * Remove one session's durable log. Unknown id rejects.
+   * An un-materialized create cancels and resolves.
+   * @param id - session to delete.
+   * @returns resolution after durability.
+   */
+  delete(id: SessionId): Promise<void> {
+    return this.coordinator.delete(id)
+  }
+
   override prepare(id: SessionId, signal?: AbortSignal): Promise<SessionPreparation> {
     return this.coordinator.prepare(id, signal)
   }

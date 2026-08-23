@@ -199,6 +199,13 @@ export interface PersistenceBackend<TornMarker = unknown> {
   list(signal?: AbortSignal): Promise<SessionHeader[]>
 
   /**
+   * Remove one materialized session's durable bytes.
+   * @param id - session whose stored log is deleted.
+   * @returns resolution after durability.
+   */
+  deleteStored(id: SessionId): Promise<void>
+
+  /**
    * Optional side-effect-free artifact locator, used to point refusal
    * diagnostics ({@link SessionFormatUnsupportedError}) at the raw log.
    * Backends without one artifact per session omit it or return `undefined`.
@@ -677,6 +684,37 @@ export class PersistenceCoordinator<TornMarker = unknown> {
       throw new TypeError('session event batch is not losslessly JSON-serializable because it contains non-JSON-serializable data')
     }
     return this.serialize(id, () => this.appendCore(id, batch))
+  }
+
+  /**
+   * Remove one session's durable log. Unknown id rejects.
+   * An un-materialized create cancels and resolves.
+   * After success the id is unknown to load/list.
+   * @param id - session to delete.
+   * @returns resolution after durability.
+   */
+  delete(id: SessionId): Promise<void> {
+    return this.serialize(id, () => this.deleteCore(id))
+  }
+
+  private async deleteCore(id: SessionId): Promise<void> {
+    const state = this.states.get(id)
+    const stored = await this.backend.loadStored(id)
+    if (stored === undefined) {
+      if (state !== undefined && !state.materialized) {
+        this.states.delete(id)
+        this.preparations.invalidate(id)
+        this.ctx.emit('session-persistence/deleted', id)
+        return
+      }
+      this.states.delete(id)
+      this.preparations.invalidate(id)
+      throw new Error(`session "${id}" not found`)
+    }
+    await this.backend.deleteStored(id)
+    this.states.delete(id)
+    this.preparations.invalidate(id)
+    this.ctx.emit('session-persistence/deleted', id)
   }
 
   private async appendCore(id: SessionId, events: readonly SessionEvent[]): Promise<void> {

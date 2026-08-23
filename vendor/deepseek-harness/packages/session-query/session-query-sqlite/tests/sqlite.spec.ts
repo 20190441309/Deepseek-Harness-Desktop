@@ -126,6 +126,13 @@ class TestPersistence extends SessionPersistence {
     return Promise.resolve()
   }
 
+  delete(id: SessionIdType): Promise<void> {
+    TestPersistence.entries.delete(id)
+    TestPersistence.revisions.delete(id)
+    TestPersistence.loads.delete(id)
+    return Promise.resolve()
+  }
+
   async load(id: SessionIdType): Promise<{ meta: SessionHeader; events: SessionEvent[] }> {
     TestPersistence.loads.set(id, (TestPersistence.loads.get(id) ?? 0) + 1)
     if (TestPersistence.failure !== undefined) throw TestPersistence.failure
@@ -1769,6 +1776,25 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
       .rejects.toThrow(expectCode('SESSION_QUERY_SESSION_NOT_FOUND'))
     await search.dispose()
     await expect(ctx.sessionPersistence.load(meta.id)).resolves.toMatchObject({ meta, events: [{ seq: 0 }] })
+    await persistence.dispose()
+  })
+
+  it('drops a deleted session from later searchSessions results', async () => {
+    const persistencePath = await temporaryPath('canonical-delete.db')
+    const searchPath = await temporaryPath('derived-delete.db')
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const persistence = await ctx.plugin(SqliteSessionPersistence, { path: persistencePath })
+    const search = await ctx.plugin(SqliteSessionQueryEngine, { path: searchPath })
+    const meta = header('deleted-from-search', 7)
+    await ctx.sessionPersistence.create(meta)
+    await ctx.sessionPersistence.append(meta.id, messageEvents('unique-delete-needle'))
+    expect((await ctx.sessionQuery.searchSessions({ query: 'unique-delete-needle' })).items.map(r => r.header.id))
+      .toContain(meta.id)
+    await ctx.sessionPersistence.delete(meta.id)
+    expect((await ctx.sessionQuery.searchSessions({ query: 'unique-delete-needle' })).items.map(r => r.header.id))
+      .not.toContain(meta.id)
+    await search.dispose()
     await persistence.dispose()
   })
 

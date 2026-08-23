@@ -61,6 +61,15 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     sessionPersistence: SessionPersistence
   }
+
+  interface Events {
+    /**
+     * One session's durable log was removed after durability.
+     * @param id - deleted session identity.
+     * @mode emit
+     */
+    'session-persistence/deleted'(id: SessionId): void
+  }
 }
 
 /**
@@ -141,6 +150,15 @@ export abstract class SessionPersistence extends Service {
    * @param events - the contiguous batch to persist, in seq order.
    */
   abstract append(id: SessionId, events: readonly SessionEvent[]): Promise<void>
+
+  /**
+   * Remove one session's durable log. Unknown id rejects.
+   * An un-materialized create cancels and resolves.
+   * After success the id is unknown to load/list.
+   * @param id - session to delete.
+   * @returns resolution after durability.
+   */
+  abstract delete(id: SessionId): Promise<void>
 
   /**
    * Prepare the exact unpublished Session used by resume. Implementations may

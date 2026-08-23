@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — C1d docs + TC-CHAT-010 |
+| **last verified** | 2026-08-23 — C2a persistence delete seam |
 
 ## User paths
 

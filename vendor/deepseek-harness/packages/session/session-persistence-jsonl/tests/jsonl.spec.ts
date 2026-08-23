@@ -18,6 +18,11 @@ const statRace = vi.hoisted(() => ({
   reads: 0,
 }))
 
+const rmdirProbe = vi.hoisted(() => ({
+  path: undefined as string | undefined,
+  code: undefined as string | undefined,
+}))
+
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
@@ -29,6 +34,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       if (statRace.reads !== 2) return identity
       return { ...identity, mtimeNs: identity.mtimeNs + 1n }
     }) as typeof actual.stat,
+    rmdir: (async (...args: Parameters<typeof actual.rmdir>) => {
+      if (rmdirProbe.path !== undefined && String(args[0]) === rmdirProbe.path) {
+        throw Object.assign(new Error('rmdir probe'), { code: rmdirProbe.code })
+      }
+      return actual.rmdir(...args)
+    }) as typeof actual.rmdir,
   }
 })
 
@@ -86,6 +97,8 @@ function rawLogPath(root: string, cwd: string | undefined, id: SessionId): strin
 afterEach(async () => {
   statRace.path = undefined
   statRace.reads = 0
+  rmdirProbe.path = undefined
+  rmdirProbe.code = undefined
   vi.restoreAllMocks()
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true })
 })
@@ -285,6 +298,50 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     expect((await stat(dir)).isDirectory()).toBe(true)
     expect((await stat(rawLogPath(root, '/work', m.id))).isFile()).toBe(true)
     expect((await ctx.sessionPersistence.list()).map(h => h.id)).toContain(m.id)
+  })
+
+  it('delete removes the session directory and a now-empty project directory', async () => {
+    const m = meta('to-delete', '/work')
+    await ctx.sessionPersistence.create(m)
+    await ctx.sessionPersistence.append(m.id, oneTurnLog())
+    const dir = sessionDir(root, '/work', m.id)
+    const project = projectDir(root, '/work')
+    expect((await stat(dir)).isDirectory()).toBe(true)
+    await ctx.sessionPersistence.delete(m.id)
+    await expect(stat(dir)).rejects.toThrow()
+    await expect(stat(project)).rejects.toThrow()
+  })
+
+  it('delete leaves a project directory that still holds another session', async () => {
+    const first = meta('keep-sibling', '/work')
+    const second = meta('remove-sibling', '/work')
+    await ctx.sessionPersistence.create(first)
+    await ctx.sessionPersistence.append(first.id, oneTurnLog())
+    await ctx.sessionPersistence.create(second)
+    await ctx.sessionPersistence.append(second.id, oneTurnLog())
+    await ctx.sessionPersistence.delete(second.id)
+    await expect(stat(sessionDir(root, '/work', second.id))).rejects.toThrow()
+    expect((await stat(sessionDir(root, '/work', first.id))).isDirectory()).toBe(true)
+    expect((await stat(projectDir(root, '/work'))).isDirectory()).toBe(true)
+  })
+
+  it('delete swallows ENOENT when the empty project directory is already gone', async () => {
+    const m = meta('rmdir-enoent', '/work')
+    await ctx.sessionPersistence.create(m)
+    await ctx.sessionPersistence.append(m.id, oneTurnLog())
+    rmdirProbe.path = projectDir(root, '/work')
+    rmdirProbe.code = 'ENOENT'
+    await ctx.sessionPersistence.delete(m.id)
+    await expect(stat(sessionDir(root, '/work', m.id))).rejects.toThrow()
+  })
+
+  it('delete surfaces unexpected project-directory rmdir failures', async () => {
+    const m = meta('rmdir-eperm', '/work')
+    await ctx.sessionPersistence.create(m)
+    await ctx.sessionPersistence.append(m.id, oneTurnLog())
+    rmdirProbe.path = projectDir(root, '/work')
+    rmdirProbe.code = 'EPERM'
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toMatchObject({ code: 'EPERM' })
   })
 
   it('readRaw returns the stored artifact text verbatim with its original filename', async () => {

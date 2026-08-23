@@ -101,6 +101,16 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
     return this.coordinator.append(id, events)
   }
 
+  /**
+   * Remove one session's durable log. Unknown id rejects.
+   * An un-materialized create cancels and resolves.
+   * @param id - session to delete.
+   * @returns resolution after durability.
+   */
+  delete(id: SessionId): Promise<void> {
+    return this.coordinator.delete(id)
+  }
+
   override prepare(id: SessionId, signal?: AbortSignal): ReturnType<PersistenceCoordinator['prepare']> {
     return this.coordinator.prepare(id, signal)
   }
@@ -164,6 +174,15 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
   async list(signal?: AbortSignal): Promise<SessionHeader[]> {
     signal?.throwIfAborted()
     return [...this.store.values()].map(e => structuredClone(e.meta))
+  }
+
+  /**
+   * Drop a materialized session from the in-memory map.
+   * @param id - session whose stored log is deleted.
+   * @returns resolution after the map entry is removed.
+   */
+  async deleteStored(id: SessionId): Promise<void> {
+    this.store.delete(id)
   }
 
   async listSnapshots(signal?: AbortSignal): Promise<SessionPersistenceSnapshot[]> {
@@ -234,6 +253,15 @@ class ControlledBackend implements PersistenceBackend<never> {
     return [...this.store.values()].map(entry => structuredClone(entry.meta))
   }
 
+  /**
+   * Drop one materialized session from the controllable store.
+   * @param id - session whose stored log is deleted.
+   * @returns resolution after the map update.
+   */
+  async deleteStored(id: SessionId): Promise<void> {
+    this.store.delete(id)
+  }
+
   async close(): Promise<void> {
     this.lifecycle.push('close')
   }
@@ -248,6 +276,49 @@ runPersistenceContract('memory', async () => {
     persistence: ctx.sessionPersistence,
     dispose: async () => { await fiber.dispose() },
   }
+})
+
+describe('SessionPersistence.delete serialization and events', () => {
+  it('emits session-persistence/deleted after a durable delete', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const fiber = await ctx.plugin(MemoryPersistence)
+    const seen: SessionId[] = []
+    ctx.on('session-persistence/deleted', (id) => { seen.push(id) })
+    const m = meta('emit-delete', '/work')
+    await ctx.sessionPersistence.create(m)
+    await ctx.sessionPersistence.append(m.id, oneTurnLog())
+    await ctx.sessionPersistence.delete(m.id)
+    expect(seen).toEqual([m.id])
+    await fiber.dispose()
+  })
+
+  it('runs delete after an in-flight append on the same id', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const backend = new ControlledBackend()
+    let coordinator!: PersistenceCoordinator<never>
+    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
+      coordinator = new PersistenceCoordinator(inner, backend)
+    }, { inject: ['sessions'] }))
+    const gate = Promise.withResolvers<void>()
+    backend.beforeAppend = async () => { await gate.promise }
+    const m = meta('serialize-delete', '/work')
+    await coordinator.create(m)
+    const appending = coordinator.append(m.id, oneTurnLog())
+    let deleted = false
+    const deleting = coordinator.delete(m.id).then(() => { deleted = true })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(deleted).toBe(false)
+    expect(backend.store.has(m.id)).toBe(false)
+    gate.resolve()
+    await appending
+    await deleting
+    expect(deleted).toBe(true)
+    await expect(coordinator.load(m.id)).rejects.toThrow(`session "${m.id}" not found`)
+    await fiber.dispose()
+  })
 })
 
 describe('the inherited readRaw default', () => {

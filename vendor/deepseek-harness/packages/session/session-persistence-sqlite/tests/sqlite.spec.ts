@@ -765,6 +765,22 @@ describe('SessionPersistenceSqlite edge behavior', () => {
     await store.close()
   })
 
+  it('rolls deleteStored back when the schema check fails after events are removed', async () => {
+    const path = await freshDbPath('dsh-sqlite-delete-rollback-')
+    const store = new SqliteStore({ path, journalMode: 'wal', busyTimeoutMs: DEFAULT_BUSY_TIMEOUT_MS })
+    const header = meta('delete-rollback')
+    await store.appendBatch(header, [chunk(0)], false)
+    const probe = new DatabaseSync(path)
+    probe.exec(testSql('set-user-version-16'))
+    probe.close()
+    await expect(store.deleteStored(header.id)).rejects.toThrow(/schema changed before mutation/)
+    const restore = new DatabaseSync(path)
+    restore.exec(testSql('set-user-version-17'))
+    restore.close()
+    expect((await store.list()).map(h => h.id)).toContain(header.id)
+    await store.close()
+  })
+
   it('rejects missing and empty store identities', async () => {
     for (const mode of ['missing', 'empty'] as const) {
       const path = await freshDbPath(`dsh-sqlite-identity-${mode}-`)
