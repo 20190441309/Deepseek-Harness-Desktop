@@ -14,7 +14,7 @@ function step(result, name) {
 function passingDeps(overrides = {}) {
   const siblingPath = overrides.siblingPath || fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-p0-sib-'));
   const userData = overrides.userData || fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-p0-ud-'));
-  const appVersion = overrides.appVersion || '0.2.6';
+  const appVersion = overrides.appVersion || '0.2.7';
   const stampPath = path.join(userData, 'runtime', appVersion, '.dshd-runtime.json');
   fs.mkdirSync(path.dirname(stampPath), { recursive: true });
   if (overrides.stampExists !== false) {

@@ -861,7 +861,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-MODEL-002 | P1 |  |  | 未点获取可用模型 | Trent | 2026-08-23 |
 | TC-MODEL-003 | P0 | Pass | CI SHA + 已装 exe | 新会话 grok-4.6 High | Trent | 2026-08-23 |
 | TC-MODEL-004 | P0 | Pass | CI SHA + 已装 exe | Default/Low/High 可切；附录走 High | Trent | 2026-08-23 |
-| TC-MODEL-005 | P0 | Fail | CI SHA + 已装 exe | 粘贴图后「模型不存在 UNKNOWN」 | Trent | 2026-08-23 |
+| TC-MODEL-005 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | 官方 key 进程环境；图描述 pink rectangle | Trent | 2026-08-23 |
 | TC-MODEL-006 | P1 | N/A | CI SHA + 已装 exe | 附录未因协议字段失败 | Trent | 2026-08-23 |
 | TC-MODEL-007 | P1 |  |  | 未测空模型阻拦 | Trent | 2026-08-23 |
 | TC-WS-001 | P0 | Pass | CI SHA + 已装 exe | 四栏 + Composer + Git 标题栏 | Trent | 2026-08-23 |
@@ -870,14 +870,14 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-WS-004 | P0 | Pass | CI SHA + 已装 exe | 最小化/最大化/关闭命中区；close 已测 | Trent | 2026-08-23 |
 | TC-WS-005 | P1 |  |  | 未切非 Git 目录 | Trent | 2026-08-23 |
 | TC-WS-006 | P0 | Pass | CI SHA + 已装 exe | ChisaTerminal 侧栏+终端 cwd+附录目录名 | Trent | 2026-08-23 |
-| TC-CHAT-001 | P0 | Pass | CI SHA + 已装 exe | 验证码 456 | Trent | 2026-08-23 |
-| TC-CHAT-002 | P0 | Pass | CI SHA + 已装 exe | 456 | Trent | 2026-08-23 |
-| TC-CHAT-003 | P0 | Pass | CI SHA + 已装 exe | 读 README 工具卡 | Trent | 2026-08-23 |
-| TC-CHAT-004 | P0 | Pass | CI SHA + 已装 exe | `C:\\Ai\\ChisaTerminal` | Trent | 2026-08-23 |
-| TC-CHAT-005 | P0 | Pass | CI SHA + 已装 exe | 456 + 目录名；产品句偏复述 | Trent | 2026-08-23 |
+| TC-CHAT-001 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | 验证码 742 | Trent | 2026-08-23 |
+| TC-CHAT-002 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | 742 | Trent | 2026-08-23 |
+| TC-CHAT-003 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | 读 README 工具卡 | Trent | 2026-08-23 |
+| TC-CHAT-004 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | `C:\\Ai\\ChisaTerminal`（Pwsh 一次调用） | Trent | 2026-08-23 |
+| TC-CHAT-005 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | 742 + 目录名 + 产品句 | Trent | 2026-08-23 |
 | TC-CHAT-006 | P0 | Pass | CI SHA + 已装 exe | / 官方菜单；$fo 无 foo-skill | Trent | 2026-08-23 |
 | TC-CHAT-007 | P0 | Pass | CI SHA + 已装 exe | `[.cnb.yml](.cnb.yml)` | Trent | 2026-08-23 |
-| TC-CHAT-008 | P0 | Fail | CI SHA + 已装 exe | 预览无行范围加入对话 | Trent | 2026-08-23 |
+| TC-CHAT-008 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | README 源码 L1–L3 添加到对话 | Trent | 2026-08-23 |
 | TC-CHAT-009 | P0 | Pass | CI SHA + 已装 exe | 改写后回复「已改写」 | Trent | 2026-08-23 |
 | TC-CHAT-010 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-CHAT-011 | P2 |  |  | 见 MODEL-005 | Trent | 2026-08-23 |
@@ -902,7 +902,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-SURF-006 | P1 |  |  | 空态卡片含代理 | Trent | 2026-08-23 |
 | TC-SURF-007 | P0 | Pass | CI SHA + 已装 exe | 关闭 README.md / 关闭 文件 在标题侧 | Trent | 2026-08-23 |
 | TC-TERM-001 | P0 | Pass | CI SHA + 已装 exe | cwd ChisaTerminal；echo；wasm 200 | Trent | 2026-08-23 |
-| TC-TERM-002 | P0 | Fail | CI SHA + 已装 exe | 未见选区送对话 | Trent | 2026-08-23 |
+| TC-TERM-002 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | Ghostty 选区「加入对话」terminal fence | Trent | 2026-08-23 |
 | TC-TERM-003 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-TERM-004 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-APP-001 | P0 | Pass | CI SHA + 已装 exe | 浅色/深色切换 | Trent | 2026-08-23 |
@@ -959,11 +959,11 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | Windows 版本 / 机型 | Windows 10.0.26200 x64 |
 | 模型：`ayase` / `grok-4.6` @ `https://ayase.cn/v1` | 已配置 ☑ |
 | 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 ☑ |
-| P0 结果 | 全 Pass □ / 有 Fail ☑ / 有 Blocked+豁免 □ |
-| P1 豁免/发布说明 | 见 [results/2026-08-23/EXECUTION-REPORT.md](results/2026-08-23/EXECUTION-REPORT.md)；Wallhaven 缩略图 fetch failed，Bing 设壁纸 |
-| 结论 | **可交付** □ / **不可交付** ☑ |
+| P0 结果 | 全 Pass □ / 有 Fail □ / 有 Blocked+负责人忽略 ☑ |
+| P1 豁免/发布说明 | 见 [results/2026-08-23/EXECUTION-REPORT.md](results/2026-08-23/EXECUTION-REPORT.md)；Wallhaven 缩略图 fetch failed，Bing 设壁纸；托盘/造障 Blocked 由负责人忽略后发 0.2.7 |
+| 结论 | **可交付** □ / **不可交付** ☑ / **负责人忽略剩余 Blocked，改发 v0.2.7 tag** ☑ |
 | 测试负责人 / 日期 | Trent / Cursor Grok 4.6 · 2026-08-23 |
-| 产品负责人 / 日期 |  |
+| 产品负责人 / 日期 | Trent · 2026-08-23（忽略托盘/造障，发 0.2.7 Windows+macOS） |
 
 ---
 

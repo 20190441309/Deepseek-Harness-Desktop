@@ -73,7 +73,7 @@ The first `setup:harness` builds the vendored `vendor/deepseek-harness` — slow
 
 Edit the UI in `vendor/deepseek-harness`. Follow the [design language](docs/design-language.en.md) and [motion](docs/motion.en.md). After changing client sources, run `pnpm run build:lib:client` there and restart the desktop app.
 
-The current official baseline is `vendor/harness-upstream.json`: `0.1.1-rc.1` (`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`). The npx fallback is official `@deepseek-ai/dsh@0.1.1-rc.1` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths. SQLite session databases are incompatible with rc.7. The shipped 0.2.6 installer still uses an earlier pin; do not describe that installer as rc.1.
+The current official baseline is `vendor/harness-upstream.json`: `0.1.1-rc.1` (`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`). The npx fallback is official `@deepseek-ai/dsh@0.1.1-rc.1` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths. SQLite session databases are incompatible with rc.7. The 0.2.7 installer follows this pin; do not describe the shipped 0.2.6 installer as rc.1.
 
 ```powershell
 npm test              # desktop unit tests

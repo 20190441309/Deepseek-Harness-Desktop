@@ -93,7 +93,7 @@ npm start
 
 改界面请改 `vendor/deepseek-harness`，并遵守 [设计语言](docs/design-language.md) 和 [动效](docs/motion.md)。产品蓝图、流程与模块入口见 [产品手册](docs/handbook/README.md)；改行为契约见 [Feature Spine](docs/features/README.md)。改完客户端源码后，在该目录执行 `pnpm run build:lib:client` 再重启桌面端。
 
-当前官方基线写在 `vendor/harness-upstream.json`，现为 `0.1.1-rc.1`（`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`）。npx 兜底是官方 `@deepseek-ai/dsh@0.1.1-rc.1`，不含标题栏、Git、右栏 surfaces 和底栏终端；那些只在源码启动和安装包路径里。SQLite 会话库与 rc.7 不兼容。已发出的 0.2.6 安装包仍是更早的钉，不要把它说成 rc.1。
+当前官方基线写在 `vendor/harness-upstream.json`，现为 `0.1.1-rc.1`（`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`）。npx 兜底是官方 `@deepseek-ai/dsh@0.1.1-rc.1`，不含标题栏、Git、右栏 surfaces 和底栏终端；那些只在源码启动和安装包路径里。SQLite 会话库与 rc.7 不兼容。0.2.7 安装包按此钉；不要把已发出的 0.2.6 安装包说成 rc.1。
 
 ```powershell
 npm test              # 桌面壳单测

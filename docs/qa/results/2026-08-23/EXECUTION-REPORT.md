@@ -2,7 +2,7 @@
 
 对象是 GitHub Actions `release.yml` **windows** artifact，不是源码 `qa:*`，不是本机 `npm run dist`。
 
-**结论：不可交付。** 附录 A 五轮在旧 SHA `adf7e556…` 包上全过。修复后 CI 包 SHA `00a7f3b9e0`（§8）已实机：Files 首次打开列出 ChisaTerminal、识图不再报「模型不存在 UNKNOWN」，改为官方路由 **`MISSING_CREDENTIAL`**（本机无官方 key，TC-MODEL-005 仍无图描述）。TERM-002 / CHAT-008 未改 UX，未复测。托盘仍 Blocked。未勾「Release 将上传同一 SHA」。
+**结论：产品负责人忽略托盘/造障剩余 Blocked，按 `v0.2.7` tag 发 Windows + macOS。** 产品 P0 在 SHA `00a7f3b9e0` 的 0.2.6 CI exe 上已收口。`v0.2.7` 是新一次 CI 出包（含版本号与发版说明），不是把本报告第 0 节旧包或 §8 那份 0.2.6 Setup 改名上传。
 
 执行人：Trent / Cursor Grok 4.6 · 日期：2026-08-23
 
@@ -45,9 +45,9 @@
 
 | ID | 结果 | 说明 |
 | --- | --- | --- |
-| TC-MODEL-005 | **Fail** | 识图模型已设 DeepSeek-V4-Flash-Vision-Exp。向 grok-4.6 会话粘贴图片后发送，对话出现 **「本轮运行失败 模型不存在 UNKNOWN」**，不是发送前拒绝，也没有图描述。 |
-| TC-TERM-002 | **Fail** | 终端有输出，未见「选区 / Add to chat / 加入对话」控件，未把 terminal fence 送进 Composer。 |
-| TC-CHAT-008 | **Fail** | Files 预览 README 有渲染/保存，未见带行范围的「加入对话」。 |
+| TC-MODEL-005 | **Pass**（`00a7f3b9e0`） | 旧包曾报「模型不存在 UNKNOWN」。本 SHA 无官方 key 时为 `MISSING_CREDENTIAL`。进程继承官方 `DEEPSEEK_API_KEY` 后，grok-4.6 会话贴 1×1 PNG，回复 **「solid light pink (peach) rectangle…」**。无 UNKNOWN。截图 `vision-ci-official-key.png`。密钥未入本报告。 |
+| TC-TERM-002 | **Pass**（`00a7f3b9e0`） | Ghostty 画布三击/拖选后窗格右下角「加入对话」，Composer 出现 terminal fence（本轮选中提示符行 `PS C:\Ai\ChisaTerminal>`）。截图 `term002-composer.png`。 |
+| TC-CHAT-008 | **Pass**（`00a7f3b9e0`） | Files 预览 README.md **源码** 选行后「添加到对话」：`L1 to L3` + `` `README.md` `` + `text` fence。截图 `chat008-composer.png`。 |
 | TC-DESK-002 | **Blocked** | 关窗进托盘后进程仍在、3080 仍 200、快捷方式能恢复窗口。Win11 托盘溢出里的五项右键菜单未逐项点到。 |
 | TC-DESK-004 | **Blocked** | 未点托盘「退出」。本轮以「关闭行为=直接退出」后进程归零覆盖退出路径。 |
 | TC-INST-004 / 005 / 006 / 011 | **Blocked** | 造障（坏插件 / 官方 `~/.dsh` 坏 bundle / 导出失败日志）本轮未做。 |
@@ -59,17 +59,17 @@
 
 ## 3. 附录 A（安装包会话 · ChisaTerminal）
 
-同一会话、`grok-4.6` High：
+旧 SHA `adf7e556…` 包上同一会话、`grok-4.6` High，验证码 **456**（截图 `appendix-turn1.png`…`turn5.png`）。
+
+SHA `00a7f3b9e0` 已装 exe 重跑（验证码 **742**）：
 
 | 轮 | 结果 | 摘录（无密钥） |
 | --- | --- | --- |
-| 1 连通+验证码 | Pass | 「你已连通，验证码是 **456**。」 |
-| 2 记忆 | Pass | `456` |
-| 3 读 README | Pass | 工具卡；三句总结 Electron 终端模拟器 / xterm / PowerShell Hook |
-| 4 终端目录名 | Pass | 工具卡；`C:\Ai\ChisaTerminal` |
-| 5 汇总 | Pass | 含 `456` 与 `C:\Ai\ChisaTerminal`（产品句偏复述用户题，目录与验证码可核对） |
-
-截图：`appendix-turn1.png` … `appendix-turn5.png`。
+| 1 连通+验证码 | Pass | 「你已连通，三位数验证码是 **742**。」 |
+| 2 记忆 | Pass | `742` |
+| 3 读 README | Pass | 工具卡；三句总结 ChisaTerminal / Electron 终端模拟器 / PowerShell Hook |
+| 4 终端目录名 | Pass* | 同会话首次 Pwsh 连续重试至超时。新会话只调一次 `pwd`：工具卡，回复 **`C:\Ai\ChisaTerminal`**（同卡曾见 `sandbox_permissions requires a justification`）。截图 `appendix-turn4.png`。 |
+| 5 汇总 | Pass | 回到 742 会话：「742 / 现代化 Electron 终端模拟器 / `C:\Ai\ChisaTerminal`」。截图 `appendix-turn5.png`。 |
 
 额外：编辑最近用户消息重发 → 回复「已改写」（TC-CHAT-009）。只读会话申请写入：用户答「拒绝。不要写入。」后模型未创建 `dshd-reject-probe.txt`（TC-APPROVE-002）。用户答「批准」后模型声称已写 `dshd-allow-probe.txt`，磁盘上**没有**该文件；随后强制写工具得到 `sandbox: file access denied under read-only mode`，**未出现「允许一次」**。可写会话里附录读文件/Pwsh 工具卡自行完成（TC-APPROVE-001 按可写预设放行记 Pass）。
 
@@ -92,7 +92,7 @@
 
 ## 5. 截图索引（`docs/qa/results/2026-08-23/`）
 
-`ws006-chisa-sidebar.png`，`git-branch-menu.png`，`settings-about.png`，`settings-ayase.png`，`settings-market.png`，`settings-appearance.png`，`gallery.png`，`gallery-wallhaven*.png`，`gallery-confirm-wallpaper.png`，`gallery-crop.png`，`terminal-echo.png`，`files-search-readme.png`，`files-readme-preview.png`，`appendix-turn1.png`–`turn5.png`，`appendix-edit.png`，`approve-reject.png`，`approve-allow.png`，`vision.png`，`harness-crash.png`，`git-commit-dialog.png`。源码复测：`files-chrome-panel.png`，`vision-source-retest.png`。修复后 CI 包：`vision-ci-packaged.png`。
+`ws006-chisa-sidebar.png`，`git-branch-menu.png`，`settings-about.png`，`settings-ayase.png`，`settings-market.png`，`settings-appearance.png`，`gallery.png`，`gallery-wallhaven*.png`，`gallery-confirm-wallpaper.png`，`gallery-crop.png`，`terminal-echo.png`，`files-search-readme.png`，`files-readme-preview.png`，`appendix-turn1.png`–`turn5.png`，`appendix-edit.png`，`approve-reject.png`，`approve-allow.png`，`vision.png`，`harness-crash.png`，`git-commit-dialog.png`。源码复测：`files-chrome-panel.png`，`vision-source-retest.png`。修复后 CI 包：`vision-ci-packaged.png`，`vision-ci-official-key.png`，`chat008-composer.png`，`term002-composer.png`，`grok-ci-packaged.png`。
 
 ---
 
@@ -100,16 +100,9 @@
 
 代码侧（本树，非该 SHA 安装包）已落地：`spawnEnv` 不再把 Ayase 写成 `DEEPSEEK_*`；Files pending 不画空目录；Wallhaven 解包 `fetch failed`；识图 `finishError` 抛 `LlmError`；TERM-002 / CHAT-008 / APPROVE-001 / 托盘步骤已改合同。
 
-仍须在 **SHA `00a7f3b9e0` 包**（或其后继 CI exe）上收口：
+SHA `00a7f3b9e0` 已装 exe 上产品 P0（MODEL-005 / TERM-002 / CHAT-008 / 附录 A）已过。2026-08-23 产品负责人忽略托盘五项、托盘退出、INST 造障，按 tag `v0.2.7` 走完整发版（Windows + macOS）。
 
-1. TC-MODEL-005：配官方 `DEEPSEEK_API_KEY`（或 Ayase 真图模态）后再贴图，要图描述才 Pass。§8 已证明不再走「模型不存在 UNKNOWN」。  
-2. TC-SURF-001：§8 首次打开已列出 ChisaTerminal；若还需 pending 文案一帧，可人工放慢盘再看。  
-3. TC-TERM-002 / TC-CHAT-008 按改后步骤（Ghostty 拖选右下角「加入对话」；预览源码拖行「添加到对话」）。未改「打开就能点」的 UX。  
-4. 托盘五项 + 托盘退出：按 DESK-002/004 人手展开 Win11 溢出；点不到记 Blocked 不挡产品。  
-5. 造障条 INST-004/005/006/011 能造则测，否则豁免。  
-6. 产品负责人勾 §16「Release 将上传同一 SHA」后再 `gh release` **新 exe**（不得上传本报告第 0 节那份旧包冒充已修）。
-
-附录 A 五轮不必重跑，除非改了主模型路径。
+`v0.2.7` 的 Setup/DMG 由该 tag 的 `release.yml` 产出，SHA256 以 GitHub Release 资产为准，不是本报告第 0 节或 §8 的 0.2.6 文件。
 
 ---
 
@@ -123,8 +116,7 @@
 源码 Electron（`node scripts/run-electron.js`，真实 `%APPDATA%\Deepseek-Harness-Desktop`，bundled ui-files / vision-fallback lib 已重建）对 `http://127.0.0.1:3080/` 的实机核对（外置 Chrome，**不是** CI 安装包）：
 
 - **Files pending：** 首次点 Files，无障碍树出现 `Listing directory…`（`listing` 文案），随后因外置浏览器没有 Electron `window.shell` 落到 `Workspace listing is unavailable.`，**没有**先闪 `此目录为空` / `This directory is empty.`。截图 `files-chrome-panel.png`。ChisaTerminal 真树仍须在 Electron 窗里列。  
-- **识图路由：** 可写会话粘贴 `dot.png` 后发送。不再出现走表时的「模型不存在 UNKNOWN」。本轮失败为 **`deepseek-official` 无官方 key → `MISSING_CREDENTIAL`**（Ayase 密钥未再串到 `DEEPSEEK_*`）。截图 `vision-source-retest.png`。TC-MODEL-005 仍未 Pass：需要官方 `DEEPSEEK_API_KEY`（或 Ayase 上真有图模态的模型）才能出图描述。  
-- TERM-002 / CHAT-008 **未改产品 UX**，无新的终端/预览选区产品复测。
+- **识图路由（无官方 key）：** 可写会话粘贴 `dot.png` 后发送。不再出现走表时的「模型不存在 UNKNOWN」。失败为 **`deepseek-official` 无官方 key → `MISSING_CREDENTIAL`**。截图 `vision-source-retest.png`。安装包带官方 key 的 Pass 见 §8。
 
 完整 CI 安装包复测见 **§8**（SHA `00a7f3b9e0`）。
 
@@ -142,10 +134,12 @@
 | SHA256 | `92DE1DBFDC1B68FAE6B48C84BDCC9AD6381924A79E26531C18733EEE1964100C` |
 | overlay stamp | `runtime/0.2.6/.dshd-runtime.json`：upstream sha `528c682e…` / npm `0.1.1-rc.1`；`ui-files` 含「正在列出目录…」，`llm-vision-fallback` 含 `finishError` / `LlmError` |
 
-实机（已装 exe + Electron CDP，`window.shell` 为真，ChisaTerminal）：
+实机（已装 exe + Electron CDP，`window.shell` 为真，ChisaTerminal；官方 key 只进进程环境，不进仓库/报告）：
 
-- **Files：** 首次打开 `[data-files-panel]` 直接列出 `.cnb` / `.github` / `docs` 等，**没有**「此目录为空」或 `Workspace listing is unavailable.`。listDir 本地很快，未抓到 pending 文案一帧；空目录闪现这条在该包上未再现。
-- **识图：** 新会话粘贴 `dot.png`、发送「描述这张图」。失败为 **`本轮运行失败` + `deepseek-official` 无 key + `MISSING_CREDENTIAL`**。**没有**「模型不存在 UNKNOWN」。截图 `vision-ci-packaged.png`。TC-MODEL-005 仍 Fail：要官方 `DEEPSEEK_API_KEY`（或 Ayase 上真有图模态的模型）才会出图描述。
-- TERM-002 / CHAT-008 本包未再走选区。
+- **Files：** 首次打开 `[data-files-panel]` 直接列出 `.cnb` / `.github` / `docs` 等，**没有**「此目录为空」或 `Workspace listing is unavailable.`。
+- **识图：** 无官方 key 时为 `MISSING_CREDENTIAL`（`vision-ci-packaged.png`）。继承官方 key 后贴图，回复浅粉矩形描述（`vision-ci-official-key.png`）。**TC-MODEL-005 Pass。**
+- **CHAT-008：** README.md 源码选 `L1 to L3`，「添加到对话」写入 `text` fence（`chat008-composer.png`）。
+- **TERM-002：** Ghostty 选区后「加入对话」写入 terminal fence（`term002-composer.png`）。
+- **附录 A：** 验证码 **742**；第 3 轮读 README；第 4 轮目录名 `C:\Ai\ChisaTerminal`（同会话首次 Pwsh 重试挂起，新会话一次调用成功）；第 5 轮在 742 会话汇总三行。
 
-此 SHA 的 Setup **可以**作为拟发布文件候选；在官方识图 key 配好并过 TC-MODEL-005、以及 TERM/CHAT 按改后步骤测完之前，仍不可交付。
+此 SHA 的 Setup **可以**作为拟发布文件候选。托盘/造障仍 Blocked、§16 未勾之前，仍不可交付。
