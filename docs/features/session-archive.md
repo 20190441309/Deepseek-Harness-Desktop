@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — C2a persistence delete seam |
+| **last verified** | 2026-08-23 — C2c sidebar archived delete |
 
 ## User paths
 

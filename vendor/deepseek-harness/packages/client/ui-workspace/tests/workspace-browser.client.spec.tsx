@@ -78,6 +78,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
     unarchiveSession: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -386,6 +387,91 @@ describe('WorkspaceBrowser', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('live session row menu has no delete item', () => {
+    mount({
+      useSessions: hook(sessionState([summary('live-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['live-s'])])),
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“live-s”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '删除会话' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '归档会话' })).toBeTruthy()
+  })
+
+  it('confirms archived session deletion and blocks duplicate submission', async () => {
+    let resolveDelete!: () => void
+    const deleteSession = vi.fn(() => new Promise<void>((resolve) => { resolveDelete = resolve }))
+    const browser = mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    const dialog = screen.getByRole('dialog', { name: '删除会话' })
+    expect(dialog.textContent).toContain('将永久删除「Gone」的对话记录')
+    expect(dialog.textContent).toContain('无法恢复')
+    expect(dialog.textContent).toContain('工作区文件夹不受影响')
+
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '删除会话' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    expect(deleteSession).toHaveBeenCalledOnce()
+    expect(deleteSession).toHaveBeenCalledWith(sid('gone-s'))
+    expect(confirm.disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消' }).disabled).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe('正在删除会话…')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    await act(async () => { resolveDelete() })
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    rerender(browser, { useWorkspaces: hook(workspaceState([workspace('alpha', [])])) })
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
+  })
+
+  it('keeps the session delete dialog open on failure and maps a running session', async () => {
+    const running = Object.assign(new Error('session delete failed: session-running: busy'), { code: 'session-running' })
+    const deleteSession = vi.fn()
+      .mockRejectedValueOnce(running)
+      .mockRejectedValueOnce('denied')
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('会话仍在运行，请先停止后再删除。') })
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('denied') })
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
+  })
+
+  it('Cancel, Escape, and Close dismiss session deletion without calling the action', () => {
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    const open = () => {
+      fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    }
+    open()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    open()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    open()
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(deleteSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
   })
 
   it('unarchives from the archived row menu without opening the session', async () => {

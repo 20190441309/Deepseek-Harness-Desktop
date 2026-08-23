@@ -1164,6 +1164,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
    * @returns the live agent.
    */
   function retainHandle(sessionId: SessionId, handle: AgentHandle): Agent {
+    const existing = agentHandles.get(sessionId)
+    if (existing !== undefined && existing.agent === handle.agent) return existing.agent
     const originalDispose = handle.dispose.bind(handle)
     const wrapped: AgentHandle = {
       agent: handle.agent,
@@ -1178,6 +1180,15 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     agentHandles.set(sessionId, wrapped)
     return wrapped.agent
   }
+
+  // Cold open (history/models via agentFor) resumes outside ensureSession.
+  // Session.delete still needs that handle to dispose an idle live owner.
+  const nativeResume = ctx.agents.resume.bind(ctx.agents)
+  ctx.agents.resume = (async (options) => {
+    const handle = await nativeResume(options)
+    retainHandle(options.resumeSessionId, handle)
+    return agentHandles.get(options.resumeSessionId) ?? handle
+  }) as typeof ctx.agents.resume
 
   /** Serialize image admission with model selection for one agent. */
   function serializeImageAdmission<T>(agent: Agent, operation: () => Promise<T>): Promise<T> {

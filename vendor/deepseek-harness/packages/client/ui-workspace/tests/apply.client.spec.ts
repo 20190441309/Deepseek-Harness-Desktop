@@ -30,6 +30,13 @@ async function bench() {
   const connectNoDirectory = vi.fn(async () => 's-none' as never)
   const archiveSession = vi.fn(async () => {})
   const unarchiveSession = vi.fn(async () => {})
+  const deleteSession = vi.fn(async (): Promise<{
+    result:
+      | { ok: true; value: { deletedSessionIds: never[]; archivedSessionIds: never[] } }
+      | { ok: false; error: { code: string; message: string } }
+  }> => ({
+    result: { ok: true, value: { deletedSessionIds: [], archivedSessionIds: [] } },
+  }))
   ctx.provide('workspaces', {
     create, startSession, connectNoDirectory, rename, insertSessionBefore,
     archiveSession, unarchiveSession,
@@ -37,6 +44,7 @@ async function bench() {
   ctx.provide('sessions', { open, clear, search, searchResultLimit: 20, binding, fork } as never)
   ctx.provide('connection', {
     hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
+    api: { sessions: { delete: deleteSession } },
   } as never)
   const locale = new LocaleRuntime(ctx)
   // These specs assert the shipped Chinese copy. There is no jsdom `window`
@@ -46,7 +54,7 @@ async function bench() {
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, connectNoDirectory, rename,
-    insertSessionBefore, archiveSession, unarchiveSession, open, clear, search, renameSession, binding, fork,
+    insertSessionBefore, archiveSession, unarchiveSession, deleteSession, open, clear, search, renameSession, binding, fork,
   }
 }
 
@@ -122,10 +130,26 @@ describe('ui-workspace apply', () => {
     })
     await browser.unarchiveSession('session' as never)
     expect(b.unarchiveSession).toHaveBeenCalledWith('session')
+    await browser.deleteSession('session' as never)
+    expect(b.deleteSession).toHaveBeenCalledWith({ sessionId: 'session' })
 
     const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     await picker.createWorkspace({ path: '/tmp/project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/project' })
+  })
+
+  it('throws session delete failures with the host error code', async () => {
+    const b = await bench()
+    b.deleteSession.mockResolvedValueOnce({
+      result: { ok: false as const, error: { code: 'session-running', message: 'busy' } },
+    })
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
+    await expect(browser.deleteSession('session' as never)).rejects.toMatchObject({
+      code: 'session-running',
+      message: 'session delete failed: session-running: busy',
+    })
   })
 
   it('declares the two directory-flow holes and reports their occupancy per surface', async () => {

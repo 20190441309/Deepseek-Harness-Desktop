@@ -2,8 +2,9 @@
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
  * time->ellipsis, action buttons) are CSS-only. Row ... menus are visual-only
- * except workspace Rename/Delete and session Rename/Fork/Archive; the session
- * and workspace hover cards are suppressed while a menu is open.
+ * except workspace Rename/Delete, live session Rename/Fork/Archive, and
+ * archived session Unarchive/Delete; the session and workspace hover cards
+ * are suppressed while a menu is open.
  */
 import { type ReactNode, useState } from 'react'
 import clsx from 'clsx'
@@ -571,22 +572,25 @@ export function ArchivedSectionHeader({ t }: { t: RowTranslate }) {
 }
 
 /**
- * Archived session row: not draggable; menu is unarchive only. Clicking the
- * row asks the browser to unarchive then open; the menu does not open.
+ * Archived session row: not draggable; menu is unarchive plus danger delete.
+ * Clicking the row asks the browser to unarchive then open; delete is
+ * menu-only while the row is still archived.
  * @param props.node - archived session node.
  * @param props.currentId - selected session id.
  * @param props.now - clock for the relative-time label.
  * @param props.onOpen - unarchive-then-open (row click).
  * @param props.onUnarchive - unarchive without opening (menu).
+ * @param props.onDelete - open the browser-owned delete confirmation (menu).
  * @param props.t - the browser root's locale seat.
  * @returns the archived session row.
  */
-export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarchive, t }: {
+export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarchive, onDelete, t }: {
   node: SessionNode
   currentId: string | undefined
   now: number
   onOpen: (id: SessionNode['id']) => void
   onUnarchive: (id: SessionNode['id']) => void
+  onDelete: (id: SessionNode['id'], title: string) => void
   t: RowTranslate
 }) {
   const row = node
@@ -598,6 +602,7 @@ export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarch
   const [menuOpen, setMenuOpen] = useState(false)
   const archivedMenuItems = [
     { id: 'unarchive', label: t('menu.unarchiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    { id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true },
   ]
   const ownRow = (
     <div
@@ -620,6 +625,7 @@ export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarch
             onSelect={(id) => {
               setMenuOpen(false)
               if (id === 'unarchive') onUnarchive(node.id)
+              if (id === 'delete') onDelete(node.id, title)
             }}
             portal
             closeOnPointerLeave
