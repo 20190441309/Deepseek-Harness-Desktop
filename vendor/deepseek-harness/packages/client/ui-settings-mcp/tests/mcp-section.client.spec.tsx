@@ -255,7 +255,7 @@ describe('McpSection', () => {
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
   })
 
-  it('lists registered tool names on a connected row', async () => {
+  it('shows the tool count without listing tool names on a connected row', async () => {
     render(<McpSection {...props({
       list: async () => ({
         servers: [{
@@ -268,7 +268,9 @@ describe('McpSection', () => {
       }),
     })} />)
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
-    expect(screen.getByText(/2 tools · mcp__github__create_issue, mcp__github__list/)).toBeTruthy()
+    expect(screen.getByText('2 tools')).toBeTruthy()
+    expect(screen.queryByText('mcp__github__create_issue')).toBeNull()
+    expect(screen.queryByText('mcp__github__list')).toBeNull()
   })
 
   it('remounts failed managed rows when refresh is clicked', async () => {

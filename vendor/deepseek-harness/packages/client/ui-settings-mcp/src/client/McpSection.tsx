@@ -495,8 +495,6 @@ function ServerRow({
           {connection?.tools === undefined || connection.tools.length === 0 ? null : (
             <span className={styles.tools}>
               {format(t('toolCount'), { count: String(connection.tools.length) })}
-              {' · '}
-              {connection.tools.join(', ')}
             </span>
           )}
         </span>
