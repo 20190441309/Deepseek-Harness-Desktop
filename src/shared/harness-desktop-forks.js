@@ -76,6 +76,7 @@ const FORK_FILE_MARKERS = [
   { file: 'apps/web/tests/models-settings.e2e.ts', includes: ['llm.discoverModels'] },
   // Session log download lives in the desktop titlebar capsule, never in the conversation header.
   { file: 'apps/web/tests/snapshots/agent-preset-selection/header.expected.md', excludes: ['button "Session log"'] },
+  { file: 'package.json', includes: ['copy-ghostty-assets.mjs'] },
 ];
 
 function readRel(vendorRoot, rel) {

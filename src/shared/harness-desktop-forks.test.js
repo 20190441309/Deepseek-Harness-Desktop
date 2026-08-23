@@ -79,6 +79,7 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'apps/web/tests/settings-chrome.e2e.ts': "const loading = page.getByText(/正在加载插件/)\n",
       'apps/web/tests/models-settings.e2e.ts': "await page.route('**/api/llm.discoverModels', async (route) => {\n",
       'apps/web/tests/snapshots/agent-preset-selection/header.expected.md': '- navigation "Session hierarchy"\n',
+      'package.json': '"build:lib:client": "node packages/client/ui-user-terminal/scripts/copy-ghostty-assets.mjs"\n',
     };
     writeFile(root, marker.file, content[marker.file] ?? 'export {}\n');
   }
@@ -108,6 +109,12 @@ test('assertDesktopForks throws when the header golden regains Session log', (t)
   const goldenPath = path.join(root, ...'apps/web/tests/snapshots/agent-preset-selection/header.expected.md'.split('/'));
   fs.writeFileSync(goldenPath, '- button "Session log"\n');
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /Session log/);
+});
+
+test('assertDesktopForks throws when copy-ghostty-assets drops out of package.json', (t) => {
+  const root = makeFixture(t);
+  fs.writeFileSync(path.join(root, 'package.json'), '{}\n');
+  assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /copy-ghostty-assets/);
 });
 
 test('assertDesktopForks accepts the current vendor tree at rc.1', () => {
