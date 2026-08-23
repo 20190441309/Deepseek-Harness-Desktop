@@ -58,6 +58,9 @@ function stubAgent(session: Session): Agent {
 /** In-memory persistence covering the Host delete list/load/locate/delete path. */
 class MemorySessionPersistence {
   private readonly headers = new Map<string, SessionHeader>()
+  /** Forced delete rejections; returning an error leaves the header in place. */
+  failDelete?: (id: SessionId) => Error | undefined
+  readonly deleted: SessionId[] = []
 
   list(): Promise<SessionHeader[]> {
     return Promise.resolve([...this.headers.values()])
@@ -83,8 +86,11 @@ class MemorySessionPersistence {
   }
 
   delete(id: SessionId): Promise<void> {
+    const forced = this.failDelete?.(id)
+    if (forced !== undefined) return Promise.reject(forced)
     if (!this.headers.has(id)) return Promise.reject(new Error(`session "${id}" not found`))
     this.headers.delete(id)
+    this.deleted.push(id)
     return Promise.resolve()
   }
 }
@@ -234,6 +240,7 @@ describe('session.delete', () => {
     expect(seen).not.toContain('host/session-removed')
     abort.abort()
 
+    expect(persist.deleted).toEqual([grandId, childId, rootId])
     expect((await persist.list()).map(item => item.id).sort()).toEqual([botId, forkId].sort())
     await expect(persist.load(rootId)).rejects.toThrow(/not found/)
     await expect(persist.load(childId)).rejects.toThrow(/not found/)
@@ -259,5 +266,56 @@ describe('session.delete', () => {
     })
     expect(ctx.agents.get(sessionId)).toBeDefined()
     expect((await persist.list()).map(item => item.id)).toContain(sessionId)
+  })
+
+  it('skips a persist id that is already gone and still commits unarchive', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'resume') }))).workspace
+    const sessionId = SessionId('session-delete-missing-id')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    await persist.create(ctx.sessions.get(sessionId)!.header)
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+    await persist.delete(sessionId)
+
+    const abort = new AbortController()
+    const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    const result = expectOk(await api.sessions.delete(request({ sessionId })))
+    expect(result.deletedSessionIds).toEqual([sessionId])
+    expect(result.archivedSessionIds).not.toContain(sessionId)
+
+    const seen: HostFrame['type'][] = []
+    for (let i = 0; i < 4; i++) {
+      seen.push((await nextHostFrame(stream)).payload.type)
+      if (seen.includes('host/session-deleted') && seen.includes('host/archived-sessions-changed')) break
+    }
+    abort.abort()
+    expect(seen).toContain('host/session-deleted')
+    expect(seen).not.toContain('host/session-removed')
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).not.toContain(sessionId)
+  })
+
+  it('does not unarchive, detach, or publish when persist.delete fails and the log remains', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'eperm') }))).workspace
+    const sessionId = SessionId('session-delete-eperm')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    await persist.create(ctx.sessions.get(sessionId)!.header)
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+    persist.failDelete = id => id === sessionId
+      ? Object.assign(new Error('EPERM: disk full'), { code: 'EPERM' })
+      : undefined
+
+    const abort = new AbortController()
+    const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    await expect(api.sessions.delete(request({ sessionId }))).rejects.toThrow(/EPERM: disk full/)
+    abort.abort()
+
+    expect(persist.deleted).toEqual([])
+    expect((await persist.list()).map(item => item.id)).toContain(sessionId)
+    const listed = expectOk(await api.workspace.list(request({})))
+    expect(listed.archivedSessionIds).toContain(sessionId)
+    expect(listed.items[0]?.sessionIds).toContain(sessionId)
+    const leftover = await stream.next()
+    expect(leftover.done === true || leftover.value?.payload.type !== 'host/session-deleted').toBe(true)
   })
 })

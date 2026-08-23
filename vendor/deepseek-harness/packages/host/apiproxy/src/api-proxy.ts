@@ -1096,6 +1096,30 @@ function persistDeleteOrder(ids: ReadonlySet<SessionId>, headers: Map<SessionId,
 }
 
 /**
+ * Delete one persisted log. Skip only when the id is already gone (crash
+ * resume). A failure that leaves the id listed is rethrown so the RPC cannot
+ * unarchive, detach, or publish success.
+ * @param persist - persistence service for this Host.
+ * @param id - session to delete.
+ */
+async function persistDeleteOrResume(
+  persist: Pick<SessionPersistence, 'delete' | 'list'>,
+  id: SessionId,
+): Promise<void> {
+  try {
+    await persist.delete(id)
+  } catch (error) {
+    let remaining = true
+    try {
+      remaining = (await persist.list()).some(header => header.id === id)
+    } catch {
+      // Listing also failed: the durable log may still be present.
+    }
+    if (remaining) throw error
+  }
+}
+
+/**
  * Implement ApiProxy over a composed host context.
  * @param ctx - a context with the Host spine and Workspace registry mounted.
  * @param defaults - host routing and project-directory defaults.
@@ -2760,13 +2784,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             if (handle !== undefined) await handle.dispose()
           }
           if (persist !== undefined) {
-            for (const id of ordered) {
-              try {
-                await persist.delete(id)
-              } catch {
-                // Missing id is crash-resume: the durable log is already gone.
-              }
-            }
+            for (const id of ordered) await persistDeleteOrResume(persist, id)
           }
           await ctx.workspaceRegistry.unarchiveSession(sessionId)
           for (const workspace of ctx.workspaceRegistry.list()) {
