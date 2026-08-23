@@ -20,8 +20,11 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { WorkspaceBrowserProps } from './contract/slots.ts'
 import type { GroupNode, SessionNode, SessionOrderBy } from './tree.ts'
-import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
-import { GroupSessionRun, ProjectRowItem, SearchResultItem, SessionNodeItem, TasksSectionHeader } from './rows/Rows.tsx'
+import { deriveArchived, deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
+import {
+  ArchivedSectionHeader, ArchivedSessionNodeItem, GroupSessionRun, ProjectRowItem,
+  SearchResultItem, SessionNodeItem, TasksSectionHeader,
+} from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
 import { WorkspacePickFlow } from './WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -306,6 +309,35 @@ function GroupedSessionList({
   )
 }
 
+function ArchivedSessionSection({
+  nodes, currentId, now, onOpen, onUnarchive, t,
+}: {
+  nodes: readonly SessionNode[]
+  currentId: SessionId | undefined
+  now: number
+  onOpen: (id: SessionNode['id']) => void
+  onUnarchive: (id: SessionNode['id']) => void
+  t: WorkspaceBrowserProps['t']
+}) {
+  if (nodes.length === 0) return null
+  return (
+    <div className={css.groupSection}>
+      <ArchivedSectionHeader t={t} />
+      {nodes.map(node => (
+        <ArchivedSessionNodeItem
+          key={node.id}
+          node={node}
+          currentId={currentId}
+          now={now}
+          onOpen={onOpen}
+          onUnarchive={onUnarchive}
+          t={t}
+        />
+      ))}
+    </div>
+  )
+}
+
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'startSession' | 'connectNoDirectory' | 'open' | 'forkSession'
@@ -336,6 +368,10 @@ type SessionTreeProps = Pick<
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
   onSessionArchive: (sessionId: SessionNode['id']) => void
+  /** Unarchive then open (archived row click). */
+  onOpenArchived: (sessionId: SessionNode['id']) => void
+  /** Unarchive without opening (archived row menu). */
+  onSessionUnarchive: (sessionId: SessionNode['id']) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
   orderBy: SessionOrderBy
 }
@@ -344,6 +380,7 @@ type SessionTreeProps = Pick<
 function SessionTree({
   useSessions, startSession, connectNoDirectory, open, forkSession, workspaces, archivedSessionIds,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  onOpenArchived, onSessionUnarchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
@@ -424,6 +461,10 @@ function SessionTree({
   )
   const projectGroups = groups.filter(group => group.workspaceId !== undefined)
   const taskGroup = groups.find(group => group.workspaceId === undefined)
+  const archivedNodes = useMemo(
+    () => deriveArchived(list, archivedSessionIds),
+    [list, archivedSessionIds],
+  )
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
     if (sessionDropCommitted.current) return
@@ -485,7 +526,7 @@ function SessionTree({
         role="tree"
         aria-label={t('section.sessions')}
       >
-        {projectGroups.length === 0 && taskGroup === undefined && (
+        {projectGroups.length === 0 && taskGroup === undefined && archivedNodes.length === 0 && (
           <div className={css.empty}>{t('empty.none')}</div>
         )}
         {projectGroups.map((group) => {
@@ -629,6 +670,14 @@ function SessionTree({
             />
           </div>
         )}
+        <ArchivedSessionSection
+          nodes={archivedNodes}
+          currentId={current}
+          now={now}
+          onOpen={onOpenArchived}
+          onUnarchive={onSessionUnarchive}
+          t={t}
+        />
       </div>
       <span className={css.fade} />
     </div>
@@ -637,7 +686,8 @@ function SessionTree({
 
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
-  useSessions, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds,
+  useSessions, open, forkSession, onSessionRename, onSessionArchive,
+  onOpenArchived, onSessionUnarchive, archivedSessionIds,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: Pick<
   SessionTreeProps,
@@ -646,6 +696,8 @@ function FlatList({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
+  | 'onOpenArchived'
+  | 'onSessionUnarchive'
   | 'archivedSessionIds'
   | 'orderBy'
   | 'sessionOrderByAccount'
@@ -706,11 +758,15 @@ function FlatList({
     nextOrder.splice(insertAt === -1 ? nextOrder.length : insertAt, 0, activeDrag.sessionId)
     setSessionOrder(FLAT_SESSION_ORDER_KEY, nextOrder.map(id => id as string))
   }
+  const archivedNodes = useMemo(
+    () => deriveArchived(list, archivedSessionIds),
+    [list, archivedSessionIds],
+  )
   const now = Date.now()
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       <div className={clsx(css.list, css.flatList)} role="tree" aria-label={t('section.sessions')}>
-        {rows.length === 0 && (
+        {rows.length === 0 && archivedNodes.length === 0 && (
           <div className={css.empty}>{t('empty.none')}</div>
         )}
         {rows.map((node) => {
@@ -749,6 +805,14 @@ function FlatList({
             />
           )
         })}
+        <ArchivedSessionSection
+          nodes={archivedNodes}
+          currentId={list.current}
+          now={now}
+          onOpen={onOpenArchived}
+          onUnarchive={onSessionUnarchive}
+          t={t}
+        />
       </div>
       <span className={css.fade} />
     </div>
@@ -847,6 +911,7 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  unarchiveSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -1063,6 +1128,18 @@ export function WorkspaceBrowser({
     })
   }
 
+  const onSessionUnarchive = (sessionId: SessionNode['id']) => {
+    unarchiveSession(sessionId).catch((reason: unknown) => {
+      console.warn('session unarchive rejected:', reason)
+    })
+  }
+
+  const onOpenArchived = (sessionId: SessionNode['id']) => {
+    unarchiveSession(sessionId).then(() => { open(sessionId) }).catch((reason: unknown) => {
+      console.warn('session unarchive rejected:', reason)
+    })
+  }
+
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
@@ -1250,6 +1327,7 @@ export function WorkspaceBrowser({
               <FlatList
                 useSessions={useSessions} open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                onOpenArchived={onOpenArchived} onSessionUnarchive={onSessionUnarchive}
                 archivedSessionIds={archivedSessionIds}
                 orderBy={orderBy}
                 sessionOrderByAccount={sessionOrderByAccount}
@@ -1264,6 +1342,8 @@ export function WorkspaceBrowser({
                 useSessions={useSessions}
                 onSessionRename={onSessionRename}
                 onSessionArchive={onSessionArchive}
+                onOpenArchived={onOpenArchived}
+                onSessionUnarchive={onSessionUnarchive}
                 forkSession={forkSession}
                 workspaces={workspaces}
                 groupExpansion={groupExpansion}

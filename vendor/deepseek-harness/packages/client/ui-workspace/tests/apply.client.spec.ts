@@ -28,8 +28,11 @@ async function bench() {
   const binding = vi.fn(() => ({ session: { rename: renameSession } }))
   const fork = vi.fn(async () => 'forked' as never)
   const connectNoDirectory = vi.fn(async () => 's-none' as never)
+  const archiveSession = vi.fn(async () => {})
+  const unarchiveSession = vi.fn(async () => {})
   ctx.provide('workspaces', {
     create, startSession, connectNoDirectory, rename, insertSessionBefore,
+    archiveSession, unarchiveSession,
   } as never)
   ctx.provide('sessions', { open, clear, search, searchResultLimit: 20, binding, fork } as never)
   ctx.provide('connection', {
@@ -43,7 +46,7 @@ async function bench() {
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, connectNoDirectory, rename,
-    insertSessionBefore, open, clear, search, renameSession, binding, fork,
+    insertSessionBefore, archiveSession, unarchiveSession, open, clear, search, renameSession, binding, fork,
   }
 }
 
@@ -117,6 +120,8 @@ describe('ui-workspace apply', () => {
       expect(b.connectNoDirectory).toHaveBeenCalledTimes(1)
       expect(b.open).toHaveBeenCalledWith('s-none')
     })
+    await browser.unarchiveSession('session' as never)
+    expect(b.unarchiveSession).toHaveBeenCalledWith('session')
 
     const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     await picker.createWorkspace({ path: '/tmp/project' })

@@ -297,6 +297,28 @@ export function deriveFlat(
   return rows.map(session => sessionNode(session, descendants))
 }
 
+/**
+ * Derive archived session rows in registry-set order. Missing summaries and
+ * subagent-origin ids are skipped; this path does not use sessionVisible
+ * (archived ids stay out of groups, the flat list, and search).
+ * @param list - session list snapshot.
+ * @param archivedSessionIds - registry-global archive set.
+ * @returns archived rows in set order.
+ */
+export function deriveArchived(
+  list: SessionListState,
+  archivedSessionIds: readonly SessionId[],
+): SessionNode[] {
+  const descendants = indexSubagentDescendants(list.byId)
+  const rows: SessionSummary[] = []
+  for (const id of archivedSessionIds) {
+    const s = list.byId[id]
+    if (s === undefined || s.origin === 'subagent') continue
+    rows.push(s)
+  }
+  return rows.map(session => sessionNode(session, descendants))
+}
+
 /** Relative-time bucket of a session row's trailing label. */
 export type RelativeTimeUnit = 'now' | 'minutes' | 'hours' | 'days' | 'months' | 'years'
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — C1b registry + RPC shipped; C1c sidebar UI not yet |
+| **last verified** | 2026-08-23 — C1c sidebar Archived section + unarchive |
 
 ## User paths
 
