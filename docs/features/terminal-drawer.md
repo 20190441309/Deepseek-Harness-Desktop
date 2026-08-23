@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
+| **last verified** | 2026-08-23 — B1 pin `copy-ghostty-assets.mjs`（d55468de11）；0.2.7 `%APPDATA%\Deepseek-Harness-Desktop\runtime\0.2.7\…\lib\assets\` 含 ghostty wasm + Nerd Font；`127.0.0.1:3080`（0.2.7 `dsh web`）三 URL 均 200；验收合同 CI 安装包全表 |
 
 ## User paths
 
