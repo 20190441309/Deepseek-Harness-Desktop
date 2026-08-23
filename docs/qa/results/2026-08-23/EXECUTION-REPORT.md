@@ -2,7 +2,7 @@
 
 对象是 GitHub Actions `release.yml` **windows** artifact，不是源码 `qa:*`，不是本机 `npm run dist`。
 
-**结论：不可交付。** 附录 A 五轮在已装包 + TC-WS-006 仓 `C:\Ai\ChisaTerminal` 全过；同版本 overlay / bundled Node 22 / 远程停放 / Git 提交 / 终端 cwd 已实机证明。仍有 P0 Fail：识图兜底「模型不存在」、终端选区送对话未做出。托盘右键菜单未点齐（TC-DESK-002 / 004 Blocked）。未勾「Release 将上传同一 SHA」。
+**结论：不可交付。** 附录 A 五轮在旧 SHA `adf7e556…` 包上全过。修复后 CI 包 SHA `00a7f3b9e0`（§8）已实机：Files 首次打开列出 ChisaTerminal、识图不再报「模型不存在 UNKNOWN」，改为官方路由 **`MISSING_CREDENTIAL`**（本机无官方 key，TC-MODEL-005 仍无图描述）。TERM-002 / CHAT-008 未改 UX，未复测。托盘仍 Blocked。未勾「Release 将上传同一 SHA」。
 
 执行人：Trent / Cursor Grok 4.6 · 日期：2026-08-23
 
@@ -92,7 +92,7 @@
 
 ## 5. 截图索引（`docs/qa/results/2026-08-23/`）
 
-`ws006-chisa-sidebar.png`，`git-branch-menu.png`，`settings-about.png`，`settings-ayase.png`，`settings-market.png`，`settings-appearance.png`，`gallery.png`，`gallery-wallhaven*.png`，`gallery-confirm-wallpaper.png`，`gallery-crop.png`，`terminal-echo.png`，`files-search-readme.png`，`files-readme-preview.png`，`appendix-turn1.png`–`turn5.png`，`appendix-edit.png`，`approve-reject.png`，`approve-allow.png`，`vision.png`，`harness-crash.png`，`git-commit-dialog.png`。源码复测：`files-chrome-panel.png`，`vision-source-retest.png`。
+`ws006-chisa-sidebar.png`，`git-branch-menu.png`，`settings-about.png`，`settings-ayase.png`，`settings-market.png`，`settings-appearance.png`，`gallery.png`，`gallery-wallhaven*.png`，`gallery-confirm-wallpaper.png`，`gallery-crop.png`，`terminal-echo.png`，`files-search-readme.png`，`files-readme-preview.png`，`appendix-turn1.png`–`turn5.png`，`appendix-edit.png`，`approve-reject.png`，`approve-allow.png`，`vision.png`，`harness-crash.png`，`git-commit-dialog.png`。源码复测：`files-chrome-panel.png`，`vision-source-retest.png`。修复后 CI 包：`vision-ci-packaged.png`。
 
 ---
 
@@ -100,10 +100,10 @@
 
 代码侧（本树，非该 SHA 安装包）已落地：`spawnEnv` 不再把 Ayase 写成 `DEEPSEEK_*`；Files pending 不画空目录；Wallhaven 解包 `fetch failed`；识图 `finishError` 抛 `LlmError`；TERM-002 / CHAT-008 / APPROVE-001 / 托盘步骤已改合同。
 
-仍须 **新的** CI windows artifact 后实机回归：
+仍须在 **SHA `00a7f3b9e0` 包**（或其后继 CI exe）上收口：
 
-1. TC-MODEL-005 识图（官方 key+官方 base，或 Ayase 上真有图模态的模型）。源码实机已证明不再走 Ayase「模型不存在 UNKNOWN」，缺官方 key 时为 `MISSING_CREDENTIAL`。旧 SHA `adf7e556…` 包不含上述修复。  
-2. TC-SURF-001 Files 首次打开不得闪「此目录为空」。  
+1. TC-MODEL-005：配官方 `DEEPSEEK_API_KEY`（或 Ayase 真图模态）后再贴图，要图描述才 Pass。§8 已证明不再走「模型不存在 UNKNOWN」。  
+2. TC-SURF-001：§8 首次打开已列出 ChisaTerminal；若还需 pending 文案一帧，可人工放慢盘再看。  
 3. TC-TERM-002 / TC-CHAT-008 按改后步骤（Ghostty 拖选右下角「加入对话」；预览源码拖行「添加到对话」）。未改「打开就能点」的 UX。  
 4. 托盘五项 + 托盘退出：按 DESK-002/004 人手展开 Win11 溢出；点不到记 Blocked 不挡产品。  
 5. 造障条 INST-004/005/006/011 能造则测，否则豁免。  
@@ -126,4 +126,26 @@
 - **识图路由：** 可写会话粘贴 `dot.png` 后发送。不再出现走表时的「模型不存在 UNKNOWN」。本轮失败为 **`deepseek-official` 无官方 key → `MISSING_CREDENTIAL`**（Ayase 密钥未再串到 `DEEPSEEK_*`）。截图 `vision-source-retest.png`。TC-MODEL-005 仍未 Pass：需要官方 `DEEPSEEK_API_KEY`（或 Ayase 上真有图模态的模型）才能出图描述。  
 - TERM-002 / CHAT-008 **未改产品 UX**，无新的终端/预览选区产品复测。
 
-完整 CI 安装包复测仍待 **新** windows artifact；旧 SHA `adf7e556…` 包不含上述修复。
+完整 CI 安装包复测见 **§8**（SHA `00a7f3b9e0`）。
+
+---
+
+## 8. 修复后 CI windows 包（SHA `00a7f3b9e0`）
+
+对象是 `workflow_dispatch` [run 32618594546](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32618594546) 的 windows artifact，commit `feature(dsh-home): do not alias third-party gateways onto DEEPSEEK_*`。`/S` 覆盖安装到 `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\`，bundled `node.exe` **v22.23.2**。未用本机 `dist\`。
+
+| 项 | 值 |
+| --- | --- |
+| git SHA | `00a7f3b9e034917533268d4866c2999c0927ac5b` |
+| Artifact | `DeepSeek-Harness-windows-x64` |
+| 安装包 | `Deepseek-Harness-Desktop-Setup-0.2.6.exe`（468645077 B） |
+| SHA256 | `92DE1DBFDC1B68FAE6B48C84BDCC9AD6381924A79E26531C18733EEE1964100C` |
+| overlay stamp | `runtime/0.2.6/.dshd-runtime.json`：upstream sha `528c682e…` / npm `0.1.1-rc.1`；`ui-files` 含「正在列出目录…」，`llm-vision-fallback` 含 `finishError` / `LlmError` |
+
+实机（已装 exe + Electron CDP，`window.shell` 为真，ChisaTerminal）：
+
+- **Files：** 首次打开 `[data-files-panel]` 直接列出 `.cnb` / `.github` / `docs` 等，**没有**「此目录为空」或 `Workspace listing is unavailable.`。listDir 本地很快，未抓到 pending 文案一帧；空目录闪现这条在该包上未再现。
+- **识图：** 新会话粘贴 `dot.png`、发送「描述这张图」。失败为 **`本轮运行失败` + `deepseek-official` 无 key + `MISSING_CREDENTIAL`**。**没有**「模型不存在 UNKNOWN」。截图 `vision-ci-packaged.png`。TC-MODEL-005 仍 Fail：要官方 `DEEPSEEK_API_KEY`（或 Ayase 上真有图模态的模型）才会出图描述。
+- TERM-002 / CHAT-008 本包未再走选区。
+
+此 SHA 的 Setup **可以**作为拟发布文件候选；在官方识图 key 配好并过 TC-MODEL-005、以及 TERM/CHAT 按改后步骤测完之前，仍不可交付。
