@@ -401,6 +401,12 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 支持则描述；不支持则发送前拒绝。与 TC-MODEL-005 分工：005 测兜底配置路径。
 
+### TC-CHAT-012 · 取消进行中的生成 · P1
+
+**步骤：** 发较长任务 → 停止/取消 → 再发一句。
+
+**期望：** 停止生效；可续聊。
+
 ---
 
 ## 5. 会话与侧栏
@@ -902,6 +908,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-CHAT-009 | P0 | Pass | CI SHA + 已装 exe | 改写后回复「已改写」 | Trent | 2026-08-23 |
 | TC-CHAT-010 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-CHAT-011 | P2 |  |  | 见 MODEL-005 | Trent | 2026-08-23 |
+| TC-CHAT-012 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-SESS-001 | P1 | Pass | CI SHA + 已装 exe | 新会话与附录会话并存 | Trent | 2026-08-23 |
 | TC-SESS-002 | P1 | Pass | CI SHA + 已装 exe | 侧栏两会话可见 | Trent | 2026-08-23 |
 | TC-SESS-003 | P0 | Pass | CI SHA + 已装 exe | 托盘恢复后会话与 grok 仍在 | Trent | 2026-08-23 |
