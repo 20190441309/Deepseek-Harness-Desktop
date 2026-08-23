@@ -186,6 +186,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'goal': 'goal.md',
   'llm': 'llm-streaming.md',
   'session': 'session.md',
+  'session-persistence': 'persistence.md',
   'settings': 'settings.md',
   'skills': 'skills.md',
   'subagent': 'subagent.md',

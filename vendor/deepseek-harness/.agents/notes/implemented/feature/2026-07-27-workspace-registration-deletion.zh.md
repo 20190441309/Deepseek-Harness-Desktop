@@ -34,7 +34,7 @@ Host 流在前一笔全局顺序写入期间继续保留其已提交 id 集合�
 
 现有 Workspace 行菜单会在删除前打开共享 `Modal`。文案明确说明三项后果：Workspace 会从列表中移除，文件夹和会话日志会保留，相关会话会出现在 Ungrouped 下。请求待处理期间，确认与 Cancel 控件均被禁用，重复确认会被忽略，Escape 或 Close 也无法关闭此次操作。失败时 `Modal` 保持打开并显示错误；提交前使用 Cancel、Escape 或 Close 绝不会触发删除。
 
-菜单、`Modal` 和按钮保留现有结构与设计 token。会话删除仍只有视觉呈现，没有实际功能，不在本决策范围内。
+菜单、`Modal` 和按钮保留现有结构与设计 token。会话日志删除是另一项决策（[已归档会话日志删除](2026-08-23-archived-session-delete.zh.md)）；本 Workspace 删除仍不删除 Session。
 
 ## 考虑过的替代方案
 
