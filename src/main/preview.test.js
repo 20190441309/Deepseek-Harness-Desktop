@@ -1254,24 +1254,46 @@ test('saveRecording writes under preview-recordings', async () => {
   assert.equal(after.filter((name) => name.endsWith('.mp4')).length, 1);
 });
 
-test('revealArtifact calls showItemInFolder with the absolute path', async () => {
+test('revealArtifact only opens files under preview-recordings', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-reveal-'));
+  const recDir = path.join(dir, 'preview-recordings');
+  await fs.mkdir(recDir);
+  const inside = path.join(recDir, 'rec.webm');
+  await fs.writeFile(inside, 'webm');
+  const outside = path.join(dir, 'secret.png');
+  await fs.writeFile(outside, 'png');
   const shown = [];
   const preview = createPreviewController({
+    userDataPath: dir,
     showItemInFolder(artifactPath) { shown.push(artifactPath); },
   });
-  const result = await preview.revealArtifact('/abs/rec.webm');
-  assert.equal(result.ok, true);
-  assert.deepEqual(shown, ['/abs/rec.webm']);
+  const ok = await preview.revealArtifact(inside);
+  assert.equal(ok.ok, true);
+  assert.equal(shown.length, 1);
+  assert.equal(path.basename(shown[0]), 'rec.webm');
+  const denied = await preview.revealArtifact(outside);
+  assert.equal(denied.ok, false);
+  assert.deepEqual(shown, [shown[0]]);
 });
 
-test('copyArtifactToClipboard writes an image and rejects an empty image', async () => {
+test('copyArtifactToClipboard only reads images under preview-recordings', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-copy-'));
+  const recDir = path.join(dir, 'preview-recordings');
+  await fs.mkdir(recDir);
+  const inside = path.join(recDir, 'shot.png');
+  const empty = path.join(recDir, 'empty.png');
+  const outside = path.join(dir, 'escape.png');
+  await fs.writeFile(inside, 'png');
+  await fs.writeFile(empty, 'png');
+  await fs.writeFile(outside, 'png');
   const written = [];
   const preview = createPreviewController({
+    userDataPath: dir,
     nativeImage: {
       createFromPath(artifactPath) {
         return {
           path: artifactPath,
-          isEmpty() { return artifactPath.includes('empty'); },
+          isEmpty() { return path.basename(artifactPath) === 'empty.png'; },
         };
       },
     },
@@ -1279,13 +1301,15 @@ test('copyArtifactToClipboard writes an image and rejects an empty image', async
       writeImage(image) { written.push(image); },
     },
   });
-  const ok = await preview.copyArtifactToClipboard('/abs/shot.png');
+  const ok = await preview.copyArtifactToClipboard(inside);
   assert.equal(ok.ok, true);
   assert.equal(written.length, 1);
-  assert.equal(written[0].path, '/abs/shot.png');
-  const empty = await preview.copyArtifactToClipboard('/abs/empty.png');
-  assert.equal(empty.ok, false);
-  assert.ok(empty.message);
+  const blank = await preview.copyArtifactToClipboard(empty);
+  assert.equal(blank.ok, false);
+  assert.ok(blank.message);
+  assert.equal(written.length, 1);
+  const denied = await preview.copyArtifactToClipboard(outside);
+  assert.equal(denied.ok, false);
   assert.equal(written.length, 1);
 });
 

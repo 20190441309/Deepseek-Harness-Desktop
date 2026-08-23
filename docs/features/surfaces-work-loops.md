@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-08-21 — card authored from AGENTS + work-loops note + QA §8 |
+| **last verified** | 2026-08-23 — Files 关闭在标题右侧；Browser 访客 `contextIsolation`；artifact 仅 `preview-recordings` |
 
 ## User paths
 

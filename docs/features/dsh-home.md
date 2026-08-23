@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — unit 688；TC-INST-011；`qa:source` / `qa:composer`；`smoke:packaged`；NSIS Setup；TC-INST-009 overlay |
+| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
 
 ## User paths
 
@@ -26,7 +26,8 @@
 - `src/shared/dsh-home.js` 与其单测
 - `src/main/index.js`、`dsh.js`、`plugins.js`、`marketplace-install.js`、`workspace-authority.js`
 - `src/shared/themes.js` 读 `settings.yaml` 的路径
-- `scripts/smoke-workspace.mjs` 与 `qa:source` / `qa:composer` / packaged smoke 的 spawn 环境
+- `scripts/smoke-workspace.mjs` 与 `qa:source` / `qa:composer` / `qa:packaged` / packaged smoke 的 spawn 环境
+- `src/main/packaged-p0.js`（安装包路径兄弟工作区 / overlay stamp 门禁）
 - 本卡、handbook `modules/dsh-home.md`、`.cursor/rules/dsh-home-product.mdc`、QA TC-INST-009 / TC-INST-011
 
 ## Do not touch
@@ -39,8 +40,8 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `src/shared/dsh-home.test.js`；spawnEnv / pluginEnv / PTY / themes / marketplace / workspace-authority；冒烟不得向 Electron 注入 `DSH_HOME` |
-| Manual / QA | `TC-INST-009`（须重配）、`TC-INST-011`（毒化 `~/.dsh` 仍能进主界面） |
+| Automated | `dsh-home` / spawnEnv / workspace-authority 单测；冒烟不得注入 `DSH_HOME`；`qa:packaged` 可 rehearsal 预写兄弟仓（**不能**当发版 Pass） |
+| Manual / QA | 每次发布前 `TC-INST-009`、`TC-INST-011`、`TC-WS-006` |
 
 ## Sources
 

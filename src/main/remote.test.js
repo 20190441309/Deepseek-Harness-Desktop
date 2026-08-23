@@ -230,9 +230,9 @@ test('gateway proxies an authorized request and rewrites Host', async () => {
   assert.equal(allowed.body, 'ok-from-dsh');
   assert.equal(seenHost, `127.0.0.1:${upstreamPort}`);
 
-  const login = await request(port, `/?token=${token}`, { redirect: 'manual' });
-  assert.equal(login.status, 302);
-  assert.match(String(login.headers.get('set-cookie') || ''), /dsh_remote=/);
+  const leaked = await request(port, `/?token=${token}`, { redirect: 'manual' });
+  assert.equal(leaked.status, 401);
+  assert.equal(String(leaked.headers.get('set-cookie') || ''), '');
 
   const snap = gateway.snapshot();
   assert.equal(snap.mode, 'lan');

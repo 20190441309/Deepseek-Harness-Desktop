@@ -2,6 +2,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const SHELL_ROLES = new Set(['boot', 'harness']);
 
+// Keep in sync with REMOTE_FEATURE_ENABLED in src/main/config.js.
+// Preload cannot import that module. When false, omit the four
+// methods so ui-settings-remote does not register the sidebar icon.
+const REMOTE_FEATURE_ENABLED = false;
+
 function shellRole(argv = process.argv) {
   const prefix = '--dshd-shell-role=';
   const value = argv.find((item) => typeof item === 'string' && item.startsWith(prefix));
@@ -153,10 +158,12 @@ function harnessApi(renderer) {
     previewClose: invoke(renderer, 'shell:preview-close'),
     onPreviewStateChange: subscribe(renderer, 'shell:preview-state-change'),
     onOpenPreviewUrl: subscribe(renderer, 'shell:open-preview-url'),
-    getRemote: invoke(renderer, 'shell:get-remote'),
-    saveRemote: invoke(renderer, 'shell:save-remote'),
-    rotateRemoteToken: invoke(renderer, 'shell:rotate-remote-token'),
-    unbindRemoteDevice: invoke(renderer, 'shell:unbind-remote-device'),
+    ...(REMOTE_FEATURE_ENABLED ? {
+      getRemote: invoke(renderer, 'shell:get-remote'),
+      saveRemote: invoke(renderer, 'shell:save-remote'),
+      rotateRemoteToken: invoke(renderer, 'shell:rotate-remote-token'),
+      unbindRemoteDevice: invoke(renderer, 'shell:unbind-remote-device'),
+    } : {}),
   };
 }
 

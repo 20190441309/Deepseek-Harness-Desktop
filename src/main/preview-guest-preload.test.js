@@ -24,7 +24,7 @@ function readSource(name) {
   return fs.readFileSync(path.join(__dirname, name), 'utf8');
 }
 
-test('guest preload and helpers keep ipcRenderer and omit leftover brand markers', () => {
+test('guest preload keeps ipcRenderer in the isolated world and omits leftover brand markers', () => {
   const files = [
     'preview-guest-preload.js',
     'preview-guest-protocol.js',
@@ -37,7 +37,8 @@ test('guest preload and helpers keep ipcRenderer and omit leftover brand markers
     assert.doesNotMatch(source, BRAND, name);
   }
   const preload = readSource('preview-guest-preload.js');
-  assert.match(preload, /globalThis\.ipcRenderer = ipcRenderer/);
+  assert.match(preload, /require\('electron'\)/);
+  assert.doesNotMatch(preload, /globalThis\.ipcRenderer/);
   assert.match(preload, /data-dshd-annotation-ui/);
   assert.match(preload, /data-dshd-annotation-tool/);
   assert.match(preload, /--dshd-preview-primary/);

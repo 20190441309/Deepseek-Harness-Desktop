@@ -120,14 +120,15 @@ function previewGuestPreloadPath() {
 }
 
 /**
- * Guest BrowserView webPreferences. Main-window isolation stays true elsewhere.
+ * Guest BrowserView webPreferences. Isolation stays on; pick/annotation IPC
+ * stays in the preload and is not published on `globalThis`.
  * @param {{ session: unknown, preload?: string }} options
- * @returns {{ sandbox: true, contextIsolation: false, nodeIntegration: false, session: unknown, preload: string }}
+ * @returns {{ sandbox: true, contextIsolation: true, nodeIntegration: false, session: unknown, preload: string }}
  */
 function previewGuestWebPreferences(options) {
   return {
     sandbox: true,
-    contextIsolation: false,
+    contextIsolation: true,
     nodeIntegration: false,
     session: options.session,
     preload: options.preload ?? previewGuestPreloadPath(),

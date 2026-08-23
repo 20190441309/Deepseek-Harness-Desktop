@@ -27,9 +27,11 @@ const {
   REMOTE_FEATURE_ENABLED,
   loadConfig,
   publicConfig,
+  parkRemoteSnapshot,
   saveConfig,
   normalizeHarnessRecovery,
   normalizeRendererConfigPatch,
+  normalizeRemotePatch,
 } = require('./config');
 
 test.after(() => {
@@ -86,26 +88,59 @@ test('renderer config patch only accepts safe typed fields', () => {
   }
 });
 
-test('remote can be enabled and HTTP relay origins stay discarded', () => {
-  assert.equal(REMOTE_FEATURE_ENABLED, true);
-  const httpRelay = saveConfig({
+test('remote IPC patch only accepts RemotePatch fields', () => {
+  assert.deepEqual(normalizeRemotePatch({
     remoteEnabled: true,
     remoteMode: 'relay',
-    remoteRelayUrl: 'http://relay.example:8787/path',
-    remoteRelayToken: 'a'.repeat(32),
+    remotePort: 3180,
+    remoteRelayUrl: 'https://relay.example/path',
+  }), {
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remotePort: 3180,
+    remoteRelayUrl: 'https://relay.example/path',
   });
-  assert.equal(httpRelay.remoteEnabled, true);
-  assert.equal(httpRelay.remoteMode, 'lan');
-  assert.equal(httpRelay.remoteRelayUrl, '');
-  const httpsRelay = saveConfig({
+  assert.deepEqual(normalizeRemotePatch({ remoteEnabled: false }), { remoteEnabled: false });
+  for (const patch of [
+    { apiKey: 'sk-stolen' },
+    { workspace: 'C:\\' },
+    { githubToken: 'ghp_stolen' },
+    { remoteToken: 'pair-me' },
+    { remoteRelayToken: 'a'.repeat(32) },
+    { closeToTray: false },
+    { remoteEnabled: 'yes' },
+    { remoteMode: 'https' },
+    { remotePort: 80 },
+  ]) {
+    assert.throws(() => normalizeRemotePatch(patch));
+  }
+});
+
+test('remote feature is parked and cannot be enabled', () => {
+  assert.equal(REMOTE_FEATURE_ENABLED, false);
+  const saved = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
     remoteRelayUrl: 'https://relay.example/path',
     remoteRelayToken: 'a'.repeat(32),
   });
-  assert.equal(httpsRelay.remoteEnabled, true);
-  assert.equal(httpsRelay.remoteMode, 'relay');
-  assert.equal(httpsRelay.remoteRelayUrl, 'https://relay.example');
+  assert.equal(saved.remoteEnabled, false);
+  assert.equal(saved.remoteMode, 'lan');
+  const pub = publicConfig(saved);
+  assert.equal(pub.remoteAvailable, false);
+  assert.equal(pub.remoteEnabled, false);
+  const parked = parkRemoteSnapshot({
+    available: true,
+    enabled: true,
+    listening: true,
+    token: 'secret',
+    urls: [{ pairingUrl: 'http://10.0.0.4:3180/#offer=secret' }],
+  });
+  assert.equal(parked.available, false);
+  assert.equal(parked.enabled, false);
+  assert.equal(parked.listening, false);
+  assert.deepEqual(parked.urls, []);
+  assert.equal(parked.token, '');
 });
 
 test('saveConfig persists normalized recovery settings', () => {

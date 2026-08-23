@@ -22,10 +22,10 @@ test('tokensEqual rejects different lengths without throwing', () => {
   assert.equal(tokensEqual('abcd', 'abcd'), true);
 });
 
-test('tokenFromHeaders reads bearer, cookie, then query', () => {
+test('tokenFromHeaders reads bearer then cookie and ignores the query', () => {
   assert.equal(tokenFromHeaders({ authorization: 'Bearer secret' }, '/'), 'secret');
   assert.equal(tokenFromHeaders({ cookie: `${COOKIE_NAME}=from-cookie` }, '/'), 'from-cookie');
-  assert.equal(tokenFromHeaders({}, '/chat?token=from-query'), 'from-query');
+  assert.equal(tokenFromHeaders({}, '/chat?token=from-query'), '');
 });
 
 test('isAuthorized accepts a matching cookie', () => {

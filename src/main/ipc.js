@@ -6,8 +6,10 @@ const {
   loadConfig,
   saveConfig,
   publicConfig,
+  parkRemoteSnapshot,
   normalizeRendererConfigPatch,
 } = require('./config');
+const { normalizeRemotePatch } = require('./remote-patch');
 const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
@@ -291,13 +293,16 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     const snapshot = remote && typeof remote.snapshot === 'function'
       ? remote.snapshot()
       : { available: false, enabled: false, listening: false };
+    if (!REMOTE_FEATURE_ENABLED) {
+      return parkRemoteSnapshot(snapshot);
+    }
     if (snapshot.available === false) {
       return { ...snapshot, available: false, enabled: false };
     }
     return {
       ...snapshot,
-      available: REMOTE_FEATURE_ENABLED,
-      enabled: REMOTE_FEATURE_ENABLED && Boolean(snapshot.enabled),
+      available: true,
+      enabled: Boolean(snapshot.enabled),
     };
   });
 
@@ -307,9 +312,9 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
       if (remote && typeof remote.sync === 'function') {
         await remote.sync();
       }
-      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+      return parkRemoteSnapshot(remote && typeof remote.snapshot === 'function' ? remote.snapshot() : {});
     }
-    saveConfig(patch || {});
+    saveConfig(normalizeRemotePatch(patch || {}));
     if (remote && typeof remote.sync === 'function') {
       return remote.sync();
     }
@@ -318,7 +323,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   handle('shell:rotate-remote-token', HARNESS_ONLY, async () => {
     if (!REMOTE_FEATURE_ENABLED) {
-      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+      return parkRemoteSnapshot(remote && typeof remote.snapshot === 'function' ? remote.snapshot() : {});
     }
     if (remote && typeof remote.rotateToken === 'function') {
       remote.rotateToken();
@@ -329,7 +334,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   handle('shell:unbind-remote-device', HARNESS_ONLY, async (_event, id) => {
     if (!REMOTE_FEATURE_ENABLED) {
-      return { ...(remote ? remote.snapshot() : {}), available: false, enabled: false };
+      return parkRemoteSnapshot(remote && typeof remote.snapshot === 'function' ? remote.snapshot() : {});
     }
     if (remote && typeof remote.unbindDevice === 'function') {
       return remote.unbindDevice(id);

@@ -1,7 +1,15 @@
 #!/usr/bin/env node
+/**
+ * In-app Appendix A: five composer turns against a seeded desktop dsh-home.
+ * Copies official ~/.dsh settings + credentials into the smoke userData home
+ * (does not print them), pins agent-default-model to grok-4.6, and drops a
+ * copied vision-fallback route so the vision extra can assert pre-send
+ * refusal on the text-only model. Does not migrate the product userData.
+ */
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -10,10 +18,10 @@ import {
 } from './smoke-workspace.mjs'
 
 const require = createRequire(import.meta.url)
-const { assertReleaseQaResult } = require('../src/main/release-ui-walk.js')
+const { assertAppendixAQaResult, pinAgentDefaultModel, stripVisionFallback } = require('../src/main/appendix-a-qa.js')
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const timeoutMs = Number(process.env.DSH_SMOKE_TIMEOUT_MS) || 600_000
+const timeoutMs = Number(process.env.DSH_SMOKE_TIMEOUT_MS) || 900_000
 
 function electronExecutable() {
   if (process.env.ELECTRON_PATH && existsSync(process.env.ELECTRON_PATH)) {
@@ -26,7 +34,7 @@ function electronExecutable() {
   ]
   const found = candidates.find((item) => existsSync(item))
   if (!found) {
-    throw new Error('Source QA needs a local Electron binary (npm ci, then node node_modules/electron/install.js).')
+    throw new Error('In-app appendix A needs a local Electron binary.')
   }
   return found
 }
@@ -55,7 +63,7 @@ function run(executable, args, env) {
     })
     const timer = setTimeout(() => {
       stopProcessTree(child)
-      reject(new Error(`Source QA timed out after ${timeoutMs}ms.`))
+      reject(new Error(`In-app appendix A timed out after ${timeoutMs}ms.`))
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => process.stdout.write(chunk))
@@ -64,7 +72,6 @@ function run(executable, args, env) {
       clearTimeout(timer)
       reject(error)
     })
-
     child.once('exit', (code, signal) => {
       clearTimeout(timer)
       resolve({ code, signal })
@@ -72,46 +79,64 @@ function run(executable, args, env) {
   })
 }
 
+function seedDesktopHome(userData) {
+  const official = path.join(os.homedir(), '.dsh')
+  const settings = path.join(official, 'settings.yaml')
+  if (!existsSync(settings)) {
+    throw new Error(`Official ${settings} is missing; cannot seed the in-app appendix A home.`)
+  }
+  const home = path.join(userData, 'dsh-home')
+  mkdirSync(home, { recursive: true })
+  writeFileSync(path.join(home, 'settings.yaml'), pinAgentDefaultModel(stripVisionFallback(readFileSync(settings, 'utf8'))))
+  const creds = path.join(official, '.credentials.yaml')
+  if (existsSync(creds)) {
+    copyFileSync(creds, path.join(home, '.credentials.yaml'))
+  }
+  return home
+}
+
 function printStepTable(qa) {
   const steps = Array.isArray(qa?.steps) ? qa.steps : []
-  if (steps.length === 0) {
-    console.log('Release QA recorded no steps.')
-    return
-  }
-  console.log('\nRelease QA steps:')
+  console.log('\nIn-app appendix A:')
   for (const step of steps) {
-    const mark = step.ok ? 'PASS' : (step.optional ? 'SKIP' : 'FAIL')
+    const mark = step.ok ? 'PASS' : 'FAIL'
     const detail = step.detail ? `  ${step.detail}` : ''
     console.log(`  ${mark.padEnd(4)}  ${step.name}${detail}`)
   }
 }
 
-const dirs = createSmokeDirs('dsh-source-qa-')
+const dirs = createSmokeDirs('dsh-appendix-qa-')
 const keepRequested = process.env.DSH_SMOKE_KEEP === '1'
 let keepArtifacts = keepRequested
 
 try {
   const executable = electronExecutable()
   initGitWorkspace(dirs.workspace)
-  writeFileSync(path.join(dirs.workspace, 'note.md'), 'post-merge ui\n')
+  writeFileSync(
+    path.join(dirs.workspace, 'README.md'),
+    '# Deepseek-Harness-Desktop\n\nElectron desktop shell for DeepSeek Harness Web UI.\n',
+  )
   const port = await reservePort()
   writeSmokeConfig(dirs.userData, dirs.workspace, port)
+  seedDesktopHome(dirs.userData)
 
-  console.log(`Source release QA: ${executable}`)
+  console.log(`In-app appendix A: ${executable}`)
+  console.log('Seeded desktop dsh-home from official ~/.dsh settings (contents not logged).')
   const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
-    DSH_QA: '1',
+    DSH_QA_APPENDIX: '1',
   }))
 
   if (!existsSync(dirs.resultPath)) {
-    throw new Error(`QA result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
+    throw new Error(`Appendix result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
   }
   const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
-  printStepTable(result.result?.qa || result.qa)
+  const qa = result.result?.appendixQa || result.appendixQa
+  printStepTable(qa)
   assertDesktopHarnessHome(dirs.userData, result)
   assertSmokeResult(outcome, result)
-  assertReleaseQaResult({ qa: result.result?.qa || result.qa, ...result })
-  console.log(`Source release QA passed on port ${port}.`)
+  assertAppendixAQaResult(qa)
+  console.log(`In-app appendix A passed on port ${port}.`)
 } catch (error) {
   keepArtifacts = true
   console.error(error instanceof Error ? error.message : String(error))
@@ -119,8 +144,8 @@ try {
 } finally {
   if (keepArtifacts) {
     console.log(`QA artifacts kept at ${dirs.smokeRoot}`)
-    if (existsSync(path.join(dirs.userData, 'dshd-qa.png'))) {
-      console.log(`Screenshot: ${path.join(dirs.userData, 'dshd-qa.png')}`)
+    if (existsSync(path.join(dirs.userData, 'dshd-appendix-qa.png'))) {
+      console.log(`Screenshot: ${path.join(dirs.userData, 'dshd-appendix-qa.png')}`)
     }
   } else if (!keepRequested) {
     try {

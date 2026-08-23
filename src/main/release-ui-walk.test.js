@@ -33,7 +33,13 @@ test('assertReleaseQaResult fails on a required step miss or omission', () => {
 test('release walk helpers stay injectable into the harness page', () => {
   assert.match(PAGE_HELPERS, /function dshShown/);
   assert.match(PAGE_HELPERS, /function dshFind/);
+  assert.match(PAGE_HELPERS, /function dshAssignFile/);
+  assert.match(PAGE_HELPERS, /function dshQaPngFile/);
+  assert.match(PAGE_HELPERS, /send message\|发送消息/);
   assert.match(PAGE_HELPERS, /function dshSetValue/);
+  assert.match(PAGE_HELPERS, /function dshField/);
+  assert.match(PAGE_HELPERS, /insertText/);
+  assert.match(PAGE_HELPERS, /execCommand/);
   assert.match(PAGE_HELPERS, /function dshDialogNamed/);
   assert.ok(QA_REQUIRED_STEPS.includes('workspace.connected'));
   assert.ok(QA_REQUIRED_STEPS.includes('workspace.picker'));
@@ -49,6 +55,19 @@ test('release walk helpers stay injectable into the harness page', () => {
   assert.ok(QA_REQUIRED_STEPS.includes('composer.pathSourceAbsent'));
   assert.ok(QA_REQUIRED_STEPS.includes('remote.available'));
   assert.ok(QA_REQUIRED_STEPS.includes('remote.notListening'));
+  assert.ok(QA_REQUIRED_STEPS.includes('remote.footerAbsent'));
+  assert.ok(QA_REQUIRED_STEPS.includes('titlebar.windowControls'));
+  assert.ok(QA_REQUIRED_STEPS.includes('files.tabCloseRight'));
+  assert.ok(QA_REQUIRED_STEPS.includes('git.commit'));
+  assert.ok(QA_REQUIRED_STEPS.includes('models.heading'));
+  assert.ok(QA_REQUIRED_STEPS.includes('models.customAdd'));
+  assert.ok(QA_REQUIRED_STEPS.includes('models.visionPicker'));
+  assert.ok(QA_REQUIRED_STEPS.includes('appearance.themeSwitch'));
+  assert.ok(QA_REQUIRED_STEPS.includes('appearance.localCrop'));
+  assert.ok(QA_REQUIRED_STEPS.includes('appearance.frost'));
+  assert.ok(QA_REQUIRED_STEPS.includes('gallery.wallhavenSfw'));
+  assert.ok(QA_REQUIRED_STEPS.includes('gallery.confirmSet'));
+  assert.ok(QA_REQUIRED_STEPS.includes('models.customForm'));
 });
 
 test('release walk source clicks Mention and asserts the composer markdown link', () => {
@@ -64,6 +83,23 @@ test('release walk source clicks Mention and asserts the composer markdown link'
   assert.match(walk, /data-source="path"/);
   assert.match(walk, /probeRemote/);
   assert.match(walk, /remote\.available/);
+  assert.match(walk, /remote\.footerAbsent/);
+  assert.match(walk, /titlebar\.windowControls/);
+  assert.match(walk, /files\.tabCloseRight/);
+  assert.match(walk, /git\.commitDialog/);
+  assert.match(walk, /gitHeadSubject/);
+  assert.match(walk, /models\.visionPicker/);
+  assert.match(walk, /appearance\.themeSwitch/);
+  assert.match(walk, /appearance\.localCrop/);
+  assert.match(walk, /gallery\.confirmSet/);
+  assert.match(walk, /\^必应\$\|\^bing\$/);
+  assert.match(walk, /Bing thumbnails did not load/);
+  assert.match(walk, /models\.customForm/);
+  assert.match(walk, /dshCustomProviderCard/);
+  assert.match(walk, /\^显示名称\$\|\^display name\$/);
+  assert.match(walk, /typeIntoAriaField/);
+  assert.match(walk, /Input\.insertText/);
+  assert.doesNotMatch(walk, /未选择\|api 协议\|protocol/);
   assert.match(walk, /summarizeRemoteQaDetail/);
   assert.doesNotMatch(walk, /JSON\.stringify\(remoteSnap\)/);
   assert.match(walk, /\$fo/);

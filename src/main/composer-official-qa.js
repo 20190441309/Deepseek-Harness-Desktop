@@ -29,8 +29,10 @@ const COMPOSER_OFFICIAL_CASES = Object.freeze([
   { id: 'case.at.noDesktopPathSource', title: 'Typing @ does not register a desktop path source' },
   { id: 'case.terminal.addToChat', title: 'Terminal selection Add to chat writes a terminal fence' },
   { id: 'case.terminal.noSessionsCrash', title: 'Terminal Add to chat does not trip sessions-without-inject' },
-  { id: 'case.remote.available', title: 'Remote snapshot is available after Harness is ready' },
-  { id: 'case.remote.listening', title: 'Remote sync opens a listener when remoteEnabled is on disk' },
+  { id: 'case.remote.available', title: 'Remote snapshot is unavailable while the feature is parked' },
+  { id: 'case.remote.listening', title: 'Remote does not listen while the feature is parked' },
+  { id: 'case.remote.spa', title: 'Parked remote does not serve a phone SPA' },
+  { id: 'case.remote.pairingSpa', title: 'Parked remote has no pairing URL' },
 ]);
 
 function sleep(ms) {
@@ -587,7 +589,7 @@ async function runComposerOfficialQa(wc, helpers) {
     terminalTrip.length ? terminalTrip.join(' | ') : 'no sessions-without-inject console error',
   );
 
-  // --- Remote gateway is available and listens when enabled ---
+  // --- Remote is parked: unavailable, not listening, no phone SPA ---
   let remoteSnap = null;
   try {
     remoteSnap = await helpers.probeRemote();
@@ -597,14 +599,101 @@ async function runComposerOfficialQa(wc, helpers) {
   rec(
     'case.remote.available',
     remoteSnap
-      && remoteSnap.available === true
+      && remoteSnap.available === false
       && !remoteHasError(remoteSnap),
     summarizeRemoteQaDetail(remoteSnap),
   );
   rec(
     'case.remote.listening',
-    remoteSnap != null && remoteSnap.listening === true && !remoteHasError(remoteSnap),
+    remoteSnap != null && remoteSnap.listening !== true && !remoteHasError(remoteSnap),
     remoteSnap ? `listening=${remoteSnap.listening}` : 'no snapshot',
+  );
+  rec(
+    'case.remote.spa',
+    remoteSnap != null && remoteSnap.listening !== true && !remoteHasError(remoteSnap),
+    remoteSnap ? `parked: listening=${remoteSnap.listening}` : 'no snapshot',
+  );
+
+  let pairingOk = false;
+  let pairingDetail = 'no pairing url';
+  const pairingRaw = Array.isArray(remoteSnap && remoteSnap.urls)
+    ? (remoteSnap.urls.find((row) => row && row.pairingUrl) || {}).pairingUrl
+    : '';
+  const port = Number(remoteSnap && remoteSnap.port);
+  if (typeof pairingRaw === 'string' && pairingRaw.includes('#offer=') && Number.isInteger(port) && port > 0) {
+    const hash = pairingRaw.slice(pairingRaw.indexOf('#'));
+    const loopback = `http://127.0.0.1:${port}/${hash}`;
+    const { BrowserWindow } = require('electron');
+    const guest = new BrowserWindow({
+      show: true,
+      width: 420,
+      height: 720,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    try {
+      await guest.loadURL(loopback);
+      const html = await guest.webContents.executeJavaScript('document.documentElement.innerHTML');
+      pairingOk = /#offer=/.test(html) && /二维码/.test(html) && !/data-composer-card/.test(html);
+      pairingDetail = pairingOk ? 'loopback hash offer is phone SPA' : 'pairing document was not the phone SPA';
+      if (pairingOk) {
+        await guest.webContents.executeJavaScript(`(() => {
+          const btn = document.getElementById('enter');
+          if (btn) btn.click();
+          return Boolean(btn);
+        })()`);
+        const connected = await waitUntil(async () => {
+          const snap = await guest.webContents.executeJavaScript(`({
+            chat: Boolean(document.getElementById('screen-chat') && !document.getElementById('screen-chat').classList.contains('hidden')),
+            sessions: document.querySelectorAll('#session-list button').length,
+            error: (document.getElementById('connect-error') && document.getElementById('connect-error').textContent) || '',
+          })`);
+          return snap.chat ? snap : null;
+        }, 25_000);
+        if (connected) {
+          const listed = await guest.webContents.executeJavaScript(`(() => {
+            const menu = document.getElementById('menu');
+            if (menu) menu.click();
+            return document.querySelectorAll('#session-list button').length;
+          })()`);
+          await guest.webContents.executeJavaScript(`(() => {
+            const ta = document.getElementById('draft');
+            if (!ta) return false;
+            ta.value = 'dshd-rem-002';
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+            const form = document.getElementById('composer');
+            if (form) form.requestSubmit();
+            return true;
+          })()`);
+          const sent = await waitUntil(async () => {
+            const log = await guest.webContents.executeJavaScript(
+              '(document.getElementById("log") && document.getElementById("log").innerText) || ""',
+            );
+            return /dshd-rem-002/.test(log) ? true : null;
+          }, 15_000);
+          rec(
+            'case.remote.spaSend',
+            Boolean(sent),
+            sent ? `sessions=${listed}; sent dshd-rem-002` : `sessions=${listed}; send did not appear in the phone log`,
+            true,
+          );
+        } else {
+          rec('case.remote.spaSend', false, 'SPA loaded; chat screen did not appear in time', true);
+        }
+      }
+    } catch (error) {
+      pairingDetail = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (!guest.isDestroyed()) guest.close();
+    }
+  }
+  rec(
+    'case.remote.pairingSpa',
+    !pairingRaw,
+    pairingRaw ? (pairingDetail || 'unexpected pairing url while parked') : 'parked: no pairing url',
   );
 
   const failed = steps.filter((s) => !s.ok && !s.optional).map((s) => s.name);

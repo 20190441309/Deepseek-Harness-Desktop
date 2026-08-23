@@ -293,3 +293,82 @@ test('readHarnessRegisteredWorkspacePaths reads workspace.json and ignores junk'
     fs.rmSync(outsider, { recursive: true, force: true });
   }
 });
+
+test('loadWorkspaceAuthority authorizes a harness-registered workspace outside the boot folder', () => {
+  const home = makeRoot();
+  const boot = makeRoot();
+  const sibling = makeRoot();
+  const nested = path.join(boot, 'nested');
+  fs.mkdirSync(nested);
+  const previousConfig = require.cache[require.resolve('./config')];
+  try {
+    fs.mkdirSync(path.join(home, 'storages'));
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      tables: {
+        workspaces: {
+          'ws-sibling': { path: sibling },
+          'ws-nested': { path: nested },
+        },
+      },
+    })}\n`, 'utf8');
+    require.cache[require.resolve('./config')] = {
+      id: require.resolve('./config'),
+      filename: require.resolve('./config'),
+      loaded: true,
+      exports: { loadConfig: () => ({ workspace: boot }) },
+    };
+    setDesktopDshHome(home);
+    const authority = loadWorkspaceAuthority();
+    assert.equal(authority.resolveAuthorizedCwd(sibling), canonical(sibling));
+    assert.equal(authority.resolveAuthorizedCwd(nested), canonical(nested));
+    assert.equal(authority.resolveAuthorizedCwd(boot), canonical(boot));
+  } finally {
+    if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
+    else delete require.cache[require.resolve('./config')];
+    clearDesktopDshHome();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
+test('loadWorkspaceAuthority ignores a registered filesystem root', () => {
+  const home = makeRoot();
+  const boot = makeRoot();
+  const sibling = makeRoot();
+  const outsider = makeRoot();
+  const volumeRoot = path.parse(process.cwd()).root;
+  const previousConfig = require.cache[require.resolve('./config')];
+  try {
+    fs.mkdirSync(path.join(home, 'storages'));
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      tables: {
+        workspaces: {
+          'ws-volume': { path: volumeRoot },
+          'ws-sibling': { path: sibling },
+        },
+      },
+    })}\n`, 'utf8');
+    require.cache[require.resolve('./config')] = {
+      id: require.resolve('./config'),
+      filename: require.resolve('./config'),
+      loaded: true,
+      exports: { loadConfig: () => ({ workspace: boot }) },
+    };
+    setDesktopDshHome(home);
+    const authority = loadWorkspaceAuthority();
+    assert.equal(authority.resolveAuthorizedCwd(volumeRoot), null);
+    assert.equal(authority.resolveAuthorizedCwd(outsider), null);
+    assert.equal(authority.resolveAuthorizedCwd(sibling), canonical(sibling));
+  } finally {
+    if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
+    else delete require.cache[require.resolve('./config')];
+    clearDesktopDshHome();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+    fs.rmSync(outsider, { recursive: true, force: true });
+  }
+});

@@ -9,7 +9,7 @@
 
 - 安装即可用：本机起官方 Web UI，无需用户手跑 `dsh web`。桌面 Harness **不读** 官方 `~/.dsh`；数据在 `userData/dsh-home`（见 [dsh-home.md](dsh-home.md)）。
 - 主框：对话 + 工具审批 + 侧栏会话；`Ctrl+\` 右栏 Surfaces；`` Ctrl+` `` 底栏终端；`Ctrl+,` 设置。
-- 桌面增强：Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、托盘/更新、插件恢复、可选手机远程。
+- 桌面增强：Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、托盘/更新、插件恢复。手机远程停放（无侧栏入口、不监听）。
 
 ## 架构要点
 
@@ -28,7 +28,7 @@
 
 ## 门槛
 
-- 发版总门禁：[../qa/production-acceptance-test-cases.md](../../qa/production-acceptance-test-cases.md) P0 全集
+- 发版总门禁：每次发布前走完 [production-acceptance-test-cases.md](../../qa/production-acceptance-test-cases.md)。对象是 `release.yml` windows artifact，与即将上传的 Setup **同一 SHA**；本机 dist / `qa:*` 不能顶替。
 
 ## 延伸阅读
 

@@ -22,7 +22,7 @@ npm run dist:mac      # macOS 真机
 
 - 钉：`vendor/harness-upstream.json`（当前文档化基线见根 README）。  
 - 改 client 后：`vendor/deepseek-harness` 内 `pnpm run build:lib:client` 再重启桌面。  
-- 安装包经 GitHub Actions 打 `v*` 标签产出。
+- 安装包经 GitHub Actions `release.yml` **windows job** 产出。验收对象是该 artifact，不是本地 `npm run dist`。`afterPack` 会把打包时的 `node.exe` 打进包内，本机 Node 24 ≠ CI Node 22。
 
 ## 实现入口
 
@@ -32,13 +32,13 @@ npm run dist:mac      # macOS 真机
 
 ## 不变量
 
-- 验收表：源码钉可能超前安装包；禁止把源码钉写成已发包装钉（QA §0.1）。  
+- 验收表：每次发布前对 **CI 安装包 SHA** 走完 [production-acceptance-test-cases.md](../../qa/production-acceptance-test-cases.md)。禁止把源码钉写成已发包装钉；禁止用本机 dist 给该表打 Pass。  
+- 现 `v*` tag 会立刻 `gh release create`，来不及先走表。合规顺序见验收表 §0.1。  
 - SQLite 等格式与 rc 版本兼容性以发版说明为准。
 
 ## 门槛
 
-- QA：`TC-INST-001`、`TC-INST-008`、`TC-INST-009`  
-- `npm test`；发版前生产验收表 P0
+- QA：每次发布前生产验收全表（CI 包）；`TC-INST-001`、`TC-INST-008`、`TC-INST-009`、`TC-INST-012`、`TC-INST-013`
 
 ## 延伸阅读
 

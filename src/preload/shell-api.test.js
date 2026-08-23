@@ -84,7 +84,7 @@ test('marketplace preload role is not exposed', () => {
   assert.equal(exposed, null);
 });
 
-test('harness preload keeps work loops and remote controls', () => {
+test('harness preload keeps work loops and omits parked remote', () => {
   const api = buildShellApi('harness', fakeRenderer());
   assert.equal(typeof api.writeFile, 'function');
   assert.equal(typeof api.listEditors, 'function');
@@ -126,10 +126,10 @@ test('harness preload keeps work loops and remote controls', () => {
   assert.equal(typeof api.previewAutomationScroll, 'function');
   assert.equal(typeof api.previewAutomationEvaluate, 'function');
   assert.equal(typeof api.previewAutomationWaitFor, 'function');
-  assert.equal(typeof api.getRemote, 'function');
-  assert.equal(typeof api.saveRemote, 'function');
-  assert.equal(typeof api.rotateRemoteToken, 'function');
-  assert.equal(typeof api.unbindRemoteDevice, 'function');
+  assert.equal(api.getRemote, undefined);
+  assert.equal(api.saveRemote, undefined);
+  assert.equal(api.rotateRemoteToken, undefined);
+  assert.equal(api.unbindRemoteDevice, undefined);
   assert.equal(api.saveBootLog, undefined);
 });
 
@@ -168,6 +168,15 @@ test('boot preload omits guest preview IPC', () => {
   assert.equal(api.previewAutomationScroll, undefined);
   assert.equal(api.previewAutomationEvaluate, undefined);
   assert.equal(api.previewAutomationWaitFor, undefined);
+});
+
+test('preload remote flag stays in sync with config.js', () => {
+  const configSrc = fs.readFileSync(path.join(__dirname, '../main/config.js'), 'utf8');
+  const preloadSrc = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const configFlag = configSrc.match(/const REMOTE_FEATURE_ENABLED = (true|false);/);
+  const preloadFlag = preloadSrc.match(/const REMOTE_FEATURE_ENABLED = (true|false);/);
+  assert.ok(configFlag && preloadFlag);
+  assert.equal(preloadFlag[1], configFlag[1]);
 });
 
 test('harness preload exposes installMarketplacePlugin and omits seed install draft', () => {

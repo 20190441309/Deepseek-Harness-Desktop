@@ -205,6 +205,21 @@ test('listWallpaperCatalog rejects file URLs and http when HTTP is not allowed',
   assert.match(httpResult.warning, /https|壁纸目录/);
 });
 
+test('listWallpaperCatalog does not fetch private or link-local HTTPS hosts', async () => {
+  delete process.env.DSHD_WALLPAPER_ALLOW_HTTP;
+  for (const url of [
+    'https://127.0.0.1/secret.json',
+    'https://10.0.0.8/secret.json',
+    'https://192.168.1.8/secret.json',
+    'https://169.254.169.254/latest.json',
+    'https://localhost/secret.json',
+  ]) {
+    const result = await listWallpaperCatalog({ kind: 'catalog', url });
+    assert.equal(result.items.length, 0, url);
+    assert.match(result.warning, /壁纸目录/, url);
+  }
+});
+
 test('listWallpaperCatalog accepts a catalog under 4MB and drops one above it', async () => {
   const item = {
     id: 'ok',

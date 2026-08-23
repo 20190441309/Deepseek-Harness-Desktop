@@ -25,7 +25,7 @@
 ## 不变量
 
 - 读写不得越出权威根（及明确允许的例外）。  
-- 权威读桌面 `dsh-home` 的工作区登记，不读官方 `~/.dsh`（[dsh-home.md](dsh-home.md)）。  
+- 权威读桌面 `dsh-home` 的工作区登记（含启动目录的兄弟项目），不读官方 `~/.dsh`（[dsh-home.md](dsh-home.md)）；`workspace.json` 里的盘符根不进白名单。  
 - Surfaces 是工作环，不是空态卡片墙（见 [surfaces.md](surfaces.md)）。
 
 ## 门槛

@@ -4,8 +4,9 @@ const { app } = require('electron');
 const { projectRoot } = require('./paths');
 const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
+const { normalizeRemotePatch } = require('./remote-patch');
 
-const REMOTE_FEATURE_ENABLED = true;
+const REMOTE_FEATURE_ENABLED = false;
 
 const DEFAULTS = {
   workspace: '',
@@ -262,17 +263,31 @@ function publicConfig(config) {
   };
 }
 
+function parkRemoteSnapshot(snap) {
+  const base = snap && typeof snap === 'object' ? snap : {};
+  return {
+    ...base,
+    available: false,
+    enabled: false,
+    listening: false,
+    urls: [],
+    token: '',
+  };
+}
+
 module.exports = {
   DEFAULTS,
   REMOTE_FEATURE_ENABLED,
   loadConfig,
   saveConfig,
   publicConfig,
+  parkRemoteSnapshot,
   defaultWorkspace,
   configPath,
   normalizeHarnessRecovery,
   normalizePluginRecovery,
   normalizeRendererConfigPatch,
+  normalizeRemotePatch,
   normalizeRelayOrigin,
   normalizeRemoteConfig,
 };

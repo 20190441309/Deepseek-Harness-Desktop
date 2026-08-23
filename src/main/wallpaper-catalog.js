@@ -82,6 +82,46 @@ function wallhavenSearchUrl(query) {
  * @param {string} value
  * @returns {URL | null}
  */
+/**
+ * Block loopback / RFC1918 / link-local wallpaper fetches so catalog IPC
+ * cannot be used as an intranet proxy. Loopback is allowed only when
+ * `DSHD_WALLPAPER_ALLOW_HTTP=1` (catalog unit tests).
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+function isBlockedWallpaperHost(hostname) {
+  const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host) return true;
+  if (
+    host === 'localhost'
+    || host.endsWith('.localhost')
+    || host.endsWith('.local')
+    || host.endsWith('.internal')
+  ) {
+    return !allowHttp();
+  }
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+    const parts = host.split('.').map(Number);
+    if (parts.some((n) => n > 255)) return true;
+    const [a, b] = parts;
+    if (a === 127 || parts.join('.') === '0.0.0.0') return !allowHttp();
+    return a === 10
+      || a === 0
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 169 && b === 254);
+  }
+  if (host.includes(':')) {
+    if (host === '::1' || host === '0:0:0:0:0:0:0:1') return !allowHttp();
+    const mapped = host.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+    if (mapped) return isBlockedWallpaperHost(mapped[1]);
+    if (host === '::' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function parseHttpUrl(value) {
   if (typeof value !== 'string' || value.length === 0 || value.length > 2000) return null;
   let parsed;
@@ -90,9 +130,10 @@ function parseHttpUrl(value) {
   } catch {
     return null;
   }
-  if (parsed.protocol === 'https:') return parsed;
-  if (parsed.protocol === 'http:' && allowHttp()) return parsed;
-  return null;
+  const httpOk = parsed.protocol === 'https:' || (parsed.protocol === 'http:' && allowHttp());
+  if (!httpOk) return null;
+  if (isBlockedWallpaperHost(parsed.hostname)) return null;
+  return parsed;
 }
 
 function isAllowedWallpaperUrl(value) {

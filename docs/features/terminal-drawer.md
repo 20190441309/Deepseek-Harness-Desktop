@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-22 — source launch refuses incomplete Ghostty assets |
+| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
 
 ## User paths
 
@@ -35,8 +35,8 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `src/main/pty.test.js`；`src/main/dsh.test.js`（源码 launch 拒绝缺 wasm）；`src/shared/ghostty-assets.test.js`；相关 client 终端单测 |
-| Manual / QA | `TC-TERM-001` … `TC-TERM-004`；`TC-CHAT-004` |
+| Automated | `pty.test.js` / `dsh.test.js` / `ghostty-assets.test.js`；`qa:packaged` 可 rehearsal 兄弟仓 PTY + wasm 200（**不能**当发版 Pass） |
+| Manual / QA | 每次发布前生产表 `TC-TERM-001`…`004`、`TC-CHAT-004`；已装 CI 包、TC-WS-006 仓 |
 
 ## Sources
 

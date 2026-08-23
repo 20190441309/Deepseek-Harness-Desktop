@@ -5,11 +5,12 @@ const { getDesktopDshHome } = require('../shared/dsh-home');
 /**
  * Workspace authority: the trust roots for desktop capabilities that touch
  * the filesystem (git, PTY, file browse/read). Every renderer-supplied cwd
- * must resolve inside the configured boot workspace or a workspace the
- * running harness registry has already persisted. A third-party plugin
- * installed through the marketplace must not be able to drive `shell.gitPush`
- * or `shell.readFile` against an arbitrary directory using the user's
- * credentials.
+ * must resolve inside the configured boot workspace, an explicit extra root
+ * (for example the Host-owned no-workspace scratch cwd), or a workspace the
+ * running harness has persisted under `$DSH_HOME/storages/workspace.json`.
+ * Those registered roots may be siblings of the boot folder (a user-opened
+ * project). A plugin that writes a filesystem root (`C:\`, `/`) into that
+ * file does not expand the allowlist to the whole volume.
  * @param {{
  *   workspace?: string,
  *   extraWorkspaces?: unknown,
@@ -222,6 +223,36 @@ function readHarnessRegisteredWorkspacePaths(homeDir = dshHome()) {
 }
 
 /**
+ * True when `dir` is a volume root (`C:\`, `/`). Registering that path would
+ * authorize every file on the volume for Git/FS/PTY.
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function isFilesystemRoot(dir) {
+  const resolved = path.resolve(dir);
+  return path.parse(resolved).root === resolved;
+}
+
+/**
+ * Harness `workspace.json` is plugin-writable. Keep user-opened project
+ * folders (including siblings of the boot workspace) and drop volume roots.
+ * @param {unknown[]} listed
+ * @returns {string[]}
+ */
+function filterRegisteredWorkspaceRoots(listed) {
+  const rows = Array.isArray(listed) ? listed : [];
+  return rows.filter((raw) => {
+    if (typeof raw !== 'string' || raw.trim() === '') return false;
+    try {
+      const real = fs.realpathSync(path.resolve(raw));
+      return !isFilesystemRoot(real);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Lazy production authority bound to the configured boot workspace plus the
  * harness-registered workspace paths. PTY callers may also opt into the
  * Host-owned no-workspace scratch directory; filesystem and Git callers keep
@@ -236,7 +267,9 @@ function loadWorkspaceAuthority(options = {}) {
     return createWorkspaceAuthority({
       workspace: loadConfig().workspace,
       extraWorkspaces: options.allowScratchCwd ? [scratchWorkspacePath()] : [],
-      listRegisteredWorkspaces: () => readHarnessRegisteredWorkspacePaths(),
+      listRegisteredWorkspaces: () => filterRegisteredWorkspaceRoots(
+        readHarnessRegisteredWorkspacePaths(),
+      ),
     });
   } catch {
     return createWorkspaceAuthority({ workspace: '' });

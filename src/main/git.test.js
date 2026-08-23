@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createWorkspaceAuthority } = require('./workspace-authority');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranchList, gitChildEnv, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFailureMessage, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, inferHookName, isGitAdviceLine, isNtfsReservedGitPath, matchesBranchHeadContext, normalizeGitRemoteUrl, parseCustomCommitMessage, parseGhPullRequestRow, parseGitHubRepositoryNameWithOwner, parsePorcelainZ, parseUnifiedDiff, providerFromRemoteUrl, readPrTemplate, readRangeContext, rememberLastKnownPr, resetFetchCooldowns, resetLastKnownPrCache, resolveBaseBranchForNoUpstream, resolveBranchHeadContext, resolveLastKnownPr, resolvePrBaseBranch, resolvePreferredHeadSelector, run, sanitizeProgressText, setGhDefaultBranchResolver, setLookupOpenPullRequest, setWorkspaceAuthority, summarizeCommitMessage } = require('./git.js');
 const { parseRepositoryNameWithOwnerFromNormalized } = require('./git-pullrequest');
 const { setTextGenerator } = require('./git-generate.js');
@@ -1805,5 +1806,51 @@ test('resolveBranchHeadContext does not treat an unparseable non-origin remote a
     setWorkspaceAuthority(null);
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('gitBranchList lists branches for a harness-registered sibling of the boot workspace', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-home-'));
+  const boot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-boot-'));
+  const sibling = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-sib-'));
+  const previousConfig = require.cache[require.resolve('./config')];
+  try {
+    git(sibling, ['init', '-b', 'master']);
+    git(sibling, ['config', 'user.email', 't@local']);
+    git(sibling, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(sibling, 'README.md'), 'x\n');
+    git(sibling, ['add', 'README.md']);
+    git(sibling, ['commit', '-m', 'base']);
+    fs.mkdirSync(path.join(home, 'storages'));
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      tables: {
+        workspaces: {
+          'ws-sibling': { path: sibling, title: 'ChisaTerminal' },
+        },
+      },
+    })}\n`, 'utf8');
+    require.cache[require.resolve('./config')] = {
+      id: require.resolve('./config'),
+      filename: require.resolve('./config'),
+      loaded: true,
+      exports: { loadConfig: () => ({ workspace: boot }) },
+    };
+    setDesktopDshHome(home);
+    setWorkspaceAuthority(null);
+    const listed = await gitBranchList(sibling);
+    assert.equal(listed.ok, true, listed.message);
+    assert.equal(listed.branches.some((item) => item.name === 'master' && item.isCurrent), true);
+    const status = await gitStatus(sibling);
+    assert.equal(status?.isRepo, true);
+    assert.equal(status?.refName, 'master');
+  } finally {
+    if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
+    else delete require.cache[require.resolve('./config')];
+    clearDesktopDshHome();
+    setWorkspaceAuthority(null);
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
   }
 });

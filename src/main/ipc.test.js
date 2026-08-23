@@ -82,6 +82,7 @@ function loadIpc(options = {}) {
   const installMarketplaceCalls = [];
   const installPluginCalls = [];
   const uninstallCalls = [];
+  const saveConfigCalls = [];
   let startHarnessCalls = 0;
   const installResult = options.installResult || { ok: true };
   const startHarnessImpl = options.startHarness || (async () => {});
@@ -114,8 +115,19 @@ function loadIpc(options = {}) {
       theme: 'midnight',
       workspace: '',
     }),
-    saveConfig: (patch) => patch,
+    saveConfig: (patch) => {
+      saveConfigCalls.push(patch);
+      return patch;
+    },
     publicConfig: (config) => ({ theme: config.theme }),
+    parkRemoteSnapshot: (snap) => ({
+      ...(snap && typeof snap === 'object' ? snap : {}),
+      available: false,
+      enabled: false,
+      listening: false,
+      urls: [],
+      token: '',
+    }),
     normalizeRendererConfigPatch: (patch) => patch || {},
   });
   stub('./window', {
@@ -229,6 +241,7 @@ function loadIpc(options = {}) {
     installMarketplaceCalls,
     installPluginCalls,
     uninstallCalls,
+    saveConfigCalls,
     startHarness() {
       return startHarnessCalls;
     },
@@ -551,6 +564,41 @@ test('shell:get-remote reports available for a live gateway snapshot', async () 
   }
 });
 
+test('shell:save-remote refuses credential and workspace fields', async () => {
+  const remote = {
+    snapshot() {
+      return { enabled: true, listening: false };
+    },
+    async sync() {
+      return this.snapshot();
+    },
+  };
+  const ipc = loadIpc({ remote, remoteFeatureEnabled: true });
+  try {
+    await assert.rejects(
+      () => ipc.invoke('shell:save-remote', harnessEvent(), {
+        remoteEnabled: true,
+        apiKey: 'sk-stolen',
+        workspace: 'C:\\',
+        githubToken: 'ghp_stolen',
+      }),
+      /not renderer-writable|must be/,
+    );
+    assert.equal(ipc.saveConfigCalls.length, 0);
+    const saved = await ipc.invoke('shell:save-remote', harnessEvent(), {
+      remoteEnabled: true,
+      remoteMode: 'lan',
+    });
+    assert.equal(saved.enabled, true);
+    assert.deepEqual(ipc.saveConfigCalls.at(-1), {
+      remoteEnabled: true,
+      remoteMode: 'lan',
+    });
+  } finally {
+    ipc.restore();
+  }
+});
+
 test('shell:get-remote stays unavailable when remote is null', async () => {
   const ipc = loadIpc({ remote: null, remoteFeatureEnabled: true });
   try {
@@ -560,6 +608,28 @@ test('shell:get-remote stays unavailable when remote is null', async () => {
       enabled: false,
       listening: false,
     });
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:get-remote reports unavailable when the feature is parked', async () => {
+  const remote = {
+    snapshot() {
+      return { available: true, enabled: true, listening: true, port: 3180, token: 'secret', urls: [{ pairingUrl: 'http://10.0.0.4:3180/#offer=x' }] };
+    },
+  };
+  const ipc = loadIpc({ remote });
+  try {
+    const snap = await ipc.invoke('shell:get-remote', harnessEvent());
+    assert.equal(snap.available, false);
+    assert.equal(snap.enabled, false);
+    assert.equal(snap.listening, false);
+    assert.deepEqual(snap.urls, []);
+    assert.equal(snap.token, '');
+    const saved = await ipc.invoke('shell:save-remote', harnessEvent(), { remoteEnabled: true });
+    assert.equal(saved.available, false);
+    assert.equal(saved.enabled, false);
   } finally {
     ipc.restore();
   }

@@ -43,7 +43,7 @@ export function writeSmokeConfig(userData, workspace, port) {
   }, null, 2))
 }
 
-export function initGitWorkspace(workspace) {
+export function initGitWorkspace(workspace, options = {}) {
   writeFileSync(path.join(workspace, 'README.md'), 'smoke\n')
   const git = (args) => {
     const result = spawnSync('git', args, {
@@ -55,7 +55,10 @@ export function initGitWorkspace(workspace) {
       throw new Error(`git ${args.join(' ')} failed: ${(result.stderr || result.stdout || '').trim()}`)
     }
   }
-  git(['init'])
+  const branch = typeof options.branch === 'string' && options.branch.trim()
+    ? options.branch.trim()
+    : ''
+  git(branch ? ['init', '-b', branch] : ['init'])
   git(['add', '.'])
   git([
     '-c', 'user.name=dsh-smoke',

@@ -13,8 +13,6 @@ const { resolveAnnotationSubmission } = require('./preview-annotation-keyboard')
 const { computeLabelPosition } = require('./preview-pick-label');
 const { applyAnnotationTheme, captureElement } = require('./preview-pick-helpers');
 
-globalThis.ipcRenderer = ipcRenderer;
-
 const OVERLAY_ATTRIBUTE = 'data-dshd-annotation-ui';
 const TOOL_ATTRIBUTE = 'data-dshd-annotation-tool';
 const Z_INDEX_OVERLAY = 2147483646;

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Real-machine Electron suite for composer draft + official triggers + Remote on.
+ * Real-machine Electron suite for composer draft + official triggers.
  *
- * Starts a fresh Electron with remoteEnabled=true on disk, walks only the
- * composer-official cases, and fails if any required case is missing or red.
+ * Starts a fresh Electron with remoteEnabled=true on disk. While the feature
+ * is parked that seed must stay unavailable and must not listen.
+ * Walks only the composer-official cases, and fails if any required case is missing or red.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -88,7 +89,7 @@ function printStepTable(qa) {
 }
 
 function writeComposerQaConfig(userData, workspace, port) {
-  // remoteEnabled:true on disk proves the gateway listens after Harness is ready.
+  // remoteEnabled:true on disk must still be forced off while the feature is parked.
   writeFileSync(path.join(userData, 'config.json'), JSON.stringify({
     workspace,
     host: '127.0.0.1',
@@ -114,7 +115,7 @@ try {
   writeComposerQaConfig(dirs.userData, dirs.workspace, port)
 
   console.log(`Composer official QA: ${executable}`)
-  console.log(`Config forces remoteEnabled=true; gateway must listen after Harness is ready.`)
+  console.log(`Config seeds remoteEnabled=true; parked feature must not listen.`)
   const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
     DSH_QA_COMPOSER: '1',

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `boot-page` |
 | **status** | `active` |
-| **last verified** | 2026-08-21 — card authored from design-language §桌面启动页 + QA §1 |
+| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
 
 ## User paths
 
@@ -18,11 +18,12 @@
 - 禁止 NERV / MAGI / SEELE / EVA 等商标或官方标志挪用。
 - 插件装载进度留在 boot 画布。
 - 恢复动作与 [plugin-recovery 流程](../handbook/flows/plugin-recovery.md) 一致。
+- 覆盖安装同一桌面版本时，`userData/runtime/<version>` 必须与安装包 Harness pin + 归档大小一致；无戳或戳不匹配则重新解压。不得只因 `bin.js` 存在而沿用旧 runtime。
 
 ## Allowed touch
 
 - `src/renderer/boot.html` / `boot.css` / `boot.js` / `boot-tokens.css` / `boot-recovery.js`
-- `src/main/harness-controller.js`、`window.js`、`boot-log-dump.js`、`plugin-tree-failure.js`、`plugin-recovery-actions.js`
+- `src/main/harness-controller.js`、`harness-extract.js`、`window.js`、`boot-log-dump.js`、`plugin-tree-failure.js`、`plugin-recovery-actions.js`
 - 本卡与 handbook boot / plugin-recovery 章
 
 ## Do not touch
@@ -34,8 +35,8 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | boot / harness-controller / plugin-recovery 相关单测 |
-| Manual / QA | `TC-INST-003` … `TC-INST-007` |
+| Automated | boot / harness-controller / plugin-recovery 单测；`qa:packaged` 可 rehearsal overlay stamp（**不能**当发版 Pass） |
+| Manual / QA | 每次发布前 [production-acceptance](../qa/production-acceptance-test-cases.md)：`TC-INST-003`…`007`、`TC-INST-012`、`TC-INST-013`；对象=CI Setup |
 
 ## Sources
 

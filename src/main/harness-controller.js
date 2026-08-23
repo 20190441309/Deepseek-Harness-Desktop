@@ -418,16 +418,13 @@ class HarnessController extends EventEmitter {
     } catch (error) {
       this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
     }
-    try {
-      const dshbot = await this.hideDshbotPlugin();
-      this.assertOperationCurrent(generation);
-      if (dshbot && dshbot.ok === false) {
-        this.dsh.log(`隐藏 dshbot 失败：${dshbot.error || 'unknown'}`, 'app');
-      } else if (dshbot && (dshbot.stripped || dshbot.manifestRemoved)) {
-        this.dsh.log('已隐藏预置 dshbot 侧栏入口', 'app');
-      }
-    } catch (error) {
-      this.dsh.log(`隐藏 dshbot 失败：${errorMessage(error)}`, 'app');
+    const dshbot = await this.hideDshbotPlugin();
+    this.assertOperationCurrent(generation);
+    if (dshbot && dshbot.ok === false) {
+      throw new Error(`隐藏 dshbot 失败：${dshbot.error || 'unknown'}`);
+    }
+    if (dshbot && (dshbot.stripped || dshbot.manifestRemoved)) {
+      this.dsh.log('已隐藏预置 dshbot 侧栏入口', 'app');
     }
     const startOptions = {
       ...target,

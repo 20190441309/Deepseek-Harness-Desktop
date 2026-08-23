@@ -265,13 +265,12 @@ test('hides dshbot after dshmarket and before Harness start', async () => {
   assert.ok(f.dsh.logs.some((line) => /已隐藏预置 dshbot/.test(line)));
 });
 
-test('logs and continues when hiding dshbot fails', async () => {
+test('refuses to start Harness when hiding dshbot fails', async () => {
   const f = fixture({
     hideDshbotPlugin: async () => ({ ok: false, error: 'invalid-profile' }),
   });
-  await f.controller.start();
-  assert.equal(f.dsh.startCalls, 1);
-  assert.ok(f.dsh.logs.some((line) => /dshbot/.test(line) && /invalid-profile/.test(line)));
+  await assert.rejects(() => f.controller.start(), /dshbot|invalid-profile/);
+  assert.equal(f.dsh.startCalls, 0);
 });
 
 test('plugin-tree startup failure retries once with the official template overlay', async () => {

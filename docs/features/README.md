@@ -11,7 +11,7 @@
 | [docs/handbook/](../handbook/README.md) | 蓝图、流程、模块当前态 | 否；卡片挂手册章 |
 | [design-language.md](../design-language.md) / [motion.md](../motion.md) | 视觉与动效语言 | 否；卡片只链接 |
 | [superpowers/specs](../superpowers/specs/) / [plans](../superpowers/plans/) | 设计与施工过程 | 否；定稿后把**不变量**收进卡片 |
-| [qa/production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md) | 发版实机验收 | 否；卡片 `gates` 挂用例 ID |
+| [qa/production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md) | 发版实机验收：每次发布前对 CI windows 安装包走完 | 否；卡片 `gates` 挂用例 ID |
 | harness Agent Notes | 上游决策记录 | 否；桌面相关卡可链接 |
 | `.cursor/rules/*.mdc` | 短 always-on 不变量 | 否；文末链到本卡，细节以卡为准 |
 
@@ -41,9 +41,10 @@ Gate: <卡上 gates>
 | [wallpaper-gallery](wallpaper-gallery.md) | Appearance 行 + 图库窗；图源只在窗内 | `WallpaperRow` / `WallpaperGalleryModal` | TC-APP-002…010 |
 | [marketplace-settings](marketplace-settings.md) | 设置内市场；无独立窗 | `marketplace-install` / dshmarket | TC-EXT-001…005 |
 | [surfaces-work-loops](surfaces-work-loops.md) | 右栏工作环，非空态卡片 | preview / ui-files | TC-SURF-001…007 |
-| [boot-page](boot-page.md) | 仪器启动画布 + 插件进度/恢复 | `boot.*` / harness-controller | TC-INST-003…007 |
-| [terminal-drawer](terminal-drawer.md) | 底栏 PTY 工作环 | `pty.js` / ui-user-terminal | TC-TERM-001…004 |
+| [boot-page](boot-page.md) | 仪器启动画布 + 插件进度/恢复 | `boot.*` / harness-controller | TC-INST-003…007、012、013 |
+| [terminal-drawer](terminal-drawer.md) | 底栏 PTY 工作环 | `pty.js` / ui-user-terminal | TC-TERM-001…004（TC-WS-006 仓） |
 | [settings-select](settings-select.md) | 设置内值选择统一为官方胶囊 + Menu | `SettingsSelect` | vendor client spec |
-| [mobile-remote](mobile-remote.md) | 侧栏远程弹窗 + `mobile/web` SPA；默认关、开才监听 | `RemoteGateway` / `ui-settings-remote` | TC-NEG-001、TC-REM-001…003 |
+| [mobile-remote](mobile-remote.md) | 停放：侧栏远程入口隐藏；网关不监听 | `REMOTE_FEATURE_ENABLED` / preload | TC-NEG-001（负向）；TC-REM-001…003 N/A |
 | [dshbot](dshbot.md) | 停放：侧栏机器人入口隐藏；插件源仍打包 | `hideDshbotPlugin` | TC-EXT-007（负向） |
-| [dsh-home](dsh-home.md) | 桌面 `userData/dsh-home`，安装后不读官方 `~/.dsh` | `dsh-home.js` / spawnEnv | TC-INST-009、TC-INST-011 |
+| [dsh-home](dsh-home.md) | 桌面 `userData/dsh-home`，安装后不读官方 `~/.dsh` | `dsh-home.js` / spawnEnv | TC-INST-009、011；TC-WS-006 |
+| [git-titlebar](git-titlebar.md) | 标题栏分支/提交/推拉；登记工作区即授权 | `git.js` / workspace-authority | TC-WS-006、TC-GIT-001…007 |

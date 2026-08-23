@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/**
+ * Desktop-shell P0: shortcuts, tray/close, persist relaunch, skip-plugins + crash recovery.
+ */
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -10,10 +13,14 @@ import {
 } from './smoke-workspace.mjs'
 
 const require = createRequire(import.meta.url)
-const { assertReleaseQaResult } = require('../src/main/release-ui-walk.js')
+const {
+  assertShellP0QaResult,
+  assertPersistQaResult,
+  assertRecoveryQaResult,
+} = require('../src/main/shell-p0-qa.js')
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const timeoutMs = Number(process.env.DSH_SMOKE_TIMEOUT_MS) || 600_000
+const timeoutMs = Number(process.env.DSH_SMOKE_TIMEOUT_MS) || 420_000
 
 function electronExecutable() {
   if (process.env.ELECTRON_PATH && existsSync(process.env.ELECTRON_PATH)) {
@@ -26,7 +33,7 @@ function electronExecutable() {
   ]
   const found = candidates.find((item) => existsSync(item))
   if (!found) {
-    throw new Error('Source QA needs a local Electron binary (npm ci, then node node_modules/electron/install.js).')
+    throw new Error('Shell P0 QA needs a local Electron binary.')
   }
   return found
 }
@@ -55,7 +62,7 @@ function run(executable, args, env) {
     })
     const timer = setTimeout(() => {
       stopProcessTree(child)
-      reject(new Error(`Source QA timed out after ${timeoutMs}ms.`))
+      reject(new Error(`Shell P0 QA timed out after ${timeoutMs}ms.`))
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => process.stdout.write(chunk))
@@ -64,7 +71,6 @@ function run(executable, args, env) {
       clearTimeout(timer)
       reject(error)
     })
-
     child.once('exit', (code, signal) => {
       clearTimeout(timer)
       resolve({ code, signal })
@@ -72,13 +78,9 @@ function run(executable, args, env) {
   })
 }
 
-function printStepTable(qa) {
+function printStepTable(title, qa) {
   const steps = Array.isArray(qa?.steps) ? qa.steps : []
-  if (steps.length === 0) {
-    console.log('Release QA recorded no steps.')
-    return
-  }
-  console.log('\nRelease QA steps:')
+  console.log(`\n${title}:`)
   for (const step of steps) {
     const mark = step.ok ? 'PASS' : (step.optional ? 'SKIP' : 'FAIL')
     const detail = step.detail ? `  ${step.detail}` : ''
@@ -86,32 +88,67 @@ function printStepTable(qa) {
   }
 }
 
-const dirs = createSmokeDirs('dsh-source-qa-')
+function seedSkipSticky(userData) {
+  const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  const file = path.join(userData, 'config.json')
+  const config = JSON.parse(readFileSync(file, 'utf8'))
+  config.pluginRecovery = {
+    skipUserPlugins: true,
+    reason: 'qa skip sticky',
+    at: new Date().toISOString(),
+    appVersion: pkg.version,
+  }
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
+}
+
+const dirs = createSmokeDirs('dsh-shell-qa-')
 const keepRequested = process.env.DSH_SMOKE_KEEP === '1'
 let keepArtifacts = keepRequested
 
 try {
   const executable = electronExecutable()
   initGitWorkspace(dirs.workspace)
-  writeFileSync(path.join(dirs.workspace, 'note.md'), 'post-merge ui\n')
+  writeFileSync(path.join(dirs.workspace, 'note.md'), 'shell p0\n')
   const port = await reservePort()
   writeSmokeConfig(dirs.userData, dirs.workspace, port)
 
-  console.log(`Source release QA: ${executable}`)
-  const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
+  console.log(`Shell P0 QA: ${executable}`)
+  const shellOutcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
-    DSH_QA: '1',
+    DSH_QA_SHELL: '1',
   }))
-
   if (!existsSync(dirs.resultPath)) {
-    throw new Error(`QA result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
+    throw new Error(`Shell result was not written (exit=${shellOutcome.code}).`)
   }
-  const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
-  printStepTable(result.result?.qa || result.qa)
-  assertDesktopHarnessHome(dirs.userData, result)
-  assertSmokeResult(outcome, result)
-  assertReleaseQaResult({ qa: result.result?.qa || result.qa, ...result })
-  console.log(`Source release QA passed on port ${port}.`)
+  const shellResult = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
+  const shellQa = shellResult.result?.shellP0Qa || shellResult.shellP0Qa
+  printStepTable('Shell P0', shellQa)
+  assertDesktopHarnessHome(dirs.userData, shellResult)
+  assertSmokeResult(shellOutcome, shellResult)
+  assertShellP0QaResult(shellQa)
+
+  const persistOutcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
+    DSH_SMOKE: '1',
+    DSH_QA_PERSIST: '1',
+  }))
+  const persistResult = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
+  const persistQa = persistResult.result?.persistQa || persistResult.persistQa
+  printStepTable('Persist', persistQa)
+  assertSmokeResult(persistOutcome, persistResult)
+  assertPersistQaResult(persistQa)
+
+  seedSkipSticky(dirs.userData)
+  const recoveryOutcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
+    DSH_SMOKE: '1',
+    DSH_QA_RECOVERY: '1',
+  }))
+  const recoveryResult = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
+  const recoveryQa = recoveryResult.result?.recoveryQa || recoveryResult.recoveryQa
+  printStepTable('Recovery', recoveryQa)
+  assertSmokeResult(recoveryOutcome, recoveryResult)
+  assertRecoveryQaResult(recoveryQa)
+
+  console.log(`Shell / persist / recovery QA passed on port ${port}.`)
 } catch (error) {
   keepArtifacts = true
   console.error(error instanceof Error ? error.message : String(error))
@@ -119,9 +156,6 @@ try {
 } finally {
   if (keepArtifacts) {
     console.log(`QA artifacts kept at ${dirs.smokeRoot}`)
-    if (existsSync(path.join(dirs.userData, 'dshd-qa.png'))) {
-      console.log(`Screenshot: ${path.join(dirs.userData, 'dshd-qa.png')}`)
-    }
   } else if (!keepRequested) {
     try {
       rmSync(dirs.smokeRoot, { recursive: true, force: true, maxRetries: 3 })

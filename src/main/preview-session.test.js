@@ -145,12 +145,12 @@ test('session cache lists sessions and sweeps cookies and cache', async () => {
   assert.deepEqual(empty.listSessions(), []);
 });
 
-test('previewGuestWebPreferences pin sandbox and disable nodeIntegration', () => {
+test('previewGuestWebPreferences pin sandbox, isolation, and disable nodeIntegration', () => {
   const ses = fakeSession();
   const prefs = previewGuestWebPreferences({ session: ses });
   assert.equal(prefs.sandbox, true);
   assert.equal(prefs.nodeIntegration, false);
-  assert.equal(prefs.contextIsolation, false);
+  assert.equal(prefs.contextIsolation, true);
   assert.equal(prefs.session, ses);
   assert.equal(prefs.preload, previewGuestPreloadPath());
   assert.match(prefs.preload, /preview-guest-preload\.js$/);

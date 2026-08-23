@@ -544,25 +544,6 @@ class RemoteGateway extends EventEmitter {
       return;
     }
 
-    const parsed = new URL(url, 'http://dsh.remote');
-    const queryToken = parsed.searchParams.get('token');
-    if (queryToken) {
-      parsed.searchParams.delete('token');
-      const next = `${parsed.pathname}${parsed.search}`;
-      const location = next === '' ? '/' : next;
-      if (tokensEqual(queryToken, this.token)) {
-        const device = this.pairDevice(req);
-        this.send(res, 302, { location, 'set-cookie': cookieHeader(device.token) }, '');
-        return;
-      }
-      const existing = this.deviceForToken(queryToken);
-      if (existing) {
-        this.touchDevice(existing.id, { force: true });
-        this.send(res, 302, { location, 'set-cookie': cookieHeader(existing.token) }, '');
-        return;
-      }
-    }
-
     const presented = matchingToken(req.headers, url, this.authTokens());
     if (presented && !this.deviceForToken(presented) && tokensEqual(presented, this.token) && this.prefersHtml(req)) {
       const device = this.pairDevice({ headers: { ...req.headers, cookie: '' }, url: '/' });

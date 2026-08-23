@@ -82,7 +82,7 @@ npm run dist          # Windows installer
 npm run dist:mac      # macOS installer (must run on macOS)
 ```
 
-Push a `v*` tag that matches `package.json`; GitHub Actions builds the Windows and macOS installers.
+Push a `v*` tag that matches `package.json`; GitHub Actions builds the Windows and macOS installers. Before publishing, walk the [production acceptance table](docs/qa/production-acceptance-test-cases.md) on the **CI windows artifact** (same SHA as the Setup you will upload). A local `npm run dist` must not count as Pass on that table.
 
 ## Community
 

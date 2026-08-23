@@ -12,7 +12,7 @@
 | `window.js` | 主窗 / BrowserView |
 | `chrome.js` / `harness-chrome-inject.js` | 桌面 chrome 注入 |
 | `closing-overlay.js` | 关闭遮罩 |
-| `paths.js` / `config.js` | 路径与壳配置 |
+| `config.js` / `remote-patch.js` | 路径与壳配置；远程 IPC 补丁白名单 |
 | `../shared/dsh-home.js` | 桌面 Harness 家目录：`userData/dsh-home`，不读 `~/.dsh`；章：[modules/dsh-home.md](../modules/dsh-home.md) |
 | `local-url.js` | loopback URL 策略 |
 
@@ -52,14 +52,14 @@
 | 文件 | 职责 |
 | --- | --- |
 | `wallpaper-catalog.js` | 壁纸目录与下载 |
-| `remote.js` / `mobile-web.js` / `relay-client.js` | 远程与手机 |
-| `tray.js` / `menu.js` / `close-behavior.js` / `update.js` | 托盘菜单关闭更新 |
+| `remote.js` / `mobile-web.js` / `relay-client.js` | 远程与手机（停放：无侧栏入口、不监听） |
+| `tray.js` / `tray-menu.js` / `menu.js` / `close-behavior.js` / `update.js` | 托盘菜单关闭更新 |
 | `boot-log-dump.js` | 导出启动日志 |
 
 ## 其它
 
 | 文件 | 职责 |
 | --- | --- |
-| `composer-official-qa.js` / `release-ui-walk.js` | QA / 走查辅助 |
+| `composer-official-qa.js` / `appendix-a-qa.js` / `release-ui-walk.js` | QA / 走查辅助 |
 
 手册模块章应链接本索引或具体文件，避免再维护第二份文件清单。

@@ -19,7 +19,7 @@
 
 ## 实现入口
 
-- `src/main/harness-controller.js`、`dsh.js`、`window.js`、`../shared/dsh-home.js`
+- `src/main/harness-controller.js`、`dsh.js`、`harness-extract.js`、`window.js`、`../shared/dsh-home.js`
 - `src/renderer/boot.html` / `boot.js` / `boot.css` / `boot-tokens.css`
 
 ## 不变量
@@ -27,6 +27,7 @@
 - Feature card：[../../features/boot-page.md](../../features/boot-page.md)、[../../features/dsh-home.md](../../features/dsh-home.md)
 - 启动页 `--boot-*` 不得用于设置 / 官方 UI / 关闭遮罩。
 - 桌面家目录见 [dsh-home.md](dsh-home.md)：`userData/dsh-home`，不读官方 `~/.dsh`。
+- 打包运行时目录 `userData/runtime/<version>` 用 pin+归档戳校验；同版本覆盖安装不得沿用旧 Harness 树。
 
 ## 门槛
 

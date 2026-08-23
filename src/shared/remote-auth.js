@@ -33,7 +33,7 @@ function parseCookies(header) {
   return out;
 }
 
-function tokenFromHeaders(headers, url) {
+function tokenFromHeaders(headers, _url) {
   const authorization = String(headers.authorization || headers.Authorization || '');
   const bearer = authorization.match(/^Bearer\s+(\S+)/i);
   if (bearer) {
@@ -43,12 +43,7 @@ function tokenFromHeaders(headers, url) {
   if (cookies[COOKIE_NAME]) {
     return cookies[COOKIE_NAME];
   }
-  try {
-    const parsed = new URL(url, 'http://dsh.remote');
-    return parsed.searchParams.get('token') || '';
-  } catch {
-    return '';
-  }
+  return '';
 }
 
 function tokenList(tokens) {

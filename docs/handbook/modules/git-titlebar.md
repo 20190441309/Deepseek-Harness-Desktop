@@ -23,6 +23,7 @@
 ## 不变量
 
 - 行为对齐桌面已定 T3/标题栏契约；非仓库时降级而非假成功。
+- Git cwd 授权读桌面 `dsh-home` 的工作区登记，允许启动目录的兄弟项目；拒绝把盘符根（`C:\`、`/`）写入白名单。
 
 ## 门槛
 
@@ -30,4 +31,5 @@
 
 ## 延伸阅读
 
+- Feature：[../../features/git-titlebar.md](../../features/git-titlebar.md)
 - [../superpowers/specs/2026-08-18-t3-git-tool-verbatim-leftovers-design.md](../../superpowers/specs/2026-08-18-t3-git-tool-verbatim-leftovers-design.md)

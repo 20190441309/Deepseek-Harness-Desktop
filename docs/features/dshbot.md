@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `parked`（侧栏入口隐藏；插件源仍随仓库打包） |
-| **last verified** | 2026-08-22 — 启动路径改为 `hideDshbotPlugin`；单测 |
+| **last verified** | 2026-08-23 — `hideDshbotPlugin` 失败则阻止 `dsh web` 启动 |
 
 ## User paths
 

@@ -1,5 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const { rewriteLoopbackLoadUrl } = require('./local-url');
@@ -95,6 +96,30 @@ function previewScope(raw) {
 
 function rejectRemote() {
   return { ok: false, message: 'Preview only opens http(s) URLs.' };
+}
+
+/**
+ * Reveal/copy may only touch files the preview controller wrote under
+ * `userData/preview-recordings`. Symlink escapes fail closed.
+ * @param {unknown} userData
+ * @param {unknown} artifactPath
+ * @returns {string | null}
+ */
+function resolvePreviewArtifactPath(userData, artifactPath) {
+  if (typeof userData !== 'string' || userData.trim() === '') return null;
+  if (typeof artifactPath !== 'string' || artifactPath.trim() === '') return null;
+  const root = path.resolve(userData, 'preview-recordings');
+  let realRoot;
+  let realTarget;
+  try {
+    realRoot = fsSync.realpathSync(root);
+    realTarget = fsSync.realpathSync(artifactPath);
+  } catch {
+    return null;
+  }
+  const relative = path.relative(realRoot, realTarget);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return realTarget;
 }
 
 /**
@@ -993,12 +1018,13 @@ function createPreviewController(options = {}) {
     },
 
     async revealArtifact(artifactPath) {
-      if (typeof artifactPath !== 'string' || artifactPath.length === 0) {
-        return { ok: false, message: 'missing artifact path' };
+      const resolved = resolvePreviewArtifactPath(resolveUserDataPath(), artifactPath);
+      if (!resolved) {
+        return { ok: false, message: 'artifact path is not a preview recording' };
       }
       try {
         const reveal = showItemInFolder ?? ((next) => require('electron').shell.showItemInFolder(next));
-        reveal(artifactPath);
+        reveal(resolved);
         return { ok: true };
       } catch (error) {
         return failClosed(error);
@@ -1006,13 +1032,14 @@ function createPreviewController(options = {}) {
     },
 
     async copyArtifactToClipboard(artifactPath) {
-      if (typeof artifactPath !== 'string' || artifactPath.length === 0) {
-        return { ok: false, message: 'missing artifact path' };
+      const resolved = resolvePreviewArtifactPath(resolveUserDataPath(), artifactPath);
+      if (!resolved) {
+        return { ok: false, message: 'artifact path is not a preview recording' };
       }
       try {
         const imageApi = nativeImage ?? require('electron').nativeImage;
         const clip = clipboard ?? require('electron').clipboard;
-        const image = imageApi.createFromPath(artifactPath);
+        const image = imageApi.createFromPath(resolved);
         if (!image || (typeof image.isEmpty === 'function' && image.isEmpty())) {
           return { ok: false, message: 'empty image' };
         }

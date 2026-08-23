@@ -102,7 +102,7 @@ npm run dist          # Windows 安装包
 npm run dist:mac      # macOS 安装包（须在 macOS 上）
 ```
 
-推送与 `package.json` 一致的 `v*` 标签，GitHub Actions 会出 Windows 和 macOS 安装包。
+推送与 `package.json` 一致的 `v*` 标签，GitHub Actions 会出 Windows 和 macOS 安装包。对外发布前必须对 **CI windows artifact**（与即将上传的 Setup 同一 SHA）走完 [生产验收表](docs/qa/production-acceptance-test-cases.md)；本机 `npm run dist` 不能当那张表的 Pass。
 
 ## 交流
 

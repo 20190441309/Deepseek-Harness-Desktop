@@ -22,6 +22,12 @@ test('composer official cases cover the plan claims', () => {
   assert.ok(ids.includes('case.terminal.addToChat'));
   assert.ok(ids.includes('case.remote.available'));
   assert.ok(ids.includes('case.remote.listening'));
+  assert.ok(ids.includes('case.remote.spa'));
+  assert.ok(ids.includes('case.remote.pairingSpa'));
+  assert.match(
+    require('node:fs').readFileSync(require('node:path').join(__dirname, 'composer-official-qa.js'), 'utf8'),
+    /dshd-rem-002/,
+  );
   assert.equal(new Set(ids).size, ids.length);
 });
 

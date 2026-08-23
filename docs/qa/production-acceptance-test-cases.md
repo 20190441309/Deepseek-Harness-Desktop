@@ -1,30 +1,45 @@
 # Deepseek-Harness-Desktop 生产交付实机验收用例
 
-面向**用户能下载到的安装包产物**的 Windows x64 必过验收。macOS arm64 有机则测，不阻塞本轮 Windows 门禁。
+面向 **GitHub Actions 打出的 Windows x64 安装包** 的必过验收。macOS arm64 有机则测，不阻塞本轮 Windows 门禁。
 
-自动化冒烟（`npm run qa:source` / `npm run qa:composer`）只证明「控件在、官方菜单边界正确」，**不能替代**本表。本表以人工实机为准；每条必须留下可复核证据。
-
-修订说明：相对初版补齐 README/桌面壳承诺缺口（识图、思考强度、托盘菜单、关闭行为、本地壁纸、dshbot、升级卸载、负向契约），收紧 P0，统一多轮对话门禁为附录脚本。
+**每次对外发布前必须对本表走完一遍。** 测的 Setup 必须与即将上传到 GitHub Release 的文件 **同一 SHA256**。源码 `qa:*`、本机 `npm run dist`、`qa:packaged` **都不能**给本表打 Pass，也不能代替走表。
 
 ---
 
 ## 0. 验收约定
 
-### 0.1 产物与环境
+### 0.1 产物：必须是 CI windows job
+
+合法对象只有 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) **windows** job 上传的 artifact `DeepSeek-Harness-windows-x64` 里的 `Deepseek-Harness-Desktop-Setup-*.exe`（及 `.blockmap`）。
+
+该 job 步骤为：`actions/checkout` → `actions/setup-node` **`node-version: 22`** → `npm ci` → `node node_modules/electron/install.js` → `node scripts/setup-harness.js` → `npm run dist`。`afterPack` 把当时的 `process.execPath` 打进安装目录 `resources/node.exe`，所以本机 Node 24 打的包与 CI **不是同一份**。
 
 | 项 | 要求 |
 | --- | --- |
-| 产物 | GitHub Releases **Windows x64** 安装包：`Deepseek-Harness-Desktop-Setup-*.exe` |
-| 禁装 | 已撤回的 v0.2.0；已知坏包 0.2.4 / 0.2.5（市场依赖残缺） |
-| 校验 | 记录文件名 + Release 公布的 SHA256（或同等校验）；与 About 内版本一致 |
-| 版本钉 | **以安装包实际版本与 Release 说明为准**；源码树 `vendor/harness-upstream.json` 可能超前（例如源码已钉 rc.8 而某安装包仍为 rc.7），禁止把源码钉写成已发包装钉 |
-| 系统 | Windows 10/11 x64；测前退出已运行的同名应用（单实例锁） |
-| 工作区 | 本地 Git 仓库（含未提交改动更好）；另备非 Git 空目录；可选：旧版已装环境做升级测 |
+| 下载 | 从该 Actions run 下载 artifact，记录 **run URL**、文件名、SHA256 |
+| 安装 | 用**该文件**默认路径安装或 `/S`；启动用开始菜单/桌面快捷方式 |
+| 家目录 | `%APPDATA%\Deepseek-Harness-Desktop\dsh-home`。不读官方 `~/.dsh`。见 [handbook/modules/dsh-home.md](../handbook/modules/dsh-home.md) |
+| 发布同一性 | GitHub Release / 对外分发的 exe SHA256 **必须等于**本表已测文件。测完禁止再 `npm run dist` 或再跑 workflow **换包**后再上传 |
+| 禁装 | 已撤回的 v0.2.0；已知坏包 0.2.4 / 0.2.5 |
+| 版本钉 | Release 说明里的 harness 基线必须等于 **该 SHA 包内** pin（与 `vendor/harness-upstream.json` 在打该包时的内容一致）。禁止用源码树超前钉给包打 Pass，禁止再写已过期的 `0.1.0-rc.7` |
+| 系统 | Windows 10/11 x64；测前退出已运行的同名应用（勿杀 Cursor） |
+| 工作区 | 启动目录可以是 Documents 默认仓；**Git/终端/附录**必须再打开 `workspace.json` 已登记、且不是启动目录子路径的仓库（见 TC-WS-006） |
 | 网络 | 可访问模型网关与壁纸源（Bing / Wallhaven） |
-| 账号 | 无需产品登录；模型密钥见 §0.3 |
-| 家目录 | 本包桌面 Harness **不读** `~/.dsh`。会话/插件在 `userData/dsh-home`（Windows：`%APPDATA%\Deepseek-Harness-Desktop\dsh-home`）。官方 CLI 仍用 `~/.dsh`。详见 [handbook/modules/dsh-home.md](../handbook/modules/dsh-home.md) |
+| 账号 | 无需产品登录；模型密钥见 §0.4 |
 
-### 0.2 缺陷分级与门禁
+**现 workflow 缺口（本表点名，不在本文件改 YAML）：** 打 `v*` tag 且 windows 成功后，`release` job **立刻** `gh release create`，来不及先走本表。合规顺序：`workflow_dispatch`（或其它「先出 artifact、不自动发 Release」的路径）→ 下载测完 → 用**同一批文件**发 Release。先 tag 再测已经公开的包，**不算发布前验收**。
+
+### 0.2 非法证据（出现则该格不得 Pass，整份报告不得勾可交付）
+
+- `electron .` / `npm start` / 源码 `qa:source` / `qa:composer` / `qa:shell` / `qa:appendix`
+- 本机 `npm run dist`、`dist/` 下 Setup、`dist/win-unpacked`、`smoke:packaged`、`qa:packaged`（允许当 rehearsal，**禁止**写入本表 Pass）
+- `--user-data-dir` 冒烟目录顶替真实 `%APPDATA%\Deepseek-Harness-Desktop`
+- 只测 `config.json` 启动工作区，不打开 harness `storages/workspace.json` 里登记的兄弟目录
+- 源码 Electron 双开顶替「已装快捷方式第二次启动」
+
+**冲突条款：** 源码套件全绿而本表任一条 P0 Fail ⇒ **源码套件有漏洞**，同时本表 Fail，禁止解释成「源码没问题、只是安装包坑」。本机 dist 绿而 CI 包红 ⇒ 本机包无效，不得把本机包当 Release。
+
+### 0.3 缺陷分级与发版硬门禁
 
 | 级 | 定义 | 门禁 |
 | --- | --- | --- |
@@ -33,11 +48,15 @@
 | **Major** | 次要路径坏、可绕过、文案严重误导 | 发版需书面豁免 |
 | **Minor** | 视觉/动效/文案瑕疵 | 可进发版备注 |
 
-**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免）。** P1 失败记入发布说明或豁免单。P2 记入后续迭代。
+**每次发布前**（GitHub Release 或分发该 SHA 的 Setup）：对 **该 CI SHA** 走完本表，写下 `docs/qa/results/<日期>/` 执行报告，填 §16 且勾「Release 将上传同一 SHA」。没有这份绑定 CI SHA 的报告，**禁止发版**。
+
+**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免），且 §16 绑定 CI artifact SHA。** 手机远程已停放：TC-REM-001…003 标 **N/A**，不计入 P0 门禁，也不得标 Pass。当前没有远程书面豁免条。P1 失败记入发布说明或豁免单。P2 记入后续迭代。
 
 **造障类 P0**（插件弄挂、杀子进程、强制升级包）：能造则测；本轮无法安全造障时标 **Blocked**，附原因，由产品负责人决定是否豁免，**不得静默标 Pass**。
 
-### 0.3 本轮模型网关（多轮对话必测）
+每条步骤默认在 **已安装的 CI 包**、真实 `%APPDATA%` 家目录里做。附录 A 必须在该安装包会话里跑，不得用冒烟 `userData`。
+
+### 0.4 本轮模型网关（多轮对话必测）
 
 在 **设置 → 模型 → 添加自定义提供方** 配置：
 
@@ -54,25 +73,28 @@
 
 **多轮对话 P0 门禁（唯一标准）：** 同一会话内 **附录 A 五轮脚本全部成功**（含记忆、读文件工具、终端/命令工具、综合汇总）。消耗不设上限。不得用「随便聊两句」代替附录。
 
-### 0.4 用例记录格式
+### 0.5 用例记录格式
 
 ```text
 用例 ID:
 结果: Pass | Fail | Blocked | N/A
 实际结果:
-证据: 截图路径 / 日志路径 / 安装包文件名与校验值 / 版本号
+证据: 截图路径 / 日志路径 / **CI Actions run URL** / 安装包文件名与 SHA256 / About 版本
 缺陷编号:（Fail 时必填）
 豁免单号:（Blocked 且申请发版时必填）
 执行人 / 日期:
 ```
 
-### 0.5 建议执行顺序（Windows，约 2～2.5 人日）
+Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
-1. §1 安装/升级/卸载抽检 → §2 模型（含识图/思考强度）→ §3 工作区与主框  
-2. §4 附录多轮对话（最长，优先）  
+### 0.6 建议执行顺序（Windows，约 2～2.5 人日）
+
+0. 从 Actions 下载 windows artifact，记录 SHA256；退出已装 `Deepseek-Harness-Desktop.exe`；用该文件安装。`qa:packaged` 仅 rehearsal，**不是**本步的放行条件。  
+1. §1 安装/升级/卸载抽检（含 TC-INST-012 同版本 overlay、TC-INST-013 bundled node）→ §2 模型 → §3 工作区（含 TC-WS-006）  
+2. §4 附录多轮对话（最长，优先；在 TC-WS-006 仓库会话里）  
 3. §5～§8 会话 / 审批 / Git / Surfaces / 终端  
 4. §9 外观与壁纸 → §10 扩展与 dshbot → §11 托盘/关闭/更新  
-5. §12 负向与持久化 → §13 已知不测核对 → 签字  
+5. §12 负向与持久化 → §13 已知不测核对 → §16 签字  
 
 ---
 
@@ -80,25 +102,26 @@
 
 ### TC-INST-001 · 安装包校验、安装并可启动 · P0
 
-**前置：** 干净机或已卸载旧版；下载目标 Setup exe。
+**前置：** 干净机或已卸载旧版。对象是 Actions windows artifact，不是本机 `dist\`。
 
 **步骤：**
 
-1. 核对文件名与 Release；记录 SHA256（或 Release 校验方式）。  
-2. 默认路径安装；确认桌面与开始菜单快捷方式。  
-3. 启动；观察启动页仪器画布（品牌名、状态章、日志）。  
+1. 打开该次 `release.yml` windows job 的 Actions run，下载 artifact `DeepSeek-Harness-windows-x64`。  
+2. 记录 run URL、文件名、SHA256。此文件即拟发布文件。  
+3. 用**该文件**默认路径安装；确认桌面与开始菜单快捷方式。  
+4. 从快捷方式启动；观察启动页仪器画布（品牌名、状态章、日志）。  
 
-**期望：** 校验匹配；安装无报错；启动页出现并进入官方 Web UI（或明确失败态，非白屏/闪退）。
+**期望：** 安装无报错；启动页出现并进入官方 Web UI（或明确失败态，非白屏/闪退）。禁止用本机 `dist\` Setup 或源码冷启动过本条。
 
 ### TC-INST-002 · 单实例锁 · P0
 
-**步骤：** 应用已运行时再次点快捷方式（或再开一份安装版入口）。
+**步骤：** 已安装应用已运行时，再点**开始菜单或桌面快捷方式**（禁止用第二份源码 `electron.exe` 顶替）。
 
 **期望：** 不出现第二套完整主窗抢资源；焦点回到已有实例。
 
 ### TC-INST-003 · 冷启动：插件加载留在启动页 · P0
 
-**步骤：** 冷启动，观察运行时就绪后至 Web UI 露出前的状态行。
+**步骤：** 冷启动**已安装**应用，观察运行时就绪后至 Web UI 露出前的状态行。禁止源码 `electron .` 顶替。
 
 **期望：** 状态可见「正在加载插件 n/m」（或等价文案）；**不**闪到官方独立「正在加载插件」页；随后进入主界面。
 
@@ -132,15 +155,15 @@
 
 ### TC-INST-008 · 版本与 Release 备注一致 · P0
 
-**步骤：** About / 设置核对版本；对照 Release（含禁装警告）；对照 harness 基线表述。
+**步骤：** About / 设置核对版本；对照**即将上传的** Release 草稿或说明（含禁装警告）；对照该 SHA 包内 harness 基线。
 
-**期望：** 应用版本 = 安装包/tag；Release 禁装说明被遵守；**不**把源码超前钉宣传成该安装包基线。
+**期望：** 应用版本 = 安装包/拟用 tag；Release 禁装说明被遵守；正文 harness 基线等于 **该 CI 包** 内 pin，不得用源码树超前钉，不得写 `0.1.0-rc.7`（当前包内 pin 为 `0.1.1-rc.1` 时必须如此宣传）。
 
 ### TC-INST-009 · 覆盖升级（旧版 → 本包）· P0
 
-**前置：** 先装上一稳定版（勿用 0.2.4/0.2.5/撤回包），保留用户配置与一会话。
+**前置：** 先装上一稳定版（勿用 0.2.4/0.2.5/撤回包），保留用户配置与一会话。新包必须是本轮 CI artifact。
 
-**步骤：** 运行新 Setup 覆盖安装 → 启动 → 打开原工作区与会话。
+**步骤：** 运行该 CI Setup `/S` 覆盖安装（含**同一桌面版本** overlay）→ 从快捷方式启动 → 打开原工作区与会话。原工作区走 TC-WS-006，不得只测启动 Documents 文件夹。
 
 **期望：** 升级无半残；能进主界面；壳层已存默认 API key 与工作区路径仍可用。会话、主题、自定义模型、MCP、技能在 `userData/dsh-home`，与升级前写在 `~/.dsh` 的数据分开，**须在桌面里重配**（明确提示或不崩即可）；市场不因依赖残缺导致一打开即 `dsh 进程结束`。
 
@@ -163,13 +186,31 @@
 
 **期望：** 桌面进主界面（或走 skip-user-plugins 后仍可用）；失败不得归因于官方 home 里那条坏 bundle。Boot 日志出现桌面 `Harness 家目录` 且路径在应用数据目录下的 `dsh-home`。
 
+### TC-INST-012 · 同版本 overlay 必须重解压 Harness · P0
+
+**前置：** 已安装本轮 CI 包，或先装同号旧 harness 包。桌面版本号不变（例如仍为 0.2.6）时 `userData/runtime/<version>` 会复用路径。
+
+**步骤：**
+
+1. 在 `%APPDATA%\Deepseek-Harness-Desktop\runtime\<appVersion>\` 留下无 `.dshd-runtime.json`、或 stamp 与当前 pin 不符的完整外观 extract（或先装仍含旧 `dsh web`、不认识 `--no-open` 的包）。  
+2. 用**本轮 CI Setup** `/S` 覆盖同一桌面版本（或冷启动已含 stamp 修复的本轮包）。  
+3. 看启动日志与 `runtime/<version>/package.json`。  
+
+**期望：** 无戳或戳不匹配则重新解压；启动日志**不得**出现 `unknown option '--no-open'`；解压树 / About 所述 harness 与该 SHA 包内 pin 一致（现为 `dsh-v0.1.1-rc.1` / npm `0.1.1-rc.1`），不得仍是 `0.1.0-rc.7`。
+
+### TC-INST-013 · 安装包内 Node 与 CI 一致 · P0
+
+**步骤：** 打开安装目录（默认 `%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop\`）运行 `resources\node.exe -v`。
+
+**期望：** 主版本为 Node **22**（与 `release.yml` `setup-node` `node-version: 22` 一致）。若为 24.x，说明 afterPack 打进了本机 `process.execPath`，该包不是 CI 包，本表整份作废。
+
 ---
 
 ## 2. 模型与提供方
 
 ### TC-MODEL-001 · 添加自定义网关并保存脱敏 · P0
 
-**步骤：** `Ctrl+,` → 模型 → 添加自定义提供方（§0.3）→ 保存 → 重开设置。
+**步骤：** `Ctrl+,` → 模型 → 添加自定义提供方（§0.4）→ 保存 → 重开设置。
 
 **期望：** 保存成功；密钥不回显明文；选择器可见 `grok-4.6`。
 
@@ -215,7 +256,7 @@
 
 **步骤：** 临时去掉有效模型选择（或空提供方）观察 Composer。
 
-**期望：** 发送被阻拦且有说明；恢复模型后可发。测完恢复 §0.3 配置。
+**期望：** 发送被阻拦且有说明；恢复模型后可发。测完恢复 §0.4 配置。
 
 ---
 
@@ -251,11 +292,19 @@
 
 **期望：** 应用可用；Git 空态或可初始化；不崩溃。
 
+### TC-WS-006 · 打开已登记的兄弟工作区 · P0
+
+**前置：** 启动工作区仍是默认 Documents 目录（例如 `Documents\Deepseek-Harness-Desktop`）。`%APPDATA%\Deepseek-Harness-Desktop\dsh-home\storages\workspace.json` 已登记另一路径，且该路径**不是**启动目录的子路径（例如 `C:\Ai\ChisaTerminal`）。
+
+**步骤：** 在已安装应用里从侧栏/会话打开该登记仓库，进入四栏。
+
+**期望：** 会话 cwd 是该兄弟仓库，不是偷偷连回 Documents。本条不过则 TC-GIT-001 / TC-GIT-003 / TC-TERM-001 / 附录 A 不得标 Pass。
+
 ---
 
 ## 4. 多轮对话与 Composer（P0 核心）
 
-> 使用 §0.3 网关。同一会话执行附录 A；失败从该轮复测或新会话整段重跑。
+> 使用 §0.4 网关，在 **已安装 CI 包** 且已打开 TC-WS-006 工作区的会话里执行附录 A；失败从该轮复测或新会话整段重跑。不得用 `qa:appendix` 冒烟目录顶替。
 
 ### TC-CHAT-001 · 附录 A 第 1 轮：连通与验证码 · P0
 
@@ -377,21 +426,21 @@
 
 ### TC-GIT-001 · 状态与分支菜单 · P0
 
-**步骤：** 打开分支/Git 菜单。
+**步骤：** 与 TC-WS-006 **同一仓库**。打开分支/Git 菜单。不得只在启动工作区里测一遍就算过。
 
-**期望：** 显示当前分支与状态。
+**期望：** 显示该仓库当前分支与状态；菜单列出真实分支。授权失败不得画成「没有匹配的分支」。
 
 ### TC-GIT-002 · 切换或创建分支 · P1
 
-**步骤：** 切换或创建 `dshd-qa/<date>`。
+**步骤：** 在 TC-WS-006 仓库切换或创建 `dshd-qa/<date>`。
 
 **期望：** 成功；状态刷新。
 
 ### TC-GIT-003 · 暂存与提交 · P0
 
-**步骤：** Stage → 说明 → Commit（勿推受保护主支除非允许）。
+**步骤：** 在 TC-WS-006 仓库 Stage → 说明 → Commit（勿推受保护主支除非允许）。
 
-**期望：** 成功；空提交等有提示。
+**期望：** 成功；空提交等有提示。不得因 `ptyCreate requires a project cwd` 或 Git 未授权而失败。
 
 ### TC-GIT-004 · Push / Pull / 开变更请求 · P1
 
@@ -467,9 +516,9 @@
 
 ### TC-TERM-001 · 底栏终端可用 · P0
 
-**步骤：** `` Ctrl+` `` → `echo dshd-qa-ok`。
+**步骤：** 与 TC-WS-006 **同一仓库** 按 `` Ctrl+` `` → `echo dshd-qa-ok`。不得只在启动工作区测。
 
-**期望：** 输出可见。
+**期望：** 抽屉打开；无「无法启动终端」；无 `ptyCreate requires a project cwd`；输出可见。另：打包 runtime 上 `http://127.0.0.1:<port>/plugins/@deepseek-ai/dsh-client-ui-user-terminal/assets/ghostty-vt.wasm` 为 **200**。
 
 ### TC-TERM-002 · 选区送对话 · P0
 
@@ -676,29 +725,29 @@
 
 ## 12. 负向、远程与韧性
 
-### TC-NEG-001 · 远程默认关闭且不监听 · P0
+### TC-NEG-001 · 远程入口隐藏且不监听 · P0
 
-**步骤：** 全新配置（不要打开侧栏远程）；用资源监视器/netstat 确认 3180。
+**步骤：** 启动后看侧栏底部（设置齿轮旁）；用资源监视器/netstat 确认 3180。磁盘即使有 `remoteEnabled: true` 也走本条。
 
-**期望：** 侧栏有手机 **远程** 入口；快照 `available`；`enabled` 为关；**不**开 HTTP 监听。磁盘若曾 `remoteEnabled: true` 则走 TC-REM-001，不走本条。
+**期望：** 没有手机 **远程** 图标或「远程」入口；快照 `available === false`；**不**开 HTTP 监听。不得出现配对二维码。
 
-### TC-REM-001 · 打开局域网远程并出现二维码 · P0
+### TC-REM-001 · 打开局域网远程并出现二维码 · N/A（产品停放）
 
-**步骤：** 侧栏底部手机图标 → 远程弹窗 → 开 → 局域网。
+**步骤：** 不测。重新打开产品前把 [mobile-remote](../features/mobile-remote.md) 改回 `active` 再恢复为本条 P0。
 
-**期望：** 3180 监听；弹窗显示配对二维码（URL 在 `#offer=`）；关闭远程后停止监听。
+**期望：** N/A。不得标 Pass。
 
-### TC-REM-002 · 手机浏览器打开 SPA · P0
+### TC-REM-002 · 手机浏览器打开 SPA · N/A（产品停放）
 
-**步骤：** 系统相机 / 浏览器扫码（或粘贴配对 URL）→ 进入会话。
+**步骤：** 不测。
 
-**期望：** 打开的是 `mobile/web` 连接/对话壳，不是官方四栏；能列出 Host 会话并发送一条文本。
+**期望：** N/A。不得标 Pass。不得用书面豁免把本条写成 Pass。
 
-### TC-REM-003 · 审批允许一次 / 拒绝 · P1
+### TC-REM-003 · 审批允许一次 / 拒绝 · N/A（产品停放）
 
-**步骤：** 从手机发一条会触发审批的请求；在输入区接管条点允许一次或拒绝。
+**步骤：** 不测。
 
-**期望：** 审批不另开整页模态；结果回到对话。中继 HTTPS 可选测；HTTP 中继 origin 不得生效。
+**期望：** N/A。中继 HTTPS 在停放期间不测；HTTP 中继 origin 仍不得生效（随 TC-NEG-001 不监听一并覆盖）。
 
 ### TC-NEG-002 · Harness 崩溃恢复 · P0（造障）
 
@@ -747,128 +796,149 @@
 
 ---
 
-## 14. 与自动化冒烟的对照
+## 14. 自动化对照（全部不能顶替本表）
 
-| 自动化 | 覆盖 | 实机仍须人确认 |
+本表 Pass **只能**来自 CI windows artifact + 已装快捷方式。下表说明现有命令实际测了什么；用它们填本表 = 套件与本表同时失效。
+
+| 命令 | 实际测了什么 | 为何不能顶替本表 |
 | --- | --- | --- |
-| `qa:source` | 控件存在、图库入口、市场分区、dshbot 侧栏缺席、Files Mention；须在 `userData/dsh-home` 起 Harness，**禁止**向 Electron 注入 `DSH_HOME` | 安装包、升级卸载、附录多轮 API、Git 写、托盘菜单、更新安装、识图/思考强度 |
-| `qa:composer` | Mention/预览/终端送对话、禁 `$`、Remote 默认关 / 开启后监听；同样不得注入 `DSH_HOME` | 同上 |
+| `qa:source` | 源码 Electron、隔离 `userData`、`initGitWorkspace` 作为**唯一** `config.workspace`；PTY/Git 走 `loadConfig().workspace` | 不是 CI 包；**覆盖不了** 已登记兄弟仓、NSIS overlay、打包 `runtime/<ver>` stamp、安装目录 `node.exe`。2026-08-23 用它给 TC-GIT-001 / 终端 / INST 打 Pass 后，真实安装包在兄弟仓上失败 |
+| `qa:composer` / `qa:appendix` / `qa:shell` | 同源码 Electron；附录即使五轮绿 | 不构成 TC-CHAT-* / 托盘 / 恢复的**安装包** Pass |
+| `smoke:packaged` | `dist/win-unpacked` + 单 Git 工作区 UI/PTY | 不是 CI artifact；捕不到兄弟仓 Git/PTY |
+| `qa:packaged` | 本机 `win-unpacked`：无戳 extract、预写 `workspace.json` 兄弟仓、`gitBranchList`、PTY、Ghostty 200、`--no-open` | rehearsal 可以；**GREEN 也不能**填本表 Pass，更不能把本机包当 CI 包发布 |
+| 本机 `npm run dist` | 本机 Node + afterPack `process.execPath` | 与 `release.yml` windows job **不是同一 SHA** |
 
-发版建议：本表 P0 全绿（或合法豁免）**且**可选在源码树跑通两条自动化。
+**源码套件缺陷（修 walker 的待办，不在走本表时改代码）：**
+
+1. 生产表 Pass 不得由上表任何命令写入。  
+2. 源码 / packaged smoke 若声称 Git/终端全绿，却只探针启动工作区，视为套件 Fail。  
+3. 无 stamp 陈旧 extract 时源码树不测 `--no-open` 覆盖。
+
+**发版：** 下载 CI windows artifact → 对本 SHA 走完本表 → `docs/qa/results/<日期>/` + §16 勾同一 SHA → 再 `gh release` 上传**该文件**。TC-REM-001…003 为 N/A（产品停放）。GitHub `release.yml` **不得**跑 `qa:packaged`（那也不是本表）。
 
 ---
 
 ## 15. 执行记录总表
 
-| ID | 优先级 | 结果 | 缺陷/豁免 | 执行人 | 日期 |
-| --- | --- | --- | --- | --- | --- |
-| TC-INST-001 | P0 |  |  |  |  |
-| TC-INST-002 | P0 |  |  |  |  |
-| TC-INST-003 | P0 |  |  |  |  |
-| TC-INST-004 | P0 造障 |  |  |  |  |
-| TC-INST-005 | P0 造障 |  |  |  |  |
-| TC-INST-006 | P0 造障 |  |  |  |  |
-| TC-INST-007 | P1 造障 |  |  |  |  |
-| TC-INST-008 | P0 |  |  |  |  |
-| TC-INST-009 | P0 |  |  |  |  |
-| TC-INST-010 | P1 |  |  |  |  |
-| TC-INST-011 | P0 造障 |  |  |  |  |
-| TC-MODEL-001 | P0 |  |  |  |  |
-| TC-MODEL-002 | P1 |  |  |  |  |
-| TC-MODEL-003 | P0 |  |  |  |  |
-| TC-MODEL-004 | P0 |  |  |  |  |
-| TC-MODEL-005 | P0 |  |  |  |  |
-| TC-MODEL-006 | P1 |  |  |  |  |
-| TC-MODEL-007 | P1 |  |  |  |  |
-| TC-WS-001 | P0 |  |  |  |  |
-| TC-WS-002 | P0 |  |  |  |  |
-| TC-WS-003 | P1 |  |  |  |  |
-| TC-WS-004 | P0 |  |  |  |  |
-| TC-WS-005 | P1 |  |  |  |  |
-| TC-CHAT-001 | P0 |  |  |  |  |
-| TC-CHAT-002 | P0 |  |  |  |  |
-| TC-CHAT-003 | P0 |  |  |  |  |
-| TC-CHAT-004 | P0 |  |  |  |  |
-| TC-CHAT-005 | P0 |  |  |  |  |
-| TC-CHAT-006 | P0 |  |  |  |  |
-| TC-CHAT-007 | P0 |  |  |  |  |
-| TC-CHAT-008 | P0 |  |  |  |  |
-| TC-CHAT-009 | P0 |  |  |  |  |
-| TC-CHAT-010 | P1 |  |  |  |  |
-| TC-CHAT-011 | P2 |  |  |  |  |
-| TC-SESS-001 | P1 |  |  |  |  |
-| TC-SESS-002 | P1 |  |  |  |  |
-| TC-SESS-003 | P0 |  |  |  |  |
-| TC-APPROVE-001 | P0 |  |  |  |  |
-| TC-APPROVE-002 | P0 |  |  |  |  |
-| TC-APPROVE-003 | P1 |  |  |  |  |
-| TC-GIT-001 | P0 |  |  |  |  |
-| TC-GIT-002 | P1 |  |  |  |  |
-| TC-GIT-003 | P0 |  |  |  |  |
-| TC-GIT-004 | P1 |  |  |  |  |
-| TC-GIT-005 | P1 |  |  |  |  |
-| TC-GIT-006 | P1 |  |  |  |  |
-| TC-GIT-007 | P2 |  |  |  |  |
-| TC-SURF-001 | P0 |  |  |  |  |
-| TC-SURF-002 | P1 |  |  |  |  |
-| TC-SURF-003 | P1 |  |  |  |  |
-| TC-SURF-004 | P0 |  |  |  |  |
-| TC-SURF-005 | P2 |  |  |  |  |
-| TC-SURF-006 | P1 |  |  |  |  |
-| TC-SURF-007 | P0 |  |  |  |  |
-| TC-TERM-001 | P0 |  |  |  |  |
-| TC-TERM-002 | P0 |  |  |  |  |
-| TC-TERM-003 | P1 |  |  |  |  |
-| TC-TERM-004 | P1 |  |  |  |  |
-| TC-APP-001 | P0 |  |  |  |  |
-| TC-APP-002 | P0 |  |  |  |  |
-| TC-APP-003 | P0 |  |  |  |  |
-| TC-APP-004 | P1 |  |  |  |  |
-| TC-APP-005 | P0 |  |  |  |  |
-| TC-APP-006 | P0 |  |  |  |  |
-| TC-APP-007 | P1 |  |  |  |  |
-| TC-APP-008 | P0 |  |  |  |  |
-| TC-APP-009 | P1 |  |  |  |  |
-| TC-APP-010 | P1 |  |  |  |  |
-| TC-APP-011 | P1 |  |  |  |  |
-| TC-EXT-001 | P0 |  |  |  |  |
-| TC-EXT-002 | P0 |  |  |  |  |
-| TC-EXT-003 | P0 |  |  |  |  |
-| TC-EXT-004 | P1 |  |  |  |  |
-| TC-EXT-005 | P1 |  |  |  |  |
-| TC-EXT-006 | P1 |  |  |  |  |
-| TC-EXT-007 | P0 |  |  |  |  |
-| TC-DESK-001 | P0 |  |  |  |  |
-| TC-DESK-002 | P0 |  |  |  |  |
-| TC-DESK-003 | P0 |  |  |  |  |
-| TC-DESK-004 | P0 |  |  |  |  |
-| TC-DESK-005 | P1 |  |  |  |  |
-| TC-DESK-006 | P1 |  |  |  |  |
-| TC-DESK-007 | P2 |  |  |  |  |
-| TC-DESK-008 | P1 |  |  |  |  |
-| TC-NEG-001 | P0 |  |  |  |  |
-| TC-REM-001 | P0 |  |  |  |  |
-| TC-REM-002 | P0 |  |  |  |  |
-| TC-REM-003 | P1 |  |  |  |  |
-| TC-NEG-002 | P0 造障 |  |  |  |  |
-| TC-NEG-003 | P1 |  |  |  |  |
-| TC-NEG-004 | P2 |  |  |  |  |
-| TC-NEG-005 | P0 |  |  |  |  |
-| TC-NEG-006 | P1 |  |  |  |  |
+每条 Pass 的**证据种类**必须是 `CI artifact SHA + 已装 exe`。空着或写成 `qa:source` 等则该格无效。
+
+| ID | 优先级 | 结果 | 证据种类 | 缺陷/豁免 | 执行人 | 日期 |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-INST-001 | P0 |  |  |  |  |  |
+| TC-INST-002 | P0 |  |  |  |  |  |
+| TC-INST-003 | P0 |  |  |  |  |  |
+| TC-INST-004 | P0 造障 |  |  |  |  |  |
+| TC-INST-005 | P0 造障 |  |  |  |  |  |
+| TC-INST-006 | P0 造障 |  |  |  |  |  |
+| TC-INST-007 | P1 造障 |  |  |  |  |  |
+| TC-INST-008 | P0 |  |  |  |  |  |
+| TC-INST-009 | P0 |  |  |  |  |  |
+| TC-INST-010 | P1 |  |  |  |  |  |
+| TC-INST-011 | P0 造障 |  |  |  |  |  |
+| TC-INST-012 | P0 |  |  |  |  |  |
+| TC-INST-013 | P0 |  |  |  |  |  |
+| TC-MODEL-001 | P0 |  |  |  |  |  |
+| TC-MODEL-002 | P1 |  |  |  |  |  |
+| TC-MODEL-003 | P0 |  |  |  |  |  |
+| TC-MODEL-004 | P0 |  |  |  |  |  |
+| TC-MODEL-005 | P0 |  |  |  |  |  |
+| TC-MODEL-006 | P1 |  |  |  |  |  |
+| TC-MODEL-007 | P1 |  |  |  |  |  |
+| TC-WS-001 | P0 |  |  |  |  |  |
+| TC-WS-002 | P0 |  |  |  |  |  |
+| TC-WS-003 | P1 |  |  |  |  |  |
+| TC-WS-004 | P0 |  |  |  |  |  |
+| TC-WS-005 | P1 |  |  |  |  |  |
+| TC-WS-006 | P0 |  |  |  |  |  |
+| TC-CHAT-001 | P0 |  |  |  |  |  |
+| TC-CHAT-002 | P0 |  |  |  |  |  |
+| TC-CHAT-003 | P0 |  |  |  |  |  |
+| TC-CHAT-004 | P0 |  |  |  |  |  |
+| TC-CHAT-005 | P0 |  |  |  |  |  |
+| TC-CHAT-006 | P0 |  |  |  |  |  |
+| TC-CHAT-007 | P0 |  |  |  |  |  |
+| TC-CHAT-008 | P0 |  |  |  |  |  |
+| TC-CHAT-009 | P0 |  |  |  |  |  |
+| TC-CHAT-010 | P1 |  |  |  |  |  |
+| TC-CHAT-011 | P2 |  |  |  |  |  |
+| TC-SESS-001 | P1 |  |  |  |  |  |
+| TC-SESS-002 | P1 |  |  |  |  |  |
+| TC-SESS-003 | P0 |  |  |  |  |  |
+| TC-APPROVE-001 | P0 |  |  |  |  |  |
+| TC-APPROVE-002 | P0 |  |  |  |  |  |
+| TC-APPROVE-003 | P1 |  |  |  |  |  |
+| TC-GIT-001 | P0 |  |  |  |  |  |
+| TC-GIT-002 | P1 |  |  |  |  |  |
+| TC-GIT-003 | P0 |  |  |  |  |  |
+| TC-GIT-004 | P1 |  |  |  |  |  |
+| TC-GIT-005 | P1 |  |  |  |  |  |
+| TC-GIT-006 | P1 |  |  |  |  |  |
+| TC-GIT-007 | P2 |  |  |  |  |  |
+| TC-SURF-001 | P0 |  |  |  |  |  |
+| TC-SURF-002 | P1 |  |  |  |  |  |
+| TC-SURF-003 | P1 |  |  |  |  |  |
+| TC-SURF-004 | P0 |  |  |  |  |  |
+| TC-SURF-005 | P2 |  |  |  |  |  |
+| TC-SURF-006 | P1 |  |  |  |  |  |
+| TC-SURF-007 | P0 |  |  |  |  |  |
+| TC-TERM-001 | P0 |  |  |  |  |  |
+| TC-TERM-002 | P0 |  |  |  |  |  |
+| TC-TERM-003 | P1 |  |  |  |  |  |
+| TC-TERM-004 | P1 |  |  |  |  |  |
+| TC-APP-001 | P0 |  |  |  |  |  |
+| TC-APP-002 | P0 |  |  |  |  |  |
+| TC-APP-003 | P0 |  |  |  |  |  |
+| TC-APP-004 | P1 |  |  |  |  |  |
+| TC-APP-005 | P0 |  |  |  |  |  |
+| TC-APP-006 | P0 |  |  |  |  |  |
+| TC-APP-007 | P1 |  |  |  |  |  |
+| TC-APP-008 | P0 |  |  |  |  |  |
+| TC-APP-009 | P1 |  |  |  |  |  |
+| TC-APP-010 | P1 |  |  |  |  |  |
+| TC-APP-011 | P1 |  |  |  |  |  |
+| TC-EXT-001 | P0 |  |  |  |  |  |
+| TC-EXT-002 | P0 |  |  |  |  |  |
+| TC-EXT-003 | P0 |  |  |  |  |  |
+| TC-EXT-004 | P1 |  |  |  |  |  |
+| TC-EXT-005 | P1 |  |  |  |  |  |
+| TC-EXT-006 | P1 |  |  |  |  |  |
+| TC-EXT-007 | P0 |  |  |  |  |  |
+| TC-DESK-001 | P0 |  |  |  |  |  |
+| TC-DESK-002 | P0 |  |  |  |  |  |
+| TC-DESK-003 | P0 |  |  |  |  |  |
+| TC-DESK-004 | P0 |  |  |  |  |  |
+| TC-DESK-005 | P1 |  |  |  |  |  |
+| TC-DESK-006 | P1 |  |  |  |  |  |
+| TC-DESK-007 | P2 |  |  |  |  |  |
+| TC-DESK-008 | P1 |  |  |  |  |  |
+| TC-NEG-001 | P0 |  |  |  |  |  |
+| TC-REM-001 | N/A 停放 |  |  |  |  |  |
+| TC-REM-002 | N/A 停放 |  |  |  |  |  |
+| TC-REM-003 | N/A 停放 |  |  |  |  |  |
+| TC-NEG-002 | P0 造障 |  |  |  |  |  |
+| TC-NEG-003 | P1 |  |  |  |  |  |
+| TC-NEG-004 | P2 |  |  |  |  |  |
+| TC-NEG-005 | P0 |  |  |  |  |  |
+| TC-NEG-006 | P1 |  |  |  |  |  |
 
 ---
 
 ## 16. 签字
 
+未填 Actions run URL 与 SHA256、或未勾「Release 将上传同一 SHA」，不得勾可交付，**不得发该包**。
+
 | 项 | 内容 |
 | --- | --- |
+| Actions run URL |  |
+| Artifact 名 | `DeepSeek-Harness-windows-x64` |
 | 安装包文件名 |  |
-| SHA256 / 校验 |  |
+| SHA256（已测文件） |  |
+| Release 将上传同一 SHA | □ |
 | 应用 About 版本 |  |
-| Release 所述 harness 基线（勿混源码钉） |  |
+| 该包内 harness 基线（勿混源码钉） |  |
 | Windows 版本 / 机型 |  |
 | 模型：`ayase` / `grok-4.6` @ `https://ayase.cn/v1` | 已配置 □ |
-| 附录 A 五轮 | 全过 □ |
+| 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 □ |
 | P0 结果 | 全 Pass □ / 有 Fail □ / 有 Blocked+豁免 □ |
 | P1 豁免/发布说明 |  |
 | 结论 | **可交付** □ / **不可交付** □ |
@@ -879,7 +949,7 @@
 
 ## 附录 A · 多轮对话脚本（P0 唯一标准）
 
-同一会话按序发送：
+同一会话按序发送（已安装 CI 包、TC-WS-006 工作区）：
 
 1. `用一句话回复：你已连通，并给出一个三位数验证码。`  
 2. `刚才的验证码是多少？只回答数字。`  

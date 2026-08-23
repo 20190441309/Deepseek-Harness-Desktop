@@ -1,5 +1,6 @@
 'use strict';
 
+const { spawnSync } = require('node:child_process');
 const { buildSettingsSectionScript } = require('./settings-jump');
 
 /**
@@ -26,19 +27,88 @@ function dshFind(pattern, root) {
     'button, [role="button"], [role="menuitem"], [role="tab"], [role="searchbox"], [role="textbox"], input, textarea, a'
   )).find((el) => dshShown(el) && re.test(dshLabel(el))) || null;
 }
+function dshComposerSend() {
+  const card = document.querySelector('[data-composer-card]');
+  if (!card) return null;
+  return dshFind('send message|发送消息', card);
+}
+function dshQaPngFile() {
+  const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], 'dshd-qa.png', { type: 'image/png' });
+}
+function dshAssignFile(input, file) {
+  if (!input || !file) return false;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+}
 function dshSetValue(el, value) {
   if (!el) return false;
+  el.focus();
+  try {
+    if (typeof el.select === 'function') el.select();
+  } catch {
+    /* password / number inputs still accept insertText */
+  }
+  if (document.execCommand && document.execCommand('insertText', false, value) && el.value === value) {
+    return true;
+  }
   const proto = el instanceof HTMLTextAreaElement
     ? HTMLTextAreaElement.prototype
     : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+    || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   if (!setter) return false;
   const tracker = el._valueTracker;
-  if (tracker) tracker.setValue('');
+  const last = el.value;
+  if (tracker) tracker.setValue(last);
   setter.call(el, value);
-  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    inputType: 'insertText',
+    data: value,
+  }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
+  return el.value === value;
+}
+function dshField(pattern, root) {
+  const re = new RegExp(pattern, 'i');
+  const scope = root || document;
+  return Array.from(scope.querySelectorAll('input, textarea')).find((el) => {
+    const aria = el.getAttribute('aria-label') || '';
+    const ph = el.getAttribute('placeholder') || '';
+    return re.test(aria) || re.test(ph);
+  }) || null;
+}
+function dshCustomProviderCard(root) {
+  const scope = root || document;
+  const route = Array.from(scope.querySelectorAll('input, textarea')).find((el) =>
+    /^provider id$/i.test(el.getAttribute('aria-label') || ''));
+  if (!route) return null;
+  let node = route.parentElement;
+  while (node && node !== document.body) {
+    const hasCreate = Array.from(node.querySelectorAll('button')).some((btn) =>
+      /创建提供方|create provider/i.test(dshLabel(btn)));
+    if (hasCreate) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+function dshInputInventory(root) {
+  const scope = root || document;
+  return Array.from(scope.querySelectorAll('input, textarea')).map((el) => ({
+    aria: el.getAttribute('aria-label') || '',
+    ph: el.getAttribute('placeholder') || '',
+    shown: dshShown(el),
+    type: el.type || el.tagName,
+  })).slice(0, 12);
 }
 function dshDialog() {
   return Array.from(document.querySelectorAll('[role="dialog"]')).find(dshShown) || null;
@@ -94,23 +164,27 @@ const QA_REQUIRED_STEPS = [
   'composer.pathSourceAbsent',
   'remote.available',
   'remote.notListening',
+  'remote.footerAbsent',
   'titlebar.sessionLog',
   'titlebar.branch',
   'titlebar.commit',
   'titlebar.git',
   'titlebar.terminal',
   'titlebar.surfaces',
+  'titlebar.windowControls',
   'titlebar.branchMenu',
   'titlebar.gitMenu',
   'terminal.drawer',
   'terminal.new',
   'surfaces.open',
   'files.panel',
+  'files.tabCloseRight',
   'files.search',
   'files.readme',
   'files.note',
   'files.mentionVisible',
   'files.mentionAppended',
+  'git.commit',
   'agents.panel',
   'agents.empty',
   'diff.panel',
@@ -118,12 +192,21 @@ const QA_REQUIRED_STEPS = [
   'browser.url',
   'terminal.surface',
   'settings.trigger',
+  'models.heading',
+  'models.customAdd',
+  'models.customForm',
+  'models.visionPicker',
   'appearance.choose',
   'appearance.browse',
   'appearance.noSourceDump',
+  'appearance.themeSwitch',
+  'appearance.localCrop',
+  'appearance.frost',
   'gallery.dialog',
   'gallery.sources',
   'gallery.addSource',
+  'gallery.wallhavenSfw',
+  'gallery.confirmSet',
   'mcp.heading',
   'mcp.search',
   'mcp.add',
@@ -135,6 +218,15 @@ const QA_REQUIRED_STEPS = [
   'market.installed',
   'plugin.dshbot.tabAbsent',
 ];
+
+function gitHeadSubject(workspacePath) {
+  if (!workspacePath) return '';
+  const result = spawnSync('git', ['-C', workspacePath, 'log', '-1', '--pretty=%s'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return result.status === 0 ? String(result.stdout || '').trim() : '';
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,6 +253,45 @@ function pageScript(wc, body, args) {
     const args = ${JSON.stringify(args || {})};
     ${body}
   })()`);
+}
+
+async function typeIntoAriaField(wc, pattern, value) {
+  const box = await pageScript(wc, `
+    const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+    const card = dialog && dshCustomProviderCard(dialog);
+    const el = card && dshField(args.pattern, card);
+    if (!el) return null;
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = el.getBoundingClientRect();
+    el.focus();
+    if (typeof el.select === 'function') el.select();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+  `, { pattern });
+  if (!box || box.w < 1 || box.h < 1) return false;
+  try {
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1,
+    });
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1,
+    });
+    await sleep(40);
+    await wc.debugger.sendCommand('Input.insertText', { text: value });
+  } catch {
+    await pageScript(wc, `
+      const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+      const card = dialog && dshCustomProviderCard(dialog);
+      const el = card && dshField(args.pattern, card);
+      return el ? dshSetValue(el, args.value) : false;
+    `, { pattern, value });
+  }
+  await sleep(80);
+  return pageScript(wc, `
+    const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+    const card = dialog && dshCustomProviderCard(dialog);
+    const el = card && dshField(args.pattern, card);
+    return Boolean(el && el.value === args.value);
+  `, { pattern, value });
 }
 
 function clickNamed(wc, pattern, rootSelector) {
@@ -365,6 +496,7 @@ async function runReleaseUiWalk(wc, helpers) {
       commands: Boolean(dshFind('^commands$|^命令$')),
       send: Boolean(dshFind('send message|发送消息')),
       access: Boolean(dshFind('access mode|访问模式')),
+      thinking: Boolean(dshFind('^high$|^max$|^low$|思考', card)),
     };
   });
   rec('composer.card', composer?.card, '');
@@ -372,6 +504,7 @@ async function runReleaseUiWalk(wc, helpers) {
   rec('composer.commands', composer?.commands, '');
   rec('composer.send', composer?.send, '');
   rec('composer.access', composer?.access, '');
+  rec('composer.thinking', Boolean(composer?.thinking), composer?.thinking ? '' : 'no effort chips on composer', true);
 
   await pageEval(wc, () => {
     const ta = document.querySelector('[data-composer-card] textarea');
@@ -421,7 +554,7 @@ async function runReleaseUiWalk(wc, helpers) {
     : null;
   rec(
     'remote.available',
-    remoteSnap != null && remoteSnap.available === true && remoteSnap.enabled === false,
+    remoteSnap != null && remoteSnap.available === false && remoteSnap.enabled === false,
     remoteSnap ? summarizeRemoteQaDetail(remoteSnap) : 'helpers.probeRemote missing',
   );
   rec(
@@ -434,7 +567,7 @@ async function runReleaseUiWalk(wc, helpers) {
     if (trigger && dshShown(trigger)) return 'trigger';
     return dshFind('^remote$|^远程$') ? 'label' : null;
   });
-  rec('remote.footerPresent', remoteFooter != null, remoteFooter || 'no remote footer', true);
+  rec('remote.footerAbsent', remoteFooter == null, remoteFooter || 'no remote footer');
 
   const commandsClicked = await clickNamed(wc, '^commands$|^命令$');
   if (commandsClicked) {
@@ -463,6 +596,20 @@ async function runReleaseUiWalk(wc, helpers) {
   rec('titlebar.git', titlebar?.git, '');
   rec('titlebar.terminal', titlebar?.terminal, '');
   rec('titlebar.surfaces', titlebar?.surfaces, '');
+  const windowControls = await pageEval(wc, () => {
+    const host = document.getElementById('dshd-shell-controls');
+    if (!host) return null;
+    return {
+      min: Boolean(host.querySelector('[data-act="minimize"]')),
+      max: Boolean(host.querySelector('[data-act="maximize"]')),
+      close: Boolean(host.querySelector('[data-act="close"]')),
+    };
+  });
+  rec(
+    'titlebar.windowControls',
+    Boolean(windowControls?.min && windowControls?.max && windowControls?.close),
+    windowControls ? '' : 'injected window-control plate missing',
+  );
 
   await helpers.clickTitlebarButton(wc, 'switch branch|切换分支');
   const branchMenu = await waitUntil(() => pageEval(wc, () => {
@@ -567,6 +714,26 @@ async function runReleaseUiWalk(wc, helpers) {
     };
   });
   rec('files.panel', Boolean(filesSnap), filesSnap ? '' : 'files panel missing');
+  const tabClose = await pageEval(wc, () => {
+    const tab = document.querySelector('[data-surfaces-tab]');
+    if (!tab) return null;
+    const buttons = Array.from(tab.querySelectorAll('button'));
+    const close = buttons.find((el) => /关闭|close/i.test(el.getAttribute('aria-label') || ''));
+    const label = buttons.find((el) => el !== close);
+    if (!label || !close) return null;
+    const labelBox = label.getBoundingClientRect();
+    const closeBox = close.getBoundingClientRect();
+    return {
+      closeRight: closeBox.left >= labelBox.right - 1,
+      labelLeft: Math.round(labelBox.left),
+      closeLeft: Math.round(closeBox.left),
+    };
+  });
+  rec(
+    'files.tabCloseRight',
+    Boolean(tabClose?.closeRight),
+    tabClose ? `label=${tabClose.labelLeft} close=${tabClose.closeLeft}` : 'tab close control missing',
+  );
   rec('files.search', Boolean(filesSnap?.search), '');
   rec('files.readme', Boolean(filesSnap?.readme), filesSnap?.readme ? '' : (filesSnap?.text || 'README.md not listed'));
   rec('files.note', Boolean(filesSnap?.note), filesSnap?.note ? '' : (filesSnap?.text || 'note.md not listed'));
@@ -598,6 +765,38 @@ async function runReleaseUiWalk(wc, helpers) {
   } else {
     rec('files.mentionAppended', false, 'mention control missing');
   }
+
+  await dismiss();
+  const beforeSubject = gitHeadSubject(helpers.workspacePath);
+  await helpers.clickTitlebarButton(wc, '^commit$|^提交$');
+  await clickNamed(wc, '^commit changes$|^提交更改$|^commit$');
+  const commitDialog = await waitUntil(() => pageEval(wc, () => {
+    const dialog = dshDialogNamed('commit changes|提交更改');
+    if (!dialog || !dshShown(dialog)) return null;
+    return {
+      message: Boolean(dialog.querySelector('textarea')),
+      submit: Boolean(dshFind('^commit$|^提交$', dialog)),
+    };
+  }), 8_000);
+  rec('git.commitDialog', Boolean(commitDialog), commitDialog ? '' : 'commit dialog did not open', true);
+  if (commitDialog?.message) {
+    await pageEval(wc, () => {
+      const dialog = dshDialogNamed('commit changes|提交更改');
+      const ta = dialog && dialog.querySelector('textarea');
+      if (!ta) return false;
+      ta.focus();
+      return dshSetValue(ta, 'qa: commit note.md');
+    });
+  }
+  if (commitDialog?.submit) {
+    await clickNamed(wc, '^commit$|^提交$', '[role="dialog"]');
+  }
+  const committed = await waitUntil(() => {
+    const subject = gitHeadSubject(helpers.workspacePath);
+    return subject && subject !== beforeSubject ? subject : null;
+  }, 20_000);
+  rec('git.commit', Boolean(committed), committed || `HEAD still ${beforeSubject || 'empty'}`);
+  await dismiss();
 
   if (filesSnap?.search) {
     await pageEval(wc, () => {
@@ -695,6 +894,45 @@ async function runReleaseUiWalk(wc, helpers) {
       : '',
   );
 
+  const lightClicked = await clickNamed(wc, '^浅色$|^light$');
+  await sleep(250);
+  const darkClicked = await clickNamed(wc, '^深色$|^dark$');
+  await sleep(250);
+  const scheme = await pageEval(wc, () => {
+    const dialog = dshDialog();
+    const pressed = dialog
+      ? Array.from(dialog.querySelectorAll('[aria-pressed="true"]')).map((el) => dshLabel(el)).slice(0, 4)
+      : [];
+    return { light: Boolean(dshFind('^浅色$|^light$', dialog)), dark: Boolean(dshFind('^深色$|^dark$', dialog)), pressed };
+  });
+  rec(
+    'appearance.themeSwitch',
+    Boolean(lightClicked && darkClicked && scheme?.dark),
+    `light=${lightClicked}; dark=${darkClicked}; pressed=${(scheme?.pressed || []).join(',')}`,
+  );
+
+  const localPicked = await pageEval(wc, () => {
+    const dialog = dshDialog();
+    const input = dialog && dialog.querySelector('input[type="file"][accept*="image"]');
+    if (!input) return false;
+    return dshAssignFile(input, dshQaPngFile());
+  });
+  const cropOpened = localPicked
+    ? await waitUntil(() => pageEval(wc, () => Boolean(dshDialogNamed('调整背景图|crop wallpaper|crop'))), 8_000)
+    : false;
+  if (cropOpened) {
+    await clickNamed(wc, '使用此图片|use this image|^use$');
+  }
+  const frostAfterLocal = await waitUntil(() => pageEval(wc, () => {
+    const dialog = dshDialog();
+    return dialog && dshFind('毛玻璃|frosted glass', dialog) ? true : null;
+  }), 8_000);
+  rec(
+    'appearance.localCrop',
+    Boolean(localPicked && (cropOpened || frostAfterLocal)),
+    localPicked ? (cropOpened ? 'crop confirmed' : (frostAfterLocal ? 'sliders without crop dialog' : 'file assigned, crop missing')) : 'file input missing',
+  );
+
   if (appearance?.browse) {
     await clickNamed(wc, 'browse gallery|浏览图库');
   }
@@ -720,12 +958,172 @@ async function runReleaseUiWalk(wc, helpers) {
       };
     }), 8_000);
     rec('gallery.addSource', Boolean(sourcesPane?.addSource), sourcesPane?.hint ? 'hint visible' : '');
+    await clickNamed(wc, 'back to gallery|返回图库');
+    await sleep(300);
   } else {
     rec('gallery.addSource', false, 'sources control missing');
   }
 
+  await clickNamed(wc, 'wallhaven|Wallhaven');
+  const wallhaven = await waitUntil(() => pageEval(wc, () => {
+    const galleryDialog = dshDialogNamed('browse gallery|浏览图库');
+    if (!galleryDialog) return null;
+    const text = galleryDialog.innerText || '';
+    return {
+      tab: /wallhaven/i.test(text),
+      sfw: Boolean(dshFind('常规|general', galleryDialog)),
+      r18: /R18|NSFW|purity/i.test(text),
+    };
+  }), 8_000);
+  rec(
+    'gallery.wallhavenSfw',
+    Boolean(wallhaven?.tab || wallhaven?.sfw) && !wallhaven?.r18,
+    wallhaven?.r18 ? 'R18/NSFW copy present' : (wallhaven?.sfw ? 'SFW chips' : 'Wallhaven tab missing'),
+  );
+
+  await clickNamed(wc, '^必应$|^bing$');
+  const thumbReady = await waitUntil(() => pageEval(wc, () => {
+    const galleryDialog = dshDialogNamed('browse gallery|浏览图库');
+    const img = galleryDialog && galleryDialog.querySelector('img');
+    const btn = img && img.closest('button');
+    return btn && !btn.disabled && dshShown(btn) ? true : null;
+  }), 35_000);
+  if (thumbReady) {
+    await pageEval(wc, () => {
+      const galleryDialog = dshDialogNamed('browse gallery|浏览图库');
+      const star = galleryDialog && dshFind('收藏这张|favorite this image', galleryDialog);
+      if (star) star.click();
+      const card = galleryDialog && galleryDialog.querySelector('button img');
+      const btn = card && card.closest('button');
+      if (btn && !btn.disabled) btn.click();
+      return Boolean(btn);
+    });
+    const confirm = await waitUntil(() => pageEval(wc, () =>
+      Boolean(dshDialogNamed('将这张图设为背景|set this image as the wallpaper'))), 8_000);
+    if (confirm) {
+      await clickNamed(wc, '设为壁纸|set wallpaper');
+    }
+    const cropAfterGallery = await waitUntil(() => pageEval(wc, () =>
+      Boolean(dshDialogNamed('调整背景图|crop wallpaper|crop'))), 20_000);
+    if (cropAfterGallery) {
+      await clickNamed(wc, '使用此图片|use this image|^use$');
+    }
+    rec(
+      'gallery.confirmSet',
+      Boolean(confirm && (cropAfterGallery || frostAfterLocal)),
+      confirm ? (cropAfterGallery ? 'Bing confirmed and cropped' : 'Bing confirmed') : 'confirm dialog missing',
+    );
+  } else {
+    const status = await pageEval(wc, () => {
+      const galleryDialog = dshDialogNamed('browse gallery|浏览图库');
+      const node = galleryDialog && galleryDialog.querySelector('[role="status"]');
+      return node ? String(node.textContent || '').slice(0, 120) : 'no status';
+    });
+    rec('gallery.confirmSet', false, `Bing thumbnails did not load (${status || 'empty'})`);
+  }
+
+  await dismiss();
+  await sleep(400);
+  await openSettings('appearance');
+  const frost = await waitUntil(() => pageEval(wc, () => {
+    const dialog = dshDialog();
+    return dialog && dshFind('毛玻璃|frosted glass', dialog) && dshFind('像素化|pixelation', dialog) ? true : null;
+  }), 8_000);
+  rec('appearance.frost', Boolean(frost || frostAfterLocal), frost ? 'frost+pixelate after wallpaper' : (frostAfterLocal ? 'frost after local crop' : 'sliders missing'));
+
   await dismiss();
   await sleep(300);
+
+  const modelsOpened = await openSettings('models');
+  const models = await waitUntil(() => pageEval(wc, () => {
+    const dialog = dshDialog();
+    if (!dialog) return null;
+    const text = dialog.innerText || '';
+    return {
+      heading: Boolean(dshHeading('^models$|^模型$', dialog) || /模型|models/i.test(text)),
+      customAdd: Boolean(dshFind('add a custom provider|添加自定义提供方', dialog)),
+      vision: Boolean(dshFind('vision model|识图模型', dialog)),
+      thinking: /supported thinking intensity|思考强度/i.test(text),
+    };
+  }), 10_000);
+  rec('models.heading', Boolean(modelsOpened && models?.heading), modelsOpened ? '' : 'models section missing');
+  rec('models.customAdd', Boolean(models?.customAdd), models?.customAdd ? '' : 'custom provider control missing');
+  rec('models.visionPicker', Boolean(models?.vision), models?.vision ? '' : 'vision fallback picker missing');
+  rec('models.thinking', Boolean(models?.thinking), models?.thinking ? '' : 'thinking intensity editor not shown', true);
+
+  let customFormOk = false;
+  if (models?.customAdd) {
+    await clickNamed(wc, 'add a custom provider|添加自定义提供方');
+    const form = await waitUntil(() => pageEval(wc, () => {
+      const dialog = dshDialog();
+      return dialog && dshField('^provider id$', dialog) ? true : null;
+    }), 8_000);
+    if (form) {
+      const filled = {
+        route: await typeIntoAriaField(wc, '^provider id$', 'dshdqa'),
+        name: await typeIntoAriaField(wc, '^显示名称$|^display name$', 'Dshd QA'),
+        url: await typeIntoAriaField(wc, '^api 地址$|^base url$', 'https://ayase.cn/v1'),
+        key: await typeIntoAriaField(wc, '^api 密钥$|^api key$', 'sk-dshd-qa-placeholder'),
+      };
+      await pageEval(wc, () => {
+        const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+        const card = dialog && dshCustomProviderCard(dialog);
+        const btn = card && dshFind('add model|添加模型', card);
+        if (!btn || btn.disabled) return false;
+        btn.click();
+        return true;
+      });
+      const modelField = await waitUntil(() => pageEval(wc, () => {
+        const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+        const card = dialog && dshCustomProviderCard(dialog);
+        return card && dshField('^模型 ID 1$|^Model ID 1$', card) ? true : null;
+      }), 8_000);
+      const modelFilled = modelField
+        ? await typeIntoAriaField(wc, '^模型 ID 1$|^Model ID 1$', 'grok-4.6')
+        : false;
+      const createReady = await waitUntil(() => pageEval(wc, () => {
+        const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+        const card = dialog && dshCustomProviderCard(dialog);
+        const btn = card && dshFind('创建提供方|create provider', card);
+        return btn && !btn.disabled ? true : null;
+      }), 8_000);
+      if (createReady) {
+        await pageEval(wc, () => {
+          const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+          const card = dialog && dshCustomProviderCard(dialog);
+          const btn = card && dshFind('创建提供方|create provider', card);
+          if (!btn || btn.disabled) return false;
+          btn.click();
+          return true;
+        });
+      }
+      const saved = await waitUntil(() => pageEval(wc, () => {
+        const dialog = dshDialog();
+        const text = dialog ? (dialog.innerText || '') : '';
+        if (/sk-dshd-qa-placeholder/.test(text)) return { leak: true };
+        if (/dshdqa|Dshd QA/i.test(text) && /credential configured|已配置|api key configured/i.test(text)) {
+          return { saved: true };
+        }
+        return /dshdqa|Dshd QA/i.test(text) ? { listed: true } : null;
+      }), 12_000);
+      customFormOk = Boolean(saved && !saved.leak && (saved.saved || saved.listed));
+      const inventory = customFormOk ? '' : await pageEval(wc, () => {
+        const dialog = dshDialogNamed('^设置$|^settings$') || dshDialog();
+        const card = dialog && dshCustomProviderCard(dialog);
+        return JSON.stringify(dshInputInventory(card || dialog));
+      });
+      const fillDetail = `route=${filled?.route} name=${filled?.name} url=${filled?.url} key=${filled?.key} model=${Boolean(modelFilled)} createReady=${Boolean(createReady)}`;
+      rec(
+        'models.customForm',
+        customFormOk,
+        saved?.leak ? 'key echoed' : (customFormOk ? 'provider saved without plaintext key' : `form did not persist dshdqa (${fillDetail}) ${inventory || ''}`.slice(0, 400)),
+      );
+    } else {
+      rec('models.customForm', false, 'custom provider form did not open');
+    }
+  } else {
+    rec('models.customForm', false, 'custom add missing');
+  }
 
   const mcpOpened = await openSettings('mcp');
   const mcp = await waitUntil(() => pageEval(wc, () => {

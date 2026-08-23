@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `wallpaper-gallery` |
 | **status** | `active` |
-| **last verified** | 2026-08-22 — dsh 0.1.1-rc.1 合并复查（静态 + `npm test`；catalog 超时 8s→30s 记入本卡，未重跑实机） |
+| **last verified** | 2026-08-23 — catalog 拒绝私网 / link-local / loopback HTTPS（测试机 `DSHD_WALLPAPER_ALLOW_HTTP=1` 除外） |
 
 ## User paths
 
@@ -19,7 +19,7 @@
 - Appearance 壁纸行**只**做：挑选、浏览、裁剪、frost、pixelate。无源列表、无 JSON URL、无 Bing 开关堆在 Appearance。
 - 浏览打开**同一产品窗**（非独立 Electron 市场窗）：分类 + 搜索在上，网格在下。
 - 全部图源 CRUD 只在图库窗内；禁止把配置倾倒到 Appearance。
-- 内置源：必应 Daily（今日 live + 中文历史归档）、Wallhaven（写死 `purity=100`，仅 SFW）。用户源为具名 HTTPS JSON 目录。
+- 用户源为具名 HTTPS JSON 目录。主进程拒绝 loopback / RFC1918 / link-local 目录与下载（`DSHD_WALLPAPER_ALLOW_HTTP=1` 仅测试机）。
 - 分类页签 = 当前源列表 + 收藏。
 - Desktop 图源 catalog 拉取超时 30 s、单图下载 20 s（`src/main/wallpaper-catalog.js`，2026-08-22 由 8 s 调宽以容纳慢源）；改值须同步本卡。
 - 禁源：Unsplash / Pexels / Pixabay Key、Timeline 登录、R18 开关不进产品。

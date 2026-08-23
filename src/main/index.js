@@ -1,7 +1,7 @@
 const { app, dialog, globalShortcut, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { loadConfig, saveConfig } = require('./config');
+const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot } = require('./config');
 const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
@@ -12,7 +12,7 @@ const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
-const { createTray, showMain } = require('./tray');
+const { createTray, showMain, invokeTrayAction } = require('./tray');
 const {
   startDesktopInstallControl,
   stopDesktopInstallControl,
@@ -34,6 +34,9 @@ const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
 const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('./release-ui-walk');
 const { runComposerOfficialQa } = require('./composer-official-qa');
+const { runAppendixAQa } = require('./appendix-a-qa');
+const { runShellP0Qa, runPersistQa, runRecoveryQa } = require('./shell-p0-qa');
+const { runPackagedP0 } = require('./packaged-p0');
 
 const dsh = new DshManager();
 const remote = new RemoteGateway({
@@ -47,9 +50,23 @@ const remote = new RemoteGateway({
     return port ? { host: '127.0.0.1', port } : null;
   },
 });
+
+async function probeRemoteSnapshot() {
+  if (remote && typeof remote.sync === 'function') {
+    await remote.sync();
+  }
+  const snap = remote && typeof remote.snapshot === 'function'
+    ? remote.snapshot()
+    : { available: false, enabled: false, listening: false };
+  if (!REMOTE_FEATURE_ENABLED) {
+    return parkRemoteSnapshot(snap);
+  }
+  return snap;
+}
 let quitting = false;
 let stoppingForQuit = false;
 let desktopResources = null;
+let qaQuitIntercepted = false;
 
 async function resolveLaunchTarget() {
   const config = loadConfig();
@@ -600,10 +617,43 @@ async function runSmoke(win) {
       }
     }
     console.log('[DSH_SMOKE_PTY]', ptyStatus);
+    let packagedP0 = null;
+    const siblingPath = typeof process.env.DSH_SMOKE_SIBLING === 'string'
+      ? process.env.DSH_SMOKE_SIBLING.trim()
+      : '';
+    if (siblingPath) {
+      try {
+        const config = loadConfig();
+        packagedP0 = await runPackagedP0({
+          siblingPath,
+          pty: desktopResources && desktopResources.pty,
+          fetch,
+          host: config.host || dsh.host || '127.0.0.1',
+          port: dsh.port || config.port,
+          userData: app.getPath('userData'),
+          appVersion: app.getVersion(),
+          bootLogs: dsh.logs,
+        });
+      } catch (error) {
+        packagedP0 = {
+          ok: false,
+          error: String(error),
+          steps: [],
+        };
+      }
+      console.log('[DSH_SMOKE_PACKAGED_P0]', JSON.stringify({
+        ok: packagedP0.ok,
+        steps: packagedP0.steps,
+      }));
+    }
     let qaAttached = false;
     const needsComposerQa = process.env.DSH_QA_COMPOSER === '1';
     const needsReleaseQa = process.env.DSH_QA === '1';
-    if (needsReleaseQa || needsComposerQa) {
+    const needsAppendixQa = process.env.DSH_QA_APPENDIX === '1';
+    const needsShellQa = process.env.DSH_QA_SHELL === '1';
+    const needsPersistQa = process.env.DSH_QA_PERSIST === '1';
+    const needsRecoveryQa = process.env.DSH_QA_RECOVERY === '1';
+    if (needsReleaseQa || needsComposerQa || needsAppendixQa || needsShellQa || needsPersistQa) {
       if (!wc.debugger.isAttached()) {
         await wc.debugger.attach('1.3');
         qaAttached = true;
@@ -646,15 +696,7 @@ async function runSmoke(win) {
           workspaceConnected: Array.isArray(result.workspaceConnect)
             && result.workspaceConnect.some((step) => step.name === 'workspace.connected' && step.ok),
           pageErrors,
-          probeRemote: async () => {
-            if (!remote || typeof remote.snapshot !== 'function') {
-              return { available: false, enabled: false, listening: false };
-            }
-            if (typeof remote.sync === 'function') {
-              await remote.sync();
-            }
-            return remote.snapshot();
-          },
+          probeRemote: probeRemoteSnapshot,
         });
       } catch (error) {
         result.composerOfficialQa = {
@@ -672,6 +714,37 @@ async function runSmoke(win) {
         // Screenshot is evidence, not the verdict.
       }
     }
+    if (needsAppendixQa) {
+      try {
+        result.appendixQa = await runAppendixAQa(wc, {
+          workspacePath: loadConfig().workspace,
+          workspaceConnected: Array.isArray(result.workspaceConnect)
+            && result.workspaceConnect.some((step) => step.name === 'workspace.connected' && step.ok),
+        });
+      } catch (error) {
+        result.appendixQa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['appendix-threw'],
+        };
+      }
+      console.log('[DSH_QA_APPENDIX]', JSON.stringify({
+        ok: result.appendixQa?.ok,
+        failed: result.appendixQa?.failed,
+        steps: (result.appendixQa?.steps || []).map((step) => ({
+          name: step.name,
+          ok: step.ok,
+          detail: String(step.detail || '').slice(0, 240),
+        })),
+      }));
+      try {
+        const png = await wc.capturePage();
+        fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-appendix-qa.png'), png.toPNG());
+      } catch {
+        // Screenshot is evidence, not the verdict.
+      }
+    }
     if (needsReleaseQa) {
       try {
         result.qa = await runReleaseUiWalk(wc, {
@@ -682,15 +755,7 @@ async function runSmoke(win) {
           workspacePath: loadConfig().workspace,
           skipWorkspaceConnect: Array.isArray(result.workspaceConnect)
             && result.workspaceConnect.some((step) => step.name === 'workspace.connected' && step.ok),
-          probeRemote: async () => {
-            if (!remote || typeof remote.snapshot !== 'function') {
-              return { available: false, enabled: false, listening: false };
-            }
-            if (typeof remote.sync === 'function') {
-              await remote.sync();
-            }
-            return remote.snapshot();
-          },
+          probeRemote: probeRemoteSnapshot,
         });
       } catch (error) {
         result.qa = { ok: false, error: String(error), steps: [], failed: ['walk-threw'] };
@@ -702,6 +767,72 @@ async function runSmoke(win) {
       } catch {
         // Screenshot is evidence, not the verdict.
       }
+    }
+    if (needsShellQa) {
+      try {
+        result.shellP0Qa = await runShellP0Qa(wc, {
+          win,
+          saveConfig,
+          loadConfig,
+          showMain,
+          invokeTrayAction,
+          getQuitIntercepted: () => qaQuitIntercepted,
+          resetQuitIntercepted: () => { qaQuitIntercepted = false; },
+          pressEscape,
+          dsh,
+          harness,
+        });
+      } catch (error) {
+        result.shellP0Qa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['shell-p0-threw'],
+        };
+      }
+      console.log('[DSH_QA_SHELL]', JSON.stringify({
+        ok: result.shellP0Qa?.ok,
+        failed: result.shellP0Qa?.failed,
+        steps: (result.shellP0Qa?.steps || []).map((step) => ({
+          name: step.name,
+          ok: step.ok,
+          detail: String(step.detail || '').slice(0, 200),
+        })),
+      }));
+    }
+    if (needsPersistQa) {
+      try {
+        result.persistQa = await runPersistQa(wc, {
+          loadConfig,
+          workspacePath: loadConfig().workspace,
+        });
+      } catch (error) {
+        result.persistQa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['persist-threw'],
+        };
+      }
+      console.log('[DSH_QA_PERSIST]', JSON.stringify(result.persistQa));
+    }
+    if (needsRecoveryQa) {
+      try {
+        result.recoveryQa = await runRecoveryQa({
+          win,
+          dsh,
+          harness,
+          saveConfig,
+        });
+      } catch (error) {
+        result.recoveryQa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['recovery-threw'],
+        };
+      }
+      console.log('[DSH_QA_RECOVERY]', JSON.stringify(result.recoveryQa));
     }
     if (qaAttached && wc.debugger.isAttached()) {
       try {
@@ -740,7 +871,12 @@ async function runSmoke(win) {
       && (process.env.DSH_THEME_SMOKE !== '1' || result.themeSmoke?.ok === true)
       && (process.env.DSH_QA !== '1' || result.qa?.ok === true)
       && (process.env.DSH_QA_COMPOSER !== '1' || result.composerOfficialQa?.ok === true)
-      && pageErrors.length === 0;
+      && (process.env.DSH_QA_APPENDIX !== '1' || result.appendixQa?.ok === true)
+      && (process.env.DSH_QA_SHELL !== '1' || result.shellP0Qa?.ok === true)
+      && (process.env.DSH_QA_PERSIST !== '1' || result.persistQa?.ok === true)
+      && (process.env.DSH_QA_RECOVERY !== '1' || result.recoveryQa?.ok === true)
+      && (process.env.DSH_QA_RECOVERY === '1' || pageErrors.length === 0)
+      && (!siblingPath || packagedP0?.ok === true);
     try {
       fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({
         ok,
@@ -754,6 +890,7 @@ async function runSmoke(win) {
           DSHD_HOME: process.env.DSHD_HOME || '',
         },
         bootLogs: Array.isArray(dsh.logs) ? dsh.logs.slice(-80) : [],
+        packagedP0,
       }, null, 2));
     } catch {
       // Best-effort: the exit code still carries the verdict.
@@ -766,6 +903,11 @@ async function runSmoke(win) {
 }
 
 function quitApp() {
+  if (process.env.DSH_QA_SHELL === '1' && process.env.DSH_QA_ALLOW_QUIT !== '1') {
+    qaQuitIntercepted = true;
+    console.log('[DSH_QA_SHELL] quit intercepted');
+    return;
+  }
   quitting = true;
   app.quit();
 }
@@ -849,11 +991,11 @@ if (!gotLock) {
 
     try {
       await harness.start();
-      if (process.env.DSH_SMOKE === '1') {
-        void runSmoke(getMainWindow());
-      }
     } catch {
       // boot page already shows the error
+    }
+    if (process.env.DSH_SMOKE === '1') {
+      void runSmoke(getMainWindow());
     }
   });
 
