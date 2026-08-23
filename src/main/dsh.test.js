@@ -69,6 +69,7 @@ function makeHarness(overrides = {}) {
     killTree: [],
     killOwned: 0,
     readPid: 0,
+    spawn: null,
   };
   let reachable = false;
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-test-'));
@@ -86,7 +87,8 @@ function makeHarness(overrides = {}) {
       port: Number(config.port) || 3080,
       workspace: config.workspace,
     }),
-    spawnHarness: () => {
+    spawnHarness: (command, args, options) => {
+      calls.spawn = { command, args, options };
       const pid = overrides.childPid !== undefined ? overrides.childPid : CHILD_PID;
       const child = makeFakeChild(pid);
       spawned.push(child);
@@ -641,6 +643,23 @@ test('spawnEnv writes official DeepSeek key and base URL', () => {
     else process.env.DEEPSEEK_API_KEY = previousKey;
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('start passes desktop DSH_HOME to spawnHarness even when dsh_home is inherited', async (t) => {
+  const inherited = path.join(os.homedir(), '.dsh');
+  const previous = process.env.dsh_home;
+  process.env.dsh_home = inherited;
+  t.after(() => {
+    if (previous === undefined) delete process.env.dsh_home;
+    else process.env.dsh_home = previous;
+  });
+  const h = makeHarness();
+  t.after(h.cleanup);
+  h.setReachable(true);
+  await h.manager.start();
+  const { getDesktopDshHome } = require('../shared/dsh-home');
+  assert.equal(h.calls.spawn.options.env.DSH_HOME, getDesktopDshHome());
+  assert.equal('dsh_home' in h.calls.spawn.options.env, false);
 });
 
 test('spawnEnv overwrites inherited DSH_HOME with the desktop home', () => {
