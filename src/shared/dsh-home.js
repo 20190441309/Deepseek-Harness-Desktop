@@ -47,6 +47,9 @@ function tryGetDesktopDshHome() {
 
 function applyDesktopDshHome(env = {}) {
   const next = { ...env };
+  for (const key of Object.keys(next)) {
+    if (key.toUpperCase() === 'DSH_HOME') delete next[key];
+  }
   next.DSH_HOME = getDesktopDshHome();
   return next;
 }
