@@ -1165,6 +1165,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
    */
   function retainHandle(sessionId: SessionId, handle: AgentHandle): Agent {
     const existing = agentHandles.get(sessionId)
+    // Same live agent: keep the first wrapped dispose. A later resume handle
+    // for that agent is not adopted (its dispose is not called from this map).
     if (existing !== undefined && existing.agent === handle.agent) return existing.agent
     const originalDispose = handle.dispose.bind(handle)
     const wrapped: AgentHandle = {

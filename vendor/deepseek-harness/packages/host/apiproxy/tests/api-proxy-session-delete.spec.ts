@@ -132,8 +132,28 @@ async function harness() {
         },
       }
     },
-    async resume() {
-      throw new Error('test harness has no persisted sessions')
+    async resume(_ownerCtx, options) {
+      const live = ctx.agents.get(options.resumeSessionId)
+      if (live !== undefined) {
+        return { agent: live, dispose: () => Promise.resolve() }
+      }
+      let session = ctx.sessions.get(options.resumeSessionId)
+      if (session === undefined) {
+        const stored = (await persist.list()).find(header => header.id === options.resumeSessionId)
+        session = ctx.sessions.create(
+          options.resumeSessionId,
+          stored?.cwd === undefined ? {} : { meta: { cwd: stored.cwd } },
+        )
+      }
+      const agent = stubAgent(session)
+      const unregister = ctx.agents.register(agent)
+      return {
+        agent,
+        dispose: () => {
+          unregister()
+          return Promise.resolve()
+        },
+      }
     },
   }
   ctx.agents.setFactory(factory)
@@ -249,6 +269,22 @@ describe('session.delete', () => {
     const listed = expectOk(await api.workspace.list(request({})))
     expect(listed.archivedSessionIds).not.toContain(rootId)
     expect(listed.items[0]?.sessionIds).not.toContain(rootId)
+  })
+
+  it('retains a handle from ctx.agents.resume so an idle archived live owner can delete', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const sessionId = SessionId('session-resume-retain')
+    await persist.create(persistHeader({ id: sessionId, cwd: root }))
+    // Same resume agentFor uses on GUI cold open; the resolver drops the handle.
+    await ctx.agents.resume({ resumeSessionId: sessionId })
+    expect(ctx.agents.get(sessionId)).toBeDefined()
+    expect(ctx.agents.get(sessionId)?.status).toBe('idle')
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+
+    const result = expectOk(await api.sessions.delete(request({ sessionId })))
+    expect(result.deletedSessionIds).toEqual([sessionId])
+    expect(ctx.agents.get(sessionId)).toBeUndefined()
+    expect((await persist.list()).map(item => item.id)).not.toContain(sessionId)
   })
 
   it('fails the whole call when a live agent in the set has no retained handle', async () => {
