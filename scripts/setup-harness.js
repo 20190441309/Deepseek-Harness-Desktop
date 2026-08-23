@@ -7,12 +7,20 @@ const root = path.join(__dirname, '..');
 const vendor = path.join(root, 'vendor', 'deepseek-harness');
 const pnpm = path.join(root, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs');
 
+function harnessEnv() {
+  const bin = path.join(root, 'node_modules', '.bin');
+  return {
+    ...process.env,
+    PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`,
+  };
+}
+
 function run(command, args, cwd) {
   console.log(`> ${command} ${args.join(' ')}`);
   const result = spawnSync(command, args, {
     cwd,
     stdio: 'inherit',
-    env: process.env,
+    env: harnessEnv(),
   });
   if (result.status !== 0) {
     process.exit(result.status || 1);
