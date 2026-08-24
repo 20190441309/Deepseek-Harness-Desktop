@@ -490,6 +490,27 @@ function collectPnpmFlattenFiles(storeDir, nmDest) {
   return flattened;
 }
 
+function isNestedIsolationDest(nmDest, dest) {
+  const rel = path.relative(nmDest, dest).split(path.sep);
+  const nmIdx = rel.indexOf('node_modules');
+  return nmIdx > 0;
+}
+
+async function repairFlattenedVersionIsolation(harnessSrc, harnessDest) {
+  const storeDir = path.join(harnessSrc, 'node_modules', '.pnpm');
+  const nmDest = path.join(harnessDest, 'node_modules');
+  if (!fs.existsSync(storeDir) || !fs.existsSync(nmDest)) {
+    return 0;
+  }
+  const flattened = collectPnpmFlattenFiles(storeDir, nmDest);
+  const nested = flattened.filter((item) => isNestedIsolationDest(nmDest, item.dest));
+  if (nested.length === 0) {
+    return 0;
+  }
+  console.log(`补全拍平缺失的版本隔离嵌套: ${nested.length} 个文件`);
+  return copyFiles(nested, 32);
+}
+
 function resolvePackageFrom(fromDir, packageName, stopDir) {
   let current = path.resolve(fromDir);
   const stop = path.resolve(stopDir);
@@ -755,6 +776,7 @@ module.exports = async function afterPack(context) {
     const files = collectFiles(harnessSrc, harnessDest, false, true);
     console.log(`待复制 ${files.length} 个文件，收集耗时 ${((Date.now() - started) / 1000).toFixed(1)}s（并发复制中）`);
     copied = await copyFiles(files, 32);
+    copied += await repairFlattenedVersionIsolation(harnessSrc, harnessDest);
   }
 
   const nodeDest = copyBundledNode(resources);
@@ -786,6 +808,7 @@ module.exports = async function afterPack(context) {
 
 module.exports.collectFiles = collectFiles;
 module.exports.collectPnpmFlattenFiles = collectPnpmFlattenFiles;
+module.exports.repairFlattenedVersionIsolation = repairFlattenedVersionIsolation;
 module.exports.copyFiles = copyFiles;
 module.exports.deployCliEntries = deployCliEntries;
 module.exports.resolveDeployDir = resolveDeployDir;

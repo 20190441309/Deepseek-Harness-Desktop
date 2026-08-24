@@ -13,6 +13,7 @@ const {
   collectPnpmFlattenFiles,
   deployCliEntries,
   nodePtyPrebuildRelative,
+  repairFlattenedVersionIsolation,
   resolveDeployDir,
   resolveResourcesDir,
   restoreVendoredPluginNodeModules,
@@ -635,6 +636,36 @@ test('collectPnpmFlattenFiles nests ajv@8 under MCP SDK when top-level is ajv@6'
   const top = JSON.parse(fs.readFileSync(path.join(nmDest, 'ajv', 'package.json'), 'utf8'));
   assert.equal(nested.version, '8.17.1');
   assert.equal(top.version, '6.15.0');
+});
+
+test('repairFlattenedVersionIsolation restores SDK ajv@8 after flat copy', async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-ajv-repair-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const harnessSrc = path.join(workspace, 'src');
+  const harnessDest = path.join(workspace, 'dest');
+  const storeDir = path.join(harnessSrc, 'node_modules', '.pnpm');
+  const sdkEntry = path.join(storeDir, '@modelcontextprotocol+sdk@1.29.0', 'node_modules');
+  const sdkDir = path.join(sdkEntry, '@modelcontextprotocol', 'sdk');
+  const siblingAjv = path.join(sdkEntry, 'ajv');
+  fs.mkdirSync(sdkDir, { recursive: true });
+  fs.writeFileSync(path.join(sdkDir, 'package.json'), '{"name":"@modelcontextprotocol/sdk","version":"1.29.0"}\n');
+  fs.writeFileSync(path.join(sdkDir, 'index.js'), 'module.exports = {}\n');
+  writeAjv(siblingAjv, '8.17.1');
+  fs.writeFileSync(path.join(siblingAjv, 'index.js'), 'module.exports = 8\n');
+
+  const flatDestNm = path.join(harnessDest, 'node_modules');
+  fs.mkdirSync(path.join(flatDestNm, '@modelcontextprotocol', 'sdk'), { recursive: true });
+  fs.copyFileSync(path.join(sdkDir, 'package.json'), path.join(flatDestNm, '@modelcontextprotocol', 'sdk', 'package.json'));
+  fs.copyFileSync(path.join(sdkDir, 'index.js'), path.join(flatDestNm, '@modelcontextprotocol', 'sdk', 'index.js'));
+  writeAjv(path.join(flatDestNm, 'ajv'), '6.15.0');
+  fs.writeFileSync(path.join(flatDestNm, 'ajv', 'index.js'), 'module.exports = 6\n');
+
+  await repairFlattenedVersionIsolation(harnessSrc, harnessDest);
+
+  const nested = JSON.parse(fs.readFileSync(path.join(
+    flatDestNm, '@modelcontextprotocol', 'sdk', 'node_modules', 'ajv', 'package.json',
+  ), 'utf8'));
+  assert.equal(nested.version, '8.17.1');
 });
 
 test('assertHarnessRuntime rejects MCP SDK resolving ajv major 6', (t) => {
