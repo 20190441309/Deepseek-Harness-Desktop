@@ -43,8 +43,8 @@ const QA_PNG = Buffer.from(
   'base64',
 );
 
-const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|grok-4\.6|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色/i;
-const VISION_PRE_SEND_RE = /不支持图片|does not support images?|无法.*图|不能.*图/i;
+const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|grok-4\.6|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色|包含非文本|暂不支持编辑|non-text/i;
+const VISION_PRE_SEND_RE = /不支持图片|does not support images?|无法.*图|不能.*图|包含非文本|暂不支持编辑|non-text/i;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -156,14 +156,6 @@ function chatSnapshot() {
       return trigger ? dshLabel(trigger) : '';
     })(),
   };
-}
-
-function lastAssistantText() {
-  const assistants = Array.from(document.querySelectorAll(
-    '[data-chat-flow-kind="assistant"], [data-chat-flow-kind="assistant-step"]',
-  ));
-  const last = assistants.at(-1);
-  return last ? (last.innerText || '').trim() : '';
 }
 
 async function ensureGrokModel(wc) {
@@ -747,17 +739,18 @@ async function runAppendixAQa(wc, helpers) {
     }
     const turnsOk = APPENDIX_TURNS.every((turn) => steps.some((step) => step.name === turn.id && step.ok));
     if (turnsOk) {
+      let extras = [];
       try {
-        const extras = await runAppendixExtras(wc, helpers);
-        for (const extra of extras) rec(extra.name, extra.ok, extra.detail);
+        extras = await runAppendixExtras(wc, helpers);
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         for (const name of APPENDIX_EXTRA_STEPS) {
-          if (!steps.some((step) => step.name === name)) {
-            rec(name, false, detail.slice(0, 200));
+          if (!extras.some((row) => row.name === name)) {
+            extras.push({ name, ok: false, detail: detail.slice(0, 200) });
           }
         }
       }
+      for (const extra of extras) rec(extra.name, extra.ok, extra.detail);
     }
   }
 

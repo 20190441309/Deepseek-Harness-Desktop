@@ -32,6 +32,15 @@ function dshComposerSend() {
   if (!card) return null;
   return dshFind('send message|发送消息', card);
 }
+const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|grok-4\\.6|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色|包含非文本|暂不支持编辑|non-text/i;
+const VISION_PRE_SEND_RE = /不支持图片|does not support images?|无法.*图|不能.*图|包含非文本|暂不支持编辑|non-text/i;
+function lastAssistantText() {
+  const assistants = Array.from(document.querySelectorAll(
+    '[data-chat-flow-kind="assistant"], [data-chat-flow-kind="assistant-step"]',
+  ));
+  const last = assistants.at(-1);
+  return last ? (last.innerText || '').trim() : '';
+}
 function dshQaPngFile() {
   const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   const bin = atob(b64);
