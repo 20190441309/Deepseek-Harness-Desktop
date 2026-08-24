@@ -463,7 +463,7 @@ function ToolsDialog({
 }: {
   open: boolean
   name: string
-  tools: string[]
+  tools: readonly string[]
   t: McpSectionInjected['t']
   onClose: () => void
 }) {
