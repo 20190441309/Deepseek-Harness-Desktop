@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 设置 → 关于「打开运行目录」打开绑定的 `userData/dsh-home` |
+| **last verified** | 2026-08-23 — 打开运行目录；applyDesktopDshHome case-fold + spawn env；TC-INST-011b |
 
 ## User paths
 

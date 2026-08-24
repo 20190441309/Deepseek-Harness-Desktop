@@ -2,8 +2,9 @@
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
  * time->ellipsis, action buttons) are CSS-only. Row ... menus are visual-only
- * except workspace Rename/Delete and session Rename/Fork/Archive; the session
- * and workspace hover cards are suppressed while a menu is open.
+ * except workspace Rename/Delete, live session Rename/Fork/Archive, and
+ * archived session Unarchive/Delete; the session and workspace hover cards
+ * are suppressed while a menu is open.
  */
 import { type ReactNode, useState } from 'react'
 import clsx from 'clsx'
@@ -547,6 +548,107 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
       anchor={ownRow}
       content={<SessionHoverContent node={node} now={now} t={t} />}
       disabled={menuOpen || drag?.active === true}
+      copyText={row.blank ? undefined : row.title}
+      copyLabel={t('copy')}
+      copiedLabel={t('hover.copied')}
+    />
+  )
+}
+
+/**
+ * Archived-section header: static title, no create control, always expanded.
+ * @param props.t - the browser root's locale seat.
+ * @returns the section header row.
+ */
+export function ArchivedSectionHeader({ t }: { t: RowTranslate }) {
+  const label = t('section.archived')
+  return (
+    <div className={clsx(css.projectRow, css.tasksSection)} role="treeitem" aria-expanded="true">
+      <span className={css.projectText}>
+        <span className={css.title}>{label}</span>
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Archived session row: not draggable; menu is unarchive plus danger delete.
+ * Clicking the row asks the browser to unarchive then open; delete is
+ * menu-only while the row is still archived.
+ * @param props.node - archived session node.
+ * @param props.currentId - selected session id.
+ * @param props.now - clock for the relative-time label.
+ * @param props.onOpen - unarchive-then-open (row click).
+ * @param props.onUnarchive - unarchive without opening (menu).
+ * @param props.onDelete - open the browser-owned delete confirmation (menu).
+ * @param props.t - the browser root's locale seat.
+ * @returns the archived session row.
+ */
+export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarchive, onDelete, t }: {
+  node: SessionNode
+  currentId: string | undefined
+  now: number
+  onOpen: (id: SessionNode['id']) => void
+  onUnarchive: (id: SessionNode['id']) => void
+  onDelete: (id: SessionNode['id'], title: string) => void
+  t: RowTranslate
+}) {
+  const row = node
+  const title = displayTitle(node, t)
+  const selected = node.id === currentId
+  const statuses = sessionStatuses(node, t)
+  const primaryStatus = statuses[0]
+  const showStatus = primaryStatus.state !== 'done' || row.completed
+  const [menuOpen, setMenuOpen] = useState(false)
+  const archivedMenuItems = [
+    { id: 'unarchive', label: t('menu.unarchiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    { id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true },
+  ]
+  const ownRow = (
+    <div
+      className={clsx(css.sessionRow, selected && css.selected, menuOpen && css.menuOpen)}
+      role="treeitem"
+      aria-selected={selected}
+      onClick={() => { onOpen(node.id) }}
+    >
+      <span className={css.slot}>
+        {showStatus && <SessionStatusDots statuses={statuses} />}
+      </span>
+      <span className={css.title}>{title}</span>
+      {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
+      {!row.blank && (
+        <span className={css.rowActions}>
+          <Menu
+            open={menuOpen}
+            onClose={() => { setMenuOpen(false) }}
+            items={archivedMenuItems}
+            onSelect={(id) => {
+              setMenuOpen(false)
+              if (id === 'unarchive') onUnarchive(node.id)
+              if (id === 'delete') onDelete(node.id, title)
+            }}
+            portal
+            closeOnPointerLeave
+            anchor={(
+              <button
+                type="button"
+                className={css.iconButton}
+                aria-label={t('actions.session.aria', { name: title })}
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
+              >
+                <IconEllipsisOutline16 />
+              </button>
+            )}
+          />
+        </span>
+      )}
+    </div>
+  )
+  return (
+    <HoverCard
+      anchor={ownRow}
+      content={<SessionHoverContent node={node} now={now} t={t} />}
+      disabled={menuOpen}
       copyText={row.blank ? undefined : row.title}
       copyLabel={t('copy')}
       copiedLabel={t('hover.copied')}

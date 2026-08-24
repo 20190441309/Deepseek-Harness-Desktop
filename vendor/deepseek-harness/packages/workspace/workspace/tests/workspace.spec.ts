@@ -941,4 +941,28 @@ describe('registry-global session archive', () => {
     const upgraded = await harness({ pool: legacy })
     expect(upgraded.registry.archivedSessionIds).toEqual([])
   })
+
+  it('unarchives durably, skips ids absent from the set without writing, and does not touch accounting', async () => {
+    const dir = await makeDir('unarchive-home')
+    const result = await harness({ sessions: [header('kept', dir, 100), header('gone', dir, 200)] })
+    const workspace = result.registry.list()[0]!
+    await result.registry.archiveSession(SessionId('gone'))
+    expect(workspace.sessionIds).toContain('gone')
+
+    await result.registry.unarchiveSession(SessionId('gone'))
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(workspace.sessionIds).toContain('gone')
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+
+    const changes = result.changes.filter(change => change.table === '').length
+    await result.registry.unarchiveSession(SessionId('gone'))
+    expect(result.changes.filter(change => change.table === '').length).toBe(changes)
+  })
+
+  it('rejects unknown unarchive ids without writing', async () => {
+    const result = await harness({ sessions: [] })
+    await expect(result.registry.unarchiveSession(SessionId('ghost')))
+      .rejects.toThrow(/cannot unarchive session 'ghost'/)
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+  })
 })

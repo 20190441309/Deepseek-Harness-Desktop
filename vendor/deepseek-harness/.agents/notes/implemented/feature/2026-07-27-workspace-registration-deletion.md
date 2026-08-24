@@ -34,7 +34,7 @@ The delete confirmation remains pending until the React Workspace projection has
 
 The existing Workspace row menu opens a shared `Modal` before deletion. The text states all three consequences: the Workspace leaves the list, the folder and session logs remain, and its Sessions appear under Ungrouped. While the request is pending, the confirm and Cancel controls are disabled, duplicate confirmation is ignored, and Escape or Close cannot dismiss the operation. Failure keeps the Modal open with the error; Cancel, Escape, and Close before submission never delete.
 
-The menu, Modal, and buttons retain their existing structure and design tokens. Session deletion remains visual-only and outside this decision.
+The menu, Modal, and buttons retain their existing structure and design tokens. Session log deletion is a separate decision ([Archived-session log deletion](2026-08-23-archived-session-delete.md)); this Workspace Delete still does not delete Sessions.
 
 ## Alternatives considered
 

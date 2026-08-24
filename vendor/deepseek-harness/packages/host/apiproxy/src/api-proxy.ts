@@ -11,7 +11,7 @@ import { z as zod } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
 import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -1051,6 +1051,75 @@ function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceVie
 }
 
 /**
+ * Expand `{root}` with every persisted/live `origin === 'subagent'` header whose
+ * parent is already in the set. Nested subagents are included; forks and `dshbot`
+ * origins are not.
+ * @param root - archived session named by the RPC.
+ * @param headers - union of persisted and live headers.
+ * @returns the closed deletable set.
+ */
+function collectDeletable(root: SessionId, headers: Iterable<SessionHeader>): Set<SessionId> {
+  const deletable = new Set<SessionId>([root])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const header of headers) {
+      if (deletable.has(header.id)) continue
+      if (header.origin === 'subagent' && header.parentSession !== undefined && deletable.has(header.parentSession)) {
+        deletable.add(header.id)
+        grew = true
+      }
+    }
+  }
+  return deletable
+}
+
+/**
+ * Order ids so children precede parents. A remaining id is a leaf when no other
+ * remaining id names it as `parentSession`.
+ * @param ids - deletable set.
+ * @param headers - header lookup for parent links.
+ * @returns leaf-to-root order.
+ */
+function persistDeleteOrder(ids: ReadonlySet<SessionId>, headers: Map<SessionId, SessionHeader>): SessionId[] {
+  const remaining = new Set(ids)
+  const ordered: SessionId[] = []
+  while (remaining.size > 0) {
+    const leaves = [...remaining].filter(id => ![...remaining].some(other => headers.get(other)?.parentSession === id))
+    const batch = leaves.length > 0 ? leaves : [[...remaining][0]!]
+    for (const id of batch) {
+      remaining.delete(id)
+      ordered.push(id)
+    }
+  }
+  return ordered
+}
+
+/**
+ * Delete one persisted log. Skip only when the id is already gone (crash
+ * resume). A failure that leaves the id listed is rethrown so the RPC cannot
+ * unarchive, detach, or publish success.
+ * @param persist - persistence service for this Host.
+ * @param id - session to delete.
+ */
+async function persistDeleteOrResume(
+  persist: Pick<SessionPersistence, 'delete' | 'list'>,
+  id: SessionId,
+): Promise<void> {
+  try {
+    await persist.delete(id)
+  } catch (error) {
+    let remaining = true
+    try {
+      remaining = (await persist.list()).some(header => header.id === id)
+    } catch {
+      // Listing also failed: the durable log may still be present.
+    }
+    if (remaining) throw error
+  }
+}
+
+/**
  * Implement ApiProxy over a composed host context.
  * @param ctx - a context with the Host spine and Workspace registry mounted.
  * @param defaults - host routing and project-directory defaults.
@@ -1083,7 +1152,45 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   const pendingQuestions = new Map<RpcId, PendingQuestion>()
   const pendingApprovals = new Map<RpcId, PendingApproval>()
   const muxQueues = new Set<FrameQueue<RpcRequest<MuxFrame>>>()
+  const hostQueues = new Set<FrameQueue<RpcRequest<HostFrame>>>()
+  const agentHandles = new Map<SessionId, AgentHandle>()
+  const deletingIds = new Set<SessionId>()
   const imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
+
+  /**
+   * Remember the live AgentHandle and wrap dispose so the map entry is dropped.
+   * @param sessionId - live session identity.
+   * @param handle - factory create/resume handle.
+   * @returns the live agent.
+   */
+  function retainHandle(sessionId: SessionId, handle: AgentHandle): Agent {
+    const existing = agentHandles.get(sessionId)
+    // Same live agent: keep the first wrapped dispose. A later resume handle
+    // for that agent is not adopted (its dispose is not called from this map).
+    if (existing !== undefined && existing.agent === handle.agent) return existing.agent
+    const originalDispose = handle.dispose.bind(handle)
+    const wrapped: AgentHandle = {
+      agent: handle.agent,
+      dispose: async () => {
+        try {
+          await originalDispose()
+        } finally {
+          if (agentHandles.get(sessionId) === wrapped) agentHandles.delete(sessionId)
+        }
+      },
+    }
+    agentHandles.set(sessionId, wrapped)
+    return wrapped.agent
+  }
+
+  // Cold open (history/models via agentFor) resumes outside ensureSession.
+  // Session.delete still needs that handle to dispose an idle live owner.
+  const nativeResume = ctx.agents.resume.bind(ctx.agents)
+  ctx.agents.resume = (async (options) => {
+    const handle = await nativeResume(options)
+    retainHandle(options.resumeSessionId, handle)
+    return agentHandles.get(options.resumeSessionId) ?? handle
+  }) as typeof ctx.agents.resume
 
   /** Serialize image admission with model selection for one agent. */
   function serializeImageAdmission<T>(agent: Agent, operation: () => Promise<T>): Promise<T> {
@@ -1634,11 +1741,11 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           // session's history was produced under that composition, and
           // rebuilding it differently would replay tool calls the model can no
           // longer make.
-          return (await ctx.agents.resume({
+          return retainHandle(sessionId, await ctx.agents.resume({
             resumeSessionId: sessionId,
             agentOptions: agentOptions(),
             setup: (await composeAgent(storedPreset)).setup,
-          })).agent
+          }))
         }
 
         try {
@@ -1647,7 +1754,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
         }
         const composition = await composeAgent(presetId)
-        return (await ctx.agents.create({
+        return retainHandle(sessionId, await ctx.agents.create({
           sessionId,
           agentOptions: agentOptions(),
           meta: {
@@ -1656,7 +1763,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             ...origin === undefined ? {} : { origin },
           },
           setup: composition.setup,
-        })).agent
+        }))
       })().catch((error: unknown) => {
         // Another Host entry path may have published the same identity while
         // this operation crossed an asynchronous persistence/filesystem step.
@@ -2420,7 +2527,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // plane, composing nothing would leave the child with no tools at all.
         const forkComposition = await composeAgent(resolveSessionPreset(source))
         try {
-          await ctx.agents.create({
+          retainHandle(childId, await ctx.agents.create({
             sessionId: childId,
             seed,
             meta: {
@@ -2433,7 +2540,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             },
             agentOptions: agentOptions(),
             setup: forkComposition.setup,
-          })
+          }))
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',
@@ -2636,6 +2743,78 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
         agent.cancel({ kind: 'user' }, { keepInbox: true })
         return Promise.resolve(ok(request, { accepted: true as const }))
+      },
+
+      async delete(request) {
+        const { sessionId } = request.payload
+        const persist = ctx.get('sessionPersistence')
+        const headers = new Map<SessionId, SessionHeader>()
+        if (persist !== undefined) {
+          for (const header of await persist.list()) headers.set(header.id, header)
+        }
+        for (const session of ctx.sessions.list()) headers.set(session.id, session.header)
+        const archived = ctx.workspaceRegistry.archivedSessionIds
+        if (!headers.has(sessionId) && !archived.includes(sessionId)) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `session "${sessionId}" not found`,
+            details: { sessionId },
+          })
+        }
+        if (!archived.includes(sessionId)) {
+          return err(request, {
+            code: 'session-not-archived',
+            message: `session "${sessionId}" is not archived`,
+            details: { sessionId },
+          })
+        }
+
+        const deletable = collectDeletable(sessionId, headers.values())
+        for (const id of deletable) {
+          if (ctx.agents.get(id)?.status === 'running') {
+            return err(request, {
+              code: 'session-running',
+              message: `session "${id}" is running`,
+              details: { sessionId: id },
+            })
+          }
+        }
+        for (const id of deletable) {
+          if (ctx.agents.get(id) !== undefined && !agentHandles.has(id)) {
+            return err(request, {
+              code: 'session-live-unowned',
+              message: `session "${id}" is live without a retained handle`,
+              details: { sessionId: id },
+            })
+          }
+        }
+
+        const ordered = persistDeleteOrder(deletable, headers)
+        for (const id of deletable) deletingIds.add(id)
+        try {
+          for (const id of ordered) {
+            const handle = agentHandles.get(id)
+            if (handle !== undefined) await handle.dispose()
+          }
+          if (persist !== undefined) {
+            for (const id of ordered) await persistDeleteOrResume(persist, id)
+          }
+          await ctx.workspaceRegistry.unarchiveSession(sessionId)
+          for (const workspace of ctx.workspaceRegistry.list()) {
+            for (const id of ordered) await workspace.detachSession(id)
+          }
+          for (const id of ordered) {
+            for (const queue of hostQueues) {
+              queue.push(frame({ type: 'host/session-deleted', sessionId: id }))
+            }
+          }
+          return ok(request, {
+            deletedSessionIds: ordered,
+            archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds],
+          })
+        } finally {
+          for (const id of deletable) deletingIds.delete(id)
+        }
       },
     },
 
@@ -2912,6 +3091,23 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const { sessionId } = request.payload
         try {
           await ctx.workspaceRegistry.archiveSession(sessionId)
+        } catch (error: unknown) {
+          // Only the registry's unknown-session rejection is the business
+          // code; storage/durability failures propagate as internal errors.
+          if (!(error instanceof WorkspaceUnknownSessionError)) throw error
+          return err(request, {
+            code: 'session-not-found',
+            message: error.message,
+            details: { sessionId },
+          })
+        }
+        return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
+      },
+
+      async unarchiveSession(request) {
+        const { sessionId } = request.payload
+        try {
+          await ctx.workspaceRegistry.unarchiveSession(sessionId)
         } catch (error: unknown) {
           // Only the registry's unknown-session rejection is the business
           // code; storage/durability failures propagate as internal errors.
@@ -3540,6 +3736,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       host(_request, signal) {
         const queue = new FrameQueue<RpcRequest<HostFrame>>()
+        hostQueues.add(queue)
         const committedWorkspaces = ctx.workspaceRegistry.list()
         const committedWorkspaceIds = new Set(
           committedWorkspaces.map(workspace => String(workspace.id)),
@@ -3562,6 +3759,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             }))
           }),
           ctx.on('session/disposed', (session: Session) => {
+            if (deletingIds.has(session.id)) return
             queue.push(frame({ type: 'host/session-removed', sessionId: session.id }))
           }),
           ctx.on('agent/status', ({ agent, status }: { agent: Agent; status: AgentStatus }) => {
@@ -3639,7 +3837,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             }),
           )),
         ]
-        return queue.iterate(signal, () => { for (const dispose of disposers) dispose() })
+        return queue.iterate(signal, () => {
+          hostQueues.delete(queue)
+          for (const dispose of disposers) dispose()
+        })
       },
     },
 

@@ -759,9 +759,11 @@ class DshManager extends EventEmitter {
     const readiness = deferred();
     let child = null;
     try {
+      const env = this.spawnEnv(config, launch.nodeBin);
+      this.log(`子进程 DSH_HOME ${env.DSH_HOME}`);
       child = this._spawnHarness(launch.command, launch.args, {
         cwd: config.workspace,
-        env: this.spawnEnv(config, launch.nodeBin),
+        env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.child = child;

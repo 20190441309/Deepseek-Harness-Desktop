@@ -3,7 +3,7 @@ import type {
   SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel, relativeTime,
+  deriveArchived, deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel, relativeTime,
   UNGROUPED_KEY, UNGROUPED_LABEL,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
@@ -262,6 +262,32 @@ describe('deriveFlat', () => {
     const kept = summary('kept', 1)
     const gone = summary('gone', 2)
     expect(deriveFlat(list(kept, gone), archived('gone')).map(row => row.id)).toEqual([kept.id])
+  })
+})
+
+describe('deriveArchived', () => {
+  it('preserves archive-set order and skips missing and subagent-origin ids', () => {
+    const first = summary('first', 1)
+    const second = summary('second', 2)
+    const subagent = { ...summary('sub', 3), origin: 'subagent' as const }
+    const live = summary('live', 4)
+    const sessions = list(second, first, subagent, live)
+    expect(deriveArchived(sessions, archived('second', 'missing', 'sub', 'first')).map(row => row.id))
+      .toEqual([second.id, first.id])
+  })
+
+  it('does not feed archived ids through sessionVisible for groups, flat, or search', () => {
+    const gone = summary('gone', 2, '/projects/first')
+    gone.displayTitle = 'Needle archived'
+    const kept = summary('kept', 1, '/projects/first')
+    const sessions = list(kept, gone)
+    const ids = archived('gone')
+    expect(deriveGroups(sessions, [workspace('first', ['kept', 'gone'])], ids, view(['first']))[0]!
+      .sessions.map(node => node.id)).toEqual([kept.id])
+    expect(deriveFlat(sessions, ids).map(row => row.id)).toEqual([kept.id])
+    expect(deriveSearchResults(sessions, [], 'needle', ids, { items: [], hasMore: false }, 10)
+      .items.map(item => item.id)).toEqual([])
+    expect(deriveArchived(sessions, ids).map(row => row.id)).toEqual([gone.id])
   })
 })
 

@@ -411,4 +411,16 @@ export interface SessionsApi {
    */
   cancel(request: RpcRequest<{ sessionId: SessionId }>): Promise<RpcResponse<{ accepted: true }>>
 
+  /**
+   * Permanently destroys an archived session's durable log and nested subagent logs.
+   * The named root must already be in the registry archive set. A running agent in
+   * the deletable set refuses the whole call. Idle live owners are disposed through
+   * the retained `AgentHandle.dispose` before persistence delete. Does not emit
+   * `host/session-removed`.
+   * @param request - `{ sessionId }` of the archived root.
+   * @returns `{ deletedSessionIds, archivedSessionIds }` after commit.
+   */
+  delete(request: RpcRequest<{ sessionId: SessionId }>):
+    Promise<RpcResponse<{ deletedSessionIds: SessionId[]; archivedSessionIds: SessionId[] }>>
+
 }

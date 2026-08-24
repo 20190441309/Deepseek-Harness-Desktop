@@ -77,6 +77,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    unarchiveSession: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -349,13 +351,158 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
     expect(archiveSession).toHaveBeenCalledWith(sid('gone-s'))
 
-    // The archive-set echo hides the row in grouped and flat modes.
+    // The archive-set echo hides the row from live groups and shows it under 已归档.
     rerender(b, { useWorkspaces: hook(workspaceState([workspace('alpha', ['kept-s', 'gone-s'])], [sid('gone-s')])) })
-    expect(screen.queryByText('gone-s')).toBeNull()
+    expect(screen.getByText('已归档')).toBeTruthy()
+    expect(screen.getByText('gone-s')).toBeTruthy()
+    expect(screen.getByText('gone-s').closest('[role="treeitem"]')?.getAttribute('draggable')).not.toBe('true')
     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
     expect(screen.getByText('kept-s')).toBeTruthy()
-    expect(screen.queryByText('gone-s')).toBeNull()
+    expect(screen.getByText('已归档')).toBeTruthy()
+    expect(screen.getByText('gone-s')).toBeTruthy()
+    expect(screen.getByText('gone-s').closest('[role="treeitem"]')?.getAttribute('draggable')).not.toBe('true')
+  })
+
+  it('does not render the archived section when the set is empty', () => {
+    mount({
+      useSessions: hook(sessionState([summary('live-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['live-s'])])),
+    })
+    expect(screen.queryByText('已归档')).toBeNull()
+  })
+
+  it('omits archived sessions from search results and does not show the archived section while searching', async () => {
+    vi.useFakeTimers()
+    try {
+      mount({
+        useSessions: hook(sessionState([summary('kept-s', 2), summary('gone-s', 1, { displayTitle: 'Needle gone' })])),
+        useWorkspaces: hook(workspaceState([workspace('alpha', ['kept-s', 'gone-s'])], [sid('gone-s')])),
+      })
+      expect(screen.getByText('已归档')).toBeTruthy()
+      fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: 'Needle' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(screen.queryByText('已归档')).toBeNull()
+      expect(screen.queryByText('Needle gone')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('live session row menu has no delete item', () => {
+    mount({
+      useSessions: hook(sessionState([summary('live-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['live-s'])])),
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“live-s”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '删除会话' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '归档会话' })).toBeTruthy()
+  })
+
+  it('confirms archived session deletion and blocks duplicate submission', async () => {
+    let resolveDelete!: () => void
+    const deleteSession = vi.fn(() => new Promise<void>((resolve) => { resolveDelete = resolve }))
+    const browser = mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    const dialog = screen.getByRole('dialog', { name: '删除会话' })
+    expect(dialog.textContent).toContain('将永久删除「Gone」的对话记录')
+    expect(dialog.textContent).toContain('无法恢复')
+    expect(dialog.textContent).toContain('工作区文件夹不受影响')
+
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '删除会话' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    expect(deleteSession).toHaveBeenCalledOnce()
+    expect(deleteSession).toHaveBeenCalledWith(sid('gone-s'))
+    expect(confirm.disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消' }).disabled).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe('正在删除会话…')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    await act(async () => { resolveDelete() })
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    rerender(browser, { useWorkspaces: hook(workspaceState([workspace('alpha', [])])) })
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
+  })
+
+  it('keeps the session delete dialog open on failure and maps a running session', async () => {
+    const running = Object.assign(new Error('session delete failed: session-running: busy'), { code: 'session-running' })
+    const deleteSession = vi.fn()
+      .mockRejectedValueOnce(running)
+      .mockRejectedValueOnce('denied')
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('会话仍在运行，请先停止后再删除。') })
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('denied') })
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
+  })
+
+  it('Cancel, Escape, and Close dismiss session deletion without calling the action', () => {
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    const open = () => {
+      fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    }
+    open()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    open()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    open()
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(deleteSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
+  })
+
+  it('unarchives from the archived row menu without opening the session', async () => {
+    const unarchiveSession = vi.fn(async () => {})
+    const open = vi.fn()
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      unarchiveSession,
+      open,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '会话“gone-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '取消归档' }))
+    expect(unarchiveSession).toHaveBeenCalledWith(sid('gone-s'))
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('unarchives then opens when the archived row is clicked', async () => {
+    const unarchiveSession = vi.fn(async () => {})
+    const open = vi.fn()
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      unarchiveSession,
+      open,
+    })
+    fireEvent.click(screen.getByText('gone-s'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(unarchiveSession).toHaveBeenCalledWith(sid('gone-s'))
+    expect(open).toHaveBeenCalledWith(sid('gone-s'))
   })
 
   it('logs and keeps the tree when the archive call rejects', async () => {

@@ -75,3 +75,16 @@ test('applyDesktopDshHome overwrites an inherited DSH_HOME', () => {
   assert.equal(env.DSH_HOME, path.resolve(configured));
   assert.equal(env.KEEP, 'yes');
 });
+
+test('applyDesktopDshHome drops case variants then sets DSH_HOME', () => {
+  const configured = path.join(os.tmpdir(), 'configured-dsh-home');
+  setDesktopDshHome(configured);
+  const inherited = path.join(os.homedir(), '.dsh');
+  const input = { dsh_home: inherited, Dsh_Home: inherited, DSH_HOME: inherited, KEEP: 'yes' };
+  const env = applyDesktopDshHome(input);
+  assert.equal(env.DSH_HOME, path.resolve(configured));
+  assert.equal(env.KEEP, 'yes');
+  assert.equal('dsh_home' in env, false);
+  assert.equal('Dsh_Home' in env, false);
+  assert.equal(input.dsh_home, inherited);
+});

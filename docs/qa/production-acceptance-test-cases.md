@@ -186,6 +186,19 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 桌面进主界面（或走 skip-user-plugins 后仍可用）；失败不得归因于官方 home 里那条坏 bundle。Boot 日志出现桌面 `Harness 家目录` 且路径在应用数据目录下的 `dsh-home`。冷启动应先见启动器；若桌面起不来，启动器须留下并可在插件问诊里禁用肇事包后再试。官方 `~/.dsh` 字节不变。
 
+### TC-INST-011b · 官方 credentials.yaml 毒化不能拖死桌面 · P0（造障）
+
+**前置：** 官方 `~/.dsh/.credentials.yaml` 写入非 string 的 `refs` 值（issue #19 形态）。桌面包为 v0.2.7+。
+
+**步骤：**
+
+1. 冷启动桌面应用。
+2. 读 Boot 日志里的 `Harness 家目录` 与 `子进程 DSH_HOME`。
+3. 确认官方 `~/.dsh/.credentials.yaml` 字节未改。
+4. 底栏终端运行官方 `dsh`（若已安装）：仍使用 `~/.dsh`。
+
+**期望：** 进入 Web UI。两行 home 都在 `%APPDATA%\Deepseek-Harness-Desktop\dsh-home`（或测试 `DSHD_HOME`）。stderr / 子进程输出不得含 `\.dsh\.credentials.yaml`。官方文件未改写。
+
 ### TC-LAUNCH-001 · 冷启动只开启动器 · P0
 
 **步骤：** 完全退出后冷启动安装包。
@@ -424,17 +437,43 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 新回复基于改后内容；历史展示符合官方/桌面分叉规则。
 
-### TC-CHAT-010 · 取消进行中的生成 · P1
+### TC-CHAT-010 · 已归档取消归档 · P1
 
-**步骤：** 发较长任务 → 停止/取消 → 再发一句。
+**前置：** 已安装 CI 包（0.2.8 及以后）；在 TC-WS-006 工作区侧栏有一条可识别会话。
 
-**期望：** 停止生效；可续聊。
+**步骤：**
+
+1. 活会话行 ⋯ → **归档会话**。  
+2. 确认该行从分组/平铺/搜索消失；侧栏底部出现 **已归档** 分区且含该会话。  
+3. 在 **已归档** 点该行，或 ⋯ → **取消归档**。  
+4. 确认会话回到原 workspace 分组位置（或 Ungrouped）。
+
+**期望：** 归档只隐藏列表，日志仍在；取消归档后行恢复，可正常打开续聊。永久删除日志不在本条范围（C2 / TC-CHAT-013）。
 
 ### TC-CHAT-011 · 主模型附件图（无兜底时）· P2
 
 **步骤：** 不配识图兜底时附图片（若主模型声称支持）。
 
 **期望：** 支持则描述；不支持则发送前拒绝。与 TC-MODEL-005 分工：005 测兜底配置路径。
+
+### TC-CHAT-012 · 取消进行中的生成 · P1
+
+**步骤：** 发较长任务 → 停止/取消 → 再发一句。
+
+**期望：** 停止生效；可续聊。
+
+### TC-CHAT-013 · 已归档删除会话 · P1
+
+**前置：** 已安装 CI 包（0.2.8 及以后）；在 TC-WS-006 工作区侧栏有一条可识别会话。
+
+**步骤：**
+
+1. 活会话行 ⋯ → **归档会话**。
+2. 在 **已归档** ⋯ → **删除会话**。
+3. 在确认对话框确认。
+4. 重载应用。
+
+**期望：** 重载后该行不在分组/已归档；会话日志目录不在；工作区文件夹仍在。
 
 ---
 
@@ -928,6 +967,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-INST-009 | P0 | Pass | CI SHA + 已装 exe | 同号 0.2.6 `/S` overlay | Trent | 2026-08-23 |
 | TC-INST-010 | P1 |  |  | 本轮未卸载 | Trent | 2026-08-23 |
 | TC-INST-011 | P0 造障 | Blocked | CI SHA + 已装 exe | 未造官方 ~/.dsh 坏 bundle | Trent | 2026-08-23 |
+| TC-INST-011b | P0 造障 |  |  | 未造官方 ~/.dsh credentials 毒化 | Trent | 2026-08-23 |
 | TC-INST-012 | P0 | Pass | CI SHA + 已装 exe | stamp 在；无 --no-open | Trent | 2026-08-23 |
 | TC-INST-013 | P0 | Pass | CI SHA + 已装 exe | resources\\node.exe v22.23.2 | Trent | 2026-08-23 |
 | TC-MODEL-001 | P0 | Pass | CI SHA + 已装 exe | ayase 已配置；密钥 password 占位 | Trent | 2026-08-23 |
@@ -954,6 +994,8 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-CHAT-009 | P0 | Pass | CI SHA + 已装 exe | 改写后回复「已改写」 | Trent | 2026-08-23 |
 | TC-CHAT-010 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-CHAT-011 | P2 |  |  | 见 MODEL-005 | Trent | 2026-08-23 |
+| TC-CHAT-012 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-CHAT-013 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-SESS-001 | P1 | Pass | CI SHA + 已装 exe | 新会话与附录会话并存 | Trent | 2026-08-23 |
 | TC-SESS-002 | P1 | Pass | CI SHA + 已装 exe | 侧栏两会话可见 | Trent | 2026-08-23 |
 | TC-SESS-003 | P0 | Pass | CI SHA + 已装 exe | 托盘恢复后会话与 grok 仍在 | Trent | 2026-08-23 |

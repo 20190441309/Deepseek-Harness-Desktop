@@ -6,7 +6,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { PRESENCE_EXIT_MS } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RowDragProps } from '../src/client/rows/Rows.tsx'
-import { GroupSessionRun, ProjectRowItem, SearchResultItem, SessionNodeItem } from '../src/client/rows/Rows.tsx'
+import { ArchivedSessionNodeItem, GroupSessionRun, ProjectRowItem, SearchResultItem, SessionNodeItem } from '../src/client/rows/Rows.tsx'
 import type { GroupNode, SearchResultNode, SessionNode } from '../src/client/tree.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -449,6 +449,30 @@ describe('workspace browser rows', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('archived row menu is unarchive plus danger delete and does not open the session', () => {
+    const onOpen = vi.fn()
+    const onUnarchive = vi.fn()
+    const onDelete = vi.fn()
+    const node: SessionNode = {
+      id: sid('s1'), title: 'Archived One', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0,
+    }
+    render(<ArchivedSessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
+      onUnarchive={onUnarchive} onDelete={onDelete} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: '会话“Archived One”的操作' }))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menuitem', { name: '重命名' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '分叉会话' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '归档会话' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '删除会话' }).className).toMatch(/danger/)
+    fireEvent.click(screen.getByRole('menuitem', { name: '取消归档' }))
+    expect(onUnarchive).toHaveBeenCalledWith(node.id)
+    expect(onOpen).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '会话“Archived One”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    expect(onDelete).toHaveBeenCalledWith(node.id, 'Archived One')
+    expect(onOpen).not.toHaveBeenCalled()
+  })
 
   it('shows the hover card after the dwell and suppresses it while the row menu is open', () => {
     vi.useFakeTimers()

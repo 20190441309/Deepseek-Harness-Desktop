@@ -104,6 +104,16 @@ export function apply(ctx: ClientContext): void {
       await ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },
     archiveSession: async (sessionId) => { await ctx.workspaces.archiveSession(sessionId) },
+    unarchiveSession: async (sessionId) => { await ctx.workspaces.unarchiveSession(sessionId) },
+    deleteSession: async (sessionId) => {
+      const { result } = await connection.api.sessions.delete({ sessionId })
+      if (!result.ok) {
+        throw Object.assign(
+          new Error(`session delete failed: ${result.error.code}: ${result.error.message}`),
+          { code: result.error.code },
+        )
+      }
+    },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },

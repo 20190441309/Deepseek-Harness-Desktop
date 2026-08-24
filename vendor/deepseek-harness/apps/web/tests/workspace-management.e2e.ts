@@ -5,11 +5,13 @@
 // trip over the real wire (workspace.rename RPC + durable registry), the
 // duplicate-name pre-check, the
 // flat "In one list" view with its persisted group-by preference, the session
-// hover card and row action menu, and the session archive round trip (row
-// menu → workspace.archiveSession RPC → durable global set → row hidden
-// across reload). Zero model calls: workspace.create/rename/archiveSession
-// are host RPCs with no model involvement, and the one session row the
-// flat/hover/menu/archive scenarios need comes from a seeded fixture (the
+// hover card and row action menu, the session archive round trip (row
+// menu → workspace.archiveSession RPC → durable global set → row under Archived
+// across reload, then unarchive back to Tasks), and archived-session hard
+// delete (menu → session.delete RPC → log directory gone). Zero model calls:
+// workspace.create/rename/archiveSession and session.delete are host RPCs with
+// no model involvement, and the one session row the
+// flat/hover/menu/archive/delete scenarios need comes from a seeded fixture (the
 // seeded-history seed reused verbatim — no new recording).
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -587,10 +589,8 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('archives the seeded session from its row menu, hiding it durably across reload', async () => {
+  it('archives the seeded session from its row menu, showing it under Archived across reload', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-ws-archive'))
-    // The seeded session lives under Tasks (expanded by the hover-card
-    // test's gesture; converge again for order independence).
     const ungroupedRow = page.getByText('Tasks', { exact: true }).locator('..').locator('..')
     const ungroupedSection = ungroupedRow.locator('..')
     await expect.poll(async () => {
@@ -600,38 +600,114 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       }
       return await ungroupedRow.getAttribute('aria-expanded')
     }, { timeout: 5_000 }).toBe('true')
-    // Anchor on session rows (the rows carrying a session actions button),
-    // not a positional index, and assert the single-stray assumption loudly
-    // so a fixture gaining a second stray fails here instead of archiving
-    // the wrong row. CSS attribute match, not getByRole: the button is
-    // display:none until its row hovers, and role queries skip hidden nodes.
     const sessionRows = ungroupedSection.locator('[role="treeitem"]')
       .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
     await expect.poll(() => sessionRows.count(), { timeout: 10_000 }).toBe(1)
     const sessionRow = sessionRows.first()
     const rowTitle = await sessionRow.locator('[class*="title"]').innerText()
-    // Row menu: hover reveals the actions button; Archive session commits
-    // without a confirmation dialog (non-destructive: log + accounting stay).
     await clickHoverAction(sessionRow, `Session actions for ${rowTitle}`)
     await page.getByRole('menuitem', { name: 'Archive session' }).click()
-    // The row disappears on the archive-set echo; with no other visible
-    // stray, the whole Tasks section withdraws.
-    await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 10_000 }).toBe(0)
-    await expect.poll(() => page.getByText('Tasks', { exact: true }).count(), { timeout: 10_000 }).toBe(0)
-    // Durable on the host: the registry-global set carries the id while the
-    // session log itself stays in persistence untouched.
+    // Live Tasks no longer lists the row; it appears under Archived.
+    await expect.poll(() => page.getByText('Archived', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
+    await expect.poll(async () => {
+      if (await page.getByText('Tasks', { exact: true }).count() === 0) return true
+      const tasksSection = page.getByText('Tasks', { exact: true }).locator('..').locator('..').locator('..')
+      return await tasksSection.getByText(rowTitle, { exact: true }).count() === 0
+    }, { timeout: 10_000 }).toBe(true)
+    await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 10_000 }).toBeGreaterThan(0)
     expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([SessionId(SEED_ID)])
     expect((await scaffold.ctx.sessionPersistence.list()).map(header => header.id)).toContain(SessionId(SEED_ID))
-    // Reload: the hidden state is rebuilt from the workspace.list baseline.
     const warningStart = tripwire.warnings.length
     await page.reload({ waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     await expect.poll(() => page.getByText('Projects', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
-    // The archived row must not resurface (the Tasks section itself may
-    // reappear if selection restore lands on another stray — not this test's
-    // concern).
+    await expect.poll(() => page.getByText('Archived', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
+    await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThan(0)
+    expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([SessionId(SEED_ID)])
+    expect((await scaffold.ctx.sessionPersistence.list()).map(header => header.id)).toContain(SessionId(SEED_ID))
+
+    const archivedRow = page.locator('[role="treeitem"]').filter({ hasText: rowTitle }).last()
+    await clickHoverAction(archivedRow, `Session actions for ${rowTitle}`)
+    await page.getByRole('menuitem', { name: 'Unarchive session' }).click()
+    await expect.poll(() => page.getByText('Archived', { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(async () => {
+      const tasks = page.getByText('Tasks', { exact: true })
+      if (await tasks.count() === 0) return false
+      const tasksRow = tasks.locator('..').locator('..')
+      if (await tasksRow.getAttribute('aria-expanded') !== 'true') {
+        await tasks.click()
+        await page.waitForTimeout(50)
+      }
+      return await page.getByText(rowTitle, { exact: true }).count() > 0
+    }, { timeout: 10_000 }).toBe(true)
+    expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([])
+    const warningStart2 = tripwire.warnings.length
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    acknowledgeReloadConnectionLoss(tripwire, warningStart2)
+    await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThan(0)
+    expect(await page.getByText('Archived', { exact: true }).count()).toBe(0)
+    expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([])
+    expect((await scaffold.ctx.sessionPersistence.list()).map(header => header.id)).toContain(SessionId(SEED_ID))
+    expect(tripwire.pageErrors).toEqual([])
+  }, 90_000)
+
+  it('deletes the archived seeded session from its row menu and removes the log directory', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-ws-session-delete'))
+    const ungroupedRow = page.getByText('Tasks', { exact: true }).locator('..').locator('..')
+    const ungroupedSection = ungroupedRow.locator('..')
+    await expect.poll(async () => {
+      if (await ungroupedRow.getAttribute('aria-expanded') !== 'true') {
+        await page.getByText('Tasks', { exact: true }).click()
+        await page.waitForTimeout(50)
+      }
+      return await ungroupedRow.getAttribute('aria-expanded')
+    }, { timeout: 5_000 }).toBe('true')
+    const sessionRows = ungroupedSection.locator('[role="treeitem"]')
+      .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
+    await expect.poll(() => sessionRows.count(), { timeout: 10_000 }).toBe(1)
+    const sessionRow = sessionRows.first()
+    const rowTitle = await sessionRow.locator('[class*="title"]').innerText()
+    const header = (await scaffold.ctx.sessionPersistence.list())
+      .find(candidate => candidate.id === SEED_ID)
+    if (header === undefined) throw new Error('seeded Session log disappeared before deletion')
+    const logLocation = scaffold.ctx.sessionPersistence.locate(header)
+    if (logLocation === undefined) throw new Error('JSONL persistence did not expose the seeded log path')
+    const sessionDirectory = dirname(logLocation.path)
+    await stat(sessionDirectory)
+
+    await clickHoverAction(sessionRow, `Session actions for ${rowTitle}`)
+    expect(await page.getByRole('menuitem', { name: 'Delete session', exact: true }).count()).toBe(0)
+    await page.getByRole('menuitem', { name: 'Archive session' }).click()
+    await expect.poll(() => page.getByText('Archived', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
+    const archivedRow = page.locator('[role="treeitem"]').filter({ hasText: rowTitle }).last()
+    await clickHoverAction(archivedRow, `Session actions for ${rowTitle}`)
+    expect(await page.getByRole('menuitem', { name: 'Unarchive session', exact: true }).count()).toBe(1)
+    expect(await page.getByRole('menuitem', { name: 'Delete session', exact: true }).count()).toBe(1)
+    expect(await page.getByRole('menuitem', { name: 'Archive session', exact: true }).count()).toBe(0)
+    await page.getByRole('menuitem', { name: 'Delete session', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Delete session' })
+    await dialog.waitFor({ timeout: 10_000 })
+    const copy = await dialog.textContent()
+    expect(copy).toContain(`conversation log for "${rowTitle}"`)
+    expect(copy).toContain('cannot be recovered')
+    expect(copy).toContain('workspace folder is unchanged')
+    await dialog.getByRole('button', { name: 'Delete session' }).click()
+    await expect.poll(() => page.getByText('Archived', { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    expect((await scaffold.ctx.sessionPersistence.list()).map(listed => listed.id)).not.toContain(SessionId(SEED_ID))
+
+    const warningStart = tripwire.warnings.length
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    acknowledgeReloadConnectionLoss(tripwire, warningStart)
+    await expect.poll(() => page.getByText('Projects', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
+    expect(await page.getByText('Archived', { exact: true }).count()).toBe(0)
     expect(await page.getByText(rowTitle, { exact: true }).count()).toBe(0)
+    expect((await scaffold.ctx.sessionPersistence.list()).map(listed => listed.id)).not.toContain(SessionId(SEED_ID))
+    await expect(stat(sessionDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(join(scaffold.workspaceCwd, 'workspace', 'a.txt'), 'utf8')).toBe('alpha\n')
     expect(tripwire.pageErrors).toEqual([])
   }, 90_000)
 

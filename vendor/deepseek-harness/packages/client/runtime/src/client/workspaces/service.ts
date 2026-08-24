@@ -363,6 +363,16 @@ export class WorkspaceRuntime implements IWorkspaces {
   }
 
   /**
+   * Remove a session from the registry-global archive set. Restoring it
+   * onto grouping surfaces is the projection's job once the set echo lands.
+   * @param sessionId - session to unarchive.
+   */
+  async unarchiveSession(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.unarchiveSession(sessionId)
+    if (!result.ok) throw new Error(`session unarchive failed: ${result.error.code}: ${result.error.message}`)
+  }
+
+  /**
    * Move a session within its Workspace's manual order (DOM-insertBefore-like).
    * @param workspaceId - owning workspace.
    * @param sessionId - accounted session to move.
