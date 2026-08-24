@@ -7,10 +7,11 @@ const os = require('node:os');
 const path = require('node:path');
 const Module = require('node:module');
 
+const electronStub = { app: {} };
 const originalLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
   if (request === 'electron') {
-    return { app: {} };
+    return electronStub;
   }
   return originalLoad.call(this, request, parent, isMain);
 };
@@ -20,8 +21,45 @@ const {
   canReuseExtractedHarness,
   packagedRuntimeIdentity,
   writeRuntimeStamp,
+  ensurePackagedHarness,
 } = require('./harness-extract');
 Module._load = originalLoad;
+
+/**
+ * Point the module at a temp packaged layout: `resources/vendor` for the
+ * archive + pin, `userData/runtime/<version>` for the extract.
+ * @param {import('node:test').TestContext} t
+ * @returns {{ root: string, resources: string, userData: string, dest: string, loose: string, logs: string[] }}
+ */
+function packagedFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-extract-'));
+  const resources = path.join(root, 'resources');
+  const userData = path.join(root, 'userData');
+  fs.mkdirSync(path.join(resources, 'vendor'), { recursive: true });
+  fs.mkdirSync(userData, { recursive: true });
+  const previousResourcesPath = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', { value: resources, configurable: true });
+  // harness-extract captured electronStub.app by reference at require time,
+  // so the fixture mutates that object instead of replacing it.
+  Object.assign(electronStub.app, {
+    isPackaged: true,
+    getPath: () => userData,
+    getVersion: () => '9.9.9',
+  });
+  t.after(() => {
+    Object.defineProperty(process, 'resourcesPath', { value: previousResourcesPath, configurable: true });
+    for (const key of Object.keys(electronStub.app)) delete electronStub.app[key];
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  return {
+    root,
+    resources,
+    userData,
+    dest: path.join(userData, 'runtime', '9.9.9'),
+    loose: path.join(resources, 'vendor', 'deepseek-harness'),
+    logs: [],
+  };
+}
 
 function seedBuiltHarness(root) {
   fs.mkdirSync(path.join(root, 'apps', 'cli', 'lib'), { recursive: true });
@@ -137,6 +175,75 @@ test('ensurePackagedHarness reuses only a stamped matching extract', () => {
   assert.match(source, /canReuseExtractedHarness\(dest,/);
   assert.doesNotMatch(
     source,
-    /if \(hasBuiltHarness\(dest\)\) \{\s*return dest;/,
+    /if \(hasBuiltHarness\(dest\)\) \{\s*return dest;\s*\}\s*const loose/,
   );
+});
+
+test('ensurePackagedHarness keeps and reuses a bootable extract when the archive is missing', async (t) => {
+  const fixture = packagedFixture(t);
+  seedBuiltHarness(fixture.dest);
+  const logs = [];
+  const resolved = await ensurePackagedHarness((line) => logs.push(line));
+  assert.equal(resolved, fixture.dest);
+  assert.equal(hasBuiltHarness(fixture.dest), true);
+  assert.match(logs.join('\n'), /降级复用/);
+});
+
+test('ensurePackagedHarness prefers the loose runtime when the archive is missing', async (t) => {
+  const fixture = packagedFixture(t);
+  seedBuiltHarness(fixture.loose);
+  const resolved = await ensurePackagedHarness(() => {});
+  assert.equal(resolved, fixture.loose);
+});
+
+test('ensurePackagedHarness throws without deleting a partial extract when the archive is missing', async (t) => {
+  const fixture = packagedFixture(t);
+  // Partial extract: bin.js only, not a bootable runtime.
+  fs.mkdirSync(path.join(fixture.dest, 'apps', 'cli', 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(fixture.dest, 'apps', 'cli', 'lib', 'bin.js'), 'export {}\n');
+  await assert.rejects(
+    () => ensurePackagedHarness(() => {}),
+    /缺少运行时归档/,
+  );
+  assert.equal(fs.existsSync(path.join(fixture.dest, 'apps', 'cli', 'lib', 'bin.js')), true);
+});
+
+test('ensurePackagedHarness throws before touching the extract when the pin is missing', async (t) => {
+  const fixture = packagedFixture(t);
+  seedBuiltHarness(fixture.dest);
+  fs.writeFileSync(path.join(fixture.resources, 'vendor', 'deepseek-harness.tar'), 'not-a-real-archive');
+  await assert.rejects(
+    () => ensurePackagedHarness(() => {}),
+    /harness-upstream\.json/,
+  );
+  assert.equal(hasBuiltHarness(fixture.dest), true);
+});
+
+test('ensurePackagedHarness re-extracts a stale extract only when the archive exists', async (t) => {
+  const { spawnSync } = require('node:child_process');
+  const fixture = packagedFixture(t);
+  const tree = path.join(fixture.root, 'archive-tree');
+  seedBuiltHarness(tree);
+  const archive = path.join(fixture.resources, 'vendor', 'deepseek-harness.tar');
+  const packed = spawnSync(tarCommand(), ['-cf', archive, '-C', tree, '.'], { windowsHide: true });
+  if (packed.status !== 0) {
+    t.skip('tar unavailable for archive fixture');
+    return;
+  }
+  fs.writeFileSync(
+    path.join(fixture.resources, 'vendor', 'harness-upstream.json'),
+    JSON.stringify({ sha: '528c682e061696f5a160f363f236ecbf53cbd006', npm: '0.1.1-rc.1' }),
+  );
+  // Stale extract: bootable but with no stamp, so it must be replaced.
+  seedBuiltHarness(fixture.dest);
+  fs.writeFileSync(path.join(fixture.dest, 'stale-marker.txt'), 'old');
+  const resolved = await ensurePackagedHarness(() => {});
+  assert.equal(resolved, fixture.dest);
+  assert.equal(hasBuiltHarness(fixture.dest), true);
+  assert.equal(fs.existsSync(path.join(fixture.dest, 'stale-marker.txt')), false);
+  const identity = packagedRuntimeIdentity(
+    { sha: '528c682e061696f5a160f363f236ecbf53cbd006', npm: '0.1.1-rc.1' },
+    fs.statSync(archive).size,
+  );
+  assert.equal(canReuseExtractedHarness(fixture.dest, identity), true);
 });

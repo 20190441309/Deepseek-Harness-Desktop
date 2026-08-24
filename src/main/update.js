@@ -10,6 +10,10 @@ const RELEASES_LATEST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_R
 const RELEASES_LIST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`;
 const RELEASES_PAGE = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
 const REPO_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
+/** API check budget: a hung GitHub must not stall the cold-start gate. */
+const CHECK_TIMEOUT_MS = 10_000;
+/** Whole-download budget for one Setup asset (hundreds of MB on slow links). */
+const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
 function currentVersion() {
   try {
@@ -59,8 +63,24 @@ function pickInstaller(assets) {
     || null;
 }
 
-async function githubJson(url) {
-  const response = await fetch(url, { headers: githubHeaders() });
+function isTimeoutError(error) {
+  return error instanceof Error
+    && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
+async function githubJson(url, timeoutMs = CHECK_TIMEOUT_MS) {
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: githubHeaders(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error(`GitHub 请求超时（${Math.round(timeoutMs / 1000)}s）`);
+    }
+    throw error;
+  }
   if (response.status === 404) {
     return null;
   }
@@ -135,18 +155,30 @@ function cleanupPartial(dest) {
   }
 }
 
-function downloadFile(url, dest, onProgress) {
+function downloadFile(url, dest, onProgress, { timeoutMs = DOWNLOAD_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     let settled = false;
+    let activeRequest = null;
     const fail = (error) => {
       if (settled) {
         return;
       }
       settled = true;
-      file.close(() => cleanupPartial(dest));
-      reject(error);
+      clearTimeout(deadline);
+      if (activeRequest) {
+        activeRequest.destroy();
+      }
+      file.close(() => {
+        cleanupPartial(dest);
+        reject(error);
+      });
     };
+    // One wall-clock budget for the whole download (all redirect hops): a
+    // stalled connection must not park the launcher on "下载 0%" forever.
+    const deadline = setTimeout(() => {
+      fail(new Error(`下载超时（${Math.round(timeoutMs / 60_000)} 分钟）`));
+    }, timeoutMs);
     const visit = (target, hops) => {
       if (hops > 8) {
         fail(new Error('Too many redirects'));
@@ -183,9 +215,11 @@ function downloadFile(url, dest, onProgress) {
             return;
           }
           settled = true;
+          clearTimeout(deadline);
           file.close(() => resolve(dest));
         });
       });
+      activeRequest = request;
       request.on('error', fail);
     };
     file.on('error', fail);
@@ -311,10 +345,13 @@ module.exports = {
   GITHUB_REPO,
   REPO_URL,
   RELEASES_PAGE,
+  CHECK_TIMEOUT_MS,
+  DOWNLOAD_TIMEOUT_MS,
   currentVersion,
   checkUpdate,
   installUpdate,
   summarizeRelease,
   listReleases,
   installRelease,
+  downloadFile,
 };

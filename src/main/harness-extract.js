@@ -151,25 +151,36 @@ async function ensurePackagedHarness(log = () => {}) {
   }
   const dest = extractedHarnessRoot();
   const archive = harnessArchivePath();
-  const identity = fs.existsSync(archive)
+  const loose = looseHarnessRoot();
+  const archiveExists = fs.existsSync(archive);
+  // readPackagedPin throws on a missing/invalid pin before anything on disk
+  // is deleted; a broken install must not destroy a usable runtime.
+  const identity = archiveExists
     ? packagedRuntimeIdentity(readPackagedPin(), fs.statSync(archive).size)
     : null;
   if (identity && canReuseExtractedHarness(dest, identity)) {
     return dest;
   }
+  if (!archiveExists) {
+    // Degraded install (archive stripped or corrupted away). Never delete a
+    // runtime we cannot re-create: reuse what still boots and warn.
+    if (hasBuiltHarness(loose)) {
+      return loose;
+    }
+    if (hasBuiltHarness(dest)) {
+      log('安装包缺少运行时归档 deepseek-harness.tar，降级复用已解压的运行时。建议重新安装。');
+      return dest;
+    }
+    throw new Error('安装包缺少运行时归档 deepseek-harness.tar');
+  }
+  // The archive exists and the extract is stale or incomplete: only now is a
+  // re-extract guaranteed possible, so deleting dest is safe.
   if (fs.existsSync(dest)) {
     log(hasBuiltHarness(dest) ? '运行时与安装包不一致，正在重新解压…' : '运行时不完整，正在重新解压…');
     fs.rmSync(dest, { recursive: true, force: true });
   }
-  const loose = looseHarnessRoot();
   if (hasBuiltHarness(loose)) {
     return loose;
-  }
-  if (!fs.existsSync(archive)) {
-    throw new Error('安装包缺少运行时归档 deepseek-harness.tar');
-  }
-  if (!identity) {
-    throw new Error('安装包缺少 vendor/harness-upstream.json');
   }
   log('正在解压运行时（仅首次，之后会变快）…');
   fs.mkdirSync(dest, { recursive: true });
