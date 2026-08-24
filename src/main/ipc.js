@@ -17,7 +17,7 @@ const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
 const { checkUpdate, installUpdate, listReleases, installRelease, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
-const { listInstalledPlugins, installPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
+const { listInstalledPlugins, installPlugin, installImportPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
 const {
   listInstalledPlugins: listProfilePlugins,
   applyDisabledBundles,
@@ -473,7 +473,7 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
       selectedPluginNames: Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [],
       selectedMcpIds: Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [],
       importAttachments: options.importAttachments === true,
-      installPlugin: (spec) => installPlugin(spec, { token: loadConfig().githubToken }),
+      installPlugin: (spec) => installImportPlugin(spec, { token: loadConfig().githubToken }),
     });
     return {
       ...result,

@@ -15,7 +15,7 @@ const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
 const { createTray, invokeTrayAction } = require('./tray');
 const { checkUpdate, installUpdate } = require('./update');
-const { scanImport, shouldHoldForImport } = require('./data-import');
+const { scanImport, shouldHoldForImport, recoverInterruptedImport } = require('./data-import');
 const {
   shouldPromptUpdate,
   shouldAutoStartDesktop,
@@ -205,10 +205,21 @@ async function runColdStartGate() {
     }
     updatePromptPending = false;
   }
+  let importRecovery = { recovered: false, removedTmp: [] };
+  try {
+    importRecovery = recoverInterruptedImport({ userDataDir: app.getPath('userData') });
+  } catch (error) {
+    dsh.log(`导入日志恢复失败：${error.message || String(error)}`, 'error');
+  }
   const scan = scanImport();
-  const holdForImport = shouldHoldForImport(scan);
+  const holdForImport = shouldHoldForImport(scan) || importRecovery.recovered;
   if (holdForImport) {
     sendToLauncher('shell:show-tab', { tab: 'import' });
+  }
+  if (importRecovery.recovered) {
+    sendToLauncher('shell:launcher-hint', {
+      importResume: { removedTmp: importRecovery.removedTmp.length },
+    });
   }
   const lastStart = readLastDesktopStart(app.getPath('userData'));
   const lastStartFailed = lastStart.ok === false;

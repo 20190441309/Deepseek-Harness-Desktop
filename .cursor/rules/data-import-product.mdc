@@ -7,6 +7,6 @@ alwaysApply: true
 
 Dest is always desktop `userData/dsh-home`. Auto-scan (read-only): `~/.dsh` (sessions, attachments, plugin list, `skills/`, `mcp-servers.yaml`) plus `~/.agents/skills`. Extra source dirs are additional roots, not a dest picker.
 
-`runImport` requires checkboxes. Empty selection writes nothing. Plugins reinstall by spec (`dsh plugin add`); never copy `node_modules`. MCP merges by id into dest YAML (tokens on disk, never in UI/logs). Official `~/.dsh` and `~/.agents` stay read-only.
+`runImport` requires checkboxes. Empty selection writes nothing. Plugins reinstall by spec (`dsh plugin add`) through two controlled channels only: `github:owner/repo[#ref]` and registry `name@<semver>`; anything else is pre-marked `unsupported` in the scan (greyed row). Never copy `node_modules`. MCP merges by id into dest YAML (tokens on disk, never in UI/logs). Official `~/.dsh` and `~/.agents` stay read-only. A `phase:'copying'` journal is consumed at cold start: clean `.import-tmp`, hold on import tab, re-run is idempotent (conflict skip).
 
 Full card: [docs/features/data-import.md](../../docs/features/data-import.md)

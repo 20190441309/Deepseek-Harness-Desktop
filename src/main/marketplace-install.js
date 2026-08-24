@@ -558,6 +558,56 @@ async function installPlugin(spec, options = {}) {
   });
 }
 
+/** Launcher-import registry spec: `name@1.2.3` / `name@^1.2.3` / `name@~1.2.3`. */
+const IMPORT_REGISTRY_VERSION = /^[\^~]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * Split a launcher-import registry spec into `{ name, version }`.
+ * Scoped names keep their leading `@`; the version separator is the last `@`.
+ * @param {string} spec
+ * @returns {{ name: string, version: string } | null}
+ */
+function parseImportRegistrySpec(spec) {
+  const value = String(spec || '').trim();
+  const at = value.lastIndexOf('@');
+  if (at <= 0) {
+    return null;
+  }
+  const name = value.slice(0, at);
+  const version = value.slice(at + 1);
+  if (!isValidPackageName(name) || !IMPORT_REGISTRY_VERSION.test(version)) {
+    return null;
+  }
+  return { name, version };
+}
+
+/**
+ * Launcher-import install channel: reinstall a plugin from the user's own
+ * official profile manifest. Accepts the marketplace `github:` specs plus
+ * pinned registry `name@<semver>` specs. This channel is main-process only
+ * (LAUNCHER IPC); the renderer/tool `installPlugin` channel stays github-only.
+ * @param {string} spec - `github:owner/repo[#ref]` or `name@<semver>`.
+ * @param {{ allowBuilds?: string[], token?: string, onProgress?: Function, runPlugin?: Function }} [options]
+ * @returns {Promise<{ ok: boolean, error?: string, spec?: string, log?: string }>}
+ */
+async function installImportPlugin(spec, options = {}) {
+  const value = String(spec || '').trim();
+  if (!value) {
+    return { ok: false, error: '缺少安装规格' };
+  }
+  const registry = isValidGithubSpec(value) ? null : parseImportRegistrySpec(value);
+  if (!isValidGithubSpec(value) && !registry) {
+    return { ok: false, error: '仅支持 github:owner/repo[#ref] 或 name@版本 安装规格' };
+  }
+  return withPluginLock(async () => {
+    const droppedKey = registry ? registry.name : value;
+    if (DROPPED.includes(droppedKey) || DROPPED.some((item) => droppedKey.includes(item))) {
+      return { ok: false, error: '该插件已退役，不再提供安装' };
+    }
+    return addPluginSpec(value, options);
+  });
+}
+
 async function uninstallPlugin(packageName, options = {}) {
   const name = String(packageName || '').trim();
   if (!name) {
@@ -650,6 +700,8 @@ module.exports = {
   parseAllowBuilds,
   allowBuildsInWorkspace,
   installPlugin,
+  installImportPlugin,
+  parseImportRegistrySpec,
   uninstallPlugin,
   installMarketplacePlugin,
   resolveCli,

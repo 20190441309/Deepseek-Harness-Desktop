@@ -26,6 +26,10 @@ function makeTree() {
       '@deepseek-ai/dsh-base': '1.0.0',
       'good-plugin': 'github:acme/good',
       'file-plugin': 'file:../local',
+      'registry-plugin': '1.2.3',
+      'caret-plugin': '^2.0.0',
+      'tarball-plugin': 'https://example.test/x.tgz',
+      'tag-plugin': 'latest',
     },
   }));
   fs.mkdirSync(userData, { recursive: true });
@@ -75,7 +79,26 @@ test('scanImport lists sessions, skips sqlite, and flags dest conflicts', () => 
   assert.equal(plugins['@deepseek-ai/dsh-base'].skipped, true);
   assert.equal(plugins['file-plugin'].reason, 'local-spec');
   assert.equal(plugins['good-plugin'].skipped, false);
+  assert.equal(plugins['registry-plugin'].skipped, false);
+  assert.equal(plugins['caret-plugin'].skipped, false);
+  assert.equal(plugins['tarball-plugin'].reason, 'unsupported');
+  assert.equal(plugins['tag-plugin'].reason, 'unsupported');
   fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('pluginReinstallSpec maps github and registry semver specs and rejects everything else', () => {
+  const { pluginReinstallSpec } = require('./data-import');
+  assert.equal(pluginReinstallSpec('x', 'github:acme/good'), 'github:acme/good');
+  assert.equal(pluginReinstallSpec('x', 'github:acme/good#abc1234'), 'github:acme/good#abc1234');
+  assert.equal(pluginReinstallSpec('registry-plugin', '1.2.3'), 'registry-plugin@1.2.3');
+  assert.equal(pluginReinstallSpec('@scope/name', '^2.0.0'), '@scope/name@^2.0.0');
+  assert.equal(pluginReinstallSpec('tilde', '~0.4.1-rc.1'), 'tilde@~0.4.1-rc.1');
+  assert.equal(pluginReinstallSpec('x', 'https://example.test/x.tgz'), null);
+  assert.equal(pluginReinstallSpec('x', 'latest'), null);
+  assert.equal(pluginReinstallSpec('x', 'npm:alias@1.2.3'), null);
+  assert.equal(pluginReinstallSpec('x', 'git+https://github.com/a/b.git'), null);
+  assert.equal(pluginReinstallSpec('../escape', '1.2.3'), null);
+  assert.equal(pluginReinstallSpec('x', ''), null);
 });
 
 test('shouldHoldForImport is true only when dest sessions are empty and source has data', () => {
@@ -128,6 +151,61 @@ test('importSessions rejects relative escape paths', () => {
   fs.rmSync(tree.root, { recursive: true, force: true });
 });
 
+test('recoverInterruptedImport consumes a copying journal and clears .import-tmp staging dirs', () => {
+  const tree = makeTree();
+  const { recoverInterruptedImport, readImportJournal, journalPath } = require('./data-import');
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a.import-tmp'), { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a.import-tmp', 'session.jsonl'), 'partial');
+  fs.mkdirSync(path.join(tree.dest, 'skills', 'alpha.import-tmp'), { recursive: true });
+  fs.mkdirSync(path.join(tree.dest, 'attachments.import-tmp'), { recursive: true });
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'proj', 'sess-keep'), { recursive: true });
+  fs.writeFileSync(journalPath(tree.userData), `${JSON.stringify({
+    phase: 'copying',
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    items: [],
+  })}\n`);
+  const result = recoverInterruptedImport({ userDataDir: tree.userData, destHome: tree.dest });
+  assert.equal(result.recovered, true);
+  assert.equal(result.removedTmp.length, 3);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a.import-tmp')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'skills', 'alpha.import-tmp')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'attachments.import-tmp')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'proj', 'sess-keep')), true);
+  assert.equal(readImportJournal(tree.userData).phase, 'recovered');
+  const again = recoverInterruptedImport({ userDataDir: tree.userData, destHome: tree.dest });
+  assert.equal(again.recovered, false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('recoverInterruptedImport ignores done journals and foreign destHome journals', () => {
+  const tree = makeTree();
+  const { recoverInterruptedImport, journalPath } = require('./data-import');
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'stale.import-tmp'), { recursive: true });
+  fs.writeFileSync(journalPath(tree.userData), `${JSON.stringify({
+    phase: 'done',
+    sourceHome: tree.source,
+    destHome: tree.dest,
+  })}\n`);
+  assert.equal(
+    recoverInterruptedImport({ userDataDir: tree.userData, destHome: tree.dest }).recovered,
+    false,
+  );
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'stale.import-tmp')), true);
+
+  fs.writeFileSync(journalPath(tree.userData), `${JSON.stringify({
+    phase: 'copying',
+    sourceHome: tree.source,
+    destHome: path.join(tree.root, 'somewhere-else'),
+  })}\n`);
+  assert.equal(
+    recoverInterruptedImport({ userDataDir: tree.userData, destHome: tree.dest }).recovered,
+    false,
+  );
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'stale.import-tmp')), true);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
 test('importPlugins skips templates and local specs, and reinstalls selected names', async () => {
   const tree = makeTree();
   const calls = [];
@@ -140,8 +218,31 @@ test('importPlugins skips templates and local specs, and reinstalls selected nam
       return { ok: true };
     },
   });
-  assert.deepEqual(calls, ['github:acme/good']);
+  assert.deepEqual(calls.sort(), ['caret-plugin@^2.0.0', 'github:acme/good', 'registry-plugin@1.2.3']);
   assert.equal(result.plugins.find((row) => row.name === 'good-plugin').status, 'installed');
+  assert.equal(result.plugins.find((row) => row.name === 'registry-plugin').status, 'installed');
+  assert.equal(result.plugins.find((row) => row.name === 'tarball-plugin'), undefined);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('importPlugins never sends an unsupported spec to the installer, even when selected', async () => {
+  const tree = makeTree();
+  const calls = [];
+  const { importPlugins } = require('./data-import');
+  const result = await importPlugins({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    selectedNames: ['tarball-plugin', 'tag-plugin', 'registry-plugin'],
+    installPlugin: async (spec) => {
+      calls.push(spec);
+      return { ok: true };
+    },
+  });
+  assert.deepEqual(calls, ['registry-plugin@1.2.3']);
+  assert.equal(result.plugins.find((row) => row.name === 'tarball-plugin').status, 'skipped');
+  assert.equal(result.plugins.find((row) => row.name === 'tarball-plugin').reason, 'unsupported');
+  assert.equal(result.plugins.find((row) => row.name === 'tag-plugin').reason, 'unsupported');
+  assert.equal(result.ok, true);
   fs.rmSync(tree.root, { recursive: true, force: true });
 });
 

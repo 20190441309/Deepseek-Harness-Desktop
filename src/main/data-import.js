@@ -5,11 +5,14 @@ const os = require('os');
 const path = require('path');
 const { getDesktopDshHome, tryGetDesktopDshHome } = require('../shared/dsh-home');
 const { DROPPED, OFFICIAL_TEMPLATE_BUNDLES, listInstalledPlugins } = require('./plugins');
+const { isValidGithubSpec, isValidPackageName } = require('../host/install-dsh-plugin-client');
 
 const SESSION_LOG = /^session\.jsonl(\.zstd)?$/i;
 const UNSUPPORTED_DB = /\.db$/i;
 const PATH_TRAVERSAL = /(^|[\\/])\.\.([\\/]|$)/;
 const LOCAL_SPEC = /^(file:|link:|workspace:)/i;
+/** Registry semver spec from the official profile manifest (`1.2.3`, `^1.2.3`, `~1.2.3`). */
+const REGISTRY_SEMVER_SPEC = /^[\^~]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const MCP_FILE = 'mcp-servers.yaml';
 const SKILL_DOC = 'SKILL.md';
 
@@ -114,6 +117,28 @@ function readJson(file) {
   }
 }
 
+/**
+ * Reinstall spec for one manifest row, or null when the row cannot be
+ * reinstalled through a supported channel. Supported channels:
+ * - `github:owner/repo[#ref]` specs (existing marketplace channel);
+ * - registry semver specs, reinstalled as `name@<semver>` (`dsh plugin add`).
+ * Anything else (tarball URLs, git+ URLs, npm aliases, dist-tags) must not
+ * reach `pnpm add`, so the scan pre-marks it `unsupported`.
+ * @param {string} name - manifest dependency name.
+ * @param {string} spec - manifest dependency spec.
+ * @returns {string | null}
+ */
+function pluginReinstallSpec(name, spec) {
+  const value = String(spec || '').trim();
+  if (isValidGithubSpec(value)) {
+    return value;
+  }
+  if (isValidPackageName(name) && REGISTRY_SEMVER_SPEC.test(value)) {
+    return `${name}@${value}`;
+  }
+  return null;
+}
+
 function pluginCandidates(sourceHome) {
   const manifest = readJson(path.join(sourceHome, 'profiles', 'web', 'package.json'));
   const dependencies = manifest?.dependencies && typeof manifest.dependencies === 'object'
@@ -128,7 +153,9 @@ function pluginCandidates(sourceHome) {
         ? 'dropped'
         : LOCAL_SPEC.test(value)
           ? 'local-spec'
-          : '';
+          : pluginReinstallSpec(name, value) === null
+            ? 'unsupported'
+            : '';
     return {
       name,
       spec: value,
@@ -447,6 +474,98 @@ function writeJournal(file, payload) {
   fs.renameSync(tmp, file);
 }
 
+function readImportJournal(userDataDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(journalPath(userDataDir), 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function removeImportTmpDirs(root) {
+  const removed = [];
+  if (!root || !fs.existsSync(root)) {
+    return removed;
+  }
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const abs = path.join(dir, entry.name);
+      if (entry.name.endsWith('.import-tmp')) {
+        try {
+          fs.rmSync(abs, { recursive: true, force: true });
+          removed.push(abs);
+        } catch {
+          // Leftover staging dirs that cannot be removed stay harmless: the
+          // next copyDirAtomic clears its own target tmp before copying.
+        }
+        continue;
+      }
+      stack.push(abs);
+    }
+  }
+  return removed.sort();
+}
+
+function samePath(left, right) {
+  const a = path.resolve(String(left || ''));
+  const b = path.resolve(String(right || ''));
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/**
+ * Consume a `phase: 'copying'` journal left behind by a crash mid-import:
+ * remove stale `.import-tmp` staging dirs under the desktop home (sessions,
+ * skills, and the attachments staging dir) and mark the journal `recovered`
+ * so the launcher can tell the user to re-run the idempotent, conflict-
+ * skipping import. Only the journal's own destHome is cleaned, and only when
+ * it matches the resolved desktop home; official sources are never touched.
+ * @param {{ userDataDir?: string, destHome?: string }} [options]
+ * @returns {{ recovered: boolean, removedTmp: string[] }}
+ */
+function recoverInterruptedImport({ userDataDir, destHome: dest } = {}) {
+  const target = destHome(dest);
+  const journalDir = userDataDir || path.join(target, '..');
+  const journal = readImportJournal(journalDir);
+  if (!journal || journal.phase !== 'copying') {
+    return { recovered: false, removedTmp: [] };
+  }
+  if (!samePath(journal.destHome, target)) {
+    return { recovered: false, removedTmp: [] };
+  }
+  const removedTmp = [
+    ...removeImportTmpDirs(path.join(target, 'sessions')),
+    ...removeImportTmpDirs(path.join(target, 'skills')),
+  ];
+  const attachmentsTmp = path.join(target, 'attachments.import-tmp');
+  if (fs.existsSync(attachmentsTmp)) {
+    try {
+      fs.rmSync(attachmentsTmp, { recursive: true, force: true });
+      removedTmp.push(attachmentsTmp);
+    } catch {
+      // Same as above: a stuck staging dir does not block the re-run.
+    }
+  }
+  writeJournal(journalPath(journalDir), {
+    ...journal,
+    phase: 'recovered',
+    recoveredAt: new Date().toISOString(),
+    removedTmp,
+  });
+  return { recovered: true, removedTmp };
+}
+
 function copyDirAtomic(from, to) {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   const tmp = `${to}.import-tmp`;
@@ -556,9 +675,11 @@ async function importPlugins({
       results.push({ name: row.name, status: 'skipped', reason: 'installed' });
       continue;
     }
-    const spec = LOCAL_SPEC.test(row.spec)
-      ? row.name
-      : (row.spec && !row.spec.startsWith('^') && !row.spec.startsWith('~') ? row.spec : row.name);
+    const spec = pluginReinstallSpec(row.name, row.spec);
+    if (spec === null) {
+      results.push({ name: row.name, status: 'skipped', reason: 'unsupported' });
+      continue;
+    }
     try {
       const installed = await run(spec);
       results.push({
@@ -722,6 +843,9 @@ module.exports = {
   shouldHoldForImport,
   importSessions,
   importPlugins,
+  pluginReinstallSpec,
+  recoverInterruptedImport,
+  readImportJournal,
   runImport,
   journalPath,
   SESSION_LOG,

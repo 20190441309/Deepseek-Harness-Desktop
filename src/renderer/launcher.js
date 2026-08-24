@@ -184,6 +184,9 @@ function pluginSkipLabel(reason) {
   if (reason === 'local-spec') {
     return '本地 file / link / workspace，不重装';
   }
+  if (reason === 'unsupported') {
+    return '规格不受支持，无法自动重装';
+  }
   return reason || '跳过';
 }
 
@@ -560,6 +563,10 @@ function bind() {
   }
   if (api?.onLauncherHint) {
     api.onLauncherHint((payload) => {
+      if (payload?.importResume) {
+        setHint('上次导入中途中断，已清理未完成的临时文件。可以直接重新导入：已导入的目录会自动跳过。');
+        return;
+      }
       const check = payload?.check;
       if (check?.status === 'error') {
         setHint(`更新检查失败：${check.message || '网络或 GitHub 不可用'}。仍可启动桌面端。`);

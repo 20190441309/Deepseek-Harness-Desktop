@@ -28,6 +28,8 @@ globalThis.fetch = async () => {
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
 const {
   installPlugin,
+  installImportPlugin,
+  parseImportRegistrySpec,
   uninstallPlugin,
   installMarketplacePlugin,
 } = require('./marketplace-install');
@@ -200,6 +202,59 @@ test('installPlugin rejects invalid allowBuilds before invoking the CLI', async 
   const result = await installPlugin('github:owner/repo', { allowBuilds: ['../prepare'] });
   assert.equal(result.ok, false);
   assert.match(result.error, /allowBuilds/);
+});
+
+test('parseImportRegistrySpec accepts pinned name@semver and rejects loose specs', () => {
+  assert.deepEqual(parseImportRegistrySpec('good-plugin@1.2.3'), { name: 'good-plugin', version: '1.2.3' });
+  assert.deepEqual(
+    parseImportRegistrySpec('@scope/name@^2.0.0-rc.1'),
+    { name: '@scope/name', version: '^2.0.0-rc.1' },
+  );
+  assert.equal(parseImportRegistrySpec('good-plugin'), null);
+  assert.equal(parseImportRegistrySpec('good-plugin@latest'), null);
+  assert.equal(parseImportRegistrySpec('@scope/name'), null);
+  assert.equal(parseImportRegistrySpec('../escape@1.2.3'), null);
+  assert.equal(parseImportRegistrySpec('good plugin@1.2.3'), null);
+  assert.equal(parseImportRegistrySpec(''), null);
+});
+
+test('installImportPlugin adds a registry name@semver spec through the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installImportPlugin('good-plugin@1.2.3', { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', 'good-plugin@1.2.3']]);
+});
+
+test('installImportPlugin still accepts the github channel', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installImportPlugin('github:acme/good#0123456789abcdef0123456789abcdef01234567', { runPlugin });
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'add');
+});
+
+test('installImportPlugin rejects tarballs, dist-tags, and local specs before the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  for (const spec of [
+    'https://example.test/x.tgz',
+    'good-plugin@latest',
+    'file:../local',
+    'git+https://github.com/a/b.git',
+    'npm:alias@1.2.3',
+    '',
+  ]) {
+    const result = await installImportPlugin(spec, { runPlugin });
+    assert.equal(result.ok, false, `spec should be rejected: ${spec}`);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('installImportPlugin rejects a DROPPED plugin name before the CLI', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installImportPlugin('@dsh-external/dsh-genui@1.0.0', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /退役/);
+  assert.equal(calls.length, 0);
 });
 
 test('uninstallPlugin rejects shell syntax before invoking the CLI', async () => {
