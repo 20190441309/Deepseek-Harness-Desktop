@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-MCP client bridge plugin: connects to external [Model Context Protocol](https://modelcontextprotocol.io/) servers and registers their tools on `ctx.tools`, making them available to the model as native tools under server-qualified names (`mcp__<serverName>__<rawName>`).
+MCP client bridge plugin: connects to external [Model Context Protocol](https://modelcontextprotocol.io/) servers and registers their tools on the tools registry (resolved via strict `ctx.get('tools')`), making them available to the model as native tools under server-qualified names (`mcp__<serverName>__<rawName>`).
 
 ## Usage
 
@@ -52,7 +52,7 @@ The model sees `mcp__github__create_issue`, `mcp__web__search`, … — the same
 
 ## Tool naming
 
-Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`) and the public name `mcp__<serverName>__<rawName>` registered on `ctx.tools`. Public names are normalized to the DeepSeek function-name contract (64 chars, `[A-Za-z0-9_-]`); when replacement or truncation changes the name, a deterministic 12-hex-char hash of `(serverName, rawName)` is appended so distinct tools never collapse into one name. Names are pure functions of `(serverName, rawName)` — connection order, re-syncs, and other servers never rename a tool.
+Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`) and the public name `mcp__<serverName>__<rawName>` registered in the tools registry. Public names are normalized to the DeepSeek function-name contract (64 chars, `[A-Za-z0-9_-]`); when replacement or truncation changes the name, a deterministic 12-hex-char hash of `(serverName, rawName)` is appended so distinct tools never collapse into one name. Names are pure functions of `(serverName, rawName)` — connection order, re-syncs, and other servers never rename a tool.
 
 - Two servers publishing the same raw name (e.g. `search`) coexist under their namespaces.
 - A duplicate `serverName` across live instances fails the later plugin instance at load.
@@ -61,7 +61,7 @@ Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`
 
 ## Behavior
 
-- On connect: plugin activation awaits `listTools()` and registers each tool via `ctx.tools.register()` under its public name before the composition starts its first turn. Initial connection, discovery, or registration failure is always logged; it rejects activation when `failOnStartupError` is true and otherwise activates with no tools.
+- On connect: plugin activation awaits `listTools()` and registers each tool via the strictly-resolved `ctx.get('tools').register()` under its public name before the composition starts its first turn. The strict read keeps remounted instances (mcp-servers-file disable/enable cycles) working after startup, when the `ctx.tools` property proxy can no longer resolve through the caller's fiber chain. Initial connection, discovery, or registration failure is always logged; it rejects activation when `failOnStartupError` is true and otherwise activates with no tools.
 - Listens for `notifications/tools/list_changed` → re-syncs; a fetch-phase failure keeps the previous generation registered, while a registration conflict rolls back the attempted generation and leaves no tools from that server.
 - Tool execute: `client.callTool({ name: rawName, arguments }, { signal })` with timeout + abort support—the public name is never sent to the server.
 - Canonical success is `{ content: JsonValue[], structuredContent? }`; complete JSON MCP blocks survive for programmatic callers. A supported advertised `outputSchema` validates `structuredContent`; unsupported schema vocabulary falls back to unconstrained `JsonValue`.

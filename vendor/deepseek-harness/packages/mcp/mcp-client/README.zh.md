@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，把它们的工具注册到 `ctx.tools`，使模型能够通过服务器限定名称（`mcp__<serverName>__<rawName>`）将其作为原生工具使用。
+MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，把它们的工具注册到工具注册表（通过严格 `ctx.get('tools')` 解析），使模型能够通过服务器限定名称（`mcp__<serverName>__<rawName>`）将其作为原生工具使用。
 
 ## 用法
 
@@ -52,7 +52,7 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 
 ## 工具命名
 
-每个 MCP 工具都有两个名称：通过 `tools/call` 在协议上传送的原始 MCP 名称，以及公开名称 `mcp__<serverName>__<rawName>`，后者注册到 `ctx.tools`。公开名称会规范化为 DeepSeek 函数名称约定（64 个字符、`[A-Za-z0-9_-]`）；如果替换或截断改变名称，就会追加 `(serverName, rawName)` 的确定性 12 位十六进制 hash，确保不同工具绝不会折叠为同一个名称。名称是 `(serverName, rawName)` 的纯函数：连接顺序、重新同步和其他服务器永远不会重命名工具。
+每个 MCP 工具都有两个名称：通过 `tools/call` 在协议上传送的原始 MCP 名称，以及公开名称 `mcp__<serverName>__<rawName>`，后者注册进工具注册表。公开名称会规范化为 DeepSeek 函数名称约定（64 个字符、`[A-Za-z0-9_-]`）；如果替换或截断改变名称，就会追加 `(serverName, rawName)` 的确定性 12 位十六进制 hash，确保不同工具绝不会折叠为同一个名称。名称是 `(serverName, rawName)` 的纯函数：连接顺序、重新同步和其他服务器永远不会重命名工具。
 
 - 发布相同原始名称（例如 `search`）的两个服务器会在各自 namespace 下共存。
 - 存活实例中的重复 `serverName` 会使后加载的插件实例失败。
@@ -61,7 +61,7 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 
 ## 行为
 
-- 连接时：插件激活会等待 `listTools()`，并在组合开始首个轮次前通过 `ctx.tools.register()` 以公开名称注册每个工具。初始连接、发现或注册失败始终会记录日志；`failOnStartupError` 为 true 时拒绝激活，否则插件仍会激活但不注册工具。
+- 连接时：插件激活会等待 `listTools()`，并在组合开始首个轮次前通过严格解析的 `ctx.get('tools').register()` 以公开名称注册每个工具。严格读取保证启动后重挂的实例（mcp-servers-file 的停用/启用循环）依然可用——此时 `ctx.tools` 属性代理已无法沿调用方的 fiber 链解析。初始连接、发现或注册失败始终会记录日志；`failOnStartupError` 为 true 时拒绝激活，否则插件仍会激活但不注册工具。
 - 监听 `notifications/tools/list_changed` → 重新同步；获取阶段失败时保留上一世代的注册，注册冲突则会回滚本次尝试的世代，并且不保留该服务器的任何工具。
 - 工具执行：`client.callTool({ name: rawName, arguments }, { signal })`，支持超时 + 中止；公开名称绝不会发给服务器。
 - 规范成功值是 `{ content: JsonValue[], structuredContent? }`；完整的 JSON MCP 块会保留给编程调用方。受支持且已声明的 `outputSchema` 会验证 `structuredContent`；不受支持的 schema 词汇会回退为不受约束的 `JsonValue`。

@@ -23,4 +23,4 @@ While the section is ready, poll `list` every two seconds unconditionally (`HEAL
 - The page fetches a small in-process snapshot every 2s while mounted; the interval mirrors the pre-existing health poll cadence.
 - Tool counts, health, and new direct-connect rows now appear within one poll tick without restarting the desktop app.
 
-Related: [MCP and skill settings](../2026-08-14-mcp-and-skill-settings.md).
+Related: [MCP and skill settings](../2026-08-14-mcp-and-skill-settings.md), [MCP tool registration survives child remounts](2026-08-23-mcp-remount-tools-strict-get.md).

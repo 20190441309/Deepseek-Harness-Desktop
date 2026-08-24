@@ -23,4 +23,4 @@ MCP 设置页只在某行处于 `connecting`/`reconnecting` 时轮询 `mcpServer
 - 页面挂载期间每 2 秒拉取一次小型进程内快照；节奏与既有的健康轮询一致。
 - 工具计数、健康状态与新出现的直连行在一个轮询周期内即可显示，无需重启桌面应用。
 
-相关：[MCP 与技能设置](../2026-08-14-mcp-and-skill-settings.md)。
+相关：[MCP 与技能设置](../2026-08-14-mcp-and-skill-settings.md)、[MCP 工具注册改用严格读取](2026-08-23-mcp-remount-tools-strict-get.zh.md)。
