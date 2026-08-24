@@ -6,9 +6,9 @@ export default function App() {
     <View style={styles.root}>
       <StatusBar style="dark" />
       <Text style={styles.kicker}>手机远程</Text>
-      <Text style={styles.title}>请用系统浏览器打开桌面二维码链接</Text>
+      <Text style={styles.title}>请用 Android 安装包或系统浏览器打开桌面二维码</Text>
       <Text style={styles.lead}>
-        这一版的客户端是手机网页。扫码后走独立 SPA，不套官方四栏页。应用内扫码会在下一版做。
+        原生客户端在 mobile/android（Kotlin Compose）。浏览器继续走独立 SPA。不要用 WebView 套官方四栏页。
       </Text>
     </View>
   );

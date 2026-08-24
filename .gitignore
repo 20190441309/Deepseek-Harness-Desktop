@@ -53,3 +53,7 @@ docs/qa/results/**/*.orig
 .zcode/
 plugins/
 .final-gates/
+mobile/android/.gradle/
+mobile/android/**/build/
+mobile/android/local.properties
+
