@@ -18,7 +18,7 @@
 
 ## 实现入口
 
-- `src/main/usage-panel-preset.js`；`harness-controller.js` 在 dshmarket 之后、hide dshbot 之前调用。
+- `src/main/usage-panel-preset.js`；`harness-controller.js` 在 dshmarket 之后、ensure dshbot 之前调用。
 
 ## 不变量
 

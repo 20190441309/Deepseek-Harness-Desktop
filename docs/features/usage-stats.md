@@ -4,11 +4,11 @@
 | --- | --- |
 | **id** | `usage-stats` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 隔离 `dsh web`（空 60821 / 有用量 60822）：`boot: mode=projection`；无计费用量出「暂无统计数据」；有用量 KPI「输入」为整数且等于未缓存+缓存读写之和（不是「万」）；`session_projcache.json` 会话 `rows` 含 `usagePanel`；浅色热力图空格可见、图例含空档、深色仍蓝阶。截图 `docs/qa/results/2026-08-23/usage-stats-empty-zh.png`、`usage-stats-zh-light.png`、`usage-stats-zh-dark.png`。未动已装实例 `:3080`。 |
+| **last verified** | 2026-08-24 — 热力图改为半年窗口内按月切换（默认当月 UTC，‹ › 选月；色阶按当月非零日四分位）。Host 仍返 182 日桶。自动化：`vendor/dsh-usage-panel` `npm test` + `npm run build`。 |
 
 ## User paths
 
-1. 设置 → 「用量统计」（`usage-stats`）：KPI、半年 UTC 热力图、按模型柱/环、Top 会话、导出。
+1. 设置 → 「用量统计」（`usage-stats`）：KPI、半年窗口内按月可选 UTC 热力图、按模型柱/环、Top 会话、导出。
 2. 无计费用量（含仅空白会话）走空态文案；扫描失败仍出仪表盘，不挡启动。
 3. 刷新从 host RPC 重扫；数字来自本机会话投影，不写回日志。
 

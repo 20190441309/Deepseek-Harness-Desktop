@@ -38,6 +38,11 @@
   "exports": {
     ".": "./lib/index.js",
     "./ask-participant": "./lib/ask-participant.js",
+    "./agent-messaging": "./lib/agent-messaging.js",
+    "./group-chat": "./lib/group-chat.js",
+    "./group-chat-orchestrator": "./lib/group-chat-orchestrator.js",
+    "./group-chat-host": "./lib/group-chat-host.js",
+    "./memory": "./lib/memory.js",
     "./client": "./client/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"

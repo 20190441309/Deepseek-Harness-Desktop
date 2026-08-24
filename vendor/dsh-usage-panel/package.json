@@ -1,7 +1,7 @@
 {
   "name": "dsh-usage-panel",
   "version": "0.2.0",
-  "description": "DeepSeek Harness 消耗统计插件：设置页「消耗统计」展示 Token 用量 KPI、半年活跃贡献热力图、按模型堆叠柱状图与模型环形图（Host 投影聚合 + 只读重算会话日志，永不写回）",
+  "description": "DeepSeek Harness 消耗统计插件：设置页「消耗统计」展示 Token 用量 KPI、半年窗口内按月活跃热力图、按模型堆叠柱状图与模型环形图（Host 投影聚合 + 只读重算会话日志，永不写回）",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/host/index.d.ts",

@@ -7,6 +7,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { stubSettingsScope, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-settings-general/client'
 import { CloseBehaviorRow } from '../src/client/CloseBehaviorRow.tsx'
+import { AutoStartDesktopRow } from '../src/client/AutoStartDesktopRow.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -61,6 +62,9 @@ describe('ui-settings-general desktop close-behavior row', () => {
     expect(closeRow.component).toBe(CloseBehaviorRow)
     expect(closeRow.options).toMatchObject({ id: 'close-behavior', order: 25 })
     expect(closeRow.locale).toBe('settings')
+    const autoStartRow = rows.find(row => row.options.id === 'auto-start-desktop')!
+    expect(autoStartRow.component).toBe(AutoStartDesktopRow)
+    expect(autoStartRow.options).toMatchObject({ id: 'auto-start-desktop', order: 26 })
     await fiber.dispose()
     expect(b.slots.entries('settings.general.item')).toEqual([])
   })

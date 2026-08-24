@@ -1,5 +1,6 @@
 const EventEmitter = require('events');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
+const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
 
 const DEFAULT_STABLE_MS = 60_000;
 const MAX_RESTART_DELAY_MS = 30_000;
@@ -46,6 +47,8 @@ class HarnessController extends EventEmitter {
     this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
       || (async () => ({ ok: true, added: false }));
     this.ensureUsagePanelPlugin = options.ensureUsagePanelPlugin
+      || (async () => ({ ok: true, added: false }));
+    this.ensureDshbotPlugin = options.ensureDshbotPlugin
       || (async () => ({ ok: true, added: false }));
     this.hideDshbotPlugin = options.hideDshbotPlugin
       || (async () => ({ ok: true, stripped: false }));
@@ -351,14 +354,22 @@ class HarnessController extends EventEmitter {
   }
 
   restart() {
-    if (this.restartOperation) {
-      return this.restartOperation;
-    }
-    this.recoveryGeneration += 1;
-    this.recoveryTask = null;
-    this.clearTimers();
-    this.recovery = { status: 'inactive', attempt: 0, nextRetryAt: null, reason: '' };
-    const task = this.replaceOperation({ showBoot: true }).finally(() => {
+    // Never join an in-flight restart: callers that mutate skip/disabled lists
+    // before restart() must get a performStart that re-reads those flags.
+    const previous = this.restartOperation;
+    const task = (async () => {
+      if (previous) {
+        await previous.catch(() => {});
+      }
+      if (this.shuttingDown) {
+        throw operationCancelled();
+      }
+      this.recoveryGeneration += 1;
+      this.recoveryTask = null;
+      this.clearTimers();
+      this.recovery = { status: 'inactive', attempt: 0, nextRetryAt: null, reason: '' };
+      return this.replaceOperation({ showBoot: true });
+    })().finally(() => {
       if (this.restartOperation === task) {
         this.restartOperation = null;
       }
@@ -413,31 +424,52 @@ class HarnessController extends EventEmitter {
     if (desktopInstall && desktopInstall.ok === false) {
       throw new Error(`桌面安装插件写入失败：${desktopInstall.reason || 'unknown'}`);
     }
-    try {
-      const market = await this.ensureDshMarketPlugin();
-      this.assertOperationCurrent(generation);
-      if (market && market.ok === false) {
-        this.dsh.log(`预置 dshmarket 失败：${market.error || 'unknown'}`, 'app');
+    if (!skipUserPlugins) {
+      try {
+        const market = await this.ensureDshMarketPlugin();
+        this.assertOperationCurrent(generation);
+        if (market && market.ok === false) {
+          this.dsh.log(`预置 dshmarket 失败：${market.error || 'unknown'}`, 'app');
+        }
+      } catch (error) {
+        this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
       }
-    } catch (error) {
-      this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
-    }
-    try {
-      const usage = await this.ensureUsagePanelPlugin();
-      this.assertOperationCurrent(generation);
-      if (usage && usage.ok === false) {
-        this.dsh.log(`预置用量统计失败：${usage.error || 'unknown'}`, 'app');
+      try {
+        const usage = await this.ensureUsagePanelPlugin();
+        this.assertOperationCurrent(generation);
+        if (usage && usage.ok === false) {
+          this.dsh.log(`预置用量统计失败：${usage.error || 'unknown'}`, 'app');
+        }
+      } catch (error) {
+        this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
       }
-    } catch (error) {
-      this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
+    } else {
+      this.dsh.log('跳过用户插件：不预置市场与用量统计插件', 'app');
     }
-    const dshbot = await this.hideDshbotPlugin();
-    this.assertOperationCurrent(generation);
-    if (dshbot && dshbot.ok === false) {
-      throw new Error(`隐藏 dshbot 失败：${dshbot.error || 'unknown'}`);
-    }
-    if (dshbot && (dshbot.stripped || dshbot.manifestRemoved)) {
-      this.dsh.log('已隐藏预置 dshbot 侧栏入口', 'app');
+    // Skip-user-plugins and parked dshbot both hide the Bots tab without failing start.
+    if (skipUserPlugins || !DSHBOT_FEATURE_ENABLED) {
+      try {
+        const hidden = await this.hideDshbotPlugin();
+        this.assertOperationCurrent(generation);
+        if (hidden && hidden.ok === false) {
+          this.dsh.log(`隐藏 dshbot 失败：${hidden.error || 'unknown'}`, 'app');
+        } else if (skipUserPlugins) {
+          this.dsh.log('跳过用户插件：已暂隐 dshbot，恢复完整插件后再加载', 'app');
+        } else {
+          this.dsh.log('Bots 功能已隐藏（dshbot 未加载）', 'app');
+        }
+      } catch (error) {
+        this.dsh.log(`隐藏 dshbot 失败：${errorMessage(error)}`, 'app');
+      }
+    } else {
+      const dshbot = await this.ensureDshbotPlugin();
+      this.assertOperationCurrent(generation);
+      if (dshbot && dshbot.ok === false) {
+        throw new Error(`预置 dshbot 失败：${dshbot.error || 'unknown'}`);
+      }
+      if (dshbot && dshbot.ok !== false) {
+        this.dsh.log(dshbot.added ? '已预置 dshbot 侧栏入口' : 'dshbot 预置已就绪', 'app');
+      }
     }
     try {
       const disabled = this.applyDisabledBundles((this.loadConfig() || {}).disabledPlugins);
@@ -551,6 +583,33 @@ class HarnessController extends EventEmitter {
       nextRetryAt: null,
       reason: 'user',
     });
+  }
+
+  /**
+   * User-initiated stop from the launcher: cancel recovery/restart work,
+   * stop the dsh kernel, and leave the shell idle without quitting Electron.
+   */
+  async stopDesktop() {
+    this.recoveryGeneration += 1;
+    this.operationGeneration += 1;
+    this.recoveryTask = null;
+    this.clearTimers();
+    this.setRecovery({
+      status: 'cancelled',
+      attempt: 0,
+      nextRetryAt: null,
+      reason: 'user-stop',
+    });
+    const pendingRestart = this.restartOperation;
+    const pendingOperation = this.operation;
+    await Promise.allSettled([
+      pendingRestart?.catch(() => {}),
+      pendingOperation?.catch(() => {}),
+    ]);
+    if (this.dsh.state !== 'idle') {
+      await this.dsh.stop();
+    }
+    return this.snapshot();
   }
 
   refreshPolicy() {

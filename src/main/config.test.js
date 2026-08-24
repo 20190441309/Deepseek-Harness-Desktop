@@ -68,11 +68,13 @@ test('invalid recovery settings fall back to safe defaults', () => {
 test('renderer config patch only accepts safe typed fields', () => {
   assert.deepEqual(normalizeRendererConfigPatch({
     closeToTray: false,
+    autoStartDesktop: true,
     locale: 'en',
     harnessRestartMaxAttempts: 4,
     githubToken: ' token ',
   }), {
     closeToTray: false,
+    autoStartDesktop: true,
     locale: 'en',
     harnessRestartMaxAttempts: 4,
     githubToken: 'token',

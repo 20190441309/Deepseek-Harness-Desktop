@@ -83,6 +83,129 @@ test('scanImport lists sessions, skips sqlite, and flags dest conflicts', () => 
   assert.equal(plugins['caret-plugin'].skipped, false);
   assert.equal(plugins['tarball-plugin'].reason, 'unsupported');
   assert.equal(plugins['tag-plugin'].reason, 'unsupported');
+  assert.equal(typeof scan.homeDir, 'string');
+  assert.ok(scan.homeDir.length > 0);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('scanImport enriches session display meta from jsonl header and title, fail-soft on bad logs', () => {
+  const tree = makeTree();
+  const withMeta = path.join(tree.source, 'sessions', '_no-cwd', 'chat-1');
+  fs.mkdirSync(withMeta, { recursive: true });
+  fs.writeFileSync(path.join(withMeta, 'session.jsonl'), [
+    JSON.stringify({
+      type: 'session',
+      version: 0,
+      id: 'chat-1',
+      createdAt: 1_700_000_000_000,
+      cwd: 'C:\\Users\\demo\\project',
+      delegationDepth: 0,
+    }),
+    JSON.stringify({ type: 'session/title', seq: 1, data: { title: 'First title' } }),
+    JSON.stringify({ type: 'user/message', seq: 2, data: {} }),
+    JSON.stringify({ type: 'session/title', seq: 3, data: { title: 'Latest title' } }),
+    '',
+  ].join('\n'));
+  const withCwdOnly = path.join(tree.source, 'sessions', '--C-Users-demo-other--', 'uuid-9');
+  fs.mkdirSync(withCwdOnly, { recursive: true });
+  fs.writeFileSync(path.join(withCwdOnly, 'session.jsonl'), `${JSON.stringify({
+    type: 'session',
+    version: 0,
+    id: 'uuid-9',
+    createdAt: 1_700_000_000_100,
+    cwd: 'C:\\Users\\demo\\other',
+    delegationDepth: 0,
+  })}\n`);
+  const zstdOnly = path.join(tree.source, 'sessions', '_no-cwd', 'zstd-only');
+  fs.mkdirSync(zstdOnly, { recursive: true });
+  fs.writeFileSync(path.join(zstdOnly, 'session.jsonl.zstd'), Buffer.from([0x00, 0x01, 0x02]));
+  const badPlain = path.join(tree.source, 'sessions', '_no-cwd', 'bad-plain');
+  fs.mkdirSync(badPlain, { recursive: true });
+  fs.writeFileSync(path.join(badPlain, 'session.jsonl'), 'not-json\n{bad\n');
+
+  writeSkill(path.join(tree.source, 'skills'), 'named', '---\nname: Friendly Skill\n---\n# body\n');
+
+  const { scanImport } = require('./data-import');
+  const scan = scanImport({ sourceHome: tree.source, destHome: tree.dest });
+  const byRel = Object.fromEntries(scan.sessions.map((row) => [row.rel, row]));
+  assert.equal(byRel['_no-cwd/chat-1'].id, 'chat-1');
+  assert.equal(byRel['_no-cwd/chat-1'].cwd, 'C:\\Users\\demo\\project');
+  assert.equal(byRel['_no-cwd/chat-1'].title, 'Latest title');
+  assert.equal(byRel['_no-cwd/chat-1'].createdAt, '1700000000000');
+  assert.equal(byRel['_no-cwd/chat-1'].compressedLog, false);
+  assert.equal(byRel['--C-Users-demo-other--/uuid-9'].cwd, 'C:\\Users\\demo\\other');
+  assert.equal(byRel['--C-Users-demo-other--/uuid-9'].title, '');
+  assert.equal(byRel['_no-cwd/zstd-only'].id, 'zstd-only');
+  assert.equal(byRel['_no-cwd/zstd-only'].compressedLog, true);
+  assert.equal(byRel['_no-cwd/bad-plain'].id, 'bad-plain');
+  assert.equal(byRel['_no-cwd/bad-plain'].title, '');
+  const named = scan.skills.find((row) => row.id === 'home:named');
+  assert.ok(named);
+  assert.equal(named.displayName, 'Friendly Skill');
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('scanImport reads display meta from session.jsonl.zstd via Node zlib', () => {
+  const zlib = require('node:zlib');
+  if (typeof zlib.zstdCompressSync !== 'function') {
+    return;
+  }
+  const tree = makeTree();
+  const dir = path.join(tree.source, 'sessions', '_no-cwd', 'zstd-ok');
+  fs.mkdirSync(dir, { recursive: true });
+  const plaintext = [
+    JSON.stringify({
+      type: 'session',
+      version: 0,
+      id: 'zstd-ok',
+      createdAt: 1_700_000_000_200,
+      cwd: 'D:\\work\\app',
+      delegationDepth: 0,
+    }),
+    JSON.stringify({ type: 'session/title', seq: 1, data: { title: 'From zstd' } }),
+    '',
+  ].join('\n');
+  const options = zlib.constants && zlib.constants.ZSTD_c_checksumFlag != null
+    ? { params: { [zlib.constants.ZSTD_c_checksumFlag]: 1 } }
+    : undefined;
+  fs.writeFileSync(path.join(dir, 'session.jsonl.zstd'), zlib.zstdCompressSync(Buffer.from(plaintext), options));
+  const { scanImport } = require('./data-import');
+  const scan = scanImport({ sourceHome: tree.source, destHome: tree.dest });
+  const row = scan.sessions.find((item) => item.rel === '_no-cwd/zstd-ok');
+  assert.ok(row);
+  assert.equal(row.id, 'zstd-ok');
+  assert.equal(row.cwd, 'D:\\work\\app');
+  assert.equal(row.title, 'From zstd');
+  assert.equal(row.compressedLog, false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('scanImport omits harness preset fixture sessions under _no-cwd/preset-*', () => {
+  const tree = makeTree();
+  const preset = path.join(tree.source, 'sessions', '_no-cwd', 'preset-authored');
+  const chat = path.join(tree.source, 'sessions', '_no-cwd', 'chat-1');
+  fs.mkdirSync(preset, { recursive: true });
+  fs.mkdirSync(chat, { recursive: true });
+  fs.writeFileSync(path.join(preset, 'session.jsonl'), `${JSON.stringify({
+    type: 'session',
+    version: 0,
+    id: 'preset-authored',
+    createdAt: 1,
+    delegationDepth: 0,
+  })}\n`);
+  fs.writeFileSync(path.join(chat, 'session.jsonl'), `${JSON.stringify({
+    type: 'session',
+    version: 0,
+    id: 'chat-1',
+    createdAt: 2,
+    cwd: 'C:\\Users\\demo\\project',
+    delegationDepth: 0,
+  })}\n`);
+  const { scanImport } = require('./data-import');
+  const scan = scanImport({ sourceHome: tree.source, destHome: tree.dest });
+  const rels = scan.sessions.map((row) => row.rel);
+  assert.ok(rels.includes('_no-cwd/chat-1'));
+  assert.ok(!rels.includes('_no-cwd/preset-authored'));
   fs.rmSync(tree.root, { recursive: true, force: true });
 });
 

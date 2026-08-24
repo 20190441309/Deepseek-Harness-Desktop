@@ -7,6 +7,8 @@ const { webProfileDir, upsertManagedBlock, stripBlockFromFile } = require('./plu
 const DSHBOT_PACKAGE = 'dshbot';
 const DSHBOT_BEGIN = '# --- dshd-gui-dshbot ---';
 const DSHBOT_END = '# --- end dshd-gui-dshbot ---';
+/** Product gate: false hides the Bots sidebar tab (like REMOTE_FEATURE_ENABLED). */
+const DSHBOT_FEATURE_ENABLED = false;
 const ROOM_PRESET_ID = 'dshbot-room';
 
 function defaultSourceDir() {
@@ -151,6 +153,7 @@ module.exports = {
   DSHBOT_PACKAGE,
   DSHBOT_BEGIN,
   DSHBOT_END,
+  DSHBOT_FEATURE_ENABLED,
   ROOM_PRESET_ID,
   ensureDshbotPlugin,
   hideDshbotPlugin,

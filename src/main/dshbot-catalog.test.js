@@ -98,7 +98,6 @@ test('resolveAskTarget requires a room parent and a member bot', async () => {
       kind: 'room',
       sessionId: 's-room',
       memberBotIds: ['bot-a', 'ghost'],
-      memberChildren: [{ botId: 'bot-a', sessionId: 's-child' }],
     },
     {
       id: 'bot-a',
@@ -112,7 +111,6 @@ test('resolveAskTarget requires a room parent and a member bot', async () => {
   ];
   const hit = resolveAskTarget(items, 's-room', 'bot-a');
   assert.equal(hit.bot.name, '翻译官');
-  assert.equal(hit.childSessionId, 's-child');
   assert.equal(resolveAskTarget(items, 's-room', '翻译官').bot.id, 'bot-a');
   assert.throws(() => resolveAskTarget(items, 's-room', 'bot-b'), /not a member/);
   assert.throws(() => resolveAskTarget(items, 's-room', 'ghost'), /unknown bot/);
@@ -130,130 +128,41 @@ test('memberDisplayName maps catalog id or unique member name to the display nam
   assert.equal(memberDisplayName(items, 'missing'), 'missing');
 });
 
-test('childPersonaText names the character, other members, and forbids the harness identity', async () => {
+test('childPersonaText is peer-equal Grok system prompt without later-seat bias', async () => {
   const { childPersonaText } = await loadCatalog();
   const text = childPersonaText({
+    id: 'bot-a',
     name: '翻译官',
     description: '你是中英翻译。只输出译文。',
   }, [
-    { name: '算术助手' },
-    { name: '诗词机器人' },
-  ]);
+    { id: 'bot-b', name: '算术助手' },
+    { id: 'bot-c', name: '诗词机器人' },
+  ], { group: { name: '产品群', description: '' } });
   assert.match(text, /You are 翻译官/);
   assert.match(text, /只输出译文/);
-  assert.match(text, /算术助手, 诗词机器人/);
-  assert.match(text, /DeepSeek Harness/);
-  assert.match(text, /NEXT: pass/);
-  assert.match(text, /NEXT: done/);
-  assert.match(text, /NEXT: all/);
-  assert.match(text, /Never greet the room/);
-  assert.match(text, /never start with 大家好/);
-  assert.match(text, /Never prefix the reply with your name/);
-  assert.doesNotMatch(text, /no combined conclusion yet/);
-  assert.doesNotMatch(text, /moderator/);
-});
-
-test('childPersonaText later seat defaults to pass and empty description has no unique info', async () => {
-  const { childPersonaText } = await loadCatalog();
-  const laterEmpty = childPersonaText({
-    name: '算术助手',
-    description: '',
-  }, [
-    { name: '翻译官' },
-  ], { seat: 'later' });
-  assert.match(laterEmpty, /You are 算术助手/);
-  assert.match(laterEmpty, /no distinct expertise/);
-  assert.match(laterEmpty, /should pass/);
-  assert.match(laterEmpty, /NEXT: pass/);
-  assert.doesNotMatch(laterEmpty, /no combined conclusion yet/);
-  assert.doesNotMatch(laterEmpty, /add at most one new point/);
-  const laterFilled = childPersonaText({
-    name: '算术助手',
-    description: '只找漏洞。',
-  }, [], { seat: 'later' });
-  assert.match(laterFilled, /只找漏洞/);
-  assert.doesNotMatch(laterFilled, /no distinct expertise/);
-});
-
-test('speakerSeat is first until a member turn completes this user message', async () => {
-  const { speakerSeat } = await loadCatalog();
-  assert.equal(speakerSeat([userSaid('你好啊')]), 'first');
-  assert.equal(speakerSeat([
-    userSaid('你好啊'),
-    asked('c1', 'a'),
-  ]), 'first');
-  assert.equal(speakerSeat([
-    userSaid('你好啊'),
-    asked('c1', 'a'),
-    answered('c1', '嗨\nNEXT: pass'),
-  ]), 'later');
-});
-
-test('speakInstruction later lists prior visible bodies and requires only NEXT: pass', async () => {
-  const { speakInstruction, priorVisibleThisTurn, roomSpeakInstruction } = await loadCatalog();
-  const first = speakInstruction({
-    seat: 'first',
-    userText: '你好啊',
-    priorVisible: '',
-  });
-  assert.match(first, /You are the first member to reply this turn/);
-  assert.match(first, /The user said:\n你好啊/);
-  const later = speakInstruction({
-    seat: 'later',
-    userText: '你好啊',
-    priorVisible: '[1]\n嗨',
-  });
-  assert.match(later, /only:\nNEXT: pass/);
-  assert.match(later, /\[1\]\n嗨/);
-  assert.match(later, /The user said:\n你好啊/);
-  assert.notEqual(later, '你好啊');
-  const items = roomCatalog();
-  assert.equal(priorVisibleThisTurn([
-    userSaid('你好啊'),
-    asked('c1', 'a'),
-    answered('c1', '嗨\nNEXT: pass'),
-  ], items), '[1]\n嗨');
-  const dispatched = roomSpeakInstruction([
-    userSaid('你好啊'),
-    asked('c1', 'a'),
-    answered('c1', '嗨\nNEXT: pass'),
-  ], items);
-  assert.match(dispatched, /only:\nNEXT: pass/);
-  assert.match(dispatched, /嗨/);
-});
-
-test('childPersonaForSession reads the spawned member from the room child map', async () => {
-  const { childPersonaForSession } = await loadCatalog();
-  const items = [
-    {
-      id: 'room',
-      kind: 'room',
-      sessionId: 's-room',
-      memberBotIds: ['bot-a', 'bot-b'],
-      memberChildren: [{ botId: 'bot-a', sessionId: 's-child' }],
-    },
-    { id: 'bot-a', kind: 'bot', name: '翻译官', description: '你是中英翻译。' },
-    { id: 'bot-b', kind: 'bot', name: '算术助手' },
-  ];
-  const text = childPersonaForSession(items, 's-child');
-  assert.match(text, /You are 翻译官/);
   assert.match(text, /算术助手/);
-  assert.equal(childPersonaForSession(items, 's-room'), '');
+  assert.match(text, /send_room_message/);
+  assert.match(text, /\(pass\)/);
+  assert.doesNotMatch(text, /NEXT: pass/);
+  assert.doesNotMatch(text, /Earlier members already answered/);
+  assert.doesNotMatch(text, /default action is to add nothing/);
+  assert.doesNotMatch(text, /no distinct expertise/);
 });
 
-test('rememberChild writes the continuable session id onto the room row', async () => {
-  const { rememberChild } = await loadCatalog();
-  const items = [{
-    id: 'room',
-    kind: 'room',
-    sessionId: 's-room',
-    memberBotIds: ['bot-a'],
-    memberChildren: [],
-  }];
-  const next = rememberChild(items, 's-room', 'bot-a', 's-child');
-  assert.deepEqual(next[0].memberChildren, [{ botId: 'bot-a', sessionId: 's-child' }]);
+test('roomTurnPromptForSpeaker is peer-equal for second member', async () => {
+  const { roomTurnPromptForSpeaker } = await loadCatalog();
+  const items = roomCatalog();
+  const room = items.find((entry) => entry.kind === 'room');
+  const prompt = roomTurnPromptForSpeaker(items, room, [
+    userSaid('你们好啊'),
+    asked('c1', 'a'),
+    answered('c1', '嗨'),
+  ], 'b');
+  assert.match(prompt, /It's your turn, 2/);
+  assert.match(prompt, /send_room_message/);
+  assert.doesNotMatch(prompt, /Earlier members already answered/);
+  assert.doesNotMatch(prompt, /first member/);
 });
-
 test('lastAssistantText reads the last non-empty assistant message', async () => {
   const { lastAssistantText, lastAssistantTextFromEvents, lastAssistantSeqFromEvents } = await loadCatalog();
   assert.equal(lastAssistantText([
@@ -290,7 +199,7 @@ test('lastUserText reads the last non-empty user message', async () => {
 });
 
 test('roomSpeakerIds uses @mentions otherwise every member', async () => {
-  const { roomSpeakerIds } = await loadCatalog();
+  const { roomSpeakerIds, parseGroupMentions } = await loadCatalog();
   const items = [
     { id: 'a', kind: 'bot', name: '翻译官' },
     { id: 'b', kind: 'bot', name: '算术助手' },
@@ -300,6 +209,9 @@ test('roomSpeakerIds uses @mentions otherwise every member', async () => {
   assert.deepEqual(roomSpeakerIds(items, members, '大家好'), ['a', 'b', 'c']);
   assert.deepEqual(roomSpeakerIds(items, members, '@翻译官 这句话'), ['a']);
   assert.deepEqual(roomSpeakerIds(items, members, '@算术助手 和 @诗词机器人'), ['b', 'c']);
+  assert.deepEqual(roomSpeakerIds(items, members, '@everyone 开会'), ['a', 'b', 'c']);
+  assert.deepEqual(parseGroupMentions(items, members, '@all 同步').botIds, ['a', 'b', 'c']);
+  assert.equal(parseGroupMentions(items, members, '@all 同步').everyone, true);
 });
 
 function roomCatalog() {
@@ -372,19 +284,15 @@ test('groupTranscript folds named user and member lines in log order', async () 
   ].join('\n'));
 });
 
-test('parseRoomNext reads the last-line footer and stripRoomNext hides it', async () => {
+test('parseRoomNext / stripRoomNext only strip legacy NEXT for display', async () => {
   const { parseRoomNext, stripRoomNext } = await loadCatalog();
-  assert.deepEqual(parseRoomNext('嗨\nNEXT: all'), { kind: 'all', names: [], visible: '嗨' });
-  assert.deepEqual(parseRoomNext('NEXT: done'), { kind: 'done', names: [], visible: '' });
-  assert.deepEqual(parseRoomNext('补充\nNEXT: @1 @3'), {
-    kind: 'mention', names: ['1', '3'], visible: '补充',
-  });
   assert.deepEqual(parseRoomNext('没有控制行'), { kind: 'pass', names: [], visible: '没有控制行' });
   assert.equal(stripRoomNext('嗨\nNEXT: pass'), '嗨');
   assert.equal(stripRoomNext('NEXT: pass'), '');
+  assert.equal(stripRoomNext('方案A\nNEXT: all'), '方案A');
 });
 
-test('groupTranscript omits NEXT: footers and pass-only replies', async () => {
+test('groupTranscript omits pass replies and legacy NEXT footers', async () => {
   const { groupTranscript } = await loadCatalog();
   const items = roomCatalog();
   assert.equal(groupTranscript([
@@ -392,7 +300,7 @@ test('groupTranscript omits NEXT: footers and pass-only replies', async () => {
     asked('c1', 'a'),
     answered('c1', '方案A\nNEXT: all'),
     asked('c2', 'b'),
-    answered('c2', 'NEXT: pass'),
+    answered('c2', '(pass)'),
   ], items), [
     '[用户]',
     '请讨论',
@@ -406,7 +314,27 @@ test('groupTranscript omits NEXT: footers and pass-only replies', async () => {
   ], items).includes('NEXT:'), false);
 });
 
-test('nextRoomSpeakerId walks remaining speakers and honors @mentions', async () => {
+test('isPassContent and memberVisibleText accept pass variants', async () => {
+  const { isPassContent, memberVisibleText } = await loadCatalog();
+  assert.equal(isPassContent(''), true);
+  assert.equal(isPassContent('(pass)'), true);
+  assert.equal(isPassContent(' pass '), true);
+  assert.equal(isPassContent('( pass ).'), true);
+  assert.equal(isPassContent('方案A'), false);
+  assert.equal(memberVisibleText('方案A\nNEXT: pass'), '方案A');
+  assert.equal(memberVisibleText('(pass)'), '');
+  assert.equal(memberVisibleText('NEXT: pass'), '');
+});
+
+test('orderRoundSpeakers rotates by round index', async () => {
+  const { orderRoundSpeakers } = await loadCatalog();
+  const members = ['a', 'b', 'c'];
+  assert.deepEqual(orderRoundSpeakers(members, 0), ['a', 'b', 'c']);
+  assert.deepEqual(orderRoundSpeakers(members, 1), ['b', 'c', 'a']);
+  assert.deepEqual(orderRoundSpeakers(members, 2), ['c', 'a', 'b']);
+});
+
+test('nextRoomSpeakerId walks round-robin and honors @mentions', async () => {
   const { nextRoomSpeakerId } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
@@ -424,11 +352,23 @@ test('nextRoomSpeakerId walks remaining speakers and honors @mentions', async ()
     answered('c2', '在'),
     asked('c3', 'c'),
     answered('c3', '诗'),
-  ]), undefined);
+  ]), 'b');
   assert.equal(nextRoomSpeakerId(items, room, [userSaid('@3 只叫你')]), 'c');
 });
 
-test('nextRoomSpeakerId ignores NEXT: all until the first pass is empty', async () => {
+test('nextRoomSpeakerId stops when every member passes a round', async () => {
+  const { nextRoomSpeakerId } = await loadCatalog();
+  const items = roomCatalog();
+  const room = items[0];
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+    asked('c2', 'b'), answered('c2', '(pass)'),
+    asked('c3', 'c'), answered('c3', '(pass)'),
+  ]), undefined);
+});
+
+test('nextRoomSpeakerId ignores legacy NEXT footers for scheduling', async () => {
   const { nextRoomSpeakerId } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
@@ -437,40 +377,16 @@ test('nextRoomSpeakerId ignores NEXT: all until the first pass is empty', async 
     asked('c1', 'a'),
     answered('c1', '先说\nNEXT: all'),
   ]), 'b');
-});
-
-test('nextRoomSpeakerId starts another round after NEXT: all', async () => {
-  const { nextRoomSpeakerId } = await loadCatalog();
-  const items = roomCatalog();
-  const room = items[0];
-  assert.equal(nextRoomSpeakerId(items, room, [
-    userSaid('请讨论'),
-    asked('c1', 'a'), answered('c1', '一\nNEXT: pass'),
-    asked('c2', 'b'), answered('c2', '二\nNEXT: pass'),
-    asked('c3', 'c'), answered('c3', '综合\nNEXT: all'),
-  ]), 'a');
-});
-
-test('nextRoomSpeakerId stops on NEXT: done even mid first pass', async () => {
-  const { nextRoomSpeakerId } = await loadCatalog();
-  const items = roomCatalog();
-  const room = items[0];
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'),
     answered('c1', '结论\nNEXT: done'),
-  ]), undefined);
-});
-
-test('nextRoomSpeakerId queues named speakers after the first pass', async () => {
-  const { nextRoomSpeakerId } = await loadCatalog();
-  const items = roomCatalog();
-  const room = items[0];
+  ]), 'b');
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('@3 先说'),
     asked('c3', 'c'),
     answered('c3', '拉其他人\nNEXT: @1 @2'),
-  ]), 'a');
+  ]), 'c');
 });
 
 test('nextRoomSpeakerId empty-stops at maxSpeaks and maxRounds', async () => {
@@ -479,14 +395,14 @@ test('nextRoomSpeakerId empty-stops at maxSpeaks and maxRounds', async () => {
   const room = items[0];
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
-    asked('c1', 'a'), answered('c1', '一\nNEXT: all'),
+    asked('c1', 'a'), answered('c1', '一'),
     asked('c2', 'b'), answered('c2', '二'),
   ], { maxSpeaks: 2 }), undefined);
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
-    asked('c1', 'a'), answered('c1', '一\nNEXT: pass'),
-    asked('c2', 'b'), answered('c2', '二\nNEXT: pass'),
-    asked('c3', 'c'), answered('c3', '综合\nNEXT: all'),
+    asked('c1', 'a'), answered('c1', '一'),
+    asked('c2', 'b'), answered('c2', '二'),
+    asked('c3', 'c'), answered('c3', '三'),
   ], { maxRounds: 1 }), undefined);
 });
 
@@ -511,7 +427,7 @@ test('roomDispatchChunks emits one ask_participant then empty stop', async () =>
   const firstCall = first.find((chunk) => chunk.type === 'block-end');
   assert.equal(firstCall.block.name, 'ask_participant');
   assert.equal(JSON.parse(firstCall.block.arguments).botId, 'a');
-  assert.match(JSON.parse(firstCall.block.arguments).instruction, /first member/);
+  assert.match(JSON.parse(firstCall.block.arguments).instruction, /It's your turn/);
   assert.match(JSON.parse(firstCall.block.arguments).instruction, /你好啊/);
   assert.equal(first.filter((chunk) => chunk.type === 'block-end').length, 1);
   assert.equal(first.at(-1).reason.kind, 'tool-calls');
@@ -525,8 +441,9 @@ test('roomDispatchChunks emits one ask_participant then empty stop', async () =>
   const secondArgs = JSON.parse(second.find((chunk) => chunk.type === 'block-end').block.arguments);
   assert.equal(secondArgs.botId, 'b');
   assert.notEqual(secondArgs.instruction, '你好啊');
-  assert.match(secondArgs.instruction, /only:\nNEXT: pass/);
-  assert.match(secondArgs.instruction, /嗨/);
+  assert.match(secondArgs.instruction, /It's your turn/);
+  assert.match(secondArgs.instruction, /\(pass\)/);
+  assert.doesNotMatch(secondArgs.instruction, /Earlier members already answered/);
 
   const done = roomDispatchChunks({
     items,
@@ -538,6 +455,7 @@ test('roomDispatchChunks emits one ask_participant then empty stop', async () =>
       asked('c3', 'c'), answered('c3', '诗'),
     ],
     callId: 'call-3',
+    maxRounds: 1,
   });
   assert.deepEqual(done, [{ type: 'finish', reason: { kind: 'stop' } }]);
   assert.equal(done.some((chunk) => chunk.type === 'text-delta'), false);
@@ -606,7 +524,13 @@ test('client registers the bots tab, overlay, and ask_participant toolview', () 
   assert.match(src, /stampRoomPresets/);
   assert.equal(src.includes('session?.title'), false);
   assert.match(src, /item\.model\?\.model/);
-  assert.match(src, /parseRoomNext/);
+  assert.match(src, /memberVisibleText/);
+  assert.match(src, /NEXT:/);
+  assert.match(src, /dshbot-activity-dot/);
+  assert.equal(src.includes('thinking: Boolean(session?.running)'), false);
+  assert.match(src, /GROUP_MAX_MEMBERS/);
+  assert.match(src, /togglePin/);
+  assert.match(src, /toggleHide/);
   assert.match(src, /dshbot-bubble-omit/);
   assert.match(src, /dshbot-room/);
   assert.match(src, /conversation\.chat\.empty/);
@@ -616,6 +540,9 @@ test('client registers the bots tab, overlay, and ask_participant toolview', () 
   assert.match(src, /kind === "tool-result"/);
   assert.match(src, /textFromContent\(block\.content\)/);
   assert.equal(src.includes('block?.result ?? block?.output'), false);
+  assert.equal(src.includes('AvatarEditor'), false);
+  assert.match(src, /name: "everyone"/);
+  assert.match(src, /text: `@\$\{candidate\.name\} `/);
   assert.match(src, /personaOppose: "反对"/);
   assert.match(src, /personaFill: "补全"/);
   assert.match(src, /personaShip: "落地"/);
@@ -635,6 +562,10 @@ test('profile host apply short-circuits room llm/stream and registers ask_partic
   );
   assert.match(src, /export const name = 'dsh-bot'/);
   assert.match(src, /registerAskParticipant/);
+  assert.match(src, /registerSendToAgent/);
+  assert.match(src, /registerInboxDrain/);
+  assert.match(src, /remember/);
+  assert.match(src, /composePersonaWithMemory/);
   assert.match(src, /'tools'/);
   assert.equal(src.includes('.optional('), false);
   assert.match(src, /registerContinuableSetup/);
@@ -644,12 +575,17 @@ test('profile host apply short-circuits room llm/stream and registers ask_partic
   assert.match(src, /'llm\/stream'/);
   assert.match(src, /isRoomConversationRequest/);
   assert.match(src, /roomDispatchChunks/);
+  assert.match(src, /nextTurnEpoch/);
+  assert.match(src, /abortRoomMemberTurns/);
   assert.match(src, /export const Config/);
+  assert.equal(src.includes('memberChildren'), false);
+  assert.equal(src.includes('childPersonaForSession'), false);
   assert.match(src, /maxSpeaks/);
   assert.match(src, /maxRounds/);
   assert.match(src, /apply\(ctx, config/);
   assert.equal(src.includes('ctx.config'), false);
-  assert.match(src, /return next\(\)/);
+  assert.match(src, /const downstream = next\(\)/);
+  assert.match(src, /ackPendingInboxDrain/);
 });
 
 test('room preset tool registers ask_participant as a one-shot child', () => {
@@ -666,16 +602,32 @@ test('room preset tool registers ask_participant as a one-shot child', () => {
   assert.match(src, /memberDisplayName/);
   assert.match(src, /childPersonaText/);
   assert.match(src, /memberPersona/);
-  assert.match(src, /groupTranscript/);
-  assert.match(src, /roomSpeakInstruction/);
-  assert.match(src, /speakerSeat/);
+  assert.match(src, /roomTurnPromptForSpeaker/);
+  assert.match(src, /abortRoomMemberTurns/);
+  assert.equal(src.includes('speakerSeat'), false);
+  assert.equal(src.includes('roomSpeakInstruction'), false);
   assert.equal(src.includes('whenIdle()'), false);
   assert.match(src, /export function registerAskParticipant/);
-  assert.match(src, /allow: \[\]/);
+  assert.match(src, /send_room_message/);
+  assert.match(src, /extractSendRoomDeliveries/);
+  assert.match(src, /GROUP_MAX_MESSAGES_PER_TURN/);
+  assert.match(src, /isPassContent/);
+  assert.match(src, /allow: \['send_room_message'\]/);
   assert.match(src, /restrict\(\{ allow: \['ask_participant'\] \}\)/);
   assert.equal(/export function apply[\s\S]*tools\.register/.test(src), false);
   assert.match(src, /content: \[\]/);
   assert.equal(src.includes("kind: 'coordinator'"), false);
+  assert.doesNotMatch(src, /allow: \[\]/);
+});
+
+test('send_to_agent omits required:false so defineTool accepts optional priority', () => {
+  const src = require('fs').readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'send-to-agent.js'),
+    'utf8',
+  );
+  assert.match(src, /name: 'send_to_agent'/);
+  assert.match(src, /priority:\s*\{/);
+  assert.equal(/required:\s*false/.test(src), false);
 });
 
 test('room preset mounts ask_participant without a dispatcher persona', () => {

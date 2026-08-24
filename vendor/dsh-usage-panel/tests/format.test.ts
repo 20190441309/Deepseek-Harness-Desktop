@@ -7,6 +7,7 @@ import {
   fmtCompact,
   fmtTokens,
   heatLevel,
+  monthLabel,
   niceCeil,
   pctOf,
   quartileThresholds,
@@ -81,6 +82,12 @@ test('dateLabel and dateCN', () => {
   assert.equal(dateLabel('2026-08-15'), '08/15')
   assert.equal(dateCN('2026-08-15', 'zh-CN'), '8月15日')
   assert.equal(dateCN('2026-08-15', 'en-US'), '8/15')
+})
+
+test('monthLabel formats YYYY-MM for zh and en', () => {
+  assert.equal(monthLabel('2026-08', 'zh-CN'), '2026年8月')
+  assert.equal(monthLabel('2026-08', 'en-US'), 'Aug 2026')
+  assert.equal(monthLabel('2026-01', 'en-US'), 'Jan 2026')
 })
 
 test('weekdayIndexUTC is Monday-first', () => {

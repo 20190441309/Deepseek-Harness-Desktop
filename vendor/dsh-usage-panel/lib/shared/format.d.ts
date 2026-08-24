@@ -25,6 +25,8 @@ export declare function heatLevel(total: number, q: {
 export declare function dateLabel(key: string): string;
 /** Tooltip date label: zh "M月D日" (v0.1.0), en "M/D". */
 export declare function dateCN(key: string, locale: Locale): string;
+/** Month picker label from YYYY-MM: zh "YYYY年M月", en "Mon YYYY". */
+export declare function monthLabel(monthKey: string, locale: Locale): string;
 /** Monday-first weekday index 0..6 for a UTC day key. */
 export declare function weekdayIndexUTC(key: string): number;
 /** Time-of-day label for "updated at" (UTC, matching the day-key declaration). */

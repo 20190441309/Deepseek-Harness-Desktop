@@ -3,11 +3,20 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
 const { getDesktopDshHome, tryGetDesktopDshHome } = require('../shared/dsh-home');
 const { DROPPED, OFFICIAL_TEMPLATE_BUNDLES, listInstalledPlugins } = require('./plugins');
 const { isValidGithubSpec, isValidPackageName } = require('../host/install-dsh-plugin-client');
 
 const SESSION_LOG = /^session\.jsonl(\.zstd)?$/i;
+const SESSION_PLAIN = /^session\.jsonl$/i;
+const SESSION_ZSTD = /^session\.jsonl\.zstd$/i;
+/** Harness preset/fixture sessions under official `_no-cwd/preset-*`; not user import candidates. */
+const HARNESS_PRESET_SESSION_REL = /^_no-cwd\/preset-/;
+
+function isHarnessPresetSessionRel(rel) {
+  return HARNESS_PRESET_SESSION_REL.test(String(rel || ''));
+}
 const UNSUPPORTED_DB = /\.db$/i;
 const PATH_TRAVERSAL = /(^|[\\/])\.\.([\\/]|$)/;
 const LOCAL_SPEC = /^(file:|link:|workspace:)/i;
@@ -15,6 +24,7 @@ const LOCAL_SPEC = /^(file:|link:|workspace:)/i;
 const REGISTRY_SEMVER_SPEC = /^[\^~]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const MCP_FILE = 'mcp-servers.yaml';
 const SKILL_DOC = 'SKILL.md';
+const ZSTD_MAGIC = 0xFD2FB528;
 
 function officialDshHome() {
   return path.join(os.homedir(), '.dsh');
@@ -95,6 +105,245 @@ function walkSessionDirs(sessionsRoot) {
     }
   }
   return found.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+function emptySessionMeta() {
+  return {
+    id: '',
+    cwd: '',
+    title: '',
+    createdAt: '',
+    compressedLog: false,
+  };
+}
+
+function idFromSessionRel(rel) {
+  const text = String(rel || '');
+  const slash = text.lastIndexOf('/');
+  return slash === -1 ? text : text.slice(slash + 1);
+}
+
+/**
+ * Fold one JSONL line into display meta. Last `session/title` wins.
+ * @param {{ id: string, cwd: string, title: string, createdAt: string }} meta
+ * @param {string} line
+ */
+function applySessionJsonlLine(meta, line) {
+  let row;
+  try {
+    row = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (!row || typeof row !== 'object') {
+    return;
+  }
+  if (row.type === 'session') {
+    if (typeof row.id === 'string' && row.id) {
+      meta.id = row.id;
+    }
+    if (typeof row.cwd === 'string' && row.cwd) {
+      meta.cwd = row.cwd;
+    }
+    if (typeof row.createdAt === 'number' && Number.isFinite(row.createdAt)) {
+      meta.createdAt = String(row.createdAt);
+    } else if (typeof row.createdAt === 'string' && row.createdAt) {
+      meta.createdAt = row.createdAt;
+    }
+    return;
+  }
+  if (row.type === 'session/title') {
+    const title = row.data && typeof row.data.title === 'string'
+      ? row.data.title
+      : (typeof row.title === 'string' ? row.title : '');
+    if (title.trim()) {
+      meta.title = title.trim();
+    }
+  }
+}
+
+function foldSessionJsonlText(meta, text) {
+  const chunks = String(text || '').split(/\n/);
+  for (const line of chunks) {
+    if (line) {
+      applySessionJsonlLine(meta, line);
+    }
+  }
+}
+
+/**
+ * Locate complete concatenated Zstandard frames (harness session layout).
+ * Port of vendor scanZstdFrames; fail-soft callers catch thrown errors.
+ * @param {Buffer} buffer
+ * @returns {{ start: number, end: number }[]}
+ */
+function scanZstdFrames(buffer) {
+  const frames = [];
+  let offset = 0;
+  while (offset < buffer.length) {
+    const start = offset;
+    if (buffer.length - offset < 4) {
+      break;
+    }
+    if (buffer.readUInt32LE(offset) !== ZSTD_MAGIC) {
+      throw new Error(`invalid zstd magic at ${offset}`);
+    }
+    offset += 4;
+    if (offset === buffer.length) {
+      break;
+    }
+    const descriptor = buffer.readUInt8(offset);
+    offset += 1;
+    if ((descriptor & 0x18) !== 0) {
+      throw new Error(`reserved zstd frame-header bit at ${offset - 1}`);
+    }
+    const contentSizeFlag = descriptor >>> 6;
+    const singleSegment = (descriptor & 0x20) !== 0;
+    const checksum = (descriptor & 0x04) !== 0;
+    const dictionaryFlag = descriptor & 0x03;
+    const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag;
+    const contentSizeBytes = contentSizeFlag === 0
+      ? (singleSegment ? 1 : 0)
+      : (1 << contentSizeFlag);
+    const remainingHeaderBytes = (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes;
+    if (buffer.length - offset < remainingHeaderBytes) {
+      break;
+    }
+    offset += remainingHeaderBytes;
+    for (;;) {
+      if (buffer.length - offset < 3) {
+        return frames;
+      }
+      const blockHeader = buffer.readUIntLE(offset, 3);
+      offset += 3;
+      const lastBlock = (blockHeader & 1) !== 0;
+      const blockType = (blockHeader >>> 1) & 0x03;
+      const blockSize = blockHeader >>> 3;
+      if (blockType === 0x03) {
+        throw new Error(`reserved zstd block type at ${offset - 3}`);
+      }
+      const payloadBytes = blockType === 0x01 ? 1 : blockSize;
+      if (buffer.length - offset < payloadBytes) {
+        return frames;
+      }
+      offset += payloadBytes;
+      if (lastBlock) {
+        break;
+      }
+    }
+    if (checksum) {
+      if (buffer.length - offset < 4) {
+        return frames;
+      }
+      offset += 4;
+    }
+    frames.push({ start, end: offset });
+  }
+  return frames;
+}
+
+function readPlainSessionMeta(file) {
+  const meta = emptySessionMeta();
+  try {
+    foldSessionJsonlText(meta, fs.readFileSync(file, 'utf8'));
+  } catch {
+    // corrupt or unreadable log — keep empty meta
+  }
+  return meta;
+}
+
+function readZstdSessionMeta(file) {
+  const meta = emptySessionMeta();
+  meta.compressedLog = true;
+  if (typeof zlib.zstdDecompressSync !== 'function') {
+    return meta;
+  }
+  let buffer;
+  try {
+    buffer = fs.readFileSync(file);
+  } catch {
+    return meta;
+  }
+  let frames;
+  try {
+    frames = scanZstdFrames(buffer);
+  } catch {
+    return meta;
+  }
+  if (!frames.length) {
+    return meta;
+  }
+  meta.compressedLog = false;
+  for (const frame of frames) {
+    try {
+      const text = zlib.zstdDecompressSync(buffer.subarray(frame.start, frame.end)).toString('utf8');
+      foldSessionJsonlText(meta, text);
+    } catch {
+      // skip one bad frame; keep prior meta
+    }
+  }
+  return meta;
+}
+
+/**
+ * Read display fields from a session dir without changing the import key (`rel`).
+ * Prefers plaintext `session.jsonl`; otherwise uses Node built-in zstd (no extra dep).
+ * @param {{ abs: string, rel: string, logs: string[], unsupported: boolean }} row
+ */
+function readSessionDisplayMeta(row) {
+  if (!row || row.unsupported) {
+    return {
+      ...emptySessionMeta(),
+      id: idFromSessionRel(row && row.rel),
+    };
+  }
+  const logs = Array.isArray(row.logs) ? row.logs : [];
+  const plain = logs.find((name) => SESSION_PLAIN.test(name));
+  if (plain) {
+    const meta = readPlainSessionMeta(path.join(row.abs, plain));
+    if (!meta.id) {
+      meta.id = idFromSessionRel(row.rel);
+    }
+    return meta;
+  }
+  const zstd = logs.find((name) => SESSION_ZSTD.test(name));
+  if (zstd) {
+    const meta = readZstdSessionMeta(path.join(row.abs, zstd));
+    if (!meta.id) {
+      meta.id = idFromSessionRel(row.rel);
+    }
+    return meta;
+  }
+  return {
+    ...emptySessionMeta(),
+    id: idFromSessionRel(row.rel),
+  };
+}
+
+/**
+ * Best-effort `name` from SKILL.md YAML frontmatter.
+ * @param {string} skillDir
+ * @returns {string}
+ */
+function readSkillDisplayName(skillDir) {
+  try {
+    const text = fs.readFileSync(path.join(skillDir, SKILL_DOC), 'utf8');
+    const fence = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fence) {
+      return '';
+    }
+    const match = fence[1].match(/^name:\s*(.+)\s*$/m);
+    if (!match) {
+      return '';
+    }
+    let value = match[1].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    return value.trim();
+  } catch {
+    return '';
+  }
 }
 
 function destHasSession(destSessions, rel) {
@@ -351,6 +600,7 @@ function listSkillPackages(root, prefix) {
       found.push({
         id: `${prefix}:${name}`,
         name,
+        displayName: readSkillDisplayName(root) || name,
         destName: name,
         abs: path.resolve(root),
         source: prefix,
@@ -375,6 +625,7 @@ function listSkillPackages(root, prefix) {
     found.push({
       id: `${prefix}:${entry.name}`,
       name: entry.name,
+      displayName: readSkillDisplayName(abs) || entry.name,
       destName: entry.name,
       abs: path.resolve(abs),
       source: prefix,
@@ -428,10 +679,20 @@ function scanImport({
   const target = destHome(dest);
   const sourceSessions = path.join(source, 'sessions');
   const destSessions = path.join(target, 'sessions');
-  const sessions = walkSessionDirs(sourceSessions).map((row) => ({
-    ...row,
-    conflict: !row.unsupported && destHasSession(destSessions, row.rel),
-  }));
+  const sessions = walkSessionDirs(sourceSessions)
+    .filter((row) => !isHarnessPresetSessionRel(row.rel))
+    .map((row) => {
+      const meta = readSessionDisplayMeta(row);
+      return {
+        ...row,
+        id: meta.id,
+        cwd: meta.cwd,
+        title: meta.title,
+        createdAt: meta.createdAt,
+        compressedLog: Boolean(meta.compressedLog),
+        conflict: !row.unsupported && destHasSession(destSessions, row.rel),
+      };
+    });
   const attachmentsDir = path.join(source, 'attachments');
   const plugins = pluginCandidates(source);
   const { skills, skillRoots } = collectSkills({
@@ -451,6 +712,7 @@ function scanImport({
   return {
     sourceHome: source,
     destHome: target,
+    homeDir: os.homedir(),
     destEmpty: walkSessionDirs(destSessions).length === 0,
     sourceHasData,
     sessions,

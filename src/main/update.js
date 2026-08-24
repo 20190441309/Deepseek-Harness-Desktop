@@ -2,11 +2,13 @@ const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const { app, shell } = require('electron');
 
 const GITHUB_OWNER = 'ChisaAlter';
 const GITHUB_REPO = 'Deepseek-Harness-Desktop';
+const APP_ID = 'ai.deepseek.harness.gui';
+const PRODUCT_NAME = 'Deepseek-Harness-Desktop';
 const RELEASES_LATEST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 const RELEASES_LIST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`;
 const RELEASES_PAGE = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
@@ -321,18 +323,394 @@ function summarizeRelease(release, current) {
   const asset = pickInstaller(release.assets);
   const checksum = pickChecksumAsset(release.assets);
   const version = normalizeVersion(release.tag_name || release.name);
+  const compared = version ? compareVersions(version, current) : 0;
   return {
     tag: release.tag_name || '',
     version,
     prerelease: Boolean(release.prerelease),
     htmlUrl: release.html_url || RELEASES_PAGE,
     notes: typeof release.body === 'string' ? release.body : '',
-    current: Boolean(version) && compareVersions(version, current) === 0,
-    newer: Boolean(version) && compareVersions(version, current) > 0,
+    current: Boolean(version) && compared === 0,
+    newer: Boolean(version) && compared > 0,
+    older: Boolean(version) && compared < 0,
     assetName: asset?.name || '',
     assetUrl: asset?.browser_download_url || '',
     checksumUrl: checksum?.browser_download_url || '',
     installable: Boolean(asset),
+  };
+}
+
+const WINDOWS_UNINSTALL_REL = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
+const WINDOWS_UNINSTALL_WOW = 'Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
+const SETTINGS_APPS_URL = 'ms-settings:appsfeatures';
+
+function readPackagedFlag() {
+  try {
+    return app.isPackaged;
+  } catch {
+    return false;
+  }
+}
+
+function parseRegValue(output, name) {
+  const match = String(output || '').match(new RegExp(`^\\s*${name}\\s+REG_(?:EXPAND_)?SZ\\s+(.+)$`, 'im'));
+  return match ? match[1].trim() : '';
+}
+
+function parseRegUninstallString(output) {
+  return parseRegValue(output, 'UninstallString');
+}
+
+function uninstallExeCandidates(installDir) {
+  if (!installDir) {
+    return [];
+  }
+  return [
+    path.join(installDir, `Uninstall ${PRODUCT_NAME}.exe`),
+    path.join(installDir, 'Uninstall.exe'),
+  ];
+}
+
+function firstExistingPath(candidates, existsSync = fs.existsSync.bind(fs)) {
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+function extractUninstallExe(uninstallCommand) {
+  const quoted = String(uninstallCommand || '').match(/^"([^"]+\.exe)"/i);
+  if (quoted) {
+    return quoted[1];
+  }
+  const bare = String(uninstallCommand || '').match(/^([^\s]+\.exe)/i);
+  return bare ? bare[1] : '';
+}
+
+function parseRegBlock(block, keyPath = '') {
+  const displayName = parseRegValue(block, 'DisplayName');
+  const uninstallCommand = parseRegUninstallString(block);
+  const installPath = parseRegValue(block, 'InstallLocation')
+    || parseRegValue(block, 'DisplayIcon').replace(/\\[^\\]+$/, '');
+  const displayVersion = parseRegValue(block, 'DisplayVersion');
+  if (!displayName && !installPath && !uninstallCommand) {
+    return null;
+  }
+  return {
+    key: keyPath,
+    displayName,
+    uninstallCommand,
+    installPath: installPath.trim(),
+    displayVersion,
+  };
+}
+
+function uninstallRegistryKeyPaths() {
+  const keys = [];
+  for (const root of ['HKLM', 'HKCU']) {
+    for (const rel of [WINDOWS_UNINSTALL_REL, WINDOWS_UNINSTALL_WOW]) {
+      keys.push(`${root}\\${rel}\\${APP_ID}`);
+    }
+  }
+  return keys;
+}
+
+function uninstallSearchRoots() {
+  const roots = [];
+  for (const hive of ['HKLM', 'HKCU']) {
+    for (const rel of [WINDOWS_UNINSTALL_REL, WINDOWS_UNINSTALL_WOW]) {
+      roots.push(`${hive}\\${rel}`);
+    }
+  }
+  return roots;
+}
+
+function queryRegKey(key, deps = {}) {
+  const execReg = deps.execFileSync || execFileSync;
+  try {
+    return execReg('reg', ['query', key], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+  } catch {
+    return '';
+  }
+}
+
+function findRegisteredWindowsInstall(deps = {}) {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+  for (const key of uninstallRegistryKeyPaths()) {
+    const parsed = parseRegBlock(queryRegKey(key, deps), key);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  const execReg = deps.execFileSync || execFileSync;
+  for (const root of uninstallSearchRoots()) {
+    try {
+      const out = execReg('reg', [
+        'query',
+        root,
+        '/s',
+        '/f',
+        PRODUCT_NAME,
+      ], { encoding: 'utf8', windowsHide: true });
+      const blocks = out.split(/\r?\n\r?\n/);
+      for (const block of blocks) {
+        if (!/DisplayName/i.test(block)) {
+          continue;
+        }
+        const keyMatch = block.match(/^HKEY_[^\r\n]+/m);
+        const parsed = parseRegBlock(block, keyMatch ? keyMatch[0] : root);
+        if (parsed && (
+          parsed.displayName.includes(PRODUCT_NAME)
+          || parsed.uninstallCommand.includes(PRODUCT_NAME)
+          || parsed.installPath.includes(PRODUCT_NAME)
+        )) {
+          return parsed;
+        }
+      }
+    } catch {
+      // try next root
+    }
+  }
+  return null;
+}
+
+function discoverWindowsInstall(deps = {}) {
+  const existsSync = deps.existsSync || fs.existsSync.bind(fs);
+  const packaged = deps.isPackaged !== undefined ? deps.isPackaged : readPackagedFlag();
+  const searchedPaths = [];
+
+  if (process.platform !== 'win32') {
+    return {
+      registered: packaged,
+      installPath: packaged ? path.dirname(process.execPath) : '',
+      version: packaged ? currentVersion() : '',
+      uninstallCommand: '',
+      uninstallMode: 'none',
+      searchedPaths,
+    };
+  }
+
+  if (packaged) {
+    const installDir = path.dirname(process.execPath);
+    for (const candidate of uninstallExeCandidates(installDir)) {
+      searchedPaths.push(candidate);
+    }
+    const direct = firstExistingPath(uninstallExeCandidates(installDir), existsSync);
+    if (direct) {
+      return {
+        registered: true,
+        installPath: installDir,
+        version: currentVersion(),
+        uninstallCommand: direct,
+        uninstallMode: 'direct',
+        searchedPaths,
+      };
+    }
+  }
+
+  const registered = findRegisteredWindowsInstall(deps);
+  if (!registered) {
+    return {
+      registered: false,
+      installPath: packaged ? path.dirname(process.execPath) : '',
+      version: packaged ? currentVersion() : '',
+      uninstallCommand: '',
+      uninstallMode: 'none',
+      searchedPaths,
+    };
+  }
+
+  if (registered.installPath) {
+    for (const candidate of uninstallExeCandidates(registered.installPath)) {
+      searchedPaths.push(candidate);
+    }
+    const fromInstallDir = firstExistingPath(uninstallExeCandidates(registered.installPath), existsSync);
+    if (fromInstallDir) {
+      return {
+        registered: true,
+        installPath: registered.installPath,
+        version: registered.displayVersion || '',
+        uninstallCommand: fromInstallDir,
+        uninstallMode: 'direct',
+        searchedPaths,
+        registryKey: registered.key,
+      };
+    }
+  }
+
+  if (registered.uninstallCommand) {
+    const uninstallExe = extractUninstallExe(registered.uninstallCommand);
+    if (uninstallExe) {
+      searchedPaths.push(uninstallExe);
+      if (existsSync(uninstallExe)) {
+        return {
+          registered: true,
+          installPath: registered.installPath,
+          version: registered.displayVersion || '',
+          uninstallCommand: registered.uninstallCommand,
+          uninstallMode: 'direct',
+          searchedPaths,
+          registryKey: registered.key,
+        };
+      }
+    }
+    return {
+      registered: true,
+      installPath: registered.installPath,
+      version: registered.displayVersion || '',
+      uninstallCommand: registered.uninstallCommand,
+      uninstallMode: 'settings',
+      searchedPaths,
+      registryKey: registered.key,
+    };
+  }
+
+  return {
+    registered: true,
+    installPath: registered.installPath,
+    version: registered.displayVersion || '',
+    uninstallCommand: '',
+    uninstallMode: 'settings',
+    searchedPaths,
+    registryKey: registered.key,
+  };
+}
+
+async function openWindowsAppsSettings() {
+  try {
+    await shell.openExternal(SETTINGS_APPS_URL);
+    return true;
+  } catch {
+    try {
+      const child = spawn('control.exe', ['appwiz.cpl'], {
+        detached: true,
+        shell: true,
+        stdio: 'ignore',
+        windowsHide: false,
+      });
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function getInstalledAppInfo(deps = {}) {
+  const packaged = deps.isPackaged !== undefined ? deps.isPackaged : readPackagedFlag();
+  let runningVersion = '0.0.0';
+  try {
+    runningVersion = currentVersion();
+  } catch {
+    // outside Electron (unit tests)
+  }
+
+  const discovery = discoverWindowsInstall(deps);
+  const runningFromSource = !packaged;
+  const registeredInstall = discovery.registered;
+  const uninstallAvailable = discovery.uninstallMode === 'direct'
+    || discovery.uninstallMode === 'settings';
+
+  let version = runningVersion;
+  let installPath = '';
+  if (registeredInstall) {
+    version = discovery.version || runningVersion;
+    installPath = discovery.installPath || '';
+  } else if (packaged) {
+    try {
+      installPath = path.dirname(process.execPath);
+    } catch {
+      installPath = '';
+    }
+  }
+
+  const uninstallUsesSettings = discovery.uninstallMode === 'settings';
+  const searchedLabel = discovery.searchedPaths.length
+    ? discovery.searchedPaths.join('、')
+    : '安装目录与注册表';
+
+  let uninstallNote = '';
+  if (runningFromSource && !registeredInstall) {
+    uninstallNote = '当前为源码运行，无本机安装包可卸载。请用「设置 → 应用」卸载已安装的 Deepseek-Harness-Desktop。';
+  } else if (runningFromSource && registeredInstall) {
+    uninstallNote = discovery.uninstallMode === 'direct'
+      ? '当前为源码运行；卸载将移除本机已安装的 Setup 版本。'
+      : '已检测到本机安装记录，但未找到卸载程序。可打开「设置 → 应用」手动卸载。';
+  } else if (uninstallUsesSettings) {
+    uninstallNote = `未找到卸载程序（已查找：${searchedLabel}）。可打开「设置 → 应用」手动卸载。`;
+  } else if (packaged && discovery.uninstallMode === 'none') {
+    uninstallNote = `未找到卸载程序（已查找：${searchedLabel}）。可打开「设置 → 应用」手动卸载。`;
+  }
+
+  return {
+    version,
+    installPath,
+    packaged,
+    runningFromSource,
+    registeredInstall,
+    uninstallAvailable,
+    uninstallUsesSettings,
+    uninstallNote,
+    searchedPaths: discovery.searchedPaths,
+  };
+}
+
+async function launchUninstaller(deps = {}) {
+  const packaged = deps.isPackaged !== undefined ? deps.isPackaged : readPackagedFlag();
+  const discovery = discoverWindowsInstall(deps);
+  const searchedLabel = discovery.searchedPaths.length
+    ? discovery.searchedPaths.join('、')
+    : '安装目录与注册表';
+
+  if (discovery.uninstallMode === 'direct' && discovery.uninstallCommand) {
+    const child = spawn(discovery.uninstallCommand, [], {
+      detached: true,
+      shell: true,
+      stdio: 'ignore',
+      windowsHide: false,
+    });
+    child.unref();
+    return { ok: true, mode: 'direct' };
+  }
+
+  if (discovery.registered && discovery.uninstallMode === 'settings') {
+    const opened = await openWindowsAppsSettings();
+    if (opened) {
+      return {
+        ok: true,
+        openedSettings: true,
+        mode: 'settings',
+        message: '已打开「设置 → 应用」，请在列表中卸载 Deepseek-Harness-Desktop。',
+      };
+    }
+    return {
+      ok: false,
+      error: 'uninstaller-not-found',
+      searchedPaths: discovery.searchedPaths,
+      message: `未找到卸载程序（已查找：${searchedLabel}）。请在「设置 → 应用」中卸载 Deepseek-Harness-Desktop。`,
+    };
+  }
+
+  if (!packaged && !discovery.registered) {
+    return {
+      ok: false,
+      error: 'source-run-no-install',
+      message: '当前为源码运行，无本机安装包可卸载。请用「设置 → 应用」卸载已安装的 Deepseek-Harness-Desktop。',
+    };
+  }
+
+  return {
+    ok: false,
+    error: 'uninstaller-not-found',
+    searchedPaths: discovery.searchedPaths,
+    message: `未找到卸载程序（已查找：${searchedLabel}）。请在「设置 → 应用」中卸载 Deepseek-Harness-Desktop。`,
   };
 }
 
@@ -343,11 +721,12 @@ async function listReleases() {
     const releases = (Array.isArray(list) ? list : [])
       .map((row) => summarizeRelease(row, current))
       .filter(Boolean);
-    return snapshot({ status: 'ok', releases });
+    return snapshot({ status: 'ok', releases, installed: getInstalledAppInfo() });
   } catch (error) {
     return snapshot({
       status: 'error',
       releases: [],
+      installed: getInstalledAppInfo(),
       message: error.message || String(error),
     });
   }
@@ -432,6 +811,8 @@ async function installUpdate(onProgress) {
 module.exports = {
   GITHUB_OWNER,
   GITHUB_REPO,
+  APP_ID,
+  PRODUCT_NAME,
   REPO_URL,
   RELEASES_PAGE,
   CHECK_TIMEOUT_MS,
@@ -443,6 +824,12 @@ module.exports = {
   summarizeRelease,
   listReleases,
   installRelease,
+  getInstalledAppInfo,
+  launchUninstaller,
+  discoverWindowsInstall,
+  findRegisteredWindowsInstall,
+  parseRegBlock,
+  uninstallExeCandidates,
   downloadFile,
   parseSha512Sums,
   verifyAssetChecksum,

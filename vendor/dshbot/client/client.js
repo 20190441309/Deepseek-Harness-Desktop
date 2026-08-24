@@ -14,6 +14,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   const NS = "dshbot";
   const TAB_ID = "bots";
   const DEFAULT_BOT_NAME = "新机器人";
+  const GROUP_MAX_MEMBERS = 6;
 
   const zh = {
     tab: "机器人",
@@ -22,7 +23,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     addBot: "添加新 Bot",
     addRoom: "创建群聊",
     empty: "还没有机器人",
-    emptyHint: "点右上角加号添加一个联系人。群聊也从这里创建，至少选两个机器人。",
+    emptyHint: "点右上角加号添加联系人或群聊。建群只需名称与成员（至少一人）。",
     edit: "编辑资料",
     duplicate: "复制",
     delete: "删除",
@@ -32,7 +33,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     name: "名称",
     title: "标题",
     description: "描述 / 人设",
-    personaHint: "芯片写入互不重叠的人设，仍可改。空人设时后到的成员默认不说话。",
+    personaHint: "芯片写入互不重叠的人设，仍可改。",
     personaOppose: "反对",
     personaFill: "补全",
     personaShip: "落地",
@@ -41,9 +42,17 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     workspace: "工作区",
     workspaceNone: "无目录",
     workspaceLocked: "已有对话的机器人不能改工作区，请新建一个。",
+    pin: "置顶",
+    unpin: "取消置顶",
+    hide: "隐藏",
+    unhide: "取消隐藏",
+    showHidden: "显示已隐藏",
+    hideHidden: "收起已隐藏",
+    memoryLabel: "记忆笔记",
+    memoryHint: "长期偏好写在这里；也可让 bot 用 remember 工具追加。",
     notifications: "通知",
     members: "成员",
-    membersHint: "至少选择两个已有机器人。",
+    membersHint: "选择 1–6 个已有机器人（不能选群）。",
     roomName: "群聊名称",
     defaultBotName: DEFAULT_BOT_NAME,
     defaultRoomName: "新群聊",
@@ -71,7 +80,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     addBot: "New bot",
     addRoom: "New group",
     empty: "No bots yet",
-    emptyHint: "Use the plus button to add a contact. Groups are created here too — pick at least two bots.",
+    emptyHint: "Use the plus button to add a contact or group. Groups need a name and members (at least one).",
     edit: "Edit profile",
     duplicate: "Duplicate",
     delete: "Delete",
@@ -81,7 +90,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     name: "Name",
     title: "Title",
     description: "Description / persona",
-    personaHint: "Chips write non-overlapping personas you can still edit. Empty personas default later members to silence.",
+    personaHint: "Chips write non-overlapping personas you can still edit.",
     personaOppose: "Oppose",
     personaFill: "Fill",
     personaShip: "Ship",
@@ -90,9 +99,17 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     workspace: "Workspace",
     workspaceNone: "No directory",
     workspaceLocked: "A bot that already has turns cannot change workspace. Create a new one.",
+    pin: "Pin",
+    unpin: "Unpin",
+    hide: "Hide",
+    unhide: "Unhide",
+    showHidden: "Show hidden",
+    hideHidden: "Hide hidden list",
+    memoryLabel: "Memory notes",
+    memoryHint: "Durable preferences go here; the bot can also append via the remember tool.",
     notifications: "Notifications",
     members: "Members",
-    membersHint: "Pick at least two existing bots.",
+    membersHint: "Pick 1–6 existing bots (not groups).",
     roomName: "Group name",
     defaultBotName: "New bot",
     defaultRoomName: "New group",
@@ -198,6 +215,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-members { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow: auto; }
 .dshbot-member { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .dshbot-avatar-slot { position: relative; display: inline-flex; flex-shrink: 0; }
+.dshbot-activity-dot {
+  position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--dsw-alias-label-primary); box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-1);
+}
 .dshbot-badge {
   position: absolute;
   right: -2px;
@@ -677,7 +698,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const {
       wide, expandSidebar, t, useSessions, useCatalog, useEditor,
       addBot, createRoom, openItem, openEditor, duplicateItem, requestDelete,
-      stampRoomPresets,
+      togglePin, toggleHide, stampRoomPresets,
     } = props;
     const sessions = useSessions((s) => s);
     const catalogSnap = useCatalog((s) => s);
@@ -685,8 +706,18 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const [query, setQuery] = useState("");
     const [plusOpen, setPlusOpen] = useState(false);
     const [menu, setMenu] = useState(null);
+    const [showHidden, setShowHidden] = useState(false);
     const items = catalogItems(catalogSnap);
-    const visible = useMemo(() => filterItems(items, query), [items, query]);
+    const visible = useMemo(() => {
+      const filtered = filterItems(items, query).filter((item) => showHidden || item.hidden !== true);
+      const pinned = filtered
+        .filter((item) => item.pinned === true)
+        .sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0) || String(a.name).localeCompare(String(b.name)));
+      const rest = filtered
+        .filter((item) => item.pinned !== true)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      return [...pinned, ...rest];
+    }, [items, query, showHidden]);
     const currentId = sessions?.current;
     useEffect(() => {
       stampRoomPresets?.(sessions?.byId);
@@ -711,6 +742,12 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           icon: h(IconSearchOutline16, { size: 16 }),
           onChange: (event) => setQuery(event.target.value),
         }),
+        h(Button, {
+          variant: "ghost",
+          size: "sm",
+          "aria-label": showHidden ? t("hideHidden") : t("showHidden"),
+          onClick: () => setShowHidden((value) => !value),
+        }, showHidden ? t("hideHidden") : t("showHidden")),
         h(Menu, {
           open: plusOpen,
           portal: true,
@@ -723,7 +760,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           },
           items: [
             { id: "bot", label: t("addBot") },
-            { id: "room", label: t("addRoom"), disabled: items.filter((item) => item.kind !== "room").length < 2 },
+            { id: "room", label: t("addRoom"), disabled: items.filter((item) => item.kind !== "room").length < 1 },
           ],
           anchor: h(Button, {
             variant: "ghost",
@@ -762,10 +799,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                 h(AvatarView, {
                   avatar: item.avatar,
                   seed: item.id || item.name,
-                  thinking: Boolean(session?.running),
+                  thinking: false,
                   size: 32,
                 }),
                 isRoom ? h("span", { className: "dshbot-badge" }, t("roomBadge")) : null,
+                session?.running ? h("span", {
+                  className: "dshbot-activity-dot",
+                  title: "running",
+                  "aria-label": "running",
+                }) : null,
               ),
               h("span", { className: "dshbot-row-body" },
                 h("span", { className: "dshbot-row-top" },
@@ -788,17 +830,37 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           if (!item) return;
           if (id === "edit") openEditor(item.id);
           if (id === "duplicate") duplicateItem(item.id);
+          if (id === "pin") togglePin?.(item.id);
+          if (id === "hide") toggleHide?.(item.id);
           if (id === "delete") requestDelete(item.id);
         },
         items: [
           { id: "edit", label: t("edit"), icon: h(IconEditOutline16, { size: 16 }) },
           { id: "duplicate", label: t("duplicate"), icon: h(IconCopyOutline16, { size: 16 }) },
+          {
+            id: "pin",
+            label: itemPinnedLabel(items, menu?.itemId, t),
+          },
+          {
+            id: "hide",
+            label: itemHiddenLabel(items, menu?.itemId, t),
+          },
           { type: "separator", id: "sep" },
           { id: "delete", label: t("delete"), danger: true, icon: h(IconTrashOutline16, { size: 16 }) },
         ],
         anchor: h("span"),
       }),
     );
+  }
+
+  function itemPinnedLabel(items, itemId, t) {
+    const item = items.find((entry) => entry.id === itemId);
+    return item?.pinned === true ? t("unpin") : t("pin");
+  }
+
+  function itemHiddenLabel(items, itemId, t) {
+    const item = items.find((entry) => entry.id === itemId);
+    return item?.hidden === true ? t("unhide") : t("hide");
   }
 
   function EditorOverlay(props) {
@@ -838,7 +900,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         setDescription("");
         setWorkspaceId("");
         setMemberIds([]);
-        setAvatar(defaultBlobAvatar(t("defaultRoomName")));
+        setAvatar(null);
         return;
       }
       if (!item) return;
@@ -888,26 +950,31 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         h(Button, { variant: "outline", onClick: closeEditor, disabled: busy }, t("cancel")),
         h(Button, {
           variant: "primary",
-          disabled: busy || (isRoom && memberIds.length < 2),
+          disabled: busy || (isRoom && (memberIds.length < 1 || memberIds.length > GROUP_MAX_MEMBERS)),
           onClick: async () => {
             setBusy(true);
             try {
               if (isRoomCreate) {
                 await createRoomSubmit({
                   name,
+                  description,
                   workspaceId: workspaceId || undefined,
                   memberBotIds: memberIds,
-                  avatar: normalizeAvatar(avatar, name),
                 });
               } else if (item) {
+                if (isRoom && (memberIds.length < 1 || memberIds.length > GROUP_MAX_MEMBERS)) {
+                  throw new Error(t("membersHint"));
+                }
                 await saveItem({
                   ...item,
                   name: name.trim() || t("defaultBotName"),
-                  title,
+                  title: isRoom ? "" : title,
                   description,
-                  avatar: normalizeAvatar(avatar, item.id || name),
+                  avatar: isRoom
+                    ? (item.avatar || defaultBlobAvatar(item.id || name))
+                    : normalizeAvatar(avatar, item.id || name),
                   workspaceId: workspaceId || undefined,
-                  notifications,
+                  notifications: isRoom ? false : notifications,
                   memberBotIds: isRoom ? memberIds : item.memberBotIds,
                   model: (!isRoom && provider && model) ? { provider, model } : undefined,
                   updatedAt: Date.now(),
@@ -931,7 +998,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       isDelete
         ? h("p", null, t("confirmDelete"))
         : h("div", { className: "dshbot-form" },
-          h("div", { className: "dshbot-field" },
+          !isRoom ? h("div", { className: "dshbot-field" },
             h("label", null, t("avatar")),
             h(AvatarView, {
               avatar,
@@ -947,7 +1014,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
               onChange: setAvatar,
               live: open,
             }),
-          ),
+          ) : null,
           h("div", { className: "dshbot-field" },
             h("label", null, isRoom ? t("roomName") : t("name")),
             h(Input, { value: name, onChange: (event) => setName(event.target.value) }),
@@ -956,23 +1023,23 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             h("label", null, t("title")),
             h(Input, { value: title, onChange: (event) => setTitle(event.target.value) }),
           ) : null,
-          !isRoom ? h("div", { className: "dshbot-field" },
+          h("div", { className: "dshbot-field" },
             h("label", null, t("description")),
-            h("div", { className: "dshbot-pills" },
+            !isRoom ? h("div", { className: "dshbot-pills" },
               PERSONA_TEMPLATES.map((chip) => h(Pill, {
                 key: chip.id,
                 active: description === chip.text,
                 onClick: () => setDescription(chip.text),
               }, t(chip.labelKey))),
-            ),
-            h("div", { className: "dshbot-hint" }, t("personaHint")),
+            ) : null,
+            !isRoom ? h("div", { className: "dshbot-hint" }, t("personaHint")) : null,
             h("textarea", {
               value: description,
-              rows: 3,
+              rows: isRoom ? 2 : 3,
               onChange: (event) => setDescription(event.target.value),
               style: {
                 resize: "vertical",
-                minHeight: "96px",
+                minHeight: isRoom ? "64px" : "96px",
                 padding: "8px 10px",
                 borderRadius: "10px",
                 border: "1px solid var(--dsw-alias-border-l2)",
@@ -981,7 +1048,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                 font: "inherit",
               },
             }),
-          ) : null,
+          ),
           isRoom ? h("div", { className: "dshbot-field" },
             h("label", null, t("members")),
             h("div", { className: "dshbot-hint" }, t("membersHint")),
@@ -991,10 +1058,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                   type: "checkbox",
                   checked: memberIds.includes(bot.id),
                   onChange: (event) => {
+                    if (!event.target.checked && memberIds.length <= 1) return;
                     setMemberIds(event.target.checked
-                      ? [...memberIds, bot.id]
+                      ? (memberIds.length >= GROUP_MAX_MEMBERS
+                        ? memberIds
+                        : [...memberIds, bot.id])
                       : memberIds.filter((id) => id !== bot.id));
                   },
+                  disabled: (!memberIds.includes(bot.id) && memberIds.length >= GROUP_MAX_MEMBERS)
+                    || (memberIds.includes(bot.id) && memberIds.length <= 1),
                 }),
                 h(AvatarView, { avatar: bot.avatar, seed: bot.id || bot.name, size: 24 }),
                 bot.name,
@@ -1076,37 +1148,21 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     return parts.join("");
   }
 
-  function parseRoomNext(text) {
+  function isPassContent(text) {
+    const trimmed = String(text ?? "").trim();
+    if (!trimmed) return true;
+    return /^\(?\s*pass\s*\)?\.?$/i.test(trimmed);
+  }
+
+  function memberVisibleText(text) {
     const raw = String(text ?? "").replace(/[ \t]+$/gm, "").replace(/\s+$/u, "");
     const lines = raw.split("\n");
     const last = lines[lines.length - 1] ?? "";
-    const match = last.match(/^NEXT:\s*(.*)$/i);
-    if (!match) {
-      return { kind: "pass", names: [], visible: raw };
-    }
-    const visible = lines.slice(0, -1).join("\n").replace(/\s+$/u, "");
-    const body = match[1].trim();
-    const lower = body.toLowerCase();
-    if (lower === "pass" || body === "") {
-      return { kind: "pass", names: [], visible };
-    }
-    if (lower === "done") {
-      return { kind: "done", names: [], visible };
-    }
-    if (lower === "all") {
-      return { kind: "all", names: [], visible };
-    }
-    const names = [];
-    const re = /@([^\s@]+)/g;
-    let hit = re.exec(body);
-    while (hit) {
-      names.push(hit[1]);
-      hit = re.exec(body);
-    }
-    if (names.length === 0) {
-      return { kind: "pass", names: [], visible };
-    }
-    return { kind: "mention", names, visible };
+    const visible = /^NEXT:\s*/i.test(last)
+      ? lines.slice(0, -1).join("\n").replace(/\s+$/u, "")
+      : raw;
+    if (isPassContent(visible)) return "";
+    return visible.trim();
   }
 
   function ParticipantBubble(props) {
@@ -1122,7 +1178,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const resultText = settled
       ? (textFromContent(block.content) || textFromContent(block.resultView?.content))
       : "";
-    const parsed = parseRoomNext(resultText);
+    const visible = memberVisibleText(resultText);
     const resultName = (typeof block?.resultView?.title === "string" && block.resultView.title)
       || (typeof block?.callView?.title === "string" && block.callView.title)
       || "";
@@ -1131,7 +1187,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const thinkingLabel = typeof props.thinking === "function" ? props.thinking() : "";
     const title = catalogName || resultName || (typeof block?.title === "string" && block.title) || botId || "Bot";
     const thinking = !settled;
-    if (settled && !parsed.visible) {
+    if (settled && !visible) {
       return h("span", { className: "dshbot-bubble-omit", "aria-hidden": "true" });
     }
     return h("div", { className: "dshbot-bubble" },
@@ -1141,7 +1197,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         h("div", {
           className: "dshbot-bubble-text",
           "data-pending": thinking ? "true" : undefined,
-        }, settled ? parsed.visible : thinkingLabel),
+        }, settled ? visible : thinkingLabel),
       ),
     );
   }
@@ -1258,6 +1314,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             description: "",
             avatar: defaultBlobAvatar(id),
             notifications: true,
+            pinned: false,
+            hidden: false,
+            pinOrder: 0,
+            inbox: [],
             createdAt: now,
             updatedAt: now,
           };
@@ -1271,10 +1331,21 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       createRoom: () => {
         setEditor({ open: true, mode: "create-room", itemId: null, error: "" });
       },
-      createRoomSubmit: async ({ name, workspaceId, memberBotIds, avatar }) => {
+      createRoomSubmit: async ({ name, description, workspaceId, memberBotIds }) => {
         try {
-          if (!Array.isArray(memberBotIds) || memberBotIds.length < 2) {
+          if (!Array.isArray(memberBotIds) || memberBotIds.length < 1 || memberBotIds.length > GROUP_MAX_MEMBERS) {
             fail(new Error(t("membersHint")));
+            return;
+          }
+          const existing = readItems().find((entry) => {
+            if (entry.kind !== "room") return false;
+            const a = [...(entry.memberBotIds ?? [])].sort();
+            const b = [...memberBotIds].sort();
+            return a.length === b.length && a.every((id, index) => id === b[index]);
+          });
+          if (existing?.sessionId) {
+            setEditor({ open: false, mode: "edit", itemId: null, error: "" });
+            ctx.sessions.open(existing.sessionId);
             return;
           }
           const sessionId = await createContactSession(ctx, {
@@ -1289,11 +1360,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             sessionId,
             name: name || t("defaultRoomName"),
             title: "",
-            description: "",
-            avatar: normalizeAvatar(avatar, id),
+            description: description || "",
+            avatar: defaultBlobAvatar(id),
             workspaceId,
             memberBotIds,
-            memberChildren: [],
+            notifications: false,
+            pinned: false,
+            hidden: false,
+            pinOrder: 0,
+            inbox: [],
             createdAt: now,
             updatedAt: now,
           };
@@ -1333,15 +1408,41 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             id: newId(),
             sessionId,
             name: `${source.name} 副本`,
-            memberChildren: [],
+            inbox: [],
             createdAt: now,
             updatedAt: now,
           };
+          delete copy.memberChildren;
           await persistItems(upsertItem(readItems(), copy));
           ctx.sessions.open(sessionId);
         } catch (error) {
           fail(error);
         }
+      },
+      togglePin: async (itemId) => {
+        const items = readItems();
+        const source = items.find((item) => item.id === itemId);
+        if (!source) return;
+        const pinned = source.pinned !== true;
+        const maxOrder = items
+          .filter((item) => item.pinned)
+          .reduce((max, item) => Math.max(max, Number(item.pinOrder) || 0), 0);
+        await persistItems(upsertItem(items, {
+          ...source,
+          pinned,
+          pinOrder: pinned ? maxOrder + 1 : 0,
+          updatedAt: Date.now(),
+        }));
+      },
+      toggleHide: async (itemId) => {
+        const items = readItems();
+        const source = items.find((item) => item.id === itemId);
+        if (!source) return;
+        await persistItems(upsertItem(items, {
+          ...source,
+          hidden: source.hidden !== true,
+          updatedAt: Date.now(),
+        }));
       },
       saveItem: async (next, { workspaceLocked } = {}) => {
         try {
@@ -1424,6 +1525,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           if (!room) return Promise.resolve([]);
           const needle = String(req.query ?? "").trim().toLowerCase();
           const rows = [];
+          if (!needle || "everyone".includes(needle) || "all".includes(needle)) {
+            rows.push({ name: "everyone" });
+          }
           for (const id of room.memberBotIds ?? []) {
             const bot = items.find((item) => item.id === id && item.kind !== "room");
             if (!bot) continue;
@@ -1438,10 +1542,11 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           const items = readItems();
           const room = items.find((item) => item.sessionId === session.sessionId && item.kind === "room");
           if (!room) return [];
-          return (room.memberBotIds ?? []).map((id) => {
+          const names = (room.memberBotIds ?? []).map((id) => {
             const bot = items.find((item) => item.id === id && item.kind !== "room");
             return String(bot?.name ?? "").trim();
           }).filter(Boolean);
+          return ["everyone", ...names];
         },
         subscribeLexicon(_session, listener) {
           return catalog.subscribe(listener);

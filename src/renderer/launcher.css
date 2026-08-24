@@ -170,6 +170,36 @@ main:has(#panel-import.is-active) {
   margin-bottom: 16px;
 }
 
+.recovery-board {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.recovery-head h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.recovery-verdict {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.recovery-actions {
+  margin: 12px 0;
+}
+
+.row-meta.evidence {
+  margin-top: 4px;
+  font-family: var(--dsw-font-family-mono, ui-monospace, monospace);
+  word-break: break-word;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -448,6 +478,48 @@ main:has(#panel-import.is-active) {
   background: var(--dsw-alias-bg-layer-2);
 }
 
+.import-cluster-head {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+}
+
+.import-fold {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.import-fold:hover {
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+}
+
+.import-fold-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+
+.import-fold.is-collapsed .import-fold-icon {
+  transform: rotate(0deg);
+}
+
+.import-fold:not(.is-collapsed) .import-fold-icon {
+  transform: rotate(90deg);
+}
+
 .import-cluster .row-title {
   font-weight: 500;
 }
@@ -512,6 +584,36 @@ main:has(#panel-import.is-active) {
   accent-color: var(--dsw-alias-state-business-primary);
 }
 
+.installed-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-base);
+}
+
+.installed-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.installed-card-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.installed-card-path {
+  margin: 0;
+  word-break: break-all;
+}
+
 .list {
   list-style: none;
   margin: 0;
@@ -530,6 +632,10 @@ main:has(#panel-import.is-active) {
 
 .list.import-list li {
   padding: 8px 12px;
+}
+
+.list.import-list li[hidden] {
+  display: none;
 }
 
 .list.import-list li.import-item {

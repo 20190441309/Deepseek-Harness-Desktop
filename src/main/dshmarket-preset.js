@@ -54,7 +54,7 @@ function linkIntoProfileModules(destDir, profileDir) {
  * Missing `package.json`, a declared dependency, or a dependency export file
  * returns `{ ok: false }` and strips the managed insert so Loader does not
  * mount a broken copy. The caller logs that and continues Harness start.
- * @param {{ sourceDir?: string, profileDir?: string }} [options]
+ * @param {{ sourceDir?: string, profileDir?: string, disabledPlugins?: string[] }} [options]
  */
 function ensureDshMarketPlugin(options = {}) {
   const sourceDir = options.sourceDir || defaultSourceDir();
@@ -62,8 +62,13 @@ function ensureDshMarketPlugin(options = {}) {
     return { ok: false, added: false, error: 'missing-source:package.json' };
   }
   const profileDir = options.profileDir || webProfileDir();
-  const destDir = path.join(profileDir, 'desktop-plugins', DSHMARKET_PACKAGE);
   const patchFile = path.join(profileDir, 'cordis.patch.yml');
+  const disabled = require('./config').readDisabledPlugins(options);
+  if (disabled.includes(DSHMARKET_PACKAGE)) {
+    stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
+    return { ok: true, added: false, destDir: null, disabled: true };
+  }
+  const destDir = path.join(profileDir, 'desktop-plugins', DSHMARKET_PACKAGE);
   const missing = missingRuntimeDependencies(sourceDir);
   if (missing.length) {
     stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);

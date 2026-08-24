@@ -33,7 +33,7 @@
         </button>
         <button type="button" class="tab" data-tab="plugins" role="tab" aria-selected="false">
           <svg class="tab-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 1.4h3.6v2.2h2.6c.6 0 1.1.5 1.1 1.1v2.6H16v3.6h-2.5v2.6c0 .6-.5 1.1-1.1 1.1H9.8V16H6.2v-2.5H3.6c-.6 0-1.1-.5-1.1-1.1V9.8H0V6.2h2.5V3.6c0-.6.5-1.1 1.1-1.1h2.6V1.4Zm1.4 1.4v2.2H4.7v3.6H2.5v.8h2.2v3.6h3.6V14h.8v-2.2h3.6V8.2H14v-.8h-2.2V3.8H8.4V2.8H7.6Z"/></svg>
-          插件问诊
+          插件排查
         </button>
         <button type="button" class="tab" data-tab="settings" role="tab" aria-selected="false">
           <svg class="tab-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 5.52a2.48 2.48 0 1 0 0 4.96 2.48 2.48 0 0 0 0-4.96ZM6.86 1.7c.14-.11.3-.16.47-.18.54-.05 1.13-.05 1.67 0 .17.02.33.07.47.18l.34.46c.34.46.57 1 .87 1.46.3.41.71.64 1.22.69.59.06 1.2-.02 1.8.03.17.02.33.1.41.21.3.4.58.88.8 1.33.06.13.06.19 0 .32l-.23.5c-.24.5-.58.93-.82 1.43-.23.48-.23.98 0 1.46.24.5.58.94.82 1.43l.23.5c.06.13.06.19 0 .32-.22.46-.5.93-.8 1.33-.08.11-.24.19-.41.21-.6.06-1.21-.02-1.8.03-.5.05-.92.28-1.22.69-.3.46-.53 1-.87 1.46l-.34.46c-.14.11-.3.16-.47.18-.54.05-1.13.05-1.67 0-.17-.02-.33-.07-.47-.18l-.34-.46c-.34-.46-.57-1-.87-1.46-.3-.41-.71-.64-1.22-.69-.59-.06-1.2.02-1.8-.03-.17-.02-.33-.1-.41-.21-.3-.4-.58-.88-.8-1.33-.06-.13-.06-.19 0-.32l.23-.5c.24-.5.58-.93.82-1.43.23-.48.23-.98 0-1.46-.24-.5-.58-.94-.82-1.43L1.7 6.4c-.06-.13-.06-.19 0-.32.22-.45.5-.93.8-1.33.08-.11.24-.19.41-.21.6-.05 1.21.03 1.8-.03.5-.05.92-.28 1.22-.69.3-.46.53-1 .87-1.46l.34-.46Z"/></svg>
@@ -47,19 +47,29 @@
         <section id="panel-home" class="panel is-active" role="tabpanel">
           <header class="page-head">
             <h2>首页</h2>
-            <p class="lede" id="lede">检查更新后启动桌面端。导入、版本与插件问诊都在这里处理，不另开市场或壁纸窗。</p>
+            <p class="lede" id="lede">检查更新并启动桌面端。数据导入、版本管理与插件排查可在左侧分区完成。</p>
           </header>
           <p class="status" id="home-status">正在读取状态…</p>
           <div class="actions">
             <button type="button" class="primary" id="btn-start">启动桌面端</button>
-            <button type="button" class="ghost" id="btn-skip">先跳过用户插件启动</button>
-            <button type="button" class="ghost" id="btn-retry-full">再试完整插件</button>
+            <button type="button" class="ghost" id="btn-skip">跳过用户插件启动</button>
+            <button type="button" class="ghost" id="btn-retry-full">恢复完整插件并启动</button>
           </div>
+          <section id="home-recovery" class="recovery-board" hidden>
+            <header class="recovery-head">
+              <h3>恢复工作台</h3>
+              <p class="recovery-verdict" id="home-recovery-verdict"></p>
+            </header>
+            <div class="actions recovery-actions">
+              <button type="button" class="ghost" id="btn-disable-suspects">禁用全部可疑</button>
+            </div>
+            <ul id="home-recovery-list" class="list"></ul>
+          </section>
         </section>
         <section id="panel-import" class="panel import-pane" role="tabpanel" hidden>
           <header class="import-head">
             <h2>导入</h2>
-            <p class="lede">只读扫描官方 home。勾选后写入桌面 home，不改官方目录，不拷工程树。</p>
+            <p class="lede">只读扫描官方 home。勾选后写入桌面 home，不修改官方目录，也不复制工程工作区。</p>
             <p class="import-source-line" id="import-source"></p>
             <p class="import-source-line" id="import-skill-roots" hidden></p>
             <div class="import-toolbar">
@@ -67,6 +77,7 @@
               <button type="button" class="ghost" id="btn-pick-skill">添加技能目录</button>
               <button type="button" class="ghost" id="btn-scan">重新扫描</button>
             </div>
+            <p class="import-source-line" id="import-scan-status"></p>
           </header>
           <div class="import-cats" role="tablist" aria-label="导入类别">
             <button type="button" class="import-cat is-active" data-import-cat="sessions" role="tab" aria-selected="true">会话 <span id="import-sessions-count">0</span></button>
@@ -119,18 +130,26 @@
         <section id="panel-versions" class="panel" role="tabpanel" hidden>
           <header class="page-head">
             <h2>版本</h2>
-            <p class="lede">安装包来自 GitHub Releases。草稿不会出现在 latest。换版本就是下载该 tag 的 Setup 并拉起安装器。</p>
+            <p class="lede">列出 GitHub 正式版安装包。草稿不会出现在 latest；切换版本将下载对应 Setup 并启动安装程序。</p>
           </header>
           <div class="actions">
             <button type="button" class="ghost" id="btn-refresh-releases">刷新列表</button>
           </div>
+          <section class="installed-card" id="installed-card">
+            <div class="installed-card-main">
+              <h3 class="installed-card-title" id="installed-version">本机已安装</h3>
+              <p class="installed-card-path row-meta" id="installed-path" hidden></p>
+              <p class="installed-card-note row-meta" id="installed-uninstall-note" hidden></p>
+            </div>
+            <button type="button" class="danger" id="btn-uninstall-app" hidden>卸载本机应用</button>
+          </section>
           <p class="progress" id="update-progress" hidden></p>
           <ul id="release-list" class="list"></ul>
         </section>
         <section id="panel-plugins" class="panel" role="tabpanel" hidden>
           <header class="page-head">
-            <h2>插件问诊</h2>
-            <p class="lede" id="forensics-summary">不启动内核即可查看已装插件。启动失败时会标出日志里对得上的包。</p>
+            <h2>插件排查</h2>
+            <p class="lede" id="forensics-summary">查看已安装插件，并根据启动日志识别可疑冲突。禁用或移除后可重新启动桌面端。</p>
           </header>
           <div class="actions">
             <button type="button" class="ghost" id="btn-refresh-plugins">刷新</button>
@@ -140,12 +159,12 @@
         <section id="panel-settings" class="panel" role="tabpanel" hidden>
           <header class="page-head">
             <h2>设置</h2>
-            <p class="lede">只保留启动器自己的三项开关。完整官方设置仍在桌面端里。</p>
+            <p class="lede">以下选项仅作用于启动器。完整应用设置请在桌面端中调整。</p>
           </header>
           <label class="switch-row">
             <span class="switch-copy">
               <span class="switch-title">就绪后关闭启动器</span>
-              <span class="switch-desc">桌面端成功就绪后关掉本窗。主窗不在时关闭启动器会退出应用。</span>
+              <span class="switch-desc">桌面端就绪后自动关闭本窗口。若主窗口未打开，关闭启动器将退出应用。</span>
             </span>
             <span class="switch">
               <input type="checkbox" id="opt-quit" />
@@ -155,7 +174,7 @@
           <label class="switch-row">
             <span class="switch-copy">
               <span class="switch-title">打开后自动启动桌面端</span>
-              <span class="switch-desc">会被更新询问、空家目录导入、或上次启动失败拦住。</span>
+              <span class="switch-desc">与桌面端「通用设置 → 启动时」同步。否：仅打开启动器；是：跳过启动器直接进桌面（启动器仍可从托盘右键打开）。存在更新确认、待导入或上次启动失败时不自动启动。</span>
             </span>
             <span class="switch">
               <input type="checkbox" id="opt-auto" />
@@ -164,8 +183,8 @@
           </label>
           <label class="switch-row">
             <span class="switch-copy">
-              <span class="switch-title">有新正式版时询问</span>
-              <span class="switch-desc">关掉后仍可在「版本」页手动安装。草稿不会出现在 latest。</span>
+              <span class="switch-title">发现新正式版时询问</span>
+              <span class="switch-desc">关闭后仍可在「版本」中手动安装。草稿不会出现在 latest。</span>
             </span>
             <span class="switch">
               <input type="checkbox" id="opt-ask" />
@@ -176,6 +195,7 @@
       </main>
     </div>
   </div>
+  <script src="../shared/launcher-recovery.js"></script>
   <script src="theme.js"></script>
   <script src="window-controls.js"></script>
   <script src="launcher.js"></script>

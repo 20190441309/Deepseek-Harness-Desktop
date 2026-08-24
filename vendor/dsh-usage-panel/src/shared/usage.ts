@@ -90,6 +90,28 @@ export function todayKeyUTC(now: number): string {
   return dayKeyUTC(now)
 }
 
+/** UTC calendar month key (YYYY-MM) from a day key. */
+export function monthKeyUTC(dayKey: string): string {
+  return dayKey.slice(0, 7)
+}
+
+/**
+ * Distinct UTC months covered by a day window, in ascending order.
+ * Used by the client heatmap month picker (still bounded by HEAT_DAYS).
+ */
+export function listMonthKeys(days: ReadonlyArray<{ date: string }>): string[] {
+  const keys: string[] = []
+  let prev = ''
+  for (const d of days) {
+    const m = monthKeyUTC(d.date)
+    if (m !== prev) {
+      keys.push(m)
+      prev = m
+    }
+  }
+  return keys
+}
+
 /**
  * Build the 182-day heatmap window ending today (UTC). Days with no usage get
  * zero-filled records, preserving the v0.1.0 grid shape (fixed-length array).

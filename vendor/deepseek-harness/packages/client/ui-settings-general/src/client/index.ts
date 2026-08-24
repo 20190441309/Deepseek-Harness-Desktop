@@ -25,6 +25,7 @@ import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { InterfaceSection } from './InterfaceSection.tsx'
 import { CloseBehaviorRow } from './CloseBehaviorRow.tsx'
+import { AutoStartDesktopRow } from './AutoStartDesktopRow.tsx'
 import { AboutSection } from './AboutSection.tsx'
 import { HarnessRestartRow } from './HarnessRestartRow.tsx'
 import { canPersistCloseBehavior, desktopShell } from './desktop-shell.ts'
@@ -201,6 +202,12 @@ export function apply(ctx: ClientContext): void {
       order: 25,
       locale: NS,
     }, CloseBehaviorRow))
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item',
+      id: 'auto-start-desktop',
+      order: 26,
+      locale: NS,
+    }, AutoStartDesktopRow))
   }
   // The desktop-only Harness auto-recovery row: registered only when the
   // desktop bridge exposes both config directions — a plain browser has no

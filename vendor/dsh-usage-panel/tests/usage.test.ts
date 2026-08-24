@@ -9,7 +9,9 @@ import {
   emptyBuckets,
   emptyTotals,
   hitRate,
+  listMonthKeys,
   mergeInto,
+  monthKeyUTC,
   parseDayKeyUTC,
   sortedModels,
   totalsFrom,
@@ -109,6 +111,16 @@ test('buildDayWindow merges per-model buckets into the right day', () => {
   assert.deepEqual(d14.models['model-a'], { input: 3, output: 4, cacheRead: 5, cacheWrite: 6, total: 18 })
   const d1 = days.find((d) => d.date === '2026-07-01')!
   assert.equal(d1.total, 1)
+})
+
+test('monthKeyUTC and listMonthKeys walk the heatmap window', () => {
+  assert.equal(monthKeyUTC('2026-08-15'), '2026-08')
+  const now = Date.UTC(2026, 7, 15, 12, 0, 0)
+  const days = buildDayWindow({}, now)
+  const months = listMonthKeys(days)
+  assert.equal(months[0], '2026-02')
+  assert.equal(months[months.length - 1], '2026-08')
+  assert.ok(months.includes('2026-05'))
 })
 
 test('mergeInto handles zero buckets without NaN', () => {

@@ -9,6 +9,7 @@ const {
   shouldPromptUpdate,
   shouldAutoStartDesktop,
   shouldCloseLauncher,
+  shouldCloseLauncherAfterDesktopStart,
   readLastDesktopStart,
   writeLastDesktopStart,
 } = require('./launcher-gate');
@@ -34,9 +35,40 @@ test('shouldCloseLauncher only after a successful desktop start when quit-after-
   assert.equal(shouldCloseLauncher({ desktopReady: false, quitAfterStart: true }), false);
 });
 
-test('last desktop start file records failure for the next cold start', () => {
+test('shouldCloseLauncherAfterDesktopStart blocks recovery and sticky skip', () => {
+  assert.equal(shouldCloseLauncherAfterDesktopStart({
+    desktopReady: true,
+    quitAfterStart: true,
+    stickySkip: false,
+    recoveryLaunch: false,
+    lastStartOk: true,
+  }), true);
+  assert.equal(shouldCloseLauncherAfterDesktopStart({
+    desktopReady: true,
+    quitAfterStart: true,
+    stickySkip: true,
+    recoveryLaunch: false,
+    lastStartOk: true,
+  }), false);
+  assert.equal(shouldCloseLauncherAfterDesktopStart({
+    desktopReady: true,
+    quitAfterStart: true,
+    stickySkip: false,
+    recoveryLaunch: true,
+    lastStartOk: true,
+  }), false);
+  assert.equal(shouldCloseLauncherAfterDesktopStart({
+    desktopReady: true,
+    quitAfterStart: true,
+    stickySkip: false,
+    recoveryLaunch: false,
+    lastStartOk: false,
+  }), false);
+});
+
+test('last desktop start file uses tri-state ok and records failure for the next cold start', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-last-start-'));
-  assert.equal(readLastDesktopStart(dir).ok, true);
+  assert.equal(readLastDesktopStart(dir).ok, null);
   writeLastDesktopStart(dir, { ok: false, error: 'plugin tree' });
   const last = readLastDesktopStart(dir);
   assert.equal(last.ok, false);

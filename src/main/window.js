@@ -393,6 +393,17 @@ function showMain() {
   return win;
 }
 
+/** Tear down the desktop shell window after the kernel stops (launcher stays open). */
+function dismissMainWindow() {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) {
+    return false;
+  }
+  hideHarnessView(win);
+  win.destroy();
+  return true;
+}
+
 function isHarnessLoaded(win) {
   if (!harnessRevealed) {
     return false;
@@ -500,7 +511,6 @@ function createLauncherWindow() {
   attachIntegratedChrome(launcherWindow, { role: 'launcher' });
   launcherWindow.once('ready-to-show', () => {
     hideNativeMenu(launcherWindow);
-    launcherWindow.show();
   });
   launcherWindow.on('closed', () => {
     launcherWindow = null;
@@ -525,6 +535,15 @@ function showLauncher() {
     win.focus();
     return win;
   });
+}
+
+/** Create or reuse the launcher window without showing it (cold start / IPC). */
+function prepareLauncher() {
+  const win = createLauncherWindow();
+  if (isLauncherLoaded(win)) {
+    return Promise.resolve(win);
+  }
+  return win.loadFile(rendererFile('launcher.html')).then(() => win);
 }
 
 function sendToLauncher(channel, payload) {
@@ -553,6 +572,7 @@ module.exports = {
   getHarnessOrigin,
   isHarnessNavigationUrl,
   hideHarnessView,
+  dismissMainWindow,
   showBoot,
   showHarness,
   showMain,
@@ -563,6 +583,7 @@ module.exports = {
   createLauncherWindow,
   getLauncherWindow,
   showLauncher,
+  prepareLauncher,
   sendToLauncher,
   closeLauncherWindow,
   setBootHarnessCovered,

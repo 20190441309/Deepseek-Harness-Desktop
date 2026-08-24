@@ -1,11 +1,48 @@
 /**
  * Pure catalog helpers for dshbot contacts and rooms.
  * Host apply, the room tool, and node:test share this module.
+ * Group protocol symbols live in group-chat.js (Grok-aligned).
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+  GROUP_MAX_MEMBER_TURNS,
+  GROUP_MAX_MEMBERS,
+  GROUP_MAX_MESSAGES_PER_TURN,
+  GROUP_MAX_ROUNDS,
+  buildGroupMemberSystemPrompt,
+  buildGroupTurnPrompt,
+  isPassContent,
+  memberVisibleText,
+  messagesSinceMemberLastSpoke,
+  orderRoundSpeakers,
+  parseGroupMentions as parseGroupMentionsCore,
+  resolveResponders,
+  stripLegacyNextFooter,
+} from './group-chat.js';
+
+export {
+  GROUP_MAX_MEMBER_TURNS,
+  GROUP_MAX_MEMBERS,
+  GROUP_MAX_MESSAGES_PER_TURN,
+  GROUP_MAX_ROUNDS,
+  buildGroupMemberSystemPrompt,
+  buildGroupTurnPrompt,
+  isPassContent,
+  isPotentialPassPrefix,
+  isSameMemberSet,
+  memberVisibleText,
+  messagesSinceMemberLastSpoke,
+  orderRoundSpeakers,
+  resolveResponders,
+  stripLegacyNextFooter,
+} from './group-chat.js';
 
 export const AVATAR_HUE_COUNT = 6;
+/** @deprecated Use GROUP_MAX_MEMBER_TURNS */
+export const DEFAULT_MAX_SPEAKS = GROUP_MAX_MEMBER_TURNS;
+/** @deprecated Use GROUP_MAX_ROUNDS */
+export const DEFAULT_MAX_ROUNDS = GROUP_MAX_ROUNDS;
 
 /** Spawn-time overlay so the child complete prompt can see the member persona. */
 export const memberPersona = new AsyncLocalStorage();
@@ -140,75 +177,28 @@ export function memberDisplayName(items, botId) {
 }
 
 /**
- * Complete-prompt persona for a spawned room member.
+ * Complete-prompt persona for a spawned room member (Grok buildGroupMemberSystemPrompt).
  * @param {object | undefined} bot
  * @param {readonly object[]} [others]
- * @param {{ seat?: 'first' | 'later' }} [options]
+ * @param {{ group?: { name?: string, description?: string } }} [options]
  * @returns {string}
  */
 export function childPersonaText(bot, others = [], options = {}) {
-  const seat = options.seat === 'later' ? 'later' : 'first';
-  const name = String(bot?.name ?? '').trim() || 'Bot';
-  const description = typeof bot?.description === 'string' ? bot.description.trim() : '';
-  const otherNames = others
-    .map((entry) => String(entry?.name ?? '').trim())
-    .filter(Boolean);
-  const groupLine = otherNames.length
-    ? `You are in a group chat with the user and ${otherNames.join(', ')}.`
-    : 'You are in a group chat with the user and other members.';
-  const emptyLater = seat === 'later' && !description
-    ? 'You have no distinct expertise beyond what is already in the log. You should pass.'
-    : '';
-  const seatLines = seat === 'later'
-    ? [
-      'Earlier members already answered. Your default action is to add nothing.',
-      'If you have nothing distinct to add, your entire reply must be only the line NEXT: pass.',
-      'Speak only if your persona gives a correction, disagreement, or one new point that is not already in the log.',
-      'If you speak: one or two sentences, no greeting, no name prefix, no restating the previous plan.',
-      'Do not use NEXT: all.',
-    ]
-    : [
-      'Reply with only the message body. Never greet the room, never introduce yourself, and never start with 大家好 or Hello.',
-      'Never prefix the reply with your name or a Name: label. The UI already shows who you are.',
-      'Do not wait for a dispatcher, do not report what others said unless you heard them, and do not summarize the room unless you are giving the combined conclusion.',
-    ];
-  const lines = [
-    `You are ${name}.`,
-    description,
-    emptyLater,
-    groupLine,
-    'The messages you receive are the group log so far, labeled [speaker] then the body, followed by a turn instruction. Reply as yourself, in the first person.',
-    ...seatLines,
-    'Stay in character for every reply. You are this member, not a generic assistant.',
-    'Do not mention DeepSeek Harness, being an AI agent, tools, or a dispatcher.',
-    'End every reply with a last line of exactly one of: NEXT: pass, NEXT: done, NEXT: all, or NEXT: @Name @Name.',
-    'Use NEXT: done when the group has a combined conclusion. Use NEXT: pass when you have nothing to add.',
-  ].filter(Boolean);
-  return lines.join('\n');
-}
-
-/**
- * Persona for a continuable child session recorded on a room row.
- * @param {readonly object[]} items
- * @param {string | undefined} sessionId
- * @returns {string}
- */
-export function childPersonaForSession(items, sessionId) {
-  if (!sessionId) return '';
-  for (const item of items) {
-    if (item.kind !== 'room') continue;
-    const children = Array.isArray(item.memberChildren) ? item.memberChildren : [];
-    const row = children.find((entry) => entry.sessionId === sessionId);
-    if (!row) continue;
-    const bot = items.find((entry) => entry.id === row.botId && entry.kind !== 'room');
-    if (!bot) continue;
-    const others = (item.memberBotIds ?? [])
-      .filter((id) => id !== row.botId)
-      .map((id) => items.find((entry) => entry.id === id && entry.kind !== 'room'))
-      .filter(Boolean);
-    return childPersonaText(bot, others);
-  }
-  return '';
+  const member = {
+    id: String(bot?.id ?? ''),
+    name: String(bot?.name ?? '').trim() || 'Bot',
+    description: typeof bot?.description === 'string' ? bot.description : '',
+  };
+  const peers = others.map((entry) => ({
+    id: String(entry?.id ?? ''),
+    name: String(entry?.name ?? '').trim() || 'Bot',
+    description: typeof entry?.description === 'string' ? entry.description : '',
+  }));
+  const group = {
+    name: String(options.group?.name ?? 'Group').trim() || 'Group',
+    description: String(options.group?.description ?? ''),
+  };
+  return buildGroupMemberSystemPrompt(member, group, peers);
 }
 
 /**
@@ -244,32 +234,7 @@ export function resolveAskTarget(items, parentSessionId, botId) {
   if (!bot || bot.kind === 'room') {
     throw new Error(`ask_participant: unknown bot ${botId}`);
   }
-  const children = Array.isArray(room.memberChildren) ? room.memberChildren : [];
-  const child = children.find((entry) => entry.botId === resolvedId);
-  return {
-    room,
-    bot,
-    childSessionId: child?.sessionId,
-  };
-}
-
-/**
- * @param {readonly object[]} items
- * @param {string} roomSessionId
- * @param {string} botId
- * @param {string} childSessionId
- * @returns {object[]}
- */
-export function rememberChild(items, roomSessionId, botId, childSessionId) {
-  return items.map((item) => {
-    if (item.sessionId !== roomSessionId || item.kind !== 'room') return item;
-    const children = Array.isArray(item.memberChildren) ? [...item.memberChildren] : [];
-    const index = children.findIndex((entry) => entry.botId === botId);
-    const row = { botId, sessionId: childSessionId };
-    if (index < 0) children.push(row);
-    else children[index] = row;
-    return { ...item, memberChildren: children };
-  });
+  return { room, bot };
 }
 
 /**
@@ -306,92 +271,6 @@ export function lastUserText(messages) {
   return lastRoleText(messages, 'user');
 }
 
-/** Hard cap on ask_participant calls after one user message. */
-export const DEFAULT_MAX_SPEAKS = 12;
-
-/** Hard cap on completed speaker rounds after one user message. */
-export const DEFAULT_MAX_ROUNDS = 4;
-
-/**
- * Parse a member reply's last-line NEXT: footer. The footer stays in the
- * session log; UI and groupTranscript use `visible`.
- * @param {string | undefined} text
- * @returns {{ kind: 'pass' | 'done' | 'all' | 'mention', names: string[], visible: string }}
- */
-export function parseRoomNext(text) {
-  const raw = String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\s+$/u, '');
-  const lines = raw.split('\n');
-  const last = lines[lines.length - 1] ?? '';
-  const match = last.match(/^NEXT:\s*(.*)$/i);
-  if (!match) {
-    return { kind: 'pass', names: [], visible: raw };
-  }
-  const visible = lines.slice(0, -1).join('\n').replace(/\s+$/u, '');
-  const body = match[1].trim();
-  const lower = body.toLowerCase();
-  if (lower === 'pass' || body === '') {
-    return { kind: 'pass', names: [], visible };
-  }
-  if (lower === 'done') {
-    return { kind: 'done', names: [], visible };
-  }
-  if (lower === 'all') {
-    return { kind: 'all', names: [], visible };
-  }
-  const names = [];
-  const re = /@([^\s@]+)/g;
-  let hit = re.exec(body);
-  while (hit) {
-    names.push(hit[1]);
-    hit = re.exec(body);
-  }
-  if (names.length === 0) {
-    return { kind: 'pass', names: [], visible };
-  }
-  return { kind: 'mention', names, visible };
-}
-
-/**
- * Strip the NEXT: control line from a member reply.
- * @param {string | undefined} text
- * @returns {string}
- */
-export function stripRoomNext(text) {
-  return parseRoomNext(text).visible;
-}
-
-/**
- * Members the user addressed with @name. Empty means the whole room.
- * @param {readonly object[]} items
- * @param {readonly string[]} memberIds
- * @param {string | undefined} userText
- * @returns {string[]}
- */
-export function mentionedBotIds(items, memberIds, userText) {
-  const text = String(userText ?? '');
-  const hits = [];
-  for (const id of memberIds) {
-    const bot = items.find((entry) => entry.id === id && entry.kind !== 'room');
-    if (!bot) continue;
-    const name = String(bot.name ?? '').trim();
-    if (!name) continue;
-    if (text.includes(`@${name}`) || text.includes(`@${id}`)) hits.push(id);
-  }
-  return hits;
-}
-
-/**
- * Who should speak this turn: @mentions, otherwise every member.
- * @param {readonly object[]} items
- * @param {readonly string[]} memberIds
- * @param {string | undefined} userText
- * @returns {string[]}
- */
-export function roomSpeakerIds(items, memberIds, userText) {
-  const mentioned = mentionedBotIds(items, memberIds, userText);
-  return mentioned.length ? mentioned : [...memberIds];
-}
-
 /**
  * @param {unknown} content
  * @returns {string}
@@ -424,8 +303,7 @@ export function catalogRoom(items, sessionId) {
 }
 
 /**
- * Ordinary room conversation requests skip the chat model. Title/compaction
- * calls and 1:1 bot sessions still go downstream.
+ * Ordinary room conversation requests skip the chat model.
  * @param {{ purpose?: string, sessionId?: string } | undefined} options
  * @param {readonly object[]} items
  * @returns {boolean}
@@ -451,7 +329,6 @@ export function lastUserTextFromEvents(events) {
 }
 
 /**
- * Last non-empty assistant/message in a session log.
  * @param {readonly object[] | undefined} events
  * @returns {string}
  */
@@ -467,8 +344,6 @@ export function lastAssistantTextFromEvents(events) {
 }
 
 /**
- * Seq of the last non-empty assistant/message, or -1 when the child has not
- * spoken yet. Room execute waits for a seq greater than this after followup.
  * @param {readonly object[] | undefined} events
  * @returns {number}
  */
@@ -480,49 +355,6 @@ export function lastAssistantSeqFromEvents(events) {
     const text = contentText(event.data?.content);
     if (!text) continue;
     return typeof event.seq === 'number' ? event.seq : i;
-  }
-  return -1;
-}
-
-/**
- * ask_participant botIds already recorded after the latest user message.
- * @param {readonly object[] | undefined} events
- * @returns {string[]}
- */
-export function spokenBotIdsSinceLastUser(events) {
-  const list = events ?? [];
-  let start = 0;
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const event = list[i];
-    if (event?.type === 'user/message' && event.data?.source?.kind === 'user') {
-      start = i + 1;
-      break;
-    }
-  }
-  const ids = [];
-  for (let i = start; i < list.length; i += 1) {
-    const event = list[i];
-    if (event?.type !== 'tool/call' || event.data?.name !== 'ask_participant') continue;
-    try {
-      const args = JSON.parse(event.data.arguments ?? '{}');
-      if (typeof args.botId === 'string' && args.botId) ids.push(args.botId);
-    } catch {
-      // Invalid tool-call JSON is not a spoken member.
-    }
-  }
-  return ids;
-}
-
-/**
- * @param {readonly object[] | undefined} events
- * @returns {number}
- */
-function lastUserMessageIndex(events) {
-  const list = events ?? [];
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const event = list[i];
-    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'user') continue;
-    if (contentText(event.data.content)) return i;
   }
   return -1;
 }
@@ -545,11 +377,25 @@ function askParticipantBotId(event) {
 }
 
 /**
+ * @param {readonly object[] | undefined} events
+ * @returns {number}
+ */
+function lastUserMessageIndex(events) {
+  const list = events ?? [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const event = list[i];
+    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'user') continue;
+    if (contentText(event.data.content)) return i;
+  }
+  return -1;
+}
+
+/**
  * Completed ask_participant turns after the latest user message.
  * @param {readonly object[] | undefined} events
  * @returns {{ botId: string, text: string }[]}
  */
-function completedMemberTurns(events) {
+export function completedMemberTurns(events) {
   const list = events ?? [];
   const start = lastUserMessageIndex(list);
   if (start < 0) return [];
@@ -573,100 +419,132 @@ function completedMemberTurns(events) {
 }
 
 /**
- * Whether this member is the first to reply after the latest user message.
- * @param {readonly object[] | undefined} events
- * @returns {'first' | 'later'}
- */
-export function speakerSeat(events) {
-  return completedMemberTurns(events).length === 0 ? 'first' : 'later';
-}
-
-/**
- * Visible member bodies already on disk this user turn, labeled like the group log.
+ * Build Grok-shaped GroupMessage[] from room session events.
  * @param {readonly object[] | undefined} events
  * @param {readonly object[]} items
- * @returns {string}
+ * @returns {import('./group-chat.js').GroupMessage[]}
  */
-export function priorVisibleThisTurn(events, items) {
-  const lines = [];
-  for (const turn of completedMemberTurns(events)) {
-    const visible = stripRoomNext(turn.text);
-    if (!visible) continue;
-    lines.push(`[${memberDisplayName(items, turn.botId)}]`, visible);
+export function eventsToGroupHistory(events, items) {
+  /** @type {import('./group-chat.js').GroupMessage[]} */
+  const messages = [];
+  const namesByCall = new Map();
+  for (const event of events ?? []) {
+    if (event?.type === 'user/message') {
+      if (event.data?.source?.kind !== 'user') continue;
+      const text = contentText(event.data.content);
+      if (text) messages.push({ speaker: { kind: 'user' }, content: text });
+      continue;
+    }
+    if (event?.type === 'tool/call' && event.data?.name === 'ask_participant') {
+      const botId = askParticipantBotId(event);
+      namesByCall.set(event.data.callId, {
+        id: botId,
+        name: memberDisplayName(items, botId),
+      });
+      continue;
+    }
+    if (event?.type === 'tool/result') {
+      const callId = event.data?.message?.source?.callId;
+      const author = namesByCall.get(callId);
+      if (!author?.id) continue;
+      const text = memberVisibleText(contentText(event.data.message?.content));
+      if (text) {
+        messages.push({
+          speaker: { kind: 'member', id: author.id, name: author.name },
+          content: text,
+        });
+      }
+    }
   }
-  return lines.join('\n');
+  return messages;
 }
 
 /**
- * User-facing instruction for one room seat. Later seats default to NEXT: pass.
- * @param {{ seat?: 'first' | 'later', userText?: string, priorVisible?: string }} opts
- * @returns {string}
- */
-export function speakInstruction(opts = {}) {
-  const seat = opts.seat === 'later' ? 'later' : 'first';
-  const said = String(opts.userText ?? '');
-  if (seat === 'later') {
-    const prior = String(opts.priorVisible ?? '').trim();
-    const priorBlock = prior
-      ? `What has already been said this turn:\n${prior}`
-      : 'What has already been said this turn:\n(none)';
-    return [
-      'Earlier members already answered this turn. Speak only if your persona gives a correction, disagreement, or one new point that is not already in the log. Otherwise your entire reply must be only:',
-      'NEXT: pass',
-      '',
-      'The user said:',
-      said,
-      '',
-      priorBlock,
-    ].join('\n');
-  }
-  return [
-    'You are the first member to reply this turn. Answer the user as yourself.',
-    '',
-    'The user said:',
-    said,
-  ].join('\n');
-}
-
-/**
- * Seat instruction reconstructed from the parent session log.
- * @param {readonly object[] | undefined} events
  * @param {readonly object[]} items
- * @returns {string}
+ * @param {object} room
+ * @returns {import('./group-chat.js').GroupMember[]}
  */
-export function roomSpeakInstruction(events, items) {
-  return speakInstruction({
-    seat: speakerSeat(events),
-    userText: lastUserTextFromEvents(events),
-    priorVisible: priorVisibleThisTurn(events, items),
-  });
+export function roomMembersFromCatalog(items, room) {
+  const members = [];
+  for (const id of room.memberBotIds ?? []) {
+    const bot = items.find((entry) => entry.id === id && entry.kind !== 'room');
+    if (!bot) continue;
+    members.push({
+      id: bot.id,
+      name: String(bot.name ?? '').trim() || bot.id,
+      description: typeof bot.description === 'string' ? bot.description : '',
+    });
+  }
+  return members;
 }
 
 /**
- * @param {'pass' | 'done' | 'all' | 'mention'} kind
- * @param {readonly string[]} names
+ * Catalog adapter over parseGroupMentions (member objects).
  * @param {readonly object[]} items
  * @param {readonly string[]} memberIds
- * @returns {string[]}
+ * @param {string | undefined} userText
+ * @returns {{ everyone: boolean, botIds: string[] }}
  */
-function refillQueue(kind, names, items, memberIds) {
-  if (kind === 'all') return [...memberIds];
-  if (kind !== 'mention') return [];
-  const next = [];
-  const seen = new Set();
-  for (const name of names) {
-    const id = resolveMemberBotId(items, memberIds, name);
-    if (!memberIds.includes(id) || seen.has(id)) continue;
-    seen.add(id);
-    next.push(id);
-  }
-  return next;
+export function parseGroupMentions(items, memberIds, userText) {
+  const members = memberIds
+    .map((id) => items.find((entry) => entry.id === id && entry.kind !== 'room'))
+    .filter(Boolean)
+    .map((bot) => ({ id: bot.id, name: String(bot.name ?? '') }));
+  const parsed = parseGroupMentionsCore(String(userText ?? ''), members);
+  const botIds = parsed.isEveryone || parsed.memberIds.length === 0
+    ? [...memberIds]
+    : parsed.memberIds;
+  return { everyone: parsed.isEveryone, botIds };
 }
 
 /**
- * Next catalog member who should speak, or undefined when the queue is empty.
- * Replay is a pure function of the session log: first-pass speakers, then
- * each completed reply's NEXT: footer once that round's queue is empty.
+ * @param {readonly object[]} items
+ * @param {readonly string[]} memberIds
+ * @param {string | undefined} userText
+ * @returns {string[]}
+ */
+export function mentionedBotIds(items, memberIds, userText) {
+  return parseGroupMentions(items, memberIds, userText).botIds;
+}
+
+/**
+ * @param {readonly object[]} items
+ * @param {readonly string[]} memberIds
+ * @param {string | undefined} userText
+ * @returns {string[]}
+ */
+export function roomSpeakerIds(items, memberIds, userText) {
+  const members = roomMembersFromCatalog(items, { memberBotIds: memberIds });
+  const history = userText
+    ? [{ speaker: { kind: 'user' }, content: String(userText) }]
+    : [];
+  return resolveResponders(members, history).map((member) => member.id);
+}
+
+/**
+ * Legacy NEXT parse for old logs only (not used for scheduling).
+ * @param {string | undefined} text
+ */
+export function parseRoomNext(text) {
+  const raw = String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\s+$/u, '');
+  const lines = raw.split('\n');
+  const last = lines[lines.length - 1] ?? '';
+  const match = last.match(/^NEXT:\s*(.*)$/i);
+  if (!match) return { kind: 'pass', names: [], visible: raw };
+  const visible = lines.slice(0, -1).join('\n').replace(/\s+$/u, '');
+  return { kind: 'pass', names: [], visible };
+}
+
+/**
+ * @param {string | undefined} text
+ * @returns {string}
+ */
+export function stripRoomNext(text) {
+  return stripLegacyNextFooter(text);
+}
+
+/**
+ * Next member id for Harness llm/stream chain (Grok round-robin via history).
  * @param {readonly object[]} items
  * @param {object} room
  * @param {readonly object[] | undefined} events
@@ -674,73 +552,73 @@ function refillQueue(kind, names, items, memberIds) {
  * @returns {string | undefined}
  */
 export function nextRoomSpeakerId(items, room, events, limits = {}) {
-  const userText = lastUserTextFromEvents(events);
-  if (!userText) return undefined;
-  const maxSpeaks = Number.isFinite(limits.maxSpeaks) ? limits.maxSpeaks : DEFAULT_MAX_SPEAKS;
-  const maxRounds = Number.isFinite(limits.maxRounds) ? limits.maxRounds : DEFAULT_MAX_ROUNDS;
-  const memberIds = room.memberBotIds ?? [];
+  const history = eventsToGroupHistory(events, items);
+  if (!history.some((message) => message.speaker.kind === 'user')) return undefined;
+  const maxSpeaks = Number.isFinite(limits.maxSpeaks) ? limits.maxSpeaks : GROUP_MAX_MEMBER_TURNS;
+  const maxRounds = Number.isFinite(limits.maxRounds) ? limits.maxRounds : GROUP_MAX_ROUNDS;
+  const members = roomMembersFromCatalog(items, room);
+  if (members.length === 0) return undefined;
+  const responders = resolveResponders(members, history).map((member) => member.id);
+  if (responders.length === 0) return undefined;
   const turns = completedMemberTurns(events);
   if (turns.length >= maxSpeaks) return undefined;
-  if (turns.some((turn) => parseRoomNext(turn.text).kind === 'done')) return undefined;
-  let queue = [...roomSpeakerIds(items, memberIds, userText)];
-  let roundsFinished = 0;
-  let lastKind = 'pass';
-  let lastNames = [];
+
+  let round = 0;
+  let queue = orderRoundSpeakers(responders, round);
+  let nonPassThisRound = 0;
+  let roundsCompleted = 0;
+
   for (const turn of turns) {
     const at = queue.indexOf(turn.botId);
     if (at >= 0) queue.splice(at, 1);
-    const parsed = parseRoomNext(turn.text);
-    lastKind = parsed.kind;
-    lastNames = parsed.names;
+    if (memberVisibleText(turn.text)) nonPassThisRound += 1;
     if (queue.length > 0) continue;
-    roundsFinished += 1;
-    if (roundsFinished >= maxRounds) return undefined;
-    queue = refillQueue(parsed.kind, parsed.names, items, memberIds);
+    roundsCompleted += 1;
+    if (nonPassThisRound === 0) return undefined;
+    if (roundsCompleted >= maxRounds) return undefined;
+    round += 1;
+    queue = orderRoundSpeakers(responders, round);
+    nonPassThisRound = 0;
   }
-  if (queue.length > 0) return queue[0];
-  if (roundsFinished >= maxRounds) return undefined;
-  queue = refillQueue(lastKind, lastNames, items, memberIds);
+
   return queue[0];
 }
 
 /**
- * Named group log the current speaker should see, including earlier members
- * this round.
+ * Turn prompt for the next speaker (Grok buildGroupTurnPrompt).
+ * @param {readonly object[]} items
+ * @param {object} room
+ * @param {readonly object[] | undefined} events
+ * @param {string} speakerId
+ * @returns {string}
+ */
+export function roomTurnPromptForSpeaker(items, room, events, speakerId) {
+  const members = roomMembersFromCatalog(items, room);
+  const member = members.find((entry) => entry.id === speakerId);
+  if (!member) return '';
+  const peers = members.filter((entry) => entry.id !== speakerId);
+  const history = eventsToGroupHistory(events, items);
+  const newMessages = messagesSinceMemberLastSpoke(history, speakerId);
+  const group = {
+    name: String(room.name ?? 'Group'),
+    description: String(room.description ?? ''),
+  };
+  return buildGroupTurnPrompt({ member, group, peers, newMessages });
+}
+
+/**
+ * Display transcript helper for tools / tests.
  * @param {readonly object[] | undefined} events
  * @param {readonly object[]} items
  * @returns {string}
  */
 export function groupTranscript(events, items) {
-  const lines = [];
-  const namesByCall = new Map();
-  for (const event of events ?? []) {
-    if (event?.type === 'user/message') {
-      if (event.data?.source?.kind !== 'user') continue;
-      const text = contentText(event.data.content);
-      if (text) lines.push(`[用户]`, text);
-      continue;
-    }
-    if (event?.type === 'tool/call') {
-      if (event.data?.name !== 'ask_participant') continue;
-      let botId = '';
-      try {
-        const args = JSON.parse(event.data.arguments ?? '{}');
-        botId = typeof args.botId === 'string' ? args.botId : '';
-      } catch {
-        botId = '';
-      }
-      namesByCall.set(event.data.callId, memberDisplayName(items, botId));
-      continue;
-    }
-    if (event?.type === 'tool/result') {
-      const callId = event.data?.message?.source?.callId;
-      const name = namesByCall.get(callId);
-      if (!name) continue;
-      const text = stripRoomNext(contentText(event.data.message?.content));
-      if (text) lines.push(`[${name}]`, text);
-    }
-  }
-  return lines.join('\n');
+  return eventsToGroupHistory(events, items)
+    .map((message) => {
+      if (message.speaker.kind === 'user') return `[用户]\n${message.content}`;
+      return `[${message.speaker.name}]\n${message.content}`;
+    })
+    .join('\n');
 }
 
 /**
@@ -771,8 +649,9 @@ export function emptyStopChunks() {
 }
 
 /**
- * One sequential ask_participant call, or an empty stop after the last speaker.
- * @param {{ items: readonly object[], sessionId?: string, events?: readonly object[], callId: string, maxSpeaks?: number, maxRounds?: number }} opts
+ * One sequential ask_participant call, or stop after the last speaker.
+ * Bumps room turn epoch when the last user message has no completed turns yet.
+ * @param {{ items: readonly object[], sessionId?: string, events?: readonly object[], callId: string, maxSpeaks?: number, maxRounds?: number, bumpEpoch?: boolean }} opts
  * @returns {object[] | null}
  */
 export function roomDispatchChunks(opts) {
@@ -783,11 +662,8 @@ export function roomDispatchChunks(opts) {
     maxRounds: opts.maxRounds,
   });
   if (!speaker) return emptyStopChunks();
-  return askParticipantStreamChunks(
-    speaker,
-    roomSpeakInstruction(opts.events, opts.items),
-    opts.callId,
-  );
+  const instruction = roomTurnPromptForSpeaker(opts.items, room, opts.events, speaker);
+  return askParticipantStreamChunks(speaker, instruction, opts.callId);
 }
 
 /**
@@ -799,8 +675,6 @@ export function newCatalogId() {
 
 /**
  * Payload for `sessions.create` of a 1:1 bot or room parent.
- * A workspace id attaches the session; otherwise scratchCwd matches
- * connectNoDirectory without reusing an existing blank task session.
  * @param {{ workspaceId?: string, agentPreset?: string, scratchCwd?: string }} opts
  */
 export function sessionCreatePayload(opts = {}) {

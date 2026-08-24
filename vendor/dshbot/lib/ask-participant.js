@@ -1,27 +1,29 @@
 /**
- * ask_participant: one catalog member speaks in the group as a one-shot child.
- * The profile plugin registers it globally. The dshbot-room preset apply only
- * restricts the room agent to that tool. Members hear the named group log
- * plus a first/later seat instruction.
+ * ask_participant: one catalog member speaks (Grok member turn via spawn).
+ * Prompt/system from group-chat.js; deliveries only via send_room_message.
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import {
   childPersonaText,
-  groupTranscript,
-  lastUserText,
+  GROUP_MAX_MESSAGES_PER_TURN,
+  isPassContent,
   memberDisplayName,
   memberPersona,
+  memberVisibleText,
   resolveAskTarget,
-  roomSpeakInstruction,
-  speakerSeat,
+  roomTurnPromptForSpeaker,
 } from './catalog.js';
+import { currentTurnEpoch, isCurrentFactory } from './group-chat-host.js';
 
 export const name = 'dshbot-ask-participant';
 export const inject = ['tools'];
 
 const NS = settingsNamespace('dshbot');
 const SPAWN_PROVIDER = 'spawn';
+
+/** @type {Map<string, AbortController>} */
+const inFlightByRoom = new Map();
 
 function blocksText(content) {
   if (!Array.isArray(content)) return '';
@@ -31,11 +33,122 @@ function blocksText(content) {
     .join('');
 }
 
+function contentText(content) {
+  if (!Array.isArray(content)) return '';
+  const parts = [];
+  for (const block of content) {
+    if (block?.type === 'text' && typeof block.text === 'string') {
+      parts.push(block.text);
+      continue;
+    }
+    if (block?.type === 'tool-result' && Array.isArray(block.content)) {
+      const nested = contentText(block.content);
+      if (nested) parts.push(nested);
+    }
+  }
+  return parts.join('');
+}
+
 /**
- * Register ask_participant on the calling context (profile host: global).
+ * @param {readonly object[] | undefined} events
+ * @returns {string[]}
+ */
+function extractSendRoomDeliveries(events) {
+  const list = events ?? [];
+  const pending = new Set();
+  const deliveries = [];
+  for (const event of list) {
+    if (event?.type === 'tool/call' && event.data?.name === 'send_room_message') {
+      if (event.data?.callId) pending.add(event.data.callId);
+      continue;
+    }
+    if (event?.type !== 'tool/result') continue;
+    const callId = event.data?.message?.source?.callId;
+    if (!callId || !pending.has(callId)) continue;
+    pending.delete(callId);
+    const raw = contentText(event.data.message?.content);
+    let body = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.content === 'string') body = parsed.content;
+    } catch {
+      // Plain text tool results stay as-is.
+    }
+    const visible = memberVisibleText(body);
+    if (visible) deliveries.push(visible);
+    if (deliveries.length >= GROUP_MAX_MESSAGES_PER_TURN) break;
+  }
+  return deliveries;
+}
+
+/**
+ * Abort in-flight member turns for a room (new user message / epoch bump).
+ * @param {string} roomSessionId
+ */
+export function abortRoomMemberTurns(roomSessionId) {
+  const prior = inFlightByRoom.get(roomSessionId);
+  if (prior) {
+    try {
+      prior.abort();
+    } catch {
+      // Ignore abort errors.
+    }
+    inFlightByRoom.delete(roomSessionId);
+  }
+}
+
+/**
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ */
+function registerSendRoomMessage(ctx) {
+  ctx.tools.register(defineTool({
+    name: 'send_room_message',
+    description: 'Deliver visible text to the group room transcript.',
+    parameters: {
+      content: {
+        type: 'string',
+        required: true,
+        description: 'Message body shown in the group.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          content: { type: 'string', required: true },
+        },
+      },
+    },
+    presentCall: () => ({
+      card: 'generic',
+      title: 'Room message',
+      kind: 'other',
+      content: [],
+    }),
+    presentResult: (_args, result) => {
+      if (result.ok !== true) return undefined;
+      const value = result.value;
+      const text = typeof value === 'object' && value !== null && typeof value.content === 'string'
+        ? value.content
+        : '';
+      return {
+        card: 'generic',
+        title: 'Room message',
+        content: [{ type: 'text', text }],
+      };
+    },
+    async execute(args) {
+      return { content: String(args.content ?? '') };
+    },
+  }));
+}
+
+/**
  * @param {import('@deepseek-ai/cordis').Context} ctx
  */
 export function registerAskParticipant(ctx) {
+  registerSendRoomMessage(ctx);
   ctx.tools.register(defineTool({
     name: 'ask_participant',
     description:
@@ -50,7 +163,7 @@ export function registerAskParticipant(ctx) {
       instruction: {
         type: 'string',
         required: true,
-        description: 'Seat instruction for this member: answer first, or pass unless adding a distinct point.',
+        description: 'Turn prompt for this member (Grok-style).',
       },
     },
     output: {
@@ -94,39 +207,81 @@ export function registerAskParticipant(ctx) {
       if (!parent) {
         throw new Error('ask_participant requires a calling agent');
       }
+      const roomSessionId = parent.session.id;
+      const epoch = currentTurnEpoch(roomSessionId);
+      const isCurrent = isCurrentFactory(roomSessionId, epoch);
+      if (!isCurrent()) {
+        return { botId: String(args.botId ?? ''), name: 'Bot', text: '' };
+      }
+
       const catalog = ctx.settings.get(NS);
       const items = catalog?.items ?? [];
-      const target = resolveAskTarget(items, parent.session.id, args.botId);
+      const target = resolveAskTarget(items, roomSessionId, args.botId);
       const bot = target.bot;
       const others = (target.room.memberBotIds ?? [])
         .filter((id) => id !== bot.id)
         .map((id) => items.find((entry) => entry.id === id && entry.kind !== 'room'))
         .filter(Boolean);
-      const events = parent.session.events;
-      const transcript = groupTranscript(events, items);
-      const instruction = roomSpeakInstruction(events, items)
-        || String(args.instruction ?? '')
-        || lastUserText(parent.session.deriveMessages());
-      const heard = [transcript, instruction].filter(Boolean).join('\n\n');
-      const prompt = [{ type: 'text', text: heard }];
+
+      const instruction = String(args.instruction ?? '').trim()
+        || roomTurnPromptForSpeaker(items, target.room, parent.session.events, bot.id);
+      const prompt = [{ type: 'text', text: instruction }];
       const agentOptions = bot.model
         ? { provider: bot.model.provider, model: bot.model.model }
         : undefined;
-      const persona = childPersonaText(bot, others, { seat: speakerSeat(events) });
-      const run = await memberPersona.run(persona, () => ctx.subagents.start(SPAWN_PROVIDER, {
-        label: bot.name,
-        prompt,
-        parent,
-        signal: exec.signal,
-        persona,
-        toolFilter: { allow: [] },
-        ...(agentOptions ? { agentOptions } : {}),
-      }));
+      const persona = childPersonaText(bot, others, {
+        group: { name: target.room.name, description: target.room.description },
+      });
+
+      const localAbort = new AbortController();
+      // Do not abort peers in the same epoch; index.js aborts on epoch bump only.
+      inFlightByRoom.set(roomSessionId, localAbort);
+      const onParentAbort = () => localAbort.abort();
+      exec.signal?.addEventListener?.('abort', onParentAbort, { once: true });
+
       try {
-        const result = await run.result;
-        return { botId: bot.id, name: bot.name, text: blocksText(result.output) };
+        const run = await memberPersona.run(persona, () => ctx.subagents.start(SPAWN_PROVIDER, {
+          label: bot.name,
+          prompt,
+          parent,
+          signal: localAbort.signal,
+          persona,
+          toolFilter: { allow: ['send_room_message'] },
+          ...(agentOptions ? { agentOptions } : {}),
+        }));
+        try {
+          if (!isCurrent()) {
+            await run.dispose();
+            return { botId: bot.id, name: bot.name, text: '' };
+          }
+          const result = await run.result;
+          if (!isCurrent()) {
+            return { botId: bot.id, name: bot.name, text: '' };
+          }
+          const childEvents = run.localAgent?.session?.events
+            ?? ctx.sessions?.get?.(run.id)?.events;
+          const deliveries = extractSendRoomDeliveries(childEvents);
+          if (deliveries.length > 0) {
+            return { botId: bot.id, name: bot.name, text: deliveries.join('\n\n') };
+          }
+          const bare = blocksText(result.output);
+          if (isPassContent(bare)) {
+            return { botId: bot.id, name: bot.name, text: '' };
+          }
+          return { botId: bot.id, name: bot.name, text: '' };
+        } finally {
+          await run.dispose();
+        }
+      } catch (err) {
+        if (localAbort.signal.aborted || !isCurrent()) {
+          return { botId: bot.id, name: bot.name, text: '' };
+        }
+        throw err;
       } finally {
-        await run.dispose();
+        if (inFlightByRoom.get(roomSessionId) === localAbort) {
+          inFlightByRoom.delete(roomSessionId);
+        }
+        exec.signal?.removeEventListener?.('abort', onParentAbort);
       }
     },
   }));

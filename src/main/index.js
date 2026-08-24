@@ -8,7 +8,7 @@ const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
 const { ensureDshMarketPlugin } = require('./dshmarket-preset');
 const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
-const { hideDshbotPlugin } = require('./dshbot-preset');
+const { ensureDshbotPlugin, hideDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
@@ -19,7 +19,7 @@ const { scanImport, shouldHoldForImport, recoverInterruptedImport } = require('.
 const {
   shouldPromptUpdate,
   shouldAutoStartDesktop,
-  shouldCloseLauncher,
+  shouldCloseLauncherAfterDesktopStart,
   readLastDesktopStart,
   writeLastDesktopStart,
 } = require('./launcher-gate');
@@ -40,6 +40,7 @@ const {
   getHarnessWebContents,
   hideHarnessView,
   showLauncher,
+  prepareLauncher,
   getLauncherWindow,
   sendToLauncher,
   closeLauncherWindow,
@@ -93,14 +94,14 @@ async function resolveLaunchTarget() {
   return { port };
 }
 
-let mainCloseBound = false;
+const mainCloseBound = new WeakSet();
 const launcherCloseBound = new WeakSet();
 
 function bindMainClose(win) {
-  if (!win || mainCloseBound) {
+  if (!win || mainCloseBound.has(win)) {
     return win;
   }
-  mainCloseBound = true;
+  mainCloseBound.add(win);
   win.on('close', (event) => {
     if (quitting) {
       return;
@@ -144,28 +145,50 @@ async function openLauncher() {
   return win;
 }
 
+function isDesktopKernelRunning() {
+  const state = typeof dsh.state === 'string' ? dsh.state : dsh.snapshot()?.state;
+  return state === 'ready' || state === 'starting';
+}
+
 function showForeground() {
-  if (getMainWindow()) {
+  const win = getMainWindow();
+  if (win && isDesktopKernelRunning()) {
     showMain();
     return;
   }
   void openLauncher();
 }
 
-async function startDesktopFromLauncher() {
+async function startDesktopFromLauncher(options = {}) {
+  const recoveryLaunch = options.recoveryLaunch === true || options.skipLaunch === true;
   try {
-    await harness.start();
+    if (options.forceRestart) {
+      await harness.restart();
+    } else {
+      await harness.start();
+    }
+    const stickyAfter = typeof harness.shouldSkipUserPlugins === 'function'
+      ? harness.shouldSkipUserPlugins()
+      : false;
     writeLastDesktopStart(app.getPath('userData'), { ok: true });
     sendToLauncher('shell:desktop-ready', harness.snapshot());
-    if (shouldCloseLauncher({ desktopReady: true, quitAfterStart: loadConfig().quitAfterStart })) {
+    if (shouldCloseLauncherAfterDesktopStart({
+      desktopReady: true,
+      quitAfterStart: loadConfig().quitAfterStart,
+      stickySkip: stickyAfter,
+      recoveryLaunch,
+      lastStartOk: true,
+    })) {
       closeLauncherWindow();
+    } else if (stickyAfter || recoveryLaunch) {
+      sendToLauncher('shell:show-tab', { tab: 'home' });
     }
     return harness.snapshot();
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     writeLastDesktopStart(app.getPath('userData'), { ok: false, error: message });
     await openLauncher();
-    sendToLauncher('shell:show-tab', { tab: 'plugins' });
+    sendToLauncher('shell:show-tab', { tab: 'home' });
     sendToLauncher('shell:desktop-failed', { error: message });
     return { ok: false, error: message };
   }
@@ -214,6 +237,14 @@ async function runColdStartGate() {
   }
   const scan = scanImport();
   const holdForImport = shouldHoldForImport(scan) || importRecovery.recovered;
+  const lastStart = readLastDesktopStart(app.getPath('userData'));
+  const lastStartFailed = lastStart.ok === false;
+  const autoStartDesktop = shouldAutoStartDesktop({
+    autoStartDesktop: config.autoStartDesktop,
+    holdForImport,
+    updatePromptPending,
+    lastStartFailed,
+  });
   if (holdForImport) {
     sendToLauncher('shell:show-tab', { tab: 'import' });
   }
@@ -222,17 +253,13 @@ async function runColdStartGate() {
       importResume: { removedTmp: importRecovery.removedTmp.length },
     });
   }
-  const lastStart = readLastDesktopStart(app.getPath('userData'));
-  const lastStartFailed = lastStart.ok === false;
   if (lastStartFailed && !holdForImport) {
-    sendToLauncher('shell:show-tab', { tab: 'plugins' });
+    sendToLauncher('shell:show-tab', { tab: 'home' });
   }
-  if (shouldAutoStartDesktop({
-    autoStartDesktop: config.autoStartDesktop,
-    holdForImport,
-    updatePromptPending,
-    lastStartFailed,
-  })) {
+  if (holdForImport || !autoStartDesktop || (lastStartFailed && !holdForImport)) {
+    await openLauncher();
+  }
+  if (autoStartDesktop) {
     await startDesktopFromLauncher();
   }
 }
@@ -253,6 +280,7 @@ const harness = new HarnessController({
   ensureDesktopInstallPlugin,
   ensureDshMarketPlugin,
   ensureUsagePanelPlugin,
+  ensureDshbotPlugin,
   hideDshbotPlugin,
   applyDisabledBundles,
   healDanglingBundles,
@@ -1132,6 +1160,7 @@ if (!gotLock) {
       harness,
       startHarness: restartWithCleanup,
       startDesktop: startDesktopFromLauncher,
+      stopDesktopCleanup: cleanupDesktopResources,
       remote,
     });
     buildMenu({
@@ -1158,7 +1187,8 @@ if (!gotLock) {
       wc?.toggleDevTools();
     });
 
-    await openLauncher();
+    const launcherWin = await prepareLauncher();
+    bindLauncherClose(launcherWin);
     await runColdStartGate();
     if (qaEnv('DSH_SMOKE')) {
       if (!getMainWindow()) {

@@ -53,7 +53,7 @@ function normalizeRendererConfigPatch(patch) {
   }
   const next = {};
   for (const [key, value] of Object.entries(patch)) {
-    if (['closeToTray', 'openAtLogin', 'openDevTools', 'harnessAutoRestart'].includes(key)) {
+    if (['closeToTray', 'openAtLogin', 'openDevTools', 'harnessAutoRestart', 'autoStartDesktop'].includes(key)) {
       if (typeof value !== 'boolean') {
         throw new TypeError(`${key} must be a boolean`);
       }
@@ -317,6 +317,20 @@ function parkRemoteSnapshot(snap) {
   };
 }
 
+function readDisabledPlugins(options = {}) {
+  if (Array.isArray(options.disabledPlugins)) {
+    return options.disabledPlugins;
+  }
+  try {
+    if (!app?.getPath) {
+      return [];
+    }
+    return loadConfig().disabledPlugins || [];
+  } catch {
+    return [];
+  }
+}
+
 module.exports = {
   DEFAULTS,
   REMOTE_FEATURE_ENABLED,
@@ -326,6 +340,7 @@ module.exports = {
   parkRemoteSnapshot,
   defaultWorkspace,
   configPath,
+  readDisabledPlugins,
   normalizeHarnessRecovery,
   normalizePluginRecovery,
   normalizeRendererConfigPatch,

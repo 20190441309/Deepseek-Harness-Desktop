@@ -80,6 +80,17 @@ export function dateCN(key: string, locale: Locale): string {
   return locale === 'zh-CN' ? m + '月' + d + '日' : m + '/' + d
 }
 
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
+
+/** Month picker label from YYYY-MM: zh "YYYY年M月", en "Mon YYYY". */
+export function monthLabel(monthKey: string, locale: Locale): string {
+  const p = monthKey.split('-')
+  const y = p[0]!
+  const m = Number(p[1])
+  if (locale === 'zh-CN') return y + '年' + m + '月'
+  return EN_MONTHS[m - 1]! + ' ' + y
+}
+
 /** Monday-first weekday index 0..6 for a UTC day key. */
 export function weekdayIndexUTC(key: string): number {
   return (parseDayKeyUTC(key).getUTCDay() + 6) % 7

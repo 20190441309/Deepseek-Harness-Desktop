@@ -8,9 +8,14 @@ const path = require('path');
 const {
   DSHBOT_BEGIN,
   DSHBOT_END,
+  DSHBOT_FEATURE_ENABLED,
   ensureDshbotPlugin,
   hideDshbotPlugin,
 } = require('./dshbot-preset');
+
+test('dshbot feature is parked for 0.2.7', () => {
+  assert.equal(DSHBOT_FEATURE_ENABLED, false);
+});
 
 function writeSource(dir) {
   fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });

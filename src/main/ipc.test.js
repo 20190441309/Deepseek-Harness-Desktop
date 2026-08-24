@@ -150,9 +150,11 @@ function loadIpc(options = {}) {
     normalizeLauncherConfigPatch: (patch) => patch || {},
   });
   stub('./window', {
-    getMainWindow: () => null,
+    getMainWindow: options.getMainWindow || (() => null),
     getHarnessWebContents: () => null,
     getLauncherWindow: () => null,
+    hideHarnessView: options.hideHarnessView || (() => {}),
+    dismissMainWindow: options.dismissMainWindow || (() => false),
     openHarnessSettings() {},
     openMarketplace() {},
     openRemote() {},
@@ -170,8 +172,9 @@ function loadIpc(options = {}) {
   stub('./update', {
     checkUpdate() { return {}; },
     installUpdate: async () => ({}),
-    listReleases: async () => ({ status: 'ok', releases: [] }),
+    listReleases: async () => ({ status: 'ok', releases: [], installed: { version: '0.0.0' } }),
     installRelease: async () => ({ status: 'error', message: 'no-installer', launched: false }),
+    launchUninstaller: options.launchUninstaller || (() => ({ ok: true })),
     currentVersion: () => '0.0.0',
     REPO_URL: '',
     RELEASES_PAGE: '',
@@ -255,18 +258,21 @@ function loadIpc(options = {}) {
   const previousIpc = require.cache[ipcPath];
   delete require.cache[ipcPath];
   let startDesktopCalls = 0;
+  const startDesktopArgs = [];
   const { registerIpc } = require('./ipc');
   registerIpc({
     dsh: options.dsh || { snapshot: () => ({}), logs: [] },
-    harness: null,
+    harness: options.harness || null,
     startHarness: async () => {
       startHarnessCalls += 1;
       return startHarnessImpl();
     },
-    startDesktop: async () => {
+    startDesktop: async (opts) => {
       startDesktopCalls += 1;
+      startDesktopArgs.push(opts || {});
       return { ok: true };
     },
+    stopDesktopCleanup: options.stopDesktopCleanup,
     remote: options.remote === undefined ? null : options.remote,
   });
 
@@ -302,6 +308,7 @@ function loadIpc(options = {}) {
     startDesktop() {
       return startDesktopCalls;
     },
+    startDesktopArgs,
     scanImportCalls,
     runImportCalls,
   };
@@ -754,6 +761,261 @@ test('launcher sender can scan-import and list-releases', async () => {
   }
 });
 
+test('launcher skip-user-plugins writes recovery and force-restarts desktop', async () => {
+  const writes = [];
+  const ipc = loadIpc({
+    harness: {
+      writePluginSkip(error) {
+        writes.push(error && error.message ? error.message : String(error));
+      },
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:start-desktop-skipped', launcherEvent());
+    assert.equal(result.ok, true);
+    assert.deepEqual(writes, ['launcher-skip-user-plugins']);
+    assert.equal(ipc.startDesktop(), 1);
+    assert.deepEqual(ipc.startDesktopArgs[0], { forceRestart: true });
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher start-desktop force-restarts when clearing sticky skip', async () => {
+  let cleared = 0;
+  const ipc = loadIpc({
+    harness: {
+      appVersion: '1.2.3',
+      pluginRecovery: {
+        skipUserPlugins: true,
+        reason: 'launcher-skip-user-plugins',
+        at: '2026-01-01T00:00:00.000Z',
+        appVersion: '1.2.3',
+      },
+      clearPluginRecovery() {
+        cleared += 1;
+        this.pluginRecovery = {
+          skipUserPlugins: false,
+          reason: '',
+          at: '',
+          appVersion: '',
+        };
+      },
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:start-desktop', launcherEvent());
+    assert.equal(result.ok, true);
+    assert.equal(cleared, 1);
+    assert.equal(ipc.startDesktop(), 1);
+    assert.deepEqual(ipc.startDesktopArgs[0], { forceRestart: true });
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher start-desktop does not force-restart without sticky skip', async () => {
+  const ipc = loadIpc({
+    harness: {
+      appVersion: '1.2.3',
+      pluginRecovery: {
+        skipUserPlugins: false,
+        reason: '',
+        at: '',
+        appVersion: '',
+      },
+      clearPluginRecovery() {},
+    },
+  });
+  try {
+    await ipc.invoke('shell:start-desktop', launcherEvent());
+    assert.equal(ipc.startDesktop(), 1);
+    assert.deepEqual(ipc.startDesktopArgs[0], {});
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher retry-full-plugins clears sticky and uses startDesktop recovery launch', async () => {
+  let cleared = 0;
+  const ipc = loadIpc({
+    harness: {
+      clearPluginRecovery() {
+        cleared += 1;
+      },
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:retry-full-plugins', launcherEvent());
+    assert.equal(result.ok, true);
+    assert.equal(cleared, 1);
+    assert.equal(ipc.startDesktop(), 1);
+    assert.deepEqual(ipc.startDesktopArgs[0], { recoveryLaunch: true, forceRestart: true });
+    assert.equal(ipc.startHarness(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('boot retry-full-plugins still uses harness retryFullPlugins', async () => {
+  let retried = 0;
+  const ipc = loadIpc({
+    harness: {
+      retryFullPlugins: async () => {
+        retried += 1;
+        return { state: 'ready' };
+      },
+      snapshot: () => ({ state: 'ready' }),
+    },
+  });
+  try {
+    await ipc.invoke('shell:retry-full-plugins', bootEvent());
+    assert.equal(retried, 1);
+    assert.equal(ipc.startDesktop(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('disable-plugins batch writes once and restarts harness once', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'ready',
+      logs: [],
+      snapshot: () => ({ state: 'ready' }),
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:disable-plugins', launcherEvent(), ['a-pack', 'b-pack']);
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessRestarted, true);
+    assert.equal(ipc.startHarness(), 1);
+    assert.deepEqual(ipc.saveConfigCalls[0].disabledPlugins.sort(), ['a-pack', 'b-pack']);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('disable-plugin restarts harness when kernel is ready without startDesktop', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'ready',
+      logs: [],
+      snapshot: () => ({ state: 'ready' }),
+      stop: async () => {},
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:disable-plugin', launcherEvent(), 'user-pack');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessRestarted, true);
+    assert.equal(ipc.startHarness(), 1);
+    assert.equal(ipc.startDesktop(), 0);
+    assert.ok(result.forensics);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('disable-plugin skips harness restart when kernel is idle', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'idle',
+      logs: [],
+      snapshot: () => ({ state: 'idle' }),
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:disable-plugin', launcherEvent(), 'user-pack');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessRestarted, false);
+    assert.equal(ipc.startHarness(), 0);
+    assert.equal(ipc.startDesktop(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('disable-plugin keeps ok when harness restart fails after disk write', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'ready',
+      logs: [],
+      snapshot: () => ({ state: 'ready' }),
+    },
+    startHarness: async () => {
+      throw new Error('restart failed');
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:disable-plugin', launcherEvent(), 'user-pack');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessRestarted, false);
+    assert.match(result.error, /没有重新起来/);
+    assert.equal(ipc.startHarness(), 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('enable-plugin restarts harness when kernel is starting', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'starting',
+      logs: [],
+      snapshot: () => ({ state: 'starting' }),
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:enable-plugin', launcherEvent(), 'user-pack');
+    assert.equal(result.ok, true);
+    assert.equal(result.harnessRestarted, true);
+    assert.equal(ipc.startHarness(), 1);
+    assert.equal(ipc.startDesktop(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('run-import reports kernelStopped only when a running kernel was stopped', async () => {
+  let stopCalls = 0;
+  const ipc = loadIpc({
+    dsh: {
+      state: 'ready',
+      logs: [],
+      snapshot: () => ({ state: 'ready' }),
+      stop: async () => {
+        stopCalls += 1;
+      },
+    },
+  });
+  try {
+    const running = await ipc.invoke('shell:run-import', launcherEvent(), {});
+    assert.equal(running.kernelStopped, true);
+    assert.equal(stopCalls, 1);
+  } finally {
+    ipc.restore();
+  }
+
+  const idle = loadIpc({
+    dsh: {
+      state: 'idle',
+      logs: [],
+      snapshot: () => ({ state: 'idle' }),
+      stop: async () => {
+        stopCalls += 1;
+      },
+    },
+  });
+  try {
+    const result = await idle.invoke('shell:run-import', launcherEvent(), {});
+    assert.equal(result.kernelStopped, false);
+    assert.equal(stopCalls, 1);
+  } finally {
+    idle.restore();
+  }
+});
+
 test('launcher scan-import and run-import forward extra skill dirs and selections', async () => {
   const ipc = loadIpc();
   try {
@@ -788,6 +1050,103 @@ test('launcher scan-import and run-import forward extra skill dirs and selection
     assert.deepEqual(opts.selectedPluginNames, payload.selectedPluginNames);
     assert.deepEqual(opts.selectedMcpIds, payload.selectedMcpIds);
     assert.equal(typeof opts.installPlugin, 'function');
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher stop-desktop stops kernel, cancels recovery, and dismisses main window', async () => {
+  let stopped = 0;
+  let stopDesktopCalls = 0;
+  let cleaned = 0;
+  let dismissed = 0;
+  const dsh = {
+    state: 'ready',
+    stop: async () => {
+      stopped += 1;
+      dsh.state = 'idle';
+    },
+    snapshot: () => ({ state: dsh.state }),
+    logs: [],
+  };
+  const ipc = loadIpc({
+    dsh,
+    harness: {
+      async stopDesktop() {
+        stopDesktopCalls += 1;
+        await dsh.stop();
+        return dsh.snapshot();
+      },
+    },
+    stopDesktopCleanup: () => {
+      cleaned += 1;
+    },
+    dismissMainWindow: () => {
+      dismissed += 1;
+      return true;
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:stop-desktop', launcherEvent());
+    assert.equal(result.ok, true);
+    assert.equal(result.stopped, true);
+    assert.equal(stopped, 1);
+    assert.equal(stopDesktopCalls, 1);
+    assert.equal(cleaned, 1);
+    assert.equal(dismissed, 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher stop-desktop is a no-op when kernel is not running', async () => {
+  let stopped = 0;
+  let stopDesktopCalls = 0;
+  const ipc = loadIpc({
+    dsh: {
+      state: 'idle',
+      stop: async () => {
+        stopped += 1;
+      },
+      snapshot: () => ({ state: 'idle' }),
+      logs: [],
+    },
+    harness: {
+      async stopDesktop() {
+        stopDesktopCalls += 1;
+      },
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:stop-desktop', launcherEvent());
+    assert.equal(result.ok, true);
+    assert.equal(result.stopped, false);
+    assert.equal(stopped, 0);
+    assert.equal(stopDesktopCalls, 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher uninstall-app returns launchUninstaller result', async () => {
+  const ipc = loadIpc({
+    launchUninstaller: () => ({ ok: false, error: 'uninstaller-not-found' }),
+  });
+  try {
+    const result = await ipc.invoke('shell:uninstall-app', launcherEvent());
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'uninstaller-not-found');
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher-only stop-desktop rejects boot and harness senders', async () => {
+  const ipc = loadIpc();
+  try {
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(() => ipc.invoke('shell:stop-desktop', bootEvent()), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:stop-desktop', harnessEvent()), unauthorized);
   } finally {
     ipc.restore();
   }

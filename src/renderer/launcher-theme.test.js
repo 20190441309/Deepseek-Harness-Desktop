@@ -97,5 +97,40 @@ test('launcher import pane lists sessions skills plugins and MCP without dumping
   assert.match(js, /pickSkillDir/);
   assert.match(js, /showImportCat/);
   assert.match(js, /sessionGroupKey/);
+  assert.match(js, /sessionGroupLabel/);
+  assert.match(js, /setSessionGroupExpanded/);
+  assert.match(js, /data-import-fold/);
+  assert.match(js, /IMPORT_COLLAPSE_AT/);
+  assert.match(css, /\.import-fold/);
+  assert.match(css, /\.import-list li\[hidden\]/);
   assert.doesNotMatch(js, /JSON\.stringify\(result/);
+});
+
+test('launcher import rescan preserves selections and shows scan feedback', () => {
+  const js = fs.readFileSync(path.join(rendererDir, 'launcher.js'), 'utf8');
+  assert.match(html, /id="installed-uninstall-note"/);
+  assert.match(html, /id="btn-scan"/);
+  assert.match(js, /captureImportSelections/);
+  assert.match(js, /captureSessionFoldState/);
+  assert.match(js, /扫描中…/);
+  assert.match(js, /扫描完成 · 会话/);
+  assert.match(js, /importListRendered/);
+});
+
+test('launcher home toggles start/stop desktop from running state', () => {
+  const js = fs.readFileSync(path.join(rendererDir, 'launcher.js'), 'utf8');
+  assert.match(js, /desktopIsRunning/);
+  assert.match(js, /关闭桌面端/);
+  assert.match(js, /stopDesktop/);
+});
+
+test('launcher versions panel shows installed card and action labels', () => {
+  const js = fs.readFileSync(path.join(rendererDir, 'launcher.js'), 'utf8');
+  assert.match(html, /id="installed-card"/);
+  assert.match(html, /id="btn-uninstall-app"/);
+  assert.match(js, /renderInstalledCard/);
+  assert.match(js, /更新到此版本/);
+  assert.match(js, /切换至此版本/);
+  assert.match(js, /uninstallApp/);
+  assert.match(css, /\.installed-card/);
 });

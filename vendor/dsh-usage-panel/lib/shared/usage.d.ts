@@ -18,6 +18,15 @@ export declare function parseDayKeyUTC(key: string): Date;
 /** Format a Date's UTC calendar day as a day key. */
 export declare function keyOfDateUTC(d: Date): string;
 export declare function todayKeyUTC(now: number): string;
+/** UTC calendar month key (YYYY-MM) from a day key. */
+export declare function monthKeyUTC(dayKey: string): string;
+/**
+ * Distinct UTC months covered by a day window, in ascending order.
+ * Used by the client heatmap month picker (still bounded by HEAT_DAYS).
+ */
+export declare function listMonthKeys(days: ReadonlyArray<{
+    date: string;
+}>): string[];
 /**
  * Build the 182-day heatmap window ending today (UTC). Days with no usage get
  * zero-filled records, preserving the v0.1.0 grid shape (fixed-length array).

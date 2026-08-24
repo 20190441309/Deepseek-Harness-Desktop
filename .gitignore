@@ -50,6 +50,9 @@ gui-test-screenshots/
 !.cursor/rules/*.mdc
 .tmp/
 docs/qa/results/**/*.orig
+docs/qa/results/**/ci-installer/*.exe
+docs/qa/results/**/ci-installer/*.exe.blockmap
+docs/qa/results/**/ci-installer/*.dmg
 .zcode/
 plugins/
 .final-gates/

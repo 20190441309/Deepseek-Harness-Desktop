@@ -5,6 +5,8 @@ const test = require('node:test');
 const {
   classifyGenericFailure,
   extractSuspectNames,
+  extractEvidence,
+  buildForensicsSummary,
   inspectPlugins,
   isPresetPlugin,
 } = require('./plugin-forensics');
@@ -52,5 +54,24 @@ test('inspectPlugins flags suspects and presets without deleting the latter', ()
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').suspect, true);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').disabled, true);
   assert.equal(isPresetPlugin('dsh-usage-panel'), true);
+  assert.equal(isPresetPlugin('dshbot'), true);
   assert.equal(isPresetPlugin('evil-pack'), false);
+});
+
+test('inspectPlugins surfaces orphan suspects, evidence, and summary', () => {
+  const inspected = inspectPlugins({
+    logs: 'cannot resolve profile bundle "ghost-pack"',
+    lastStartError: 'failed to compose client package "@acme/broken"',
+    pluginTreeFailure: true,
+    recovery: { skipUserPlugins: true, reason: 'test', at: '2026-01-01', appVersion: '1.0.0' },
+    plugins: [{ name: 'good', spec: '1.0.0' }],
+    bundles: ['good'],
+  });
+  assert.equal(inspected.orphanSuspects.length, 2);
+  assert.ok(inspected.evidence.length >= 2);
+  assert.equal(inspected.recovery.skipUserPlugins, true);
+  assert.equal(inspected.pluginTreeFailure, true);
+  assert.equal(inspected.summary.suspectCount, 4);
+  assert.equal(inspected.summary.hasOrphans, true);
+  assert.deepEqual(buildForensicsSummary(inspected).suspectCount, 4);
 });

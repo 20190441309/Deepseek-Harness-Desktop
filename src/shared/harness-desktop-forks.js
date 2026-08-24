@@ -56,6 +56,7 @@ const FORK_FILE_MARKERS = [
   { file: 'packages/client/ui-settings-mcp/src/client/McpSection.tsx', includes: ['SettingsSelect'] },
   { file: 'packages/client/ui-settings-skills/src/client/SkillsSection.tsx', includes: ['SettingsSelect'] },
   { file: 'packages/client/ui-settings-general/src/client/CloseBehaviorRow.tsx', includes: ['SettingsSelect'] },
+  { file: 'packages/client/ui-settings-general/src/client/AutoStartDesktopRow.tsx', includes: ['SettingsSelect'] },
   { file: 'packages/client/ui-settings-general/src/client/HarnessRestartRow.tsx', includes: ['SettingsSelect'] },
   { file: 'packages/client/ui-settings-general/src/client/AboutSection.tsx', includes: ['openDshHome'] },
   { file: 'packages/client/locale/src/client/LanguageRow.tsx', includes: ['SettingsSelect'] },

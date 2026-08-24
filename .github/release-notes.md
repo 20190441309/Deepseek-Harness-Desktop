@@ -26,12 +26,14 @@ macOS：把 `$HOME/.dsh/sessions` 拷到 `~/Library/Application Support/Deepseek
 
 ### 相对 0.2.6 的修复
 
+- **冷启动启动器**：先查 GitHub 正式版；空桌面且官方 home 有可导入数据时停在导入页；Recovery Board 排查插件；版本页可更新/卸载 Setup；首页可「关闭桌面端」而不退出应用。
+- **启动时**：桌面「通用设置 → 启动时」与启动器「打开后自动启动桌面端」共用 `autoStartDesktop`（是则跳过启动器直进桌面，否则先开启动器；待导入/更新确认/上次启动失败仍先开启动器）。
 - Harness 钉 `dsh-v0.1.1-rc.1`（`528c682e…`）。SQLite 会话库与 rc.7 不兼容；请用新会话，不要拿旧 rc 库硬开。
 - 桌面 `$DSH_HOME` 只在应用 `userData/dsh-home`，安装后不读、不迁、不改官方 `~/.dsh`。
 - 自定义网关（如 Ayase）不再被写成 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`。主模型不识图时，识图走官方兜底，需要官方 key；缺 key 报缺凭证，不再报「模型不存在 UNKNOWN」。
 - Files 正在列出目录时不再闪「此目录为空」。Wallhaven 网络失败/超时有可读文案。
 - 构建会把 Ghostty wasm/字体放到客户端 `assets`；源码启动缺资源则拒绝启动；安装包 `afterPack` 缺文件则失败。已安装但不完整的 `runtime/<version>` 会在下次启动时重新解压。
-- 侧栏不再出现「远程」/手机入口，网关不监听。预置机器人插件启动时卸掉，侧栏无机器人入口。
+- 侧栏不再出现「远程」/手机入口与「机器人 / Bots」页签，网关不监听；`DSHBOT_FEATURE_ENABLED = false` 时不加载 dshbot。预置机器人插件启动时卸掉，侧栏无机器人入口。
 - 设置里的值选择改为官方胶囊 + 菜单。
 - 修复 CI 打 Windows 包：`@electron/get` 钉到可下载 NSIS 的版本；嵌套 harness `build:web` 能找到桌面的 pnpm。
 

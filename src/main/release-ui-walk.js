@@ -1220,6 +1220,11 @@ async function runReleaseUiWalk(wc, helpers) {
     !botsTab,
     botsTab ? 'dshbot sidebar tab still visible' : '',
   );
+  if (botsTab) {
+    rec('plugin.dshbot.page', false, 'unexpected bots tab while parked', true);
+  } else {
+    rec('plugin.dshbot.page', true, 'skipped while parked', true);
+  }
   } catch (error) {
     rec('walk.uncaught', false, error && error.stack ? error.stack : String(error));
   }

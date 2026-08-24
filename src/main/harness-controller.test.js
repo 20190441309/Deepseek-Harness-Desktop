@@ -239,7 +239,21 @@ test('logs and continues when the dshmarket preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
 });
 
-test('hides dshbot after dshmarket and before Harness start', async () => {
+test('ensures dshbot after dshmarket and before Harness start', async () => {
+  const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
+  if (!DSHBOT_FEATURE_ENABLED) {
+    const order = [];
+    const f = fixture({
+      hideDshbotPlugin: async () => {
+        order.push('dshbot-hide');
+        return { ok: true, stripped: true };
+      },
+    });
+    await f.controller.start();
+    assert.ok(order.includes('dshbot-hide'));
+    assert.ok(f.dsh.logs.some((line) => /Bots 功能已隐藏|dshbot 未加载/.test(line)));
+    return;
+  }
   const order = [];
   const f = fixture({
     ensureDesktopInstallPlugin: () => {
@@ -252,6 +266,10 @@ test('hides dshbot after dshmarket and before Harness start', async () => {
     },
     ensureUsagePanelPlugin: async () => {
       order.push('usage-panel');
+      return { ok: true, added: true };
+    },
+    ensureDshbotPlugin: async () => {
+      order.push('dshbot-ensure');
       return { ok: true, added: true };
     },
     hideDshbotPlugin: async () => {
@@ -269,8 +287,27 @@ test('hides dshbot after dshmarket and before Harness start', async () => {
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'usage-panel', 'dshbot-hide', 'disabled-bundles', 'start']);
-  assert.ok(f.dsh.logs.some((line) => /已隐藏预置 dshbot/.test(line)));
+  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'usage-panel', 'dshbot-ensure', 'disabled-bundles', 'start']);
+  assert.ok(f.dsh.logs.some((line) => /已预置 dshbot/.test(line)));
+});
+
+test('skip-user-plugins hides dshbot instead of ensuring it', async () => {
+  const order = [];
+  const f = fixture({
+    ensureDshbotPlugin: async () => {
+      order.push('dshbot-ensure');
+      return { ok: true, added: true };
+    },
+    hideDshbotPlugin: async () => {
+      order.push('dshbot-hide');
+      return { ok: true, stripped: true };
+    },
+  });
+  f.controller.writePluginSkip(new Error('recovery'));
+  await f.controller.start();
+  assert.deepEqual(order, ['dshbot-hide']);
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
+  assert.ok(f.dsh.logs.some((line) => /暂隐 dshbot/.test(line)));
 });
 
 test('logs and continues when the usage-panel preset fails', async () => {
@@ -282,11 +319,20 @@ test('logs and continues when the usage-panel preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /用量统计/.test(line) && /missing-zod/.test(line)));
 });
 
-test('refuses to start Harness when hiding dshbot fails', async () => {
+test('refuses to start Harness when ensuring dshbot fails', async () => {
+  const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
+  if (!DSHBOT_FEATURE_ENABLED) {
+    const f = fixture({
+      ensureDshbotPlugin: async () => ({ ok: false, error: 'missing-source:package.json' }),
+    });
+    await f.controller.start();
+    assert.equal(f.dsh.startCalls, 1);
+    return;
+  }
   const f = fixture({
-    hideDshbotPlugin: async () => ({ ok: false, error: 'invalid-profile' }),
+    ensureDshbotPlugin: async () => ({ ok: false, error: 'missing-source:package.json' }),
   });
-  await assert.rejects(() => f.controller.start(), /dshbot|invalid-profile/);
+  await assert.rejects(() => f.controller.start(), /dshbot|missing-source/);
   assert.equal(f.dsh.startCalls, 0);
 });
 
@@ -434,6 +480,21 @@ test('cancel and manual restart prevent the scheduled timer from starting anothe
   assert.equal(f.controller.snapshot().recovery.status, 'inactive');
 });
 
+test('stopDesktop cancels scheduled recovery and stops the kernel', async () => {
+  const f = fixture();
+  await f.controller.start();
+  f.dsh.crash();
+  await settle();
+  const startsBefore = f.dsh.startCalls;
+  await f.controller.stopDesktop();
+  await f.clock.tick(5000);
+  assert.equal(f.dsh.startCalls, startsBefore);
+  assert.equal(f.dsh.stopCalls, 1);
+  assert.equal(f.dsh.state, 'idle');
+  assert.equal(f.controller.snapshot().recovery.status, 'cancelled');
+  assert.equal(f.controller.snapshot().recovery.reason, 'user-stop');
+});
+
 test('manual restart invalidates a recovery task that is still waiting for boot navigation', async () => {
   let releaseOldNavigation;
   let bootCalls = 0;
@@ -494,15 +555,53 @@ test('restart during startup cancels the old operation and starts a fresh genera
   assert.equal(f.window.url, 'http://127.0.0.1:3080');
 });
 
-test('concurrent manual restarts share one operation', async () => {
+test('concurrent manual restarts await then start a fresh operation', async () => {
   const f = fixture();
   await f.controller.start();
   const first = f.controller.restart();
   const second = f.controller.restart();
-  assert.equal(first, second);
+  assert.notEqual(first, second);
   await Promise.all([first, second]);
+  // initial start + first restart + second restart after awaiting the first
+  assert.equal(f.dsh.startCalls, 3);
+  assert.equal(f.dsh.stopCalls, 2);
+});
+
+test('second restart after in-flight restart re-reads skipUserPlugins', async () => {
+  let releaseFirstStart;
+  const f = fixture();
+  await f.controller.start();
+
+  const originalStart = f.dsh.start.bind(f.dsh);
+  let gateNext = false;
+  f.dsh.start = async (options) => {
+    f.dsh.startOptions.push(options);
+    if (gateNext) {
+      gateNext = false;
+      f.dsh.startCalls += 1;
+      await new Promise((resolve) => {
+        releaseFirstStart = resolve;
+      });
+      f.dsh.setState('ready', { baseUrl: 'http://127.0.0.1:3080', error: '', failure: null });
+      return 'http://127.0.0.1:3080';
+    }
+    return originalStart(options);
+  };
+
+  f.dsh.startOptions.length = 0;
+  f.dsh.startCalls = 0;
+  gateNext = true;
+
+  const first = f.controller.restart();
+  await settle();
+  f.controller.writePluginSkip(new Error('mid-restart-skip'));
+  const second = f.controller.restart();
+  releaseFirstStart();
+  await Promise.all([first, second]);
+
   assert.equal(f.dsh.startCalls, 2);
-  assert.equal(f.dsh.stopCalls, 1);
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, false);
+  assert.equal(f.dsh.startOptions[1].skipUserPlugins, true);
 });
 
 test('reload reopens the ready Web UI through showHarness', async () => {

@@ -13,6 +13,13 @@ const {
   installRelease,
   checkUpdate,
   listReleases,
+  getInstalledAppInfo,
+  launchUninstaller,
+  discoverWindowsInstall,
+  parseRegBlock,
+  uninstallExeCandidates,
+  APP_ID,
+  PRODUCT_NAME,
   downloadFile,
   parseSha512Sums,
   verifyAssetChecksum,
@@ -39,7 +46,119 @@ test('summarizeRelease skips drafts and marks a missing installer', () => {
   }, '0.2.6');
   assert.equal(sourceOnly.installable, false);
   assert.equal(sourceOnly.newer, false);
+  assert.equal(sourceOnly.older, true);
 });
+
+test('getInstalledAppInfo reports version and source-run uninstall guidance when unpackaged', () => {
+  const info = getInstalledAppInfo({ isPackaged: false, existsSync: () => false, execFileSync: () => { throw new Error('missing'); } });
+  assert.equal(typeof info.version, 'string');
+  assert.equal(info.packaged, false);
+  assert.equal(info.runningFromSource, true);
+  assert.equal(info.registeredInstall, false);
+  assert.equal(info.uninstallAvailable, false);
+  assert.match(info.uninstallNote, /源码运行，无本机安装包可卸载/);
+});
+
+test('parseRegBlock accepts InstallLocation without UninstallString', () => {
+  const block = [
+    'DisplayName    REG_SZ    Deepseek-Harness-Desktop',
+    'InstallLocation    REG_SZ    C:\\Apps\\Deepseek-Harness-Desktop',
+    'DisplayVersion    REG_SZ    0.2.6',
+  ].join('\n');
+  const parsed = parseRegBlock(block, 'HKCU\\test');
+  assert.ok(parsed);
+  assert.equal(parsed.installPath, 'C:\\Apps\\Deepseek-Harness-Desktop');
+  assert.equal(parsed.displayVersion, '0.2.6');
+  assert.equal(parsed.uninstallCommand, '');
+});
+
+test('discoverWindowsInstall resolves uninstall exe under InstallLocation', () => {
+  const installDir = 'C:\\Apps\\Deepseek-Harness-Desktop';
+  const uninstallExe = uninstallExeCandidates(installDir)[0];
+  const registryOutput = [
+    'DisplayName    REG_SZ    Deepseek-Harness-Desktop',
+    `InstallLocation    REG_SZ    ${installDir}`,
+    'DisplayVersion    REG_SZ    0.2.6',
+    `UninstallString    REG_SZ    "${uninstallExe}" /currentuser`,
+  ].join('\n');
+  const discovery = discoverWindowsInstall({
+    isPackaged: false,
+    existsSync: (candidate) => candidate === uninstallExe,
+    execFileSync: (_cmd, args) => {
+      if (args[0] === 'query' && String(args[1]).includes(APP_ID)) {
+        return registryOutput;
+      }
+      throw new Error('missing');
+    },
+  });
+  assert.equal(discovery.registered, true);
+  assert.equal(discovery.uninstallMode, 'direct');
+  assert.equal(discovery.uninstallCommand, uninstallExe);
+  assert.equal(discovery.version, '0.2.6');
+});
+
+test('discoverWindowsInstall falls back to settings when uninstall exe is missing', () => {
+  const installDir = 'C:\\Apps\\Deepseek-Harness-Desktop';
+  const uninstallExe = uninstallExeCandidates(installDir)[0];
+  const registryOutput = [
+    'DisplayName    REG_SZ    Deepseek-Harness-Desktop',
+    `InstallLocation    REG_SZ    ${installDir}`,
+    `UninstallString    REG_SZ    "${uninstallExe}" /currentuser`,
+  ].join('\n');
+  const discovery = discoverWindowsInstall({
+    isPackaged: true,
+    existsSync: () => false,
+    execFileSync: (_cmd, args) => {
+      if (args[0] === 'query' && String(args[1]).includes(APP_ID)) {
+        return registryOutput;
+      }
+      throw new Error('missing');
+    },
+  });
+  assert.equal(discovery.registered, true);
+  assert.equal(discovery.uninstallMode, 'settings');
+  assert.ok(discovery.searchedPaths.includes(uninstallExe));
+});
+
+test('getInstalledAppInfo exposes registered install while running from source', () => {
+  const installDir = 'C:\\Apps\\Deepseek-Harness-Desktop';
+  const registryOutput = [
+    'DisplayName    REG_SZ    Deepseek-Harness-Desktop',
+    `InstallLocation    REG_SZ    ${installDir}`,
+    'DisplayVersion    REG_SZ    0.2.6',
+    `UninstallString    REG_SZ    "${uninstallExePath(installDir)}" /currentuser`,
+  ].join('\n');
+  const info = getInstalledAppInfo({
+    isPackaged: false,
+    existsSync: (candidate) => candidate === uninstallExePath(installDir),
+    execFileSync: (_cmd, args) => {
+      if (args[0] === 'query' && String(args[1]).includes(APP_ID)) {
+        return registryOutput;
+      }
+      throw new Error('missing');
+    },
+  });
+  assert.equal(info.registeredInstall, true);
+  assert.equal(info.version, '0.2.6');
+  assert.equal(info.installPath, installDir);
+  assert.equal(info.uninstallAvailable, true);
+  assert.equal(info.uninstallUsesSettings, false);
+});
+
+test('launchUninstaller returns source-run guidance when no registered install', async () => {
+  const result = await launchUninstaller({
+    isPackaged: false,
+    existsSync: () => false,
+    execFileSync: () => { throw new Error('missing'); },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'source-run-no-install');
+  assert.match(result.message, /源码运行，无本机安装包可卸载/);
+});
+
+function uninstallExePath(installDir) {
+  return uninstallExeCandidates(installDir)[0];
+}
 
 test('checkUpdate passes an abort signal and degrades to status error on timeout', async () => {
   const previousFetch = global.fetch;

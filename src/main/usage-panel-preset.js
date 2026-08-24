@@ -77,7 +77,7 @@ function linkIntoProfileModules(destDir, profileDir) {
  * A non-junction marketplace install is replaced with a junction to the
  * desktop restyle so the projection key and settings section stay unique.
  * Missing `package.json` or zod returns `{ ok: false }` and strips the insert.
- * @param {{ sourceDir?: string, profileDir?: string }} [options]
+ * @param {{ sourceDir?: string, profileDir?: string, disabledPlugins?: string[] }} [options]
  */
 function ensureUsagePanelPlugin(options = {}) {
   const sourceDir = options.sourceDir || defaultSourceDir();
@@ -85,8 +85,13 @@ function ensureUsagePanelPlugin(options = {}) {
     return { ok: false, added: false, error: 'missing-source:package.json' };
   }
   const profileDir = options.profileDir || webProfileDir();
-  const destDir = path.join(profileDir, 'desktop-plugins', USAGE_PANEL_PACKAGE);
   const patchFile = path.join(profileDir, 'cordis.patch.yml');
+  const disabled = require('./config').readDisabledPlugins(options);
+  if (disabled.includes(USAGE_PANEL_PACKAGE)) {
+    stripBlockFromFile(patchFile, USAGE_PANEL_BEGIN, USAGE_PANEL_END);
+    return { ok: true, added: false, destDir: null, disabled: true };
+  }
+  const destDir = path.join(profileDir, 'desktop-plugins', USAGE_PANEL_PACKAGE);
   const missing = missingRuntimeDependencies(sourceDir);
   if (missing.length) {
     stripBlockFromFile(patchFile, USAGE_PANEL_BEGIN, USAGE_PANEL_END);

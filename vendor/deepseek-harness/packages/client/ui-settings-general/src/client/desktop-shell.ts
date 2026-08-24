@@ -79,6 +79,7 @@ export type DesktopConfig = {
   repoUrl?: string
   releasesUrl?: string
   closeToTray?: boolean
+  autoStartDesktop?: boolean
   dshHome?: string
 } & Partial<HarnessRestartConfig>
 

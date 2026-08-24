@@ -45,7 +45,7 @@ window.__ModuleLoader__.load({
       inject: () => inject
     });
     module.exports = __toCommonJS(index_exports);
-    var import_react6 = require("react");
+    var import_react7 = require("react");
     var uiPrimitives = __toESM(require("@deepseek-ai/dsh-client-ui-primitives"), 1);
 
     // src/client/locales.ts
@@ -63,7 +63,11 @@ window.__ModuleLoader__.load({
       "kpi.hitRate.detail": "\u8BFB {read} \xB7 \u5199 {write}",
       "kpi.hitRate.none": "\u6682\u65E0\u7F13\u5B58\u6570\u636E",
       "heat.title": "\u6D3B\u8DC3\u70ED\u529B\u56FE",
-      "heat.sub": "\u6700\u8FD1\u534A\u5E74 \xB7 UTC",
+      "heat.sub": "{month} \xB7 UTC",
+      "heat.sub.fallback": "UTC",
+      "heat.monthNav": "\u5207\u6362\u6708\u4EFD",
+      "heat.prev": "\u4E0A\u4E00\u6708",
+      "heat.next": "\u4E0B\u4E00\u6708",
       "heat.less": "\u5C11",
       "heat.more": "\u591A",
       "heat.day": "{date} \xB7 {tokens} Tokens",
@@ -122,7 +126,11 @@ window.__ModuleLoader__.load({
       "kpi.hitRate.detail": "Read {read} \xB7 Write {write}",
       "kpi.hitRate.none": "No cache data yet",
       "heat.title": "Activity heatmap",
-      "heat.sub": "Last 6 months \xB7 UTC",
+      "heat.sub": "{month} \xB7 UTC",
+      "heat.sub.fallback": "UTC",
+      "heat.monthNav": "Switch month",
+      "heat.prev": "Previous month",
+      "heat.next": "Next month",
       "heat.less": "Less",
       "heat.more": "More",
       "heat.day": "{date} \xB7 {tokens} tokens",
@@ -316,6 +324,11 @@ window.__ModuleLoader__.load({
       ".dsw-ust-h2{background:var(--dsw-static-deepseek-300)}",
       ".dsw-ust-h3{background:var(--dsw-static-deepseek-500)}",
       ".dsw-ust-h4{background:var(--dsw-static-deepseek-600)}",
+      ".dsw-ust-heat-tools{display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap}",
+      ".dsw-ust-month-nav{display:inline-flex;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;flex-shrink:0}",
+      ".dsw-ust-month-nav button{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:18px;padding:4px 10px;cursor:pointer}",
+      ".dsw-ust-month-nav button:hover:not(:disabled){color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}",
+      ".dsw-ust-month-nav button:disabled{opacity:0.35;cursor:default}",
       ".dsw-ust-heat-legend{display:flex;align-items:center;gap:4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);flex-shrink:0}",
       ".dsw-ust-heat-swatch{width:12px;height:12px;border-radius:4px;display:inline-block}",
       ".dsw-ust-bar-seg{transform-origin:bottom;transform-box:fill-box;animation:dsw-ust-bar-grow .9s cubic-bezier(.16,1,.3,1) both}",
@@ -341,7 +354,7 @@ window.__ModuleLoader__.load({
     ].join("\n");
 
     // src/client/StatsSection.tsx
-    var import_react4 = require("react");
+    var import_react5 = require("react");
 
     // src/shared/usage.ts
     function parseDayKeyUTC(key) {
@@ -350,6 +363,21 @@ window.__ModuleLoader__.load({
     }
     function keyOfDateUTC(d) {
       return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+    }
+    function monthKeyUTC(dayKey) {
+      return dayKey.slice(0, 7);
+    }
+    function listMonthKeys(days) {
+      const keys = [];
+      let prev = "";
+      for (const d of days) {
+        const m = monthKeyUTC(d.date);
+        if (m !== prev) {
+          keys.push(m);
+          prev = m;
+        }
+      }
+      return keys;
     }
     function hitRate(b) {
       const denominator = b.input + b.cacheRead + b.cacheWrite;
@@ -414,6 +442,14 @@ window.__ModuleLoader__.load({
       const m = Number(p[1]);
       const d = Number(p[2]);
       return locale === "zh-CN" ? m + "\u6708" + d + "\u65E5" : m + "/" + d;
+    }
+    var EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function monthLabel(monthKey, locale) {
+      const p = monthKey.split("-");
+      const y = p[0];
+      const m = Number(p[1]);
+      if (locale === "zh-CN") return y + "\u5E74" + m + "\u6708";
+      return EN_MONTHS[m - 1] + " " + y;
     }
     function weekdayIndexUTC(key) {
       return (parseDayKeyUTC(key).getUTCDay() + 6) % 7;
@@ -592,72 +628,128 @@ window.__ModuleLoader__.load({
     }
 
     // src/client/components/Heatmap.tsx
+    var import_react2 = require("react");
     var React3 = __toESM(require("react"), 1);
     function Heatmap({ days, i18n, onTip }) {
       const t = i18n.t;
       const locale = i18n.locale;
+      const months = listMonthKeys(days);
+      const [picked, setPicked] = (0, import_react2.useState)(null);
+      const monthKey = picked && months.includes(picked) ? picked : months[months.length - 1] ?? "";
+      const monthIndex = months.indexOf(monthKey);
+      const canPrev = monthIndex > 0;
+      const canNext = monthIndex >= 0 && monthIndex < months.length - 1;
       const byDate = {};
       const nonzero = [];
       for (const d of days) {
+        if (monthKeyUTC(d.date) !== monthKey) continue;
         byDate[d.date] = d;
         if (d.total > 0) nonzero.push(d.total);
       }
       const q = quartileThresholds(nonzero);
       const levelOf = (total) => heatLevel(total, q);
-      const firstDay = parseDayKeyUTC(days[0].date);
-      const lead = weekdayIndexUTC(days[0].date);
-      const heatWeeks = Math.ceil((lead + days.length) / 7);
-      const monthLabels = [];
       const gridCells = [];
-      let prevMonth = -1;
-      for (let w = 0; w < heatWeeks; w++) {
-        const monday = new Date(Date.UTC(firstDay.getUTCFullYear(), firstDay.getUTCMonth(), firstDay.getUTCDate() - lead + w * 7));
-        const m = monday.getUTCMonth();
-        monthLabels.push(w === 0 || m !== prevMonth ? String(m + 1) + (locale === "zh-CN" ? "\u6708" : "/") : "");
-        prevMonth = m;
-        for (let r = 0; r < 7; r++) {
-          const cur = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + r));
-          const key = keyOfDateUTC(cur);
-          const rec = byDate[key];
-          if (!rec) {
-            gridCells.push(/* @__PURE__ */ React3.createElement("div", { key: key + "-blank", className: "dsw-ust-heat-cell dsw-ust-heat-blank" }));
-            continue;
+      const weekLabels = [];
+      let heatWeeks = 0;
+      if (monthKey) {
+        const parts = monthKey.split("-");
+        const year = Number(parts[0]);
+        const month = Number(parts[1]);
+        const firstKey = monthKey + "-01";
+        const lead = weekdayIndexUTC(firstKey);
+        const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        heatWeeks = Math.ceil((lead + daysInMonth) / 7);
+        for (let w = 0; w < heatWeeks; w++) {
+          const monday = new Date(Date.UTC(year, month - 1, 1 - lead + w * 7));
+          let weekLabel = "";
+          for (let r = 0; r < 7; r++) {
+            const cur = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + r));
+            const key = keyOfDateUTC(cur);
+            const inMonth = cur.getUTCFullYear() === year && cur.getUTCMonth() === month - 1;
+            if (!inMonth) {
+              gridCells.push(/* @__PURE__ */ React3.createElement("div", { key: key + "-pad", className: "dsw-ust-heat-cell dsw-ust-heat-blank" }));
+              continue;
+            }
+            if (!weekLabel) weekLabel = String(cur.getUTCDate());
+            const rec = byDate[key];
+            if (!rec) {
+              gridCells.push(/* @__PURE__ */ React3.createElement("div", { key: key + "-blank", className: "dsw-ust-heat-cell dsw-ust-heat-blank" }));
+              continue;
+            }
+            const level = levelOf(rec.total);
+            gridCells.push(
+              /* @__PURE__ */ React3.createElement(
+                "div",
+                {
+                  key,
+                  className: "dsw-ust-heat-cell dsw-ust-h" + level,
+                  style: { animationDelay: (w * 0.018).toFixed(4) + "s" },
+                  onMouseEnter: (e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    onTip({
+                      left: rect.left + rect.width / 2,
+                      top: rect.top - 6,
+                      title: t("heat.day", { date: dateCN(key, locale), tokens: fmtTokens(rec.total, locale) }),
+                      lines: []
+                    });
+                  },
+                  onMouseLeave: () => onTip(null)
+                }
+              )
+            );
           }
-          const level = levelOf(rec.total);
-          gridCells.push(
-            /* @__PURE__ */ React3.createElement(
-              "div",
-              {
-                key,
-                className: "dsw-ust-heat-cell dsw-ust-h" + level,
-                style: { animationDelay: (w * 0.018).toFixed(4) + "s" },
-                onMouseEnter: (e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  onTip({
-                    left: rect.left + rect.width / 2,
-                    top: rect.top - 6,
-                    title: t("heat.day", { date: dateCN(key, locale), tokens: fmtTokens(rec.total, locale) }),
-                    lines: []
-                  });
-                },
-                onMouseLeave: () => onTip(null)
-              }
-            )
-          );
+          weekLabels.push(weekLabel);
         }
       }
       const weekdays = locale === "zh-CN" ? ["\u4E00", "", "\u4E09", "", "\u4E94", "", ""] : ["M", "", "W", "", "F", "", ""];
-      const minWidth = heatWeeks * 12 + (heatWeeks - 1) * 3;
-      return /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card-head" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card-title" }, /* @__PURE__ */ React3.createElement("h3", null, t("heat.title")), /* @__PURE__ */ React3.createElement("span", { className: "dsw-ust-card-sub" }, t("heat.sub"))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-legend" }, /* @__PURE__ */ React3.createElement("span", null, t("heat.less")), [0, 1, 2, 3, 4].map((l) => /* @__PURE__ */ React3.createElement("i", { key: l, className: "dsw-ust-heat-swatch dsw-ust-h" + l })), /* @__PURE__ */ React3.createElement("span", null, t("heat.more")))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-wrap" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-weekdays" }, weekdays.map((w, i) => /* @__PURE__ */ React3.createElement("span", { key: i }, w))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-main" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-months", style: { gridTemplateColumns: "repeat(" + heatWeeks + ", minmax(12px, 1fr))", minWidth } }, monthLabels.map((m, i) => /* @__PURE__ */ React3.createElement("span", { key: i, className: "dsw-ust-heat-month" }, m))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat", style: { gridTemplateColumns: "repeat(" + heatWeeks + ", minmax(12px, 1fr))", minWidth } }, gridCells))));
+      const minWidth = heatWeeks > 0 ? heatWeeks * 12 + (heatWeeks - 1) * 3 : 0;
+      const sub = monthKey ? t("heat.sub", { month: monthLabel(monthKey, locale) }) : t("heat.sub.fallback");
+      return /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card-head" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-card-title" }, /* @__PURE__ */ React3.createElement("h3", null, t("heat.title")), /* @__PURE__ */ React3.createElement("span", { className: "dsw-ust-card-sub" }, sub)), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-tools" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-month-nav", role: "group", "aria-label": t("heat.monthNav") }, /* @__PURE__ */ React3.createElement(
+        "button",
+        {
+          type: "button",
+          disabled: !canPrev,
+          "aria-label": t("heat.prev"),
+          onClick: () => {
+            if (canPrev) setPicked(months[monthIndex - 1]);
+          }
+        },
+        "\u2039"
+      ), /* @__PURE__ */ React3.createElement(
+        "button",
+        {
+          type: "button",
+          disabled: !canNext,
+          "aria-label": t("heat.next"),
+          onClick: () => {
+            if (canNext) setPicked(months[monthIndex + 1]);
+          }
+        },
+        "\u203A"
+      )), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-legend" }, /* @__PURE__ */ React3.createElement("span", null, t("heat.less")), [0, 1, 2, 3, 4].map((l) => /* @__PURE__ */ React3.createElement("i", { key: l, className: "dsw-ust-heat-swatch dsw-ust-h" + l })), /* @__PURE__ */ React3.createElement("span", null, t("heat.more"))))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-wrap" }, /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-weekdays" }, weekdays.map((w, i) => /* @__PURE__ */ React3.createElement("span", { key: i }, w))), /* @__PURE__ */ React3.createElement("div", { className: "dsw-ust-heat-main" }, /* @__PURE__ */ React3.createElement(
+        "div",
+        {
+          className: "dsw-ust-heat-months",
+          style: { gridTemplateColumns: "repeat(" + Math.max(heatWeeks, 1) + ", minmax(12px, 1fr))", minWidth }
+        },
+        weekLabels.map((label, i) => /* @__PURE__ */ React3.createElement("span", { key: i, className: "dsw-ust-heat-month" }, label))
+      ), /* @__PURE__ */ React3.createElement(
+        "div",
+        {
+          className: "dsw-ust-heat",
+          style: { gridTemplateColumns: "repeat(" + Math.max(heatWeeks, 1) + ", minmax(12px, 1fr))", minWidth }
+        },
+        gridCells
+      ))));
     }
 
     // src/client/components/BarChart.tsx
-    var import_react2 = require("react");
+    var import_react3 = require("react");
     var React4 = __toESM(require("react"), 1);
     function BarChart({ days, byModel, i18n, onTip }) {
       const t = i18n.t;
       const locale = i18n.locale;
-      const [range, setRange] = (0, import_react2.useState)(7);
+      const [range, setRange] = (0, import_react3.useState)(7);
       const rows = modelRows(byModel, t("donut.other"));
       const topNames = {};
       for (let i = 0; i < byModel.length && i < 5; i++) topNames[byModel[i].model] = true;
@@ -847,7 +939,7 @@ window.__ModuleLoader__.load({
     }
 
     // src/client/components/ExportMenu.tsx
-    var import_react3 = require("react");
+    var import_react4 = require("react");
     var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 
     // src/client/export.ts
@@ -904,7 +996,7 @@ window.__ModuleLoader__.load({
     var React8 = __toESM(require("react"), 1);
     function ExportMenu({ overview, i18n }) {
       const t = i18n.t;
-      const [open, setOpen] = (0, import_react3.useState)(false);
+      const [open, setOpen] = (0, import_react4.useState)(false);
       const run = (kind) => {
         if (kind === "json") download(t("export.file.json"), buildJson(overview), "application/json");
         else if (kind === "daily") download(t("export.file.daily"), buildDailyCsv(overview.days), "text/csv");
@@ -938,15 +1030,15 @@ window.__ModuleLoader__.load({
       const i18n = useI18n(baseI18n);
       const t = i18n.t;
       const locale = i18n.locale;
-      const [data, setData] = (0, import_react4.useState)(null);
-      const [loading, setLoading] = (0, import_react4.useState)(false);
-      const [error, setError] = (0, import_react4.useState)(null);
-      const [freshness, setFreshness] = (0, import_react4.useState)("loading");
-      const [barTip, setBarTip] = (0, import_react4.useState)(null);
-      const [donutTip, setDonutTip] = (0, import_react4.useState)(null);
-      const [heatTip, setHeatTip] = (0, import_react4.useState)(null);
+      const [data, setData] = (0, import_react5.useState)(null);
+      const [loading, setLoading] = (0, import_react5.useState)(false);
+      const [error, setError] = (0, import_react5.useState)(null);
+      const [freshness, setFreshness] = (0, import_react5.useState)("loading");
+      const [barTip, setBarTip] = (0, import_react5.useState)(null);
+      const [donutTip, setDonutTip] = (0, import_react5.useState)(null);
+      const [heatTip, setHeatTip] = (0, import_react5.useState)(null);
       const dataRef = useLatest(data);
-      const load = (0, import_react4.useCallback)(
+      const load = (0, import_react5.useCallback)(
         (force) => {
           setLoading(true);
           setError(null);
@@ -962,7 +1054,7 @@ window.__ModuleLoader__.load({
         },
         [rpc]
       );
-      (0, import_react4.useEffect)(() => {
+      (0, import_react5.useEffect)(() => {
         const cached = loadCached();
         if (cached) {
           setData(cached.payload);
@@ -1010,9 +1102,9 @@ window.__ModuleLoader__.load({
     }
 
     // src/client/boundary.tsx
-    var import_react5 = require("react");
+    var import_react6 = require("react");
     var React10 = __toESM(require("react"), 1);
-    var Boundary = class extends import_react5.Component {
+    var Boundary = class extends import_react6.Component {
       state = { error: null };
       static getDerivedStateFromError(err) {
         return { error: String(err?.message ?? err) };
@@ -1070,7 +1162,7 @@ window.__ModuleLoader__.load({
             order: 25,
             label: () => i18n.t("nav.label")
           },
-          () => (0, import_react6.createElement)(Boundary, { i18n }, (0, import_react6.createElement)(StatsSection, { rpc: ctx.connection.rpc, i18n }))
+          () => (0, import_react7.createElement)(Boundary, { i18n }, (0, import_react7.createElement)(StatsSection, { rpc: ctx.connection.rpc, i18n }))
         )
       );
       ctx.effect(() => () => {

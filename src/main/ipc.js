@@ -11,11 +11,11 @@ const {
   normalizeLauncherConfigPatch,
 } = require('./config');
 const { normalizeRemotePatch } = require('./remote-patch');
-const { getMainWindow, openHarnessSettings, openMarketplace, openRemote, getLauncherWindow } = require('./window');
+const { getMainWindow, dismissMainWindow, openHarnessSettings, openMarketplace, openRemote, getLauncherWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
-const { checkUpdate, installUpdate, listReleases, installRelease, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
+const { checkUpdate, installUpdate, listReleases, installRelease, launchUninstaller, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, installImportPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
 const {
@@ -26,6 +26,7 @@ const {
 } = require('./plugins');
 const { scanImport, shouldHoldForImport, runImport } = require('./data-import');
 const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
+const { isPluginTreeFailure } = require('./plugin-tree-failure');
 const { readLastDesktopStart } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
@@ -80,7 +81,40 @@ function sendPluginProgress(event, payload) {
 
 const HARNESS_DOWN_AFTER_ADD = '插件已写入 web profile，但 Harness 没有起来。请从现有入口重启，不要再安装一次。';
 const HARNESS_DOWN_AFTER_REMOVE = '插件已从 web profile 移除，但 Harness 没有起来。请从现有入口重启，不要再卸载一次。';
+const HARNESS_DOWN_AFTER_DISABLE = '插件禁用名单已写入，但 Harness 没有重新起来。请从现有入口重启。';
+const HARNESS_DOWN_AFTER_ENABLE = '插件启用已写入，但 Harness 没有重新起来。请从现有入口重启。';
 const WALLPAPER_CATALOG_KINDS = new Set(['bing', 'wallhaven', 'catalog']);
+
+function dshKernelState(dsh) {
+  if (!dsh) {
+    return '';
+  }
+  if (typeof dsh.state === 'string' && dsh.state) {
+    return dsh.state;
+  }
+  if (typeof dsh.snapshot === 'function') {
+    return dsh.snapshot().state || '';
+  }
+  return '';
+}
+
+function kernelNeedsAlign(dsh) {
+  const state = dshKernelState(dsh);
+  return state === 'ready' || state === 'starting' || state === 'error';
+}
+
+function kernelIsRunning(dsh) {
+  const state = dshKernelState(dsh);
+  return state !== 'idle' && state !== '';
+}
+
+function stickySkipActive(harness) {
+  const recovery = harness?.pluginRecovery;
+  if (!recovery?.skipUserPlugins) {
+    return false;
+  }
+  return recovery.appVersion === harness.appVersion;
+}
 
 function finiteNumber(value) {
   const n = typeof value === 'number' ? value : Number(value);
@@ -116,7 +150,7 @@ async function restartAfterProfileWrite(event, result, startHarness, downError, 
   return { ...result, harnessStarted: true };
 }
 
-function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
+function registerIpc({ dsh, harness, startHarness, startDesktop, stopDesktopCleanup, remote }) {
   const handle = (channel, roles, listener) => {
     ipcMain.handle(channel, (event, ...args) => {
       assertIpcSender(event, roles);
@@ -124,6 +158,27 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     });
   };
   const authorizeHarness = (event) => assertIpcSender(event, HARNESS_ONLY);
+  // Serialize disable/enable write+restart so a second click cannot join a
+  // restart that started before its disabledPlugins write landed.
+  let profileAlignChain = Promise.resolve();
+
+  function enqueueProfileAlign(work) {
+    const run = profileAlignChain.then(work, work);
+    profileAlignChain = run.catch(() => {});
+    return run;
+  }
+
+  async function alignHarnessAfterProfileChange(downError) {
+    if (typeof startHarness !== 'function') {
+      return { harnessRestarted: false, error: downError };
+    }
+    try {
+      await startHarness();
+      return { harnessRestarted: true };
+    } catch {
+      return { harnessRestarted: false, error: downError };
+    }
+  }
 
   handle('shell:get-state', BOOT_ONLY, () => (harness ? harness.snapshot() : dsh.snapshot()));
 
@@ -172,7 +227,14 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     return harness ? harness.snapshot() : dsh.snapshot();
   });
 
-  handle('shell:retry-full-plugins', ALL_SURFACES, async () => {
+  handle('shell:retry-full-plugins', ALL_SURFACES, async (event) => {
+    const role = assertIpcSender(event, ALL_SURFACES);
+    if (role === IPC_ROLES.LAUNCHER && typeof startDesktop === 'function') {
+      if (harness && typeof harness.clearPluginRecovery === 'function') {
+        harness.clearPluginRecovery();
+      }
+      return startDesktop({ recoveryLaunch: true, forceRestart: true });
+    }
     await (harness ? harness.retryFullPlugins() : startHarness());
     return harness ? harness.snapshot() : dsh.snapshot();
   });
@@ -385,11 +447,19 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
   function collectForensics() {
     const listed = listProfilePlugins();
     const config = loadConfig();
+    const lastStart = readLastDesktopStart(app.getPath('userData'));
     const logs = Array.isArray(dsh?.logs)
       ? dsh.logs.map((row) => (typeof row === 'string' ? row : row.message || row.line || String(row)))
       : [];
+    const corpus = [logs.join('\n'), lastStart.error].filter(Boolean).join('\n');
+    const recovery = harness?.pluginRecovery && typeof harness.pluginRecovery === 'object'
+      ? harness.pluginRecovery
+      : (config.pluginRecovery || {});
     return inspectPlugins({
       logs,
+      lastStartError: lastStart.error,
+      pluginTreeFailure: isPluginTreeFailure(corpus),
+      recovery,
       plugins: listed.plugins || [],
       bundles: listed.bundles || [],
       disabledPlugins: config.disabledPlugins,
@@ -398,20 +468,28 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
 
   async function stopKernelIfRunning() {
     if (!dsh || typeof dsh.stop !== 'function') {
-      return;
+      return false;
     }
-    const state = dsh.state || (typeof dsh.snapshot === 'function' ? dsh.snapshot().state : '');
-    if (state === 'ready' || state === 'starting' || state === 'error') {
-      await dsh.stop();
+    if (!kernelIsRunning(dsh)) {
+      return false;
     }
+    await dsh.stop();
+    return true;
   }
 
-  handle('shell:launcher-status', LAUNCHER_ONLY, () => ({
-    config: configPayload(loadConfig()),
-    desktop: harness ? harness.snapshot() : dsh.snapshot(),
-    lastStart: readLastDesktopStart(app.getPath('userData')),
-    version: currentVersion(),
-  }));
+  handle('shell:launcher-status', LAUNCHER_ONLY, () => {
+    const lastStart = readLastDesktopStart(app.getPath('userData'));
+    const forensics = collectForensics();
+    return {
+      config: configPayload(loadConfig()),
+      desktop: harness ? harness.snapshot() : dsh.snapshot(),
+      lastStart,
+      recovery: forensics.recovery,
+      forensicsSummary: forensics.summary,
+      forensics,
+      version: currentVersion(),
+    };
+  });
 
   handle('shell:save-launcher-config', LAUNCHER_ONLY, (_event, patch) => {
     const next = saveConfig(normalizeLauncherConfigPatch(patch || {}));
@@ -456,7 +534,7 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
   });
 
   handle('shell:run-import', LAUNCHER_ONLY, async (_event, options = {}) => {
-    await stopKernelIfRunning();
+    const kernelStopped = await stopKernelIfRunning();
     const sourceHome = typeof options.sourceHome === 'string' ? options.sourceHome : undefined;
     const extraSkillDirs = Array.isArray(options.extraSkillDirs)
       ? options.extraSkillDirs.filter((row) => typeof row === 'string')
@@ -477,6 +555,7 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     });
     return {
       ...result,
+      kernelStopped,
       hold: shouldHoldForImport(scanImport({ sourceHome, extraSkillDirs })),
     };
   });
@@ -495,9 +574,53 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     }
   });
 
+  handle('shell:uninstall-app', LAUNCHER_ONLY, () => launchUninstaller());
+
+  handle('shell:stop-desktop', LAUNCHER_ONLY, async () => {
+    const wasRunning = kernelIsRunning(dsh);
+    if (typeof stopDesktopCleanup === 'function') {
+      stopDesktopCleanup();
+    }
+    if (harness && typeof harness.stopDesktop === 'function') {
+      await harness.stopDesktop();
+    } else {
+      await stopKernelIfRunning();
+    }
+    dismissMainWindow();
+    return {
+      ok: true,
+      stopped: wasRunning ? !kernelIsRunning(dsh) : false,
+    };
+  });
+
   handle('shell:plugin-forensics', LAUNCHER_ONLY, () => collectForensics());
 
-  handle('shell:disable-plugin', LAUNCHER_ONLY, (_event, name) => {
+  handle('shell:disable-plugins', LAUNCHER_ONLY, async (_event, names) => {
+    const list = (Array.isArray(names) ? names : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    if (!list.length) {
+      return { ok: false, error: 'missing-names' };
+    }
+    for (const raw of list) {
+      if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
+        return { ok: false, error: 'official-template', name: raw };
+      }
+    }
+    const config = loadConfig();
+    const disabled = [...new Set([...(config.disabledPlugins || []), ...list])];
+    applyDisabledBundles(disabled);
+    saveConfig({ disabledPlugins: disabled });
+    if (!kernelNeedsAlign(dsh)) {
+      return { ok: true, harnessRestarted: false, forensics: collectForensics() };
+    }
+    return enqueueProfileAlign(async () => {
+      const align = await alignHarnessAfterProfileChange(HARNESS_DOWN_AFTER_DISABLE);
+      return { ok: true, ...align, forensics: collectForensics() };
+    });
+  });
+
+  handle('shell:disable-plugin', LAUNCHER_ONLY, async (_event, name) => {
     const raw = String(name || '').trim();
     if (!raw) {
       return { ok: false, error: 'missing-name' };
@@ -509,10 +632,16 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     const disabled = [...new Set([...(config.disabledPlugins || []), raw])];
     applyDisabledBundles(disabled);
     saveConfig({ disabledPlugins: disabled });
-    return { ok: true, forensics: collectForensics() };
+    if (!kernelNeedsAlign(dsh)) {
+      return { ok: true, harnessRestarted: false, forensics: collectForensics() };
+    }
+    return enqueueProfileAlign(async () => {
+      const align = await alignHarnessAfterProfileChange(HARNESS_DOWN_AFTER_DISABLE);
+      return { ok: true, ...align, forensics: collectForensics() };
+    });
   });
 
-  handle('shell:enable-plugin', LAUNCHER_ONLY, (_event, name) => {
+  handle('shell:enable-plugin', LAUNCHER_ONLY, async (_event, name) => {
     const raw = String(name || '').trim();
     if (!raw) {
       return { ok: false, error: 'missing-name' };
@@ -521,7 +650,16 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     const enabled = setBundleEnabled(raw, true);
     applyDisabledBundles(disabled);
     saveConfig({ disabledPlugins: disabled });
-    return { ok: enabled.ok !== false, ...enabled, forensics: collectForensics() };
+    if (enabled.ok === false) {
+      return { ok: false, ...enabled, harnessRestarted: false, forensics: collectForensics() };
+    }
+    if (!kernelNeedsAlign(dsh)) {
+      return { ok: true, ...enabled, harnessRestarted: false, forensics: collectForensics() };
+    }
+    return enqueueProfileAlign(async () => {
+      const align = await alignHarnessAfterProfileChange(HARNESS_DOWN_AFTER_ENABLE);
+      return { ok: true, ...enabled, ...align, forensics: collectForensics() };
+    });
   });
 
   handle('shell:remove-plugin', LAUNCHER_ONLY, async (event, name) => {
@@ -532,7 +670,7 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     if (isPresetPlugin(raw) || OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
       return { ok: false, error: 'preset' };
     }
-    await stopKernelIfRunning();
+    const kernelStopped = await stopKernelIfRunning();
     const result = await uninstallPlugin(raw, {
       onProgress: (payload) => {
         if (!event.sender.isDestroyed()) {
@@ -542,14 +680,19 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
     });
     const disabled = (loadConfig().disabledPlugins || []).filter((item) => item !== raw);
     saveConfig({ disabledPlugins: disabled });
-    return { ...result, forensics: collectForensics() };
+    return { ...result, kernelStopped, forensics: collectForensics() };
   });
 
   handle('shell:start-desktop', LAUNCHER_ONLY, async () => {
+    const wasSticky = stickySkipActive(harness);
     if (harness && typeof harness.clearPluginRecovery === 'function') {
       harness.clearPluginRecovery();
     }
     const start = typeof startDesktop === 'function' ? startDesktop : startHarness;
+    // Clearing sticky while already ready would otherwise early-return with skip mode still live.
+    if (wasSticky) {
+      return start({ forceRestart: true });
+    }
     return start();
   });
 
@@ -558,7 +701,9 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
       harness.writePluginSkip(new Error('launcher-skip-user-plugins'));
     }
     const start = typeof startDesktop === 'function' ? startDesktop : startHarness;
-    return start();
+    // Must force restart: plain start() no-ops when already ready / joins an
+    // in-flight boot that captured skipUserPlugins=false before this click.
+    return start({ forceRestart: true });
   });
 
   return { pty, preview };

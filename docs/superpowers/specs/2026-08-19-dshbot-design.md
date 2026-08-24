@@ -23,6 +23,18 @@
 
 - 把 Bot 设置塞进右侧 surfaces。
 - 改 `agent-loop` 或让多个模型写同一条 agent-loop。
-- 头像商店、分区、未读、置顶。编辑资料里的头像选择不是商店。
+- 头像商店、分区、未读。编辑资料里的头像选择不是商店。
 - 普通 `dsh web` 自动带此插件。
 - 做成 `packages/client` 官方包。
+- 本史诗不做 Routines / 云电脑 / 跨用户 Shared Room。
+
+## Grok-aligned 本地协议（2026-08-24）
+
+产品定位为**编码协作花名册**（评审/反对/补全/落地等角色），协议对齐公开 Grok Bot 本地群语义，自研实现、不搬逆向源码。
+
+1. **可见性闸门：** 成员子会话可跑 `send_room_message`；只有投递正文进群 transcript；`(pass)` / 空不画气泡。裸助手文本不进房。
+2. **调度：** Host 从最近用户消息解析 `@名` / `@everyone|@all`；否则全员。`orderRoundSpeakers` 按轮旋转；硬顶 `maxSpeaks=10`、`maxRounds=3`、每成员每回合最多 2 条投递、成员上限 6。一轮全 pass 则停。不再用 `NEXT:` 脚注决定下一说话人（旧日志仍可剥离显示）。
+3. **取消：** 用户新消息抬高房间 turn epoch（与现有串行 `ask_participant` 流配合）；成员失败视为 pass。
+4. **A2A：** `send_to_agent` 异步入队；优先尝试 `agent.followup` 唤醒；失败则 inbox 在下次 1:1 systemPrompt 注入消化。Priority 对群成员回合不打断。
+5. **记忆：** `$DSH_HOME/dshbot-memory/<botId>.md`；`remember` 工具显式写入；1:1 persona 注入。
+6. **名单：** Pin / Hide；Duplicate 不拷会话历史与 inbox。

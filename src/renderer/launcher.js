@@ -34,11 +34,84 @@ function badge(text, warn) {
   return `<span class="badge${warn ? ' warn' : ''}">${text}</span>`;
 }
 
-function renderReleases(payload, current) {
+function uninstallErrorHint(result) {
+  if (result?.message) {
+    return result.message;
+  }
+  const labels = {
+    'source-run-no-install': '当前为源码运行，无本机安装包可卸载。请用「设置 → 应用」卸载已安装的 Deepseek-Harness-Desktop。',
+    'uninstaller-not-found': '未找到卸载程序。请在「设置 → 应用」中卸载 Deepseek-Harness-Desktop。',
+  };
+  return labels[result?.error] || result?.error || '无法启动卸载程序';
+}
+
+function renderInstalledCard(installed) {
+  const version = installed?.version || '';
+  const runningFromSource = Boolean(installed?.runningFromSource);
+  const prefix = runningFromSource ? '当前运行（源码）v' : '本机已安装 v';
+  const label = version
+    ? `${prefix}${String(version).replace(/^v/i, '')}`
+    : (runningFromSource ? '当前为源码运行' : '本机已安装（版本未知）');
+  $('installed-version').textContent = label;
+  const pathNode = $('installed-path');
+  if (installed?.installPath) {
+    pathNode.textContent = installed.installPath;
+    pathNode.hidden = false;
+    pathNode.title = installed.installPath;
+  } else {
+    pathNode.textContent = '';
+    pathNode.hidden = true;
+    pathNode.title = '';
+  }
+  const noteNode = $('installed-uninstall-note');
+  const note = installed?.uninstallNote || '';
+  if (note) {
+    noteNode.textContent = note;
+    noteNode.hidden = false;
+  } else {
+    noteNode.textContent = '';
+    noteNode.hidden = true;
+  }
+  const btn = $('btn-uninstall-app');
+  if (installed?.uninstallUsesSettings) {
+    btn.textContent = '打开应用设置';
+  } else {
+    btn.textContent = '卸载本机应用';
+  }
+  const canUninstall = Boolean(installed?.uninstallAvailable);
+  btn.hidden = !canUninstall;
+  btn.disabled = !canUninstall;
+}
+
+function releaseActionLabel(row) {
+  if (row.current || !row.installable) {
+    return null;
+  }
+  if (row.newer) {
+    return '更新到此版本';
+  }
+  return '切换至此版本';
+}
+
+function releaseActionButton(row) {
+  if (row.current) {
+    return '<span class="row-meta">已安装</span>';
+  }
+  const label = releaseActionLabel(row);
+  if (!label) {
+    const reason = row.installable ? '不可用' : '无安装包';
+    return `<button type="button" class="ghost" disabled>${reason}</button>`;
+  }
+  const kind = row.newer ? 'update' : 'switch';
+  return `<button type="button" class="ghost" data-install-tag="${escapeHtml(row.tag || '')}" data-install-kind="${kind}">${label}</button>`;
+}
+
+function renderReleases(payload) {
+  renderInstalledCard(payload?.installed);
   const list = $('release-list');
   const rows = payload && Array.isArray(payload.releases) ? payload.releases : [];
   if (!rows.length) {
-    list.innerHTML = `<li><span class="row-meta">${payload?.message || '没有可列出的正式版。'}</span></li>`;
+    list.innerHTML = `<li><span class="row-meta">${payload?.message || '暂无可列出的正式版。'}</span></li>`;
     return;
   }
   list.innerHTML = rows.map((row) => {
@@ -47,62 +120,121 @@ function renderReleases(payload, current) {
       row.prerelease ? badge('预发布') : '',
       row.installable ? '' : badge('无安装包', true),
     ].join('');
-    const disabled = row.installable ? '' : 'disabled';
     return `<li>
       <div class="row-main">
-        <div class="row-title">${row.tag || row.version || ''} ${marks}</div>
-        <div class="row-meta">${row.assetName || '没有 Setup.exe'}</div>
+        <div class="row-title">${escapeHtml(row.tag || row.version || '')} ${marks}</div>
+        <div class="row-meta">${escapeHtml(row.assetName || '无 Setup 安装包')}</div>
       </div>
-      <button type="button" class="ghost" data-install-tag="${row.tag || ''}" ${disabled}>安装</button>
+      ${releaseActionButton(row)}
     </li>`;
   }).join('');
   list.querySelectorAll('[data-install-tag]').forEach((button) => {
-    button.addEventListener('click', () => installTag(button.dataset.installTag));
+    button.addEventListener('click', () => installTag(button.dataset.installTag, button.dataset.installKind));
   });
-  void current;
 }
 
-function renderPlugins(forensics) {
-  const summary = $('forensics-summary');
-  const list = $('plugin-list');
+function pluginErrorHint(code) {
+  const recovery = window.launcherRecovery;
+  if (recovery && typeof recovery.pluginErrorLabel === 'function') {
+    return recovery.pluginErrorLabel(code);
+  }
+  const labels = {
+    preset: '桌面预置插件不可移除。',
+    'official-template': '官方模板插件不可禁用。',
+    'missing-name': '缺少插件名称。',
+    'missing-names': '缺少插件名称。',
+  };
+  return labels[code] || code || '操作失败';
+}
+
+function evidenceLines(forensics, name) {
+  const rows = Array.isArray(forensics?.evidence) ? forensics.evidence : [];
+  return rows.filter((row) => row.name === name).map((row) => row.line);
+}
+
+function pluginBoardRows(forensics, sortSuspectsFirst) {
+  const plugins = Array.isArray(forensics?.plugins) ? forensics.plugins : [];
+  const orphans = Array.isArray(forensics?.orphanSuspects) ? forensics.orphanSuspects : [];
+  const rows = [...plugins, ...orphans];
+  if (sortSuspectsFirst && window.launcherRecovery?.sortPluginRows) {
+    return window.launcherRecovery.sortPluginRows(rows);
+  }
+  return rows;
+}
+
+function disableableSuspectNames(forensics) {
+  return pluginBoardRows(forensics, true)
+    .filter((row) => row.suspect && !row.orphan && !row.officialTemplate && !row.disabled)
+    .map((row) => row.name);
+}
+
+function forensicsSummaryText(forensics) {
   if (!forensics) {
-    summary.textContent = '还没有问诊结果。';
+    return '尚未生成排查结果。';
+  }
+  if (forensics.genericCause) {
+    const recovery = window.launcherRecovery;
+    const labels = recovery?.GENERIC_LABELS || {
+      oom: '检测到内存不足（OOM），与单个插件无关。',
+      'port-in-use': '检测到端口被占用，与单个插件无关。',
+      'missing-node': '未找到 Node 运行时，与单个插件无关。',
+    };
+    return labels[forensics.genericCause] || String(forensics.genericCause);
+  }
+  if (forensics.suspects && forensics.suspects.length) {
+    return `启动日志指向以下可疑插件：${forensics.suspects.map((row) => row.name || row).join('、')}。建议优先处理后再启动。`;
+  }
+  return '未能从日志确定具体插件。可逐项禁用下列插件后重新启动，以排查冲突。';
+}
+
+function renderPluginBoard(forensics, options = {}) {
+  const list = $(options.listId);
+  if (!list) {
+    return;
+  }
+  if (options.summaryId) {
+    const summary = $(options.summaryId);
+    if (summary) {
+      summary.textContent = options.summaryText || forensicsSummaryText(forensics);
+    }
+  }
+  if (!forensics) {
     list.innerHTML = '';
     return;
   }
-  if (forensics.genericCause) {
-    const labels = {
-      oom: '内存不足（OOM），不是某个插件。',
-      'port-in-use': '端口被占用，不是某个插件。',
-      'missing-node': '找不到 Node，不是某个插件。',
-    };
-    summary.textContent = labels[forensics.genericCause] || forensics.genericCause;
-  } else if (forensics.suspects && forensics.suspects.length) {
-    summary.textContent = `日志里对得上的包：${forensics.suspects.map((row) => row.name || row).join('、')}`;
-  } else {
-    summary.textContent = '没有从日志抽出确定的包名。可以按下面名单自行禁用后再试。';
-  }
-  const rows = Array.isArray(forensics.plugins) ? forensics.plugins : [];
+  const allowRemove = options.allowRemove === true;
+  const rows = pluginBoardRows(forensics, options.sortSuspectsFirst === true);
   list.innerHTML = rows.map((row) => {
     const marks = [
+      row.orphan ? badge('未在 profile 登记', true) : '',
+      row.officialTemplate ? badge('官方模板') : '',
       row.preset ? badge('桌面预置') : '',
       row.disabled ? badge('已禁用') : '',
-      row.suspect ? badge('可能导致失败', true) : '',
+      row.suspect ? badge('可疑冲突', true) : '',
     ].join('');
-    const disableBtn = row.preset && !row.disabled
-      ? `<button type="button" class="ghost" data-disable="${row.name}">禁用</button>`
-      : row.disabled
-        ? `<button type="button" class="ghost" data-enable="${row.name}">启用</button>`
-        : `<button type="button" class="ghost" data-disable="${row.name}">禁用</button>`;
-    const removeBtn = row.preset
-      ? ''
-      : `<button type="button" class="danger" data-remove="${row.name}">删除</button>`;
+    let actions = '';
+    if (row.orphan) {
+      actions = '<span class="row-meta">日志中出现但未写入 profile，无法在此禁用。</span>';
+    } else if (row.officialTemplate) {
+      actions = '<span class="row-meta" title="官方模板插件不可禁用。">不可禁用</span>';
+    } else if (row.disabled) {
+      actions = `<button type="button" class="ghost" data-enable="${escapeHtml(row.name)}">启用</button>`;
+    } else {
+      actions = `<button type="button" class="ghost" data-disable="${escapeHtml(row.name)}">禁用</button>`;
+    }
+    if (allowRemove && !row.preset && !row.orphan) {
+      actions += `<button type="button" class="danger" data-remove="${escapeHtml(row.name)}">移除</button>`;
+    }
+    const evidence = evidenceLines(forensics, row.name)
+      .map((line) => `<div class="row-meta evidence">${escapeHtml(line)}</div>`)
+      .join('');
     return `<li>
       <div class="row-main">
-        <div class="row-title">${row.name} ${marks}</div>
-        <div class="row-meta">${row.spec || ''}</div>
+        <div class="row-title">${escapeHtml(row.name)} ${marks}</div>
+        <div class="row-meta">${escapeHtml(row.spec || '')}</div>
+        ${evidence}
       </div>
-      <div class="actions">${disableBtn}${removeBtn}</div>
+      <div class="actions">${actions}</div>
     </li>`;
   }).join('');
   list.querySelectorAll('[data-disable]').forEach((button) => {
@@ -116,18 +248,88 @@ function renderPlugins(forensics) {
   });
 }
 
+function renderPlugins(forensics) {
+  renderPluginBoard(forensics, {
+    listId: 'plugin-list',
+    summaryId: 'forensics-summary',
+    allowRemove: true,
+    sortSuspectsFirst: true,
+  });
+}
+
+function renderHomeRecovery(status) {
+  const board = $('home-recovery');
+  const forensics = status?.forensics;
+  const recovery = status?.recovery || forensics?.recovery || status?.desktop?.pluginRecovery;
+  const recoveryApi = window.launcherRecovery;
+  const show = recoveryApi?.shouldShowRecovery
+    ? recoveryApi.shouldShowRecovery(status?.lastStart, recovery, forensics, status?.desktop)
+    : false;
+  board.hidden = !show;
+  if (!show) {
+    return;
+  }
+  $('home-recovery-verdict').textContent = recoveryApi?.recoveryVerdict
+    ? recoveryApi.recoveryVerdict(status?.lastStart, recovery, forensics)
+    : '';
+  renderPluginBoard(forensics, {
+    listId: 'home-recovery-list',
+    sortSuspectsFirst: true,
+  });
+  const suspects = disableableSuspectNames(forensics);
+  const btn = $('btn-disable-suspects');
+  btn.hidden = suspects.length === 0;
+  btn.dataset.names = suspects.join('\0');
+}
+
 async function actPlugin(method, name) {
   const api = pageShell();
   if (!api || typeof api[method] !== 'function') {
     return;
   }
+  const aligning = method === 'disablePlugin' || method === 'enablePlugin';
+  if (aligning) {
+    setHint('正在重新启动以使插件变更生效…');
+  }
   const result = await api[method](name);
   if (result && result.forensics) {
     renderPlugins(result.forensics);
+    void refreshStatus();
   }
   if (result && result.ok === false) {
-    setHint(result.error === 'preset' ? '预置包不能删除。' : (result.error || '操作失败'));
+    setHint(pluginErrorHint(result.error));
+    return;
   }
+  if (aligning && result && result.harnessRestarted === false && result.error) {
+    setHint(result.error);
+    return;
+  }
+  if (method === 'removePlugin' && result && result.kernelStopped) {
+    setHint('桌面端已停止，请在首页重新启动。');
+    void refreshStatus();
+    return;
+  }
+  if (aligning) {
+    setHint('');
+    void refreshStatus();
+  }
+}
+
+function desktopStateLabel(state) {
+  const labels = {
+    ready: '已就绪',
+    starting: '启动中',
+    stopping: '关闭中',
+    error: '异常',
+    stopped: '未运行',
+    idle: '未运行',
+  };
+  return labels[state] || String(state || '');
+}
+
+function desktopIsRunning(desktop) {
+  const state = desktop?.state;
+  return state === 'ready' || state === 'starting';
 }
 
 async function refreshStatus() {
@@ -139,14 +341,21 @@ async function refreshStatus() {
   const version = status?.version || status?.config?.appVersion || '';
   const last = status?.lastStart;
   const desktop = status?.desktop;
+  const recovery = status?.recovery || desktop?.pluginRecovery;
   const bits = [`当前版本 ${version || '未知'}`];
   if (desktop && desktop.state) {
-    bits.push(`桌面 ${desktop.state}`);
+    bits.push(`桌面端${desktopStateLabel(desktop.state)}`);
+  }
+  if (recovery?.skipUserPlugins) {
+    bits.push('当前跳过用户插件');
   }
   if (last && last.ok === false) {
-    bits.push(`上次启动失败：${last.error || '未知原因'}`);
+    bits.push(`上次启动失败：${last.error || '原因未知'}`);
   }
   $('home-status').textContent = bits.join(' · ');
+  const btnStart = $('btn-start');
+  btnStart.textContent = desktopIsRunning(desktop) ? '关闭桌面端' : '启动桌面端';
+  renderHomeRecovery(status);
   const config = status?.config || await api.getConfig();
   $('opt-quit').checked = config.quitAfterStart !== false;
   $('opt-auto').checked = config.autoStartDesktop !== false;
@@ -208,6 +417,10 @@ const IMPORT_CATS = {
 };
 
 let importCat = 'sessions';
+let importHomeDir = '';
+let importListRendered = false;
+
+const IMPORT_COLLAPSE_AT = 8;
 
 function sessionGroupKey(rel) {
   const text = String(rel || '');
@@ -219,6 +432,70 @@ function sessionItemTitle(rel) {
   const text = String(rel || '');
   const key = sessionGroupKey(text);
   return text.startsWith(`${key}/`) ? text.slice(key.length + 1) : text;
+}
+
+function shortenHomePath(cwd) {
+  const home = String(importHomeDir || '').replace(/[/\\]+$/, '');
+  const text = String(cwd || '');
+  if (!text) {
+    return '';
+  }
+  if (home && (text === home || text.startsWith(`${home}\\`) || text.startsWith(`${home}/`))) {
+    const rest = text.slice(home.length).replace(/\\/g, '/');
+    return rest ? `~${rest}` : '~';
+  }
+  return text.replace(/\\/g, '/');
+}
+
+function sessionGroupLabel(key, items) {
+  const withCwd = (items || []).find((row) => row && row.cwd);
+  if (withCwd && withCwd.cwd) {
+    return shortenHomePath(withCwd.cwd);
+  }
+  if (key === '_no-cwd') {
+    return '无工作区';
+  }
+  if (/^--.+--$/.test(key)) {
+    return `工作区（路径编码） ${key.slice(2, -2)}`;
+  }
+  return key || '未分组';
+}
+
+function sessionRowTitle(row) {
+  return (row && (row.title || row.id)) || sessionItemTitle(row && row.rel);
+}
+
+function formatCreatedAt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    return '';
+  }
+  try {
+    return new Date(n).toLocaleString();
+  } catch {
+    return '';
+  }
+}
+
+function sessionRowMeta(row) {
+  const notes = [];
+  if (row.id) {
+    notes.push(row.id);
+  }
+  const when = formatCreatedAt(row.createdAt);
+  if (when) {
+    notes.push(when);
+  }
+  if (row.mixedEncoding) {
+    notes.push('编码混用');
+  }
+  if (row.unsupported) {
+    notes.push('不兼容旧库');
+  }
+  if (row.compressedLog) {
+    notes.push('压缩日志未解析');
+  }
+  return notes.join(' · ');
 }
 
 function countChecked(name) {
@@ -271,7 +548,48 @@ function syncSessionClusters() {
   });
 }
 
-function renderSessionList(rows) {
+function setSessionGroupExpanded(key, expanded) {
+  const host = $('import-sessions');
+  const fold = host.querySelector(`[data-import-fold="${CSS.escape(key)}"]`);
+  if (fold) {
+    fold.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    fold.classList.toggle('is-collapsed', !expanded);
+  }
+  host.querySelectorAll(`[data-import-group-item="${CSS.escape(key)}"]`).forEach((node) => {
+    node.hidden = !expanded;
+  });
+}
+
+function captureImportSelections() {
+  if (!importListRendered) {
+    return null;
+  }
+  return {
+    'session-rel': new Set(checkedValues('session-rel')),
+    'skill-id': new Set(checkedValues('skill-id')),
+    'plugin-name': new Set(checkedValues('plugin-name')),
+    'mcp-id': new Set(checkedValues('mcp-id')),
+  };
+}
+
+function captureSessionFoldState() {
+  const folded = new Map();
+  $('import-sessions').querySelectorAll('[data-import-fold]').forEach((button) => {
+    folded.set(button.dataset.importFold, button.getAttribute('aria-expanded') !== 'false');
+  });
+  return folded;
+}
+
+function shouldCheckImportItem(selections, name, value, defaultChecked) {
+  if (!selections || !selections[name]) {
+    return defaultChecked;
+  }
+  return selections[name].has(value);
+}
+
+function renderSessionList(rows, options = {}) {
+  const selections = options.selections;
+  const foldState = options.foldState;
   const host = $('import-sessions');
   if (!rows.length) {
     host.innerHTML = '<li><span class="row-meta">没有可列出的项。</span></li>';
@@ -286,32 +604,52 @@ function renderSessionList(rows) {
     groups.get(key).push(row);
   }
   const html = [];
-  for (const [key, items] of groups) {
+  const groupEntries = [...groups.entries()].sort((left, right) => {
+    const rank = (items) => {
+      let score = 0;
+      if (items.some((row) => row && row.title)) {
+        score += 2;
+      }
+      if (items.some((row) => row && row.cwd)) {
+        score += 1;
+      }
+      return score;
+    };
+    const byRank = rank(right[1]) - rank(left[1]);
+    if (byRank !== 0) {
+      return byRank;
+    }
+    return sessionGroupLabel(left[0], left[1]).localeCompare(sessionGroupLabel(right[0], right[1]), 'zh');
+  });
+  for (const [key, items] of groupEntries) {
     const enabled = items.filter((row) => !row.unsupported);
+    const expanded = foldState?.has(key)
+      ? foldState.get(key)
+      : items.length < IMPORT_COLLAPSE_AT;
+    const label = sessionGroupLabel(key, items);
     html.push(`<li class="import-cluster">
-      <label class="check-row">
-        <input type="checkbox" data-import-cluster="${escapeHtml(key)}" ${enabled.length ? 'checked' : 'disabled'} />
-        <span class="row-main">
-          <span class="row-title">${escapeHtml(key)}</span>
-          <span class="row-meta">${items.length} 项</span>
-        </span>
-      </label>
+      <div class="import-cluster-head">
+        <button type="button" class="import-fold${expanded ? '' : ' is-collapsed'}" data-import-fold="${escapeHtml(key)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="折叠或展开分组">
+          <svg class="import-fold-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 3.2 10.8 8 6.2 12.8 5.2 11.8 8.8 8 5.2 4.2z"/></svg>
+        </button>
+        <label class="check-row">
+          <input type="checkbox" data-import-cluster="${escapeHtml(key)}" ${enabled.length ? 'checked' : 'disabled'} />
+          <span class="row-main">
+            <span class="row-title">${escapeHtml(label)}</span>
+            <span class="row-meta">${items.length} 项</span>
+          </span>
+        </label>
+      </div>
     </li>`);
     for (const row of items) {
       const disabled = Boolean(row.unsupported);
-      const notes = [];
-      if (row.mixedEncoding) {
-        notes.push('编码混用');
-      }
-      if (row.unsupported) {
-        notes.push('不兼容旧库');
-      }
-      html.push(`<li class="import-item">
+      const checked = !disabled && shouldCheckImportItem(selections, 'session-rel', row.rel, true);
+      html.push(`<li class="import-item" data-import-group-item="${escapeHtml(key)}"${expanded ? '' : ' hidden'}>
         <label class="check-row">
-          <input type="checkbox" name="session-rel" value="${escapeHtml(row.rel)}" ${disabled ? 'disabled' : ''} ${disabled ? '' : 'checked'} />
+          <input type="checkbox" name="session-rel" value="${escapeHtml(row.rel)}" ${disabled ? 'disabled' : ''} ${checked ? 'checked' : ''} />
           <span class="row-main">
-            <span class="row-title">${escapeHtml(sessionItemTitle(row.rel))}${disabled ? badge('不兼容', true) : (row.conflict ? badge('已存在') : '')}</span>
-            <span class="row-meta">${escapeHtml(notes.join(' · '))}</span>
+            <span class="row-title">${escapeHtml(sessionRowTitle(row))}${disabled ? badge('不兼容', true) : (row.conflict ? badge('已存在') : '')}</span>
+            <span class="row-meta">${escapeHtml(sessionRowMeta(row))}</span>
           </span>
         </label>
       </li>`);
@@ -322,18 +660,21 @@ function renderSessionList(rows) {
 
 function renderCheckList(targetId, rows, options) {
   const host = $(targetId);
+  const selections = options.selections;
   if (!rows.length) {
     host.innerHTML = '<li><span class="row-meta">没有可列出的项。</span></li>';
     return;
   }
   host.innerHTML = rows.map((row) => {
     const disabled = options.disabled(row);
-    const checked = !disabled;
+    const defaultChecked = !disabled;
+    const checked = shouldCheckImportItem(selections, options.name, options.value(row), defaultChecked);
+    const marks = typeof options.marks === 'function' ? options.marks(row) : '';
     return `<li>
       <label class="check-row">
         <input type="checkbox" name="${options.name}" value="${escapeHtml(options.value(row))}" ${disabled ? 'disabled' : ''} ${checked ? 'checked' : ''} />
         <span class="row-main">
-          <span class="row-title">${escapeHtml(options.title(row))}${disabled ? badge(options.skipLabel(row), true) : (row.conflict ? badge('已存在') : '')}</span>
+          <span class="row-title">${escapeHtml(options.title(row))}${disabled ? badge(options.skipLabel(row), true) : ''}${marks}${!disabled && row.conflict ? badge('已存在') : ''}</span>
           <span class="row-meta">${escapeHtml(options.meta(row))}</span>
         </span>
       </label>
@@ -369,59 +710,94 @@ function summarizeImport(result) {
   if (result.ok === false) {
     lines.push('导入未完全成功。官方来源未改写。');
   }
+  if (result.kernelStopped) {
+    lines.push('桌面端已停止，请在首页重新启动。');
+  }
   return lines.join('\n');
 }
 
-async function refreshImport() {
+async function refreshImport(options = {}) {
   const api = pageShell();
   if (!api) {
     return;
   }
-  const scan = await api.scanImport(scanOptions());
-  const sourceLine = scan?.sourceHome
-    ? `${scan.sourceHome}${scan.sourceHasData ? '（有可导入数据）' : '（没有可导入数据）'}${scan.destEmpty ? '；桌面会话为空' : ''}`
-    : '还没有扫描结果。';
-  $('import-source').textContent = sourceLine;
-  $('import-source').title = scan?.sourceHome || '';
-  $('import-skill-roots').hidden = extraSkillDirs.length === 0;
-  $('import-skill-roots').textContent = extraSkillDirs.length
-    ? `额外技能目录 ${extraSkillDirs.join('；')}`
-    : '';
+  const btn = $('btn-scan');
+  const showFeedback = options.silent !== true;
+  const savedSelections = captureImportSelections();
+  const foldState = captureSessionFoldState();
+  if (showFeedback) {
+    btn.disabled = true;
+    btn.textContent = '扫描中…';
+  }
+  try {
+    const scan = await api.scanImport(scanOptions());
+    importHomeDir = typeof scan?.homeDir === 'string' ? scan.homeDir : '';
+    const sourceLine = scan?.sourceHome
+      ? `${scan.sourceHome}${scan.sourceHasData ? '（有可导入数据）' : '（没有可导入数据）'}${scan.destEmpty ? '；桌面会话为空' : ''}`
+      : '还没有扫描结果。';
+    $('import-source').textContent = sourceLine;
+    $('import-source').title = scan?.sourceHome || '';
+    $('import-skill-roots').hidden = extraSkillDirs.length === 0;
+    $('import-skill-roots').textContent = extraSkillDirs.length
+      ? `额外技能目录 ${extraSkillDirs.join('；')}`
+      : '';
 
-  const sessions = Array.isArray(scan?.sessions) ? scan.sessions : [];
-  const skills = Array.isArray(scan?.skills) ? scan.skills : [];
-  const plugins = Array.isArray(scan?.plugins) ? scan.plugins : [];
-  const mcp = Array.isArray(scan?.mcp) ? scan.mcp : [];
+    const sessions = Array.isArray(scan?.sessions) ? scan.sessions : [];
+    const skills = Array.isArray(scan?.skills) ? scan.skills : [];
+    const plugins = Array.isArray(scan?.plugins) ? scan.plugins : [];
+    const mcp = Array.isArray(scan?.mcp) ? scan.mcp : [];
+    const renderOptions = { selections: savedSelections, foldState };
 
-  renderSessionList(sessions);
-  renderCheckList('import-skills', skills, {
-    name: 'skill-id',
-    value: (row) => row.id,
-    title: (row) => row.name,
-    meta: (row) => skillSourceLabel(row.source),
-    disabled: () => false,
-    skipLabel: () => '',
-  });
-  renderCheckList('import-plugins', plugins, {
-    name: 'plugin-name',
-    value: (row) => row.name,
-    title: (row) => row.name,
-    meta: (row) => (row.skipped ? pluginSkipLabel(row.reason) : (row.spec || '')),
-    disabled: (row) => Boolean(row.skipped),
-    skipLabel: (row) => pluginSkipLabel(row.reason),
-  });
-  renderCheckList('import-mcp', mcp, {
-    name: 'mcp-id',
-    value: (row) => row.id,
-    title: (row) => row.name || row.id,
-    meta: (row) => [row.id, row.endpoint].filter(Boolean).join(' · '),
-    disabled: () => false,
-    skipLabel: () => '',
-  });
+    renderSessionList(sessions, renderOptions);
+    renderCheckList('import-skills', skills, {
+      name: 'skill-id',
+      value: (row) => row.id,
+      title: (row) => row.displayName || row.name,
+      meta: (row) => skillSourceLabel(row.source),
+      disabled: () => false,
+      skipLabel: () => '',
+      selections: savedSelections,
+    });
+    renderCheckList('import-plugins', plugins, {
+      name: 'plugin-name',
+      value: (row) => row.name,
+      title: (row) => row.name,
+      meta: (row) => (row.skipped ? pluginSkipLabel(row.reason) : (row.spec || '')),
+      disabled: (row) => Boolean(row.skipped),
+      skipLabel: (row) => pluginSkipLabel(row.reason),
+      marks: (row) => (!row.skipped && row.alreadyInstalled ? badge('已安装') : ''),
+      selections: savedSelections,
+    });
+    renderCheckList('import-mcp', mcp, {
+      name: 'mcp-id',
+      value: (row) => row.id,
+      title: (row) => row.name || row.id,
+      meta: (row) => [
+        row.enabled === false ? '已停用' : '已启用',
+        row.id,
+        row.endpoint,
+      ].filter(Boolean).join(' · '),
+      disabled: () => false,
+      skipLabel: () => '',
+      selections: savedSelections,
+    });
 
-  $('import-attachments').checked = Boolean(scan?.hasAttachments) && sessions.some((row) => !row.unsupported);
-  syncSessionClusters();
-  syncImportSummary();
+    $('import-attachments').checked = Boolean(scan?.hasAttachments) && sessions.some((row) => !row.unsupported);
+    importListRendered = true;
+    syncSessionClusters();
+    syncImportSummary();
+    if (showFeedback) {
+      const when = new Date().toLocaleString();
+      $('import-scan-status').textContent = `扫描完成 · 会话 ${sessions.length} · 技能 ${skills.length} · 插件 ${plugins.length} · MCP ${mcp.length} · ${when}`;
+    }
+  } catch (error) {
+    setHint(error && error.message ? error.message : String(error));
+  } finally {
+    if (showFeedback) {
+      btn.disabled = false;
+      btn.textContent = '重新扫描';
+    }
+  }
 }
 
 async function refreshReleases() {
@@ -429,9 +805,18 @@ async function refreshReleases() {
   if (!api) {
     return;
   }
-  const payload = await api.listReleases();
-  const status = await api.launcherStatus();
-  renderReleases(payload, status?.version);
+  const btn = $('btn-refresh-releases');
+  btn.disabled = true;
+  btn.textContent = '刷新中…';
+  try {
+    const payload = await api.listReleases();
+    renderReleases(payload);
+  } catch (error) {
+    setHint(error && error.message ? error.message : String(error));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '刷新列表';
+  }
 }
 
 async function refreshPlugins() {
@@ -439,22 +824,40 @@ async function refreshPlugins() {
   if (!api) {
     return;
   }
-  renderPlugins(await api.pluginForensics());
+  const btn = $('btn-refresh-plugins');
+  btn.disabled = true;
+  btn.textContent = '刷新中…';
+  try {
+    renderPlugins(await api.pluginForensics());
+  } catch (error) {
+    setHint(error && error.message ? error.message : String(error));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '刷新';
+  }
 }
 
-async function installTag(tag) {
+async function installTag(tag, kind) {
   const api = pageShell();
   if (!api || !tag) {
     return;
   }
-  if (!window.confirm(`将安装 ${tag} 并替换当前应用。继续？`)) {
+  let message = `将安装 ${tag} 并替换当前应用，是否继续？`;
+  if (kind === 'update') {
+    message = `将更新到 ${tag}，Setup 会替换当前安装，是否继续？`;
+  } else if (kind === 'switch') {
+    message = `将切换到 ${tag}（较旧版本），Setup 会覆盖当前安装，是否继续？`;
+  }
+  if (!window.confirm(message)) {
     return;
   }
   $('update-progress').hidden = false;
   $('update-progress').textContent = '正在下载安装包…';
   const result = await api.installRelease(tag);
   if (result && result.status === 'error') {
-    $('update-progress').textContent = result.message === 'no-installer' ? '这个版本没有 Setup.exe。' : (result.message || '安装失败');
+    $('update-progress').textContent = result.message === 'no-installer'
+      ? '该版本未提供 Setup 安装包。'
+      : (result.message || '安装失败');
   }
 }
 
@@ -463,11 +866,15 @@ async function saveSettings() {
   if (!api) {
     return;
   }
-  await api.saveLauncherConfig({
-    quitAfterStart: $('opt-quit').checked,
-    autoStartDesktop: $('opt-auto').checked,
-    askOnUpdate: $('opt-ask').checked,
-  });
+  try {
+    await api.saveLauncherConfig({
+      quitAfterStart: $('opt-quit').checked,
+      autoStartDesktop: $('opt-auto').checked,
+      askOnUpdate: $('opt-ask').checked,
+    });
+  } catch (error) {
+    setHint(error && error.message ? error.message : '设置保存失败');
+  }
 }
 
 function bind() {
@@ -475,14 +882,101 @@ function bind() {
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       showTab(tab.dataset.tab);
-      if (tab.dataset.tab === 'import') void refreshImport();
+      if (tab.dataset.tab === 'home') void refreshStatus();
+      if (tab.dataset.tab === 'import') void refreshImport({ silent: true });
       if (tab.dataset.tab === 'versions') void refreshReleases();
       if (tab.dataset.tab === 'plugins') void refreshPlugins();
     });
   });
-  $('btn-start').addEventListener('click', () => api?.startDesktop());
-  $('btn-skip').addEventListener('click', () => api?.skipUserPlugins());
-  $('btn-retry-full').addEventListener('click', () => api?.retryFullPlugins());
+  $('btn-start').addEventListener('click', async () => {
+    const btnStart = $('btn-start');
+    if (btnStart.disabled) {
+      return;
+    }
+    const api = pageShell();
+    const status = await api?.launcherStatus();
+    btnStart.disabled = true;
+    if (desktopIsRunning(status?.desktop)) {
+      setHint('正在关闭桌面端…');
+      try {
+        const result = await api?.stopDesktop();
+        if (result && result.ok === false) {
+          setHint(result.error || '关闭失败');
+          return;
+        }
+        setHint('');
+        await refreshStatus();
+      } catch (error) {
+        setHint(error && error.message ? error.message : String(error));
+      } finally {
+        btnStart.disabled = false;
+      }
+      return;
+    }
+    setHint('正在启动桌面端…');
+    try {
+      const result = await api?.startDesktop();
+      if (result && result.ok === false) {
+        setHint(result.error || '启动失败');
+        return;
+      }
+      setHint('');
+      await refreshStatus();
+    } catch (error) {
+      setHint(error && error.message ? error.message : String(error));
+    } finally {
+      btnStart.disabled = false;
+    }
+  });
+  $('btn-skip').addEventListener('click', async () => {
+    setHint('正在跳过用户插件并重新启动…');
+    try {
+      const result = await api?.skipUserPlugins();
+      if (result && result.ok === false) {
+        setHint(result.error || '启动失败');
+        return;
+      }
+      setHint('');
+      void refreshStatus();
+    } catch (error) {
+      setHint(error && error.message ? error.message : String(error));
+    }
+  });
+  $('btn-retry-full').addEventListener('click', async () => {
+    setHint('正在恢复完整插件并启动…');
+    try {
+      const result = await api?.retryFullPlugins();
+      if (result && result.ok === false) {
+        setHint(result.error || '启动失败');
+        void refreshStatus();
+        return;
+      }
+      setHint('');
+      void refreshStatus();
+    } catch (error) {
+      setHint(error && error.message ? error.message : String(error));
+    }
+  });
+  $('btn-disable-suspects').addEventListener('click', async () => {
+    const raw = $('btn-disable-suspects').dataset.names || '';
+    const names = raw.split('\0').filter(Boolean);
+    if (!names.length || !api?.disablePlugins) {
+      return;
+    }
+    setHint('正在批量禁用可疑插件并重新启动…');
+    const result = await api.disablePlugins(names);
+    if (result && result.ok === false) {
+      setHint(pluginErrorHint(result.error));
+      return;
+    }
+    if (result && result.harnessRestarted === false && result.error) {
+      setHint(result.error);
+    } else {
+      setHint('');
+    }
+    void refreshStatus();
+    void refreshPlugins();
+  });
   $('btn-pick-source').addEventListener('click', async () => {
     const picked = await api?.pickImportSource();
     if (picked) {
@@ -498,8 +992,40 @@ function bind() {
     }
   });
   $('btn-scan').addEventListener('click', () => refreshImport());
+  $('btn-uninstall-app').addEventListener('click', async () => {
+    const usesSettings = $('btn-uninstall-app').textContent === '打开应用设置';
+    const prompt = usesSettings
+      ? '将打开 Windows「设置 → 应用」，请在列表中卸载 Deepseek-Harness-Desktop。是否继续？'
+      : '将启动 Windows 卸载程序并移除本机应用，是否继续？';
+    if (!window.confirm(prompt)) {
+      return;
+    }
+    setHint(usesSettings ? '正在打开应用设置…' : '正在启动卸载程序…');
+    try {
+      const result = await api?.uninstallApp();
+      if (result && result.ok === false) {
+        setHint(uninstallErrorHint(result));
+        return;
+      }
+      setHint(result?.message || (result?.openedSettings
+        ? '已打开「设置 → 应用」，请在列表中卸载 Deepseek-Harness-Desktop。'
+        : ''));
+    } catch (error) {
+      setHint(error && error.message ? error.message : String(error));
+    }
+  });
   document.querySelectorAll('[data-import-cat]').forEach((button) => {
     button.addEventListener('click', () => showImportCat(button.dataset.importCat));
+  });
+  $('import-board-body').addEventListener('click', (event) => {
+    const fold = event.target.closest('[data-import-fold]');
+    if (!fold || !$('import-sessions').contains(fold)) {
+      return;
+    }
+    event.preventDefault();
+    const key = fold.dataset.importFold;
+    const expanded = fold.getAttribute('aria-expanded') !== 'false';
+    setSessionGroupExpanded(key, !expanded);
   });
   $('import-board-body').addEventListener('change', (event) => {
     const cluster = event.target.closest('[data-import-cluster]');
@@ -544,14 +1070,16 @@ function bind() {
   if (api?.onShowTab) {
     api.onShowTab((payload) => {
       if (payload?.tab) showTab(payload.tab);
-      if (payload?.tab === 'import') void refreshImport();
+      if (payload?.tab === 'import') void refreshImport({ silent: true });
       if (payload?.tab === 'plugins') void refreshPlugins();
+      if (payload?.tab === 'home') void refreshStatus();
     });
   }
   if (api?.onDesktopFailed) {
     api.onDesktopFailed((payload) => {
-      showTab('plugins');
-      setHint(payload?.error || '桌面端启动失败，已留在启动器。');
+      showTab('home');
+      setHint(payload?.error || '桌面端启动失败。可在下方恢复工作台处理插件冲突后重试。');
+      void refreshStatus();
       void refreshPlugins();
     });
   }
@@ -564,17 +1092,15 @@ function bind() {
   if (api?.onLauncherHint) {
     api.onLauncherHint((payload) => {
       if (payload?.importResume) {
-        setHint('上次导入中途中断，已清理未完成的临时文件。可以直接重新导入：已导入的目录会自动跳过。');
-        return;
-      }
-      const check = payload?.check;
-      if (check?.status === 'error') {
-        setHint(`更新检查失败：${check.message || '网络或 GitHub 不可用'}。仍可启动桌面端。`);
-      } else if (check?.status === 'available') {
-        setHint(`发现正式版 ${check.latest || ''}。`);
+        setHint('上次导入中断，未完成的临时文件已清理。可重新导入；已存在的内容将按规则跳过。');
+      } else if (payload?.check?.status === 'error') {
+        setHint(`更新检查失败：${payload.check.message || '网络或 GitHub 不可用'}。仍可启动桌面端。`);
+      } else if (payload?.check?.status === 'available') {
+        setHint(`发现正式版 ${payload.check.latest || ''}。`);
       } else {
         setHint('');
       }
+      void refreshStatus();
     });
   }
   if (api?.onUpdateProgress) {

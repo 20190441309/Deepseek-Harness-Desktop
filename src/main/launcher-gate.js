@@ -11,12 +11,12 @@ function readLastDesktopStart(userDataDir) {
   try {
     const raw = JSON.parse(fs.readFileSync(lastDesktopStartPath(userDataDir), 'utf8'));
     return {
-      ok: raw.ok === true,
+      ok: raw.ok === true ? true : raw.ok === false ? false : null,
       at: typeof raw.at === 'string' ? raw.at : '',
       error: typeof raw.error === 'string' ? raw.error : '',
     };
   } catch {
-    return { ok: true, at: '', error: '' };
+    return { ok: null, at: '', error: '' };
   }
 }
 
@@ -53,6 +53,23 @@ function shouldCloseLauncher({ desktopReady, quitAfterStart }) {
   return desktopReady === true && quitAfterStart !== false;
 }
 
+/** Launcher may close only after a confirmed healthy full start. */
+function shouldCloseLauncherAfterDesktopStart({
+  desktopReady,
+  quitAfterStart,
+  stickySkip,
+  recoveryLaunch,
+  lastStartOk,
+}) {
+  if (!shouldCloseLauncher({ desktopReady, quitAfterStart })) {
+    return false;
+  }
+  if (stickySkip || recoveryLaunch) {
+    return false;
+  }
+  return lastStartOk === true;
+}
+
 module.exports = {
   lastDesktopStartPath,
   readLastDesktopStart,
@@ -60,4 +77,5 @@ module.exports = {
   shouldPromptUpdate,
   shouldAutoStartDesktop,
   shouldCloseLauncher,
+  shouldCloseLauncherAfterDesktopStart,
 };
