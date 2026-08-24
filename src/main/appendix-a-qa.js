@@ -650,7 +650,7 @@ async function runAppendixExtras(wc, helpers) {
         .map((el) => (el.innerText || '').trim()),
       card ? (card.innerText || '') : '',
     ].filter(Boolean);
-    const hit = texts.find((text) => VISION_PRE_SEND_RE.test(text));
+    const hit = texts.find((text) => /不支持图片|does not support images?|无法.*图|不能.*图|包含非文本|暂不支持编辑|non-text/i.test(text));
     if (hit) return { refused: true, attached, text: hit.slice(0, 160) };
     if (attached) return { refused: false, attached: true, text: 'image attached' };
     return null;
@@ -682,14 +682,20 @@ async function runAppendixExtras(wc, helpers) {
           return card ? (card.innerText || '') : '';
         })(),
       ].filter(Boolean);
-      const hit = texts.find((text) => VISION_PRE_SEND_RE.test(text));
+      const hit = texts.find((text) => /不支持图片|does not support images?|无法.*图|不能.*图|包含非文本|暂不支持编辑|non-text/i.test(text));
       return hit ? hit.slice(0, 160) : '';
     });
     if (toast) return { lastText: toast, failReason: '', assistantCount: beforeVision.assistantCount, approval: false, busy: false };
     const snap = await pageEval(wc, chatSnapshot);
     if (snap.failReason) return snap;
     if (snap.busy || snap.approval) return null;
-    const reply = await pageEval(wc, () => lastAssistantText());
+    const reply = await pageEval(wc, () => {
+      const assistants = Array.from(document.querySelectorAll(
+        '[data-chat-flow-kind="assistant"], [data-chat-flow-kind="assistant-step"]',
+      ));
+      const last = assistants.at(-1);
+      return last ? (last.innerText || '').trim() : '';
+    });
     if (!reply) return null;
     if (snap.assistantCount <= beforeVision.assistantCount) return null;
     if (/Deep diving|深潜/.test(reply)) return null;
