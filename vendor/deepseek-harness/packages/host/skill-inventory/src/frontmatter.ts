@@ -38,6 +38,8 @@ export function renderSkillMarkdown(fields: {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
+  /** User-assigned grouping label, stored under `metadata.group`; empty clears it. */
+  readonly group?: string
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
   readonly content: string
@@ -50,6 +52,7 @@ export function renderSkillMarkdown(fields: {
   if (fields.whenToUse !== undefined && fields.whenToUse.trim().length > 0) {
     data.whenToUse = fields.whenToUse
   }
+  replaceGroup(data, fields.group)
   replaceInvocation(data, fields.modelInvocable, fields.userInvocable)
   return renderMarkdownData(data, fields.content)
 }
@@ -75,6 +78,22 @@ function replaceInvocation(data: Record<string, unknown>, modelInvocable: boolea
   delete data['user-invocable']
   if (!modelInvocable) data['disable-model-invocation'] = true
   if (!userInvocable) data['user-invocable'] = false
+}
+
+/** Set or clear `metadata.group` while leaving other metadata fields untouched. */
+function replaceGroup(data: Record<string, unknown>, group: string | undefined): void {
+  // An omitted group means "not part of this write"; only an explicit empty string clears.
+  if (group === undefined) return
+  const existing = data.metadata
+  const isObject = typeof existing === 'object' && existing !== null && !Array.isArray(existing)
+  const base = isObject ? { ...(existing as Record<string, unknown>) } : {}
+  const trimmed = group.trim()
+  if (trimmed.length === 0) delete base.group
+  else base.group = trimmed
+  // A non-object metadata value is not Settings-owned; leave it alone unless writing a group.
+  if (!isObject && trimmed.length === 0) return
+  if (Object.keys(base).length === 0) delete data.metadata
+  else data.metadata = base
 }
 
 function renderMarkdownData(data: Record<string, unknown>, content: string): string {

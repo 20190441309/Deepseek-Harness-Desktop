@@ -11,9 +11,14 @@ export interface SkillInventoryEntry {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
+  /** User-assigned grouping label; skills sharing a value render in one section. */
+  readonly group?: string
   readonly source: string
   readonly provider: string
+  /** Absolute path of the skill file, when the skill came from disk. */
   readonly path?: string
+  /** Directory containing the skill file, for reveal-in-file-manager actions. */
+  readonly directory?: string
   readonly writable: boolean
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
@@ -41,6 +46,8 @@ export interface SkillInventoryDetail {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
+  /** User-assigned grouping label; empty means ungrouped. */
+  readonly group?: string
   readonly source: string
   readonly path?: string
   readonly writable: boolean
@@ -54,6 +61,8 @@ export interface SkillInventoryCreateRequest extends SkillInventoryScope {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
+  /** User-assigned grouping label; empty means ungrouped. */
+  readonly group?: string
   readonly content: string
   readonly root: SkillCreateRoot
   readonly modelInvocable: boolean
@@ -65,6 +74,8 @@ export interface SkillInventoryUpdateRequest extends SkillInventoryScope {
   readonly name: string
   readonly description: string
   readonly whenToUse?: string
+  /** User-assigned grouping label; empty clears the group. */
+  readonly group?: string
   readonly content: string
   readonly modelInvocable: boolean
   readonly userInvocable: boolean

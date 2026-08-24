@@ -18,6 +18,7 @@ const writableSkill = {
   source: 'user-dsh',
   provider: 'filesystem',
   path: '/home/me/.dsh/skills/demo-skill/SKILL.md',
+  directory: '/home/me/.dsh/skills/demo-skill',
   writable: true,
   modelInvocable: true,
   userInvocable: true,
@@ -30,6 +31,7 @@ const readOnlySkill = {
   source: 'bundled',
   provider: 'filesystem',
   path: '/app/skills/shipped-skill/SKILL.md',
+  directory: '/app/skills/shipped-skill',
   writable: false,
   modelInvocable: true,
   userInvocable: false,
@@ -40,6 +42,7 @@ function detail(skill: SkillInventoryEntry = writableSkill): SkillInventoryDetai
     name: skill.name,
     description: skill.description,
     ...skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse },
+    ...skill.group === undefined ? {} : { group: skill.group },
     source: skill.source,
     ...skill.path === undefined ? {} : { path: skill.path },
     writable: skill.writable,
@@ -80,6 +83,7 @@ function props(partial: SkillsOverrides = {}): SkillsSectionProps {
     update: async () => {},
     remove: async () => {},
     setInvocation: async () => {},
+    openDirectory: async () => {},
     ...partial,
   } as SkillsSectionProps
 }
@@ -142,6 +146,97 @@ describe('SkillsSection', () => {
     expect(within(readOnlyRow!).getByText(en.sourceBundled)).toBeTruthy()
     expect(within(readOnlyRow!).getByRole<HTMLInputElement>('switch', { name: `Model invocation for ${readOnlySkill.name}` }).disabled).toBe(true)
     expect(within(readOnlyRow!).queryByRole('button', { name: `Delete ${readOnlySkill.name}` })).toBeNull()
+  })
+
+  it('sections rows by group, ungrouped last, and keeps sections under search', async () => {
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const groupedB = { ...writableSkill, name: 'group-b', group: 'review' }
+    const groupedC = { ...writableSkill, name: 'group-c', group: 'docs' }
+    const plain: SkillInventoryEntry = {
+      name: 'plain-skill',
+      description: 'No group label',
+      source: 'user-dsh',
+      provider: 'filesystem',
+      path: '/home/me/.dsh/skills/plain-skill/SKILL.md',
+      directory: '/home/me/.dsh/skills/plain-skill',
+      writable: true,
+      modelInvocable: true,
+      userInvocable: true,
+    }
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [groupedA, plain, groupedB, groupedC] }),
+      get: async () => detail(groupedA),
+    })} />)
+    await screen.findByText(groupedA.name)
+
+    const headings = screen.getAllByRole('heading', { level: 3 })
+    expect(headings.map(heading => heading.textContent)).toEqual(['review', 'docs', en.ungrouped])
+
+    const reviewSection = headings[0]!.closest('section')
+    expect(reviewSection).not.toBeNull()
+    expect(within(reviewSection!).getByText(groupedA.name)).toBeTruthy()
+    expect(within(reviewSection!).getByText(groupedB.name)).toBeTruthy()
+    expect(within(reviewSection!).queryByText(groupedC.name)).toBeNull()
+    expect(within(reviewSection!).queryByText(plain.name)).toBeNull()
+
+    const ungroupedSection = headings[2]!.closest('section')
+    expect(within(ungroupedSection!).getByText(plain.name)).toBeTruthy()
+
+    const search = screen.getByRole('searchbox', { name: en.searchLabel })
+    fireEvent.change(search, { target: { value: 'docs' } })
+    expect(screen.getByText(groupedC.name)).toBeTruthy()
+    expect(screen.queryByText(groupedA.name)).toBeNull()
+    expect(screen.queryByText(plain.name)).toBeNull()
+    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['docs'])
+  })
+
+  it('shows a section header for a single group without ungrouped rows', async () => {
+    const grouped = { ...writableSkill, name: 'lone-grouped', group: 'tooling' }
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [grouped] }),
+      get: async () => detail(grouped),
+    })} />)
+    await screen.findByText(grouped.name)
+    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['tooling'])
+  })
+
+  it('opens the skill directory from the row and reports failures', async () => {
+    const first = deferred<boolean>()
+    const openDirectory = vi.fn(async () => { await first.promise })
+    await renderCatalog({ openDirectory })
+
+    const button = screen.getByRole('button', { name: `Open the directory containing ${writableSkill.name}` })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(openDirectory).toHaveBeenCalledTimes(1)
+    expect(openDirectory).toHaveBeenCalledWith(writableSkill.directory)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: `Open the directory containing ${writableSkill.name}` }).disabled).toBe(true)
+    first.resolve(true)
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: `Open the directory containing ${writableSkill.name}` }).disabled).toBe(false)
+    })
+
+    openDirectory.mockImplementationOnce(async () => { throw new Error('file manager missing') })
+    fireEvent.click(screen.getByRole('button', { name: `Open the directory containing ${writableSkill.name}` }))
+    expect((await screen.findByRole('alert')).textContent).toContain('file manager missing')
+  })
+
+  it('hides the open-directory control for skills without a directory', async () => {
+    const runtime: SkillInventoryEntry = {
+      name: 'runtime-skill',
+      description: 'In-memory guidance',
+      source: 'runtime',
+      provider: 'runtime',
+      writable: false,
+      modelInvocable: true,
+      userInvocable: false,
+    }
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [runtime] }),
+      get: async () => detail(runtime),
+    })} />)
+    await screen.findByText(runtime.name)
+    expect(screen.queryByRole('button', { name: `Open the directory containing ${runtime.name}` })).toBeNull()
   })
 
   it('opens the editor from a writable row and ignores a read-only row click', async () => {
@@ -301,6 +396,7 @@ describe('SkillsSection', () => {
     fireEvent.change(within(projectDialog).getByLabelText(en.name), { target: { value: 'new-skill' } })
     fireEvent.change(within(projectDialog).getByLabelText(en.description), { target: { value: 'Does work' } })
     fireEvent.change(within(projectDialog).getByLabelText(en.whenToUse), { target: { value: 'Use for releases' } })
+    fireEvent.change(within(projectDialog).getByLabelText(en.group), { target: { value: 'releases' } })
     fireEvent.change(within(projectDialog).getByLabelText(en.content), { target: { value: 'Instructions' } })
     const switches = within(projectDialog).getAllByRole('switch')
     fireEvent.click(switches[0]!)
@@ -311,6 +407,7 @@ describe('SkillsSection', () => {
         name: 'new-skill',
         description: 'Does work',
         whenToUse: 'Use for releases',
+        group: 'releases',
         content: 'Instructions',
         root: 'project-dsh',
         modelInvocable: false,
@@ -372,6 +469,7 @@ describe('SkillsSection', () => {
     const dialog = await screen.findByRole('dialog', { name: en.editorTitleEdit })
     expect(get).toHaveBeenCalledWith(writableSkill.name, {})
     expect(within(dialog).getByLabelText<HTMLInputElement>(en.name).disabled).toBe(true)
+    fireEvent.change(within(dialog).getByLabelText(en.group), { target: { value: 'workflows' } })
     fireEvent.change(within(dialog).getByLabelText(en.content), { target: { value: 'Revised instructions' } })
     fireEvent.click(within(dialog).getAllByRole('switch')[1]!)
     fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
@@ -381,6 +479,7 @@ describe('SkillsSection', () => {
         name: writableSkill.name,
         description: writableSkill.description,
         whenToUse: writableSkill.whenToUse,
+        group: 'workflows',
         content: 'Revised instructions',
         modelInvocable: true,
         userInvocable: false,

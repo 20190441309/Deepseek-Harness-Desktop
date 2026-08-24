@@ -105,6 +105,24 @@
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
+.groupSection {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.groupSection + .groupSection {
+  margin-top: 16px;
+}
+
+.groupHeader {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

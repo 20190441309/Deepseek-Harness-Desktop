@@ -24,7 +24,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const NS = 'settings.skills'
 
 /** Required services. */
-export const inject = ['slots', 'locale', 'remote', 'remote.skillInventory', 'sessions']
+export const inject = ['slots', 'locale', 'remote', 'remote.skillInventory', 'sessions', 'workspaces']
 
 /**
  * Register the Skills settings section.
@@ -45,6 +45,7 @@ export function apply(ctx: ClientContext): void {
     setInvocation: async (name, modelInvocable, userInvocable, scope) => {
       unwrap(await ctx.remote.skillInventory.setInvocation({ name, modelInvocable, userInvocable, ...scope }), 'skillInventory.setInvocation')
     },
+    openDirectory: directory => ctx.workspaces.openPath(directory),
   })
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

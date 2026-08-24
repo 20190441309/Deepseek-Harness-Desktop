@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Web Settings section `skills` (order 16). The page presents `ctx.remote.skillInventory` as a searchable hairline catalog with one source filter. Every Remote call sends the current session's `sessionId` and `cwd` so the Host reads that live Agent's layered catalog. Writable rows expose a model-invocation Switch, open the existing editor, and offer delete; read-only rows omit delete. Create supports either the user root or the active project's `.dsh/skills` root and accepts the initial invocation flags. The catalog follows the current session reactively and suppresses late responses from a previous session or project. The composer `/` picker keeps using `skill.list`.
 
+Skills carrying a group label (`metadata.group`) render as sections ordered by first appearance, with ungrouped rows last; when no row carries a group the list stays flat. The create/edit dialog has a group input. Rows with a disk path offer an "open directory" action that calls the injected `openDirectory` (`workspaces.openPath`), handing the directory to the Host's OS default handler.
+
 ## Model Experience
 
 None, as this browser Settings page registers no prompt, tool, message, or provider request.

@@ -12,6 +12,7 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   Button,
+  IconFolderOpenOutline16,
   IconPlusOutline16,
   IconRefreshOutline16,
   IconSearchOutline16,
@@ -31,7 +32,7 @@ const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 type SkillCreateRoot = 'user-dsh' | 'project-dsh'
 type SourceFilter = 'all' | 'user' | 'project' | 'bundled' | 'other'
-type RowAction = 'detail' | 'invocation'
+type RowAction = 'detail' | 'invocation' | 'open'
 type FieldErrors = Partial<Record<'name' | 'description' | 'content', string>>
 
 interface SkillInventoryClientScope {
@@ -43,6 +44,7 @@ interface SkillCreateInput extends SkillInventoryClientScope {
   name: string
   description: string
   whenToUse?: string
+  group: string
   content: string
   root: SkillCreateRoot
   modelInvocable: boolean
@@ -53,6 +55,7 @@ interface EditorDraft {
   name: string
   description: string
   whenToUse?: string
+  group: string
   content: string
   root: SkillCreateRoot
   modelInvocable: boolean
@@ -68,6 +71,7 @@ export interface SkillsSectionInjected {
     name: string
     description: string
     whenToUse?: string
+    group: string
     content: string
     modelInvocable: boolean
     userInvocable: boolean
@@ -79,6 +83,8 @@ export interface SkillsSectionInjected {
     userInvocable: boolean,
     scope: SkillInventoryClientScope,
   ) => Promise<void>
+  /** Open a host directory with the OS default handler. */
+  openDirectory: (directory: string) => Promise<void>
   t: (key: SkillsSettingsKey) => string
 }
 
@@ -174,7 +180,7 @@ export function SkillsSection(props: SkillsSectionProps) {
 
   const filtered = view.status !== 'ready' ? [] : view.snapshot.skills.filter((skill) => {
     const needle = query.trim().toLocaleLowerCase()
-    const matchesSearch = needle.length === 0 || [skill.name, skill.description, skill.whenToUse ?? '']
+    const matchesSearch = needle.length === 0 || [skill.name, skill.description, skill.group ?? '', skill.whenToUse ?? '']
       .some(value => value.toLocaleLowerCase().includes(needle))
     return matchesSearch && matchesSource(skill, sourceFilter)
   })
@@ -254,6 +260,21 @@ export function SkillsSection(props: SkillsSectionProps) {
         if (scopeGeneration.current === generation) setRowPending(key, undefined)
       })
   }
+  const openDirectory = (skill: SkillInventoryEntry): void => {
+    const key = skillKey(skill)
+    const directory = skill.directory
+    if (directory === undefined || pendingRows[key] !== undefined) return
+    const generation = scopeGeneration.current
+    setRowPending(key, 'open')
+    setRowError(key, undefined)
+    void props.openDirectory(directory)
+      .catch((error: unknown) => {
+        if (scopeGeneration.current === generation) setRowError(key, messageOf(error, t('openDirectoryFailed')))
+      })
+      .finally(() => {
+        if (scopeGeneration.current === generation) setRowPending(key, undefined)
+      })
+  }
 
   const hasFilters = query.trim().length > 0 || sourceFilter !== 'all'
   const sourceOptions = [
@@ -263,6 +284,70 @@ export function SkillsSection(props: SkillsSectionProps) {
     ['bundled', t('sourceBundled')],
     ['other', t('sourceOther')],
   ] as const
+  const sections = groupSections(filtered)
+
+  const renderRow = (skill: SkillInventoryEntry) => {
+    const key = skillKey(skill)
+    const pending = pendingRows[key]
+    const rowError = rowErrors[key]
+    return (
+      <li key={key} className={styles.row}>
+        <button
+          type="button"
+          className={styles.rowMain}
+          disabled={!skill.writable}
+          onClick={() => {
+            if (!skill.writable || pending !== undefined) return
+            setEditorError(undefined)
+            requestDetail(skill)
+          }}
+        >
+          <span className={styles.skillIcon}><IconSkillOutline16 /></span>
+          <span className={styles.summary}>
+            <span className={styles.name}>{skill.name}</span>
+            <span className={styles.description}>{skill.description}</span>
+          </span>
+        </button>
+        <div className={styles.rowMeta}>
+          {pending === 'detail' && <span className={styles.pending} role="status">{t('loadingDetail')}</span>}
+          <Pill>{t(sourceLabel(skill.source))}</Pill>
+          {skill.directory !== undefined && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              disabled={pending !== undefined}
+              aria-label={format(t('openDirectoryFor'), { name: skill.name })}
+              onClick={() => { openDirectory(skill) }}
+            >
+              <IconFolderOpenOutline16 />
+            </button>
+          )}
+          <Switch
+            checked={skill.modelInvocable}
+            disabled={!skill.writable || pending === 'invocation'}
+            aria-label={format(t('modelFor'), { name: skill.name })}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setInvocation(skill, event.target.checked, skill.userInvocable)
+            }}
+          />
+          {skill.writable && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label={format(t('removeFor'), { name: skill.name })}
+              onClick={() => {
+                setDeleteError(undefined)
+                setDeleting(skill)
+              }}
+            >
+              <IconTrashOutline16 />
+            </button>
+          )}
+        </div>
+        {rowError !== undefined && <p className={styles.rowError} role="alert">{rowError}</p>}
+      </li>
+    )
+  }
 
   return (
     <div className={styles.section}>
@@ -338,61 +423,22 @@ export function SkillsSection(props: SkillsSectionProps) {
         ? <p className={styles.empty}>{t('empty')}</p>
         : filtered.length === 0
           ? <p className={styles.empty}>{t('noResults')}</p>
-          : (
-            <ul className={styles.rows}>
-              {filtered.map((skill) => {
-                const key = skillKey(skill)
-                const pending = pendingRows[key]
-                const rowError = rowErrors[key]
-                return (
-                  <li key={key} className={styles.row}>
-                    <button
-                      type="button"
-                      className={styles.rowMain}
-                      disabled={!skill.writable}
-                      onClick={() => {
-                        if (!skill.writable || pending !== undefined) return
-                        setEditorError(undefined)
-                        requestDetail(skill)
-                      }}
-                    >
-                      <span className={styles.skillIcon}><IconSkillOutline16 /></span>
-                      <span className={styles.summary}>
-                        <span className={styles.name}>{skill.name}</span>
-                        <span className={styles.description}>{skill.description}</span>
-                      </span>
-                    </button>
-                    <div className={styles.rowMeta}>
-                      {pending === 'detail' && <span className={styles.pending} role="status">{t('loadingDetail')}</span>}
-                      <Pill>{t(sourceLabel(skill.source))}</Pill>
-                      <Switch
-                        checked={skill.modelInvocable}
-                        disabled={!skill.writable || pending === 'invocation'}
-                        aria-label={format(t('modelFor'), { name: skill.name })}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                          setInvocation(skill, event.target.checked, skill.userInvocable)
-                        }}
-                      />
-                      {skill.writable && (
-                        <button
-                          type="button"
-                          className={styles.iconButton}
-                          aria-label={format(t('removeFor'), { name: skill.name })}
-                          onClick={() => {
-                            setDeleteError(undefined)
-                            setDeleting(skill)
-                          }}
-                        >
-                          <IconTrashOutline16 />
-                        </button>
-                      )}
-                    </div>
-                    {rowError !== undefined && <p className={styles.rowError} role="alert">{rowError}</p>}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          : sections.length <= 1 && (sections[0]?.group === undefined)
+            ? (
+              <ul className={styles.rows}>
+                {filtered.map(skill => renderRow(skill))}
+              </ul>
+            )
+            : (
+              sections.map((section, index) => (
+                <section key={section.group ?? `ungrouped-${index}`} className={styles.groupSection}>
+                  <h3 className={styles.groupHeader}>{section.group ?? t('ungrouped')}</h3>
+                  <ul className={styles.rows}>
+                    {section.skills.map(skill => renderRow(skill))}
+                  </ul>
+                </section>
+              ))
+            )}
 
       <SkillEditor
         open={editor !== undefined}
@@ -410,11 +456,13 @@ export function SkillsSection(props: SkillsSectionProps) {
           setEditorPending(true)
           setEditorError(undefined)
           const whenToUse = optionalWhenToUse(draft.whenToUse)
+          const group = draft.group.trim()
           const work = activeEditor.mode === 'create'
             ? props.create({
               name: draft.name,
               description: draft.description.trim(),
               ...whenToUse,
+              group,
               content: draft.content,
               root: draft.root,
               modelInvocable: draft.modelInvocable,
@@ -425,6 +473,7 @@ export function SkillsSection(props: SkillsSectionProps) {
               name: draft.name,
               description: draft.description.trim(),
               ...whenToUse,
+              group,
               content: draft.content,
               modelInvocable: draft.modelInvocable,
               userInvocable: draft.userInvocable,
@@ -437,6 +486,7 @@ export function SkillsSection(props: SkillsSectionProps) {
                 const key = skillKey(activeEditor.detail)
                 const entryChanges = {
                   description: draft.description.trim(),
+                  group,
                   modelInvocable: draft.modelInvocable,
                   userInvocable: draft.userInvocable,
                 }
@@ -625,6 +675,16 @@ function SkillEditor({ open, creating, draft, cwd, pending, submitError, t, onCl
           />
         </label>
         <label className={styles.field}>
+          <span className={styles.label}>{t('group')}</span>
+          <Input
+            value={form.group}
+            aria-label={t('group')}
+            placeholder={t('groupPlaceholder')}
+            disabled={pending}
+            onChange={(event) => { setField('group', event.target.value) }}
+          />
+        </label>
+        <label className={styles.field}>
           <span className={styles.label}>{t('content')}</span>
           <textarea
             className={styles.textarea}
@@ -664,6 +724,7 @@ function emptySkill(): EditorDraft {
   return {
     name: '',
     description: '',
+    group: '',
     root: 'user-dsh',
     modelInvocable: true,
     userInvocable: true,
@@ -676,11 +737,36 @@ function editorDraft(detail: SkillInventoryDetail): EditorDraft {
     name: detail.name,
     description: detail.description,
     ...detail.whenToUse === undefined ? {} : { whenToUse: detail.whenToUse },
+    group: detail.group ?? '',
     content: detail.content,
     root: detail.source === 'project-dsh' ? 'project-dsh' : 'user-dsh',
     modelInvocable: detail.modelInvocable,
     userInvocable: detail.userInvocable,
   }
+}
+
+/** One list section: a shared group label plus its rows. */
+interface GroupSection {
+  readonly group: string | undefined
+  readonly skills: readonly SkillInventoryEntry[]
+}
+
+/** Section rows by group label in first-appearance order; ungrouped rows last. */
+function groupSections(skills: readonly SkillInventoryEntry[]): readonly GroupSection[] {
+  const byGroup = new Map<string, SkillInventoryEntry[]>()
+  const ungrouped: SkillInventoryEntry[] = []
+  for (const skill of skills) {
+    const group = skill.group?.trim() ?? ''
+    if (group.length === 0) ungrouped.push(skill)
+    else {
+      const existing = byGroup.get(group)
+      if (existing === undefined) byGroup.set(group, [skill])
+      else existing.push(skill)
+    }
+  }
+  const sections: GroupSection[] = [...byGroup.entries()].map(([group, groupSkills]) => ({ group, skills: groupSkills }))
+  if (ungrouped.length > 0) sections.push({ group: undefined, skills: ungrouped })
+  return sections
 }
 
 function skillKey(skill: Pick<SkillInventoryEntry, 'source' | 'name'>): string {
