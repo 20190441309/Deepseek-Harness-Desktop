@@ -80,10 +80,14 @@ jobs:
 
   release:
     needs: [windows, macos]
+    # Publishing policy: the Windows installer gates the release; macOS is
+    # best-effort. When the macos job fails, the release still ships but
+    # simply carries no .dmg asset (nullglob below drops the empty pattern).
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,6 +99,23 @@ jobs:
 
       - name: Verify tag matches package version
         run: node scripts/check-release-version.mjs "$GITHUB_REF_NAME"
+
+      # Quality gate: the release job intentionally does not re-run the test
+      # suites (see ci-isolation.test.js); instead it requires that the
+      # "Desktop tests" workflow already passed for this exact commit.
+      - name: Require green Desktop tests for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          count=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$GITHUB_SHA&status=success&per_page=1" \
+            --jq '.total_count')
+          if [ "${count:-0}" -lt 1 ]; then
+            echo "No green Desktop tests run found for $GITHUB_SHA." >&2
+            echo "让同一提交先在 CI（test.yml）变绿，再打 tag 发版。" >&2
+            exit 1
+          fi
 
       - uses: actions/download-artifact@v4
         with:

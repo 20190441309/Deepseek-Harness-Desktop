@@ -97,10 +97,23 @@ test('release workflow builds artifacts without repeating quality or viewport-de
   assert.match(yml, /npm run dist:mac\b/);
 });
 
-test('release.yml still publishes when Windows succeeds and macOS fails', () => {
+test('release job requires a green same-SHA Desktop tests run before publishing', () => {
+  const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+  const gateAt = yml.indexOf('actions/workflows/test.yml/runs?head_sha=');
+  const publishAt = yml.indexOf('gh release create');
+  assert.ok(gateAt >= 0, 'release.yml must query the test workflow for this SHA');
+  assert.match(yml, /status=success/);
+  assert.match(yml, /actions: read/);
+  assert.ok(publishAt > gateAt, 'the CI gate must run before gh release create');
+});
+
+test('release.yml still publishes when Windows succeeds and macOS fails (documented policy)', () => {
   const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(yml, /always\(\)/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
+  // The policy stays documented next to the if: guard: mac assets are simply
+  // absent when the macos job fails; Windows gates the release.
+  assert.match(yml, /macOS is\n\s*# best-effort/);
 });
 
 test('test workflow keeps portable quality gates without the viewport-dependent smoke', () => {

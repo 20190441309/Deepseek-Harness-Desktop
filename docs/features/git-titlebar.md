@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `git-titlebar` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
+| **last verified** | 2026-08-24 — 登记信任根新增高危祖先过滤（用户主目录 / APPDATA / userData / dsh-home）；兄弟项目场景不变 |
 
 ## User paths
 
@@ -17,6 +17,7 @@
 - 会话 cwd 只要是桌面 `dsh-home` 已登记的工作区目录（或启动工作区及其子目录），Git IPC 就对该路径生效。
 - 登记路径可以是启动工作区的**兄弟目录**（例如 `Documents\Deepseek-Harness-Desktop` 启动、`C:\Ai\ChisaTerminal` 为当前项目）。
 - `workspace.json` 里的盘符根（`C:\`、`/`）不得进入 Git/FS/PTY 白名单。
+- 高危祖先也不得成为登记信任根：用户主目录、`%APPDATA%` / `Application Support` / `~/.config` / `~/.ssh`、desktop `userData` 与 `dsh-home` 根（等于这些目录、或包含它们的目录一律拒绝）。普通项目目录（含 Documents 下兄弟仓）不受影响。
 - 非仓库降级（初始化 Git），不把授权失败画成「没有匹配的分支」。
 - 官方 `dsh web` 标题栏 Git 视觉；不另做皮肤。
 

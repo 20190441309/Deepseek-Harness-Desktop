@@ -1,6 +1,7 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { getDesktopDshHome } = require('../shared/dsh-home');
+const { getDesktopDshHome, tryGetDesktopDshHome } = require('../shared/dsh-home');
 
 /**
  * Workspace authority: the trust roots for desktop capabilities that touch
@@ -234,18 +235,68 @@ function isFilesystemRoot(dir) {
 }
 
 /**
+ * Sensitive anchors that a plugin-writable trust root must never equal or
+ * contain: the user home (SSH keys, credentials), the per-user config trees
+ * (`%APPDATA%`, `Application Support`, `~/.config`), and the desktop
+ * userData/dsh-home (this app's own config, tokens, sessions).
+ * @returns {string[]} canonical anchor paths that exist on this machine.
+ */
+function highRiskAnchorPaths() {
+  const candidates = [];
+  const home = os.homedir();
+  if (home) {
+    candidates.push(home);
+    if (process.platform === 'darwin') {
+      candidates.push(path.join(home, 'Library'), path.join(home, 'Library', 'Application Support'));
+    }
+    candidates.push(path.join(home, '.config'), path.join(home, '.ssh'));
+  }
+  for (const key of ['APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.trim() !== '') candidates.push(value);
+  }
+  const desktopHome = tryGetDesktopDshHome();
+  if (desktopHome) {
+    candidates.push(desktopHome, path.dirname(desktopHome));
+  }
+  const anchors = [];
+  for (const candidate of candidates) {
+    const real = realPathOrNull(path.resolve(candidate));
+    if (real !== null) anchors.push(real);
+  }
+  return anchors;
+}
+
+/**
+ * True when trusting `real` as a workspace root would expose a high-risk
+ * anchor: the root equals an anchor or is one of its ancestors (the anchor
+ * lives inside the root). Ordinary project folders — including siblings of
+ * the boot workspace under Documents or any dev directory — contain none of
+ * the anchors and stay accepted.
+ * @param {string} real - canonical registered root.
+ * @param {string[]} [anchors] - injectable for tests.
+ * @returns {boolean}
+ */
+function isHighRiskWorkspaceRoot(real, anchors = highRiskAnchorPaths()) {
+  return anchors.some((anchor) => containedIn(real, anchor));
+}
+
+/**
  * Harness `workspace.json` is plugin-writable. Keep user-opened project
- * folders (including siblings of the boot workspace) and drop volume roots.
+ * folders (including siblings of the boot workspace); drop volume roots and
+ * high-risk ancestors (user home, `%APPDATA%` / Application Support,
+ * userData / desktop dsh-home).
  * @param {unknown[]} listed
  * @returns {string[]}
  */
 function filterRegisteredWorkspaceRoots(listed) {
   const rows = Array.isArray(listed) ? listed : [];
+  const anchors = highRiskAnchorPaths();
   return rows.filter((raw) => {
     if (typeof raw !== 'string' || raw.trim() === '') return false;
     try {
       const real = fs.realpathSync(path.resolve(raw));
-      return !isFilesystemRoot(real);
+      return !isFilesystemRoot(real) && !isHighRiskWorkspaceRoot(real, anchors);
     } catch {
       return false;
     }
@@ -280,5 +331,8 @@ module.exports = {
   createWorkspaceAuthority,
   loadWorkspaceAuthority,
   readHarnessRegisteredWorkspacePaths,
+  filterRegisteredWorkspaceRoots,
+  isHighRiskWorkspaceRoot,
+  highRiskAnchorPaths,
   scratchWorkspacePath,
 };

@@ -7,6 +7,9 @@ const {
   createWorkspaceAuthority,
   loadWorkspaceAuthority,
   readHarnessRegisteredWorkspacePaths,
+  filterRegisteredWorkspaceRoots,
+  isHighRiskWorkspaceRoot,
+  highRiskAnchorPaths,
   scratchWorkspacePath,
 } = require('./workspace-authority');
 const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
@@ -328,6 +331,90 @@ test('loadWorkspaceAuthority authorizes a harness-registered workspace outside t
     else delete require.cache[require.resolve('./config')];
     clearDesktopDshHome();
     fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
+test('isHighRiskWorkspaceRoot rejects anchors and their ancestors, keeps ordinary projects', () => {
+  const base = makeRoot();
+  try {
+    const anchorParent = path.join(base, 'users', 'me');
+    const anchor = path.join(anchorParent, 'AppData');
+    const project = path.join(anchorParent, 'Documents', 'proj');
+    fs.mkdirSync(anchor, { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+    const anchors = [fs.realpathSync(anchor)];
+    assert.equal(isHighRiskWorkspaceRoot(fs.realpathSync(anchor), anchors), true);
+    assert.equal(isHighRiskWorkspaceRoot(fs.realpathSync(anchorParent), anchors), true);
+    assert.equal(isHighRiskWorkspaceRoot(fs.realpathSync(project), anchors), false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('filterRegisteredWorkspaceRoots drops the user home and the desktop dsh-home root', () => {
+  const home = makeRoot();
+  const userData = path.join(home, 'userData');
+  const dshHome = path.join(userData, 'dsh-home');
+  const sibling = makeRoot();
+  fs.mkdirSync(dshHome, { recursive: true });
+  try {
+    setDesktopDshHome(dshHome);
+    const kept = filterRegisteredWorkspaceRoots([
+      os.homedir(),
+      dshHome,
+      userData,
+      sibling,
+      '',
+      42,
+    ]);
+    assert.deepEqual(kept, [sibling]);
+    assert.ok(highRiskAnchorPaths().includes(fs.realpathSync(os.homedir())));
+  } finally {
+    clearDesktopDshHome();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
+test('loadWorkspaceAuthority ignores a registered user-home or dsh-home trust root', () => {
+  const base = makeRoot();
+  const home = path.join(base, 'dsh-home');
+  const boot = makeRoot();
+  const sibling = makeRoot();
+  fs.mkdirSync(home, { recursive: true });
+  const previousConfig = require.cache[require.resolve('./config')];
+  try {
+    fs.mkdirSync(path.join(home, 'storages'));
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      tables: {
+        workspaces: {
+          'ws-home': { path: os.homedir() },
+          'ws-dsh-home': { path: home },
+          'ws-user-data': { path: base },
+          'ws-sibling': { path: sibling },
+        },
+      },
+    })}\n`, 'utf8');
+    require.cache[require.resolve('./config')] = {
+      id: require.resolve('./config'),
+      filename: require.resolve('./config'),
+      loaded: true,
+      exports: { loadConfig: () => ({ workspace: boot }) },
+    };
+    setDesktopDshHome(home);
+    const authority = loadWorkspaceAuthority();
+    assert.equal(authority.resolveAuthorizedCwd(os.homedir()), null);
+    assert.equal(authority.resolveAuthorizedCwd(home), null);
+    assert.equal(authority.resolveAuthorizedCwd(base), null);
+    assert.equal(authority.resolveAuthorizedCwd(sibling), canonical(sibling));
+  } finally {
+    if (previousConfig) require.cache[require.resolve('./config')] = previousConfig;
+    else delete require.cache[require.resolve('./config')];
+    clearDesktopDshHome();
+    fs.rmSync(base, { recursive: true, force: true });
     fs.rmSync(boot, { recursive: true, force: true });
     fs.rmSync(sibling, { recursive: true, force: true });
   }

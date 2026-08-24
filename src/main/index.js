@@ -47,11 +47,12 @@ const {
 } = require('./window');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
-const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('./release-ui-walk');
-const { runComposerOfficialQa } = require('./composer-official-qa');
-const { runAppendixAQa } = require('./appendix-a-qa');
-const { runShellP0Qa, runPersistQa, runRecoveryQa } = require('./shell-p0-qa');
-const { runPackagedP0 } = require('./packaged-p0');
+const { qaFlag } = require('./qa-gate');
+
+/** Packaged-gated QA flag (see qa-gate.js). */
+function qaEnv(name) {
+  return qaFlag(name, { isPackaged: app.isPackaged });
+}
 
 const dsh = new DshManager();
 const remote = new RemoteGateway({
@@ -644,6 +645,12 @@ async function probeThemeBackgrounds(wc) {
 
 /** One-shot launch smoke: report the assembled chrome and exit with its status. */
 async function runSmoke(win) {
+  // QA drivers are loaded lazily: they never stay resident in a production
+  // main process that did not enter the smoke path.
+  const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('./release-ui-walk');
+  const { runComposerOfficialQa } = require('./composer-official-qa');
+  const { runAppendixAQa } = require('./appendix-a-qa');
+  const { runShellP0Qa, runPersistQa, runRecoveryQa } = require('./shell-p0-qa');
   const pageErrors = [];
   const exitSmoke = async (code) => {
     await Promise.allSettled([
@@ -784,6 +791,7 @@ async function runSmoke(win) {
       : '';
     if (siblingPath) {
       try {
+        const { runPackagedP0 } = require('./packaged-p0');
         const config = loadConfig();
         packagedP0 = await runPackagedP0({
           siblingPath,
@@ -808,12 +816,13 @@ async function runSmoke(win) {
       }));
     }
     let qaAttached = false;
-    const needsComposerQa = process.env.DSH_QA_COMPOSER === '1';
-    const needsReleaseQa = process.env.DSH_QA === '1';
-    const needsAppendixQa = process.env.DSH_QA_APPENDIX === '1';
-    const needsShellQa = process.env.DSH_QA_SHELL === '1';
-    const needsPersistQa = process.env.DSH_QA_PERSIST === '1';
-    const needsRecoveryQa = process.env.DSH_QA_RECOVERY === '1';
+    const needsComposerQa = qaEnv('DSH_QA_COMPOSER');
+    const needsReleaseQa = qaEnv('DSH_QA');
+    const needsAppendixQa = qaEnv('DSH_QA_APPENDIX');
+    const needsShellQa = qaEnv('DSH_QA_SHELL');
+    const needsPersistQa = qaEnv('DSH_QA_PERSIST');
+    const needsRecoveryQa = qaEnv('DSH_QA_RECOVERY');
+    const needsThemeSmoke = qaEnv('DSH_THEME_SMOKE');
     if (needsReleaseQa || needsComposerQa || needsAppendixQa || needsShellQa || needsPersistQa) {
       if (!wc.debugger.isAttached()) {
         await wc.debugger.attach('1.3');
@@ -1002,7 +1011,7 @@ async function runSmoke(win) {
         // Detach is best-effort before process exit.
       }
     }
-    if (process.env.DSH_THEME_SMOKE === '1') {
+    if (needsThemeSmoke) {
       try {
         result.themeSmoke = await probeThemeBackgrounds(wc);
       } catch (error) {
@@ -1029,14 +1038,14 @@ async function runSmoke(win) {
       && titlebarHits.hits.git > 0
       && titlebarHits.error == null
       && ptyStatus === 'echoed:ok'
-      && (process.env.DSH_THEME_SMOKE !== '1' || result.themeSmoke?.ok === true)
-      && (process.env.DSH_QA !== '1' || result.qa?.ok === true)
-      && (process.env.DSH_QA_COMPOSER !== '1' || result.composerOfficialQa?.ok === true)
-      && (process.env.DSH_QA_APPENDIX !== '1' || result.appendixQa?.ok === true)
-      && (process.env.DSH_QA_SHELL !== '1' || result.shellP0Qa?.ok === true)
-      && (process.env.DSH_QA_PERSIST !== '1' || result.persistQa?.ok === true)
-      && (process.env.DSH_QA_RECOVERY !== '1' || result.recoveryQa?.ok === true)
-      && (process.env.DSH_QA_RECOVERY === '1' || pageErrors.length === 0)
+      && (!needsThemeSmoke || result.themeSmoke?.ok === true)
+      && (!needsReleaseQa || result.qa?.ok === true)
+      && (!needsComposerQa || result.composerOfficialQa?.ok === true)
+      && (!needsAppendixQa || result.appendixQa?.ok === true)
+      && (!needsShellQa || result.shellP0Qa?.ok === true)
+      && (!needsPersistQa || result.persistQa?.ok === true)
+      && (!needsRecoveryQa || result.recoveryQa?.ok === true)
+      && (needsRecoveryQa || pageErrors.length === 0)
       && (!siblingPath || packagedP0?.ok === true);
     try {
       fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-smoke.json'), JSON.stringify({
@@ -1064,7 +1073,7 @@ async function runSmoke(win) {
 }
 
 function quitApp() {
-  if (process.env.DSH_QA_SHELL === '1' && process.env.DSH_QA_ALLOW_QUIT !== '1') {
+  if (qaEnv('DSH_QA_SHELL') && process.env.DSH_QA_ALLOW_QUIT !== '1') {
     qaQuitIntercepted = true;
     console.log('[DSH_QA_SHELL] quit intercepted');
     return;
@@ -1147,7 +1156,7 @@ if (!gotLock) {
 
     await openLauncher();
     await runColdStartGate();
-    if (process.env.DSH_SMOKE === '1') {
+    if (qaEnv('DSH_SMOKE')) {
       if (!getMainWindow()) {
         await startDesktopFromLauncher();
       }

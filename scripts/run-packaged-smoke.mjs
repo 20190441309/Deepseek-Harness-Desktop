@@ -87,6 +87,8 @@ try {
   console.log(`Packaged smoke: ${executable}`)
   const outcome = await run(executable, [`--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
+    // Packaged builds ignore ambient QA/smoke flags; the rehearsal opts in.
+    DSHD_ALLOW_PACKAGED_QA: '1',
   }))
 
   if (!existsSync(dirs.resultPath)) {

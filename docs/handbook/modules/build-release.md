@@ -34,7 +34,9 @@ npm run dist:mac      # macOS 真机
 
 - 验收表：每次发布前对 **CI 安装包 SHA** 走完 [production-acceptance-test-cases.md](../../qa/production-acceptance-test-cases.md)。禁止把源码钉写成已发包装钉；禁止用本机 dist 给该表打 Pass。  
 - `after-pack` 拍平 pnpm 树后，MCP SDK 必须仍能解析到 ajv major ≥ 8（版本冲突的兄弟依赖嵌回 `sdk/node_modules`）；禁止把已安装 runtime 的 `node_modules` 当源码提交。
-- 现 `v*` tag 会立刻 `gh release create`，来不及先走表。合规顺序见验收表 §0.1。  
+- `release.yml` 的 release job 不重跑测试（见 `ci-isolation.test.js`），但发布前**机器校验同一 SHA 的 Desktop tests（test.yml）已绿**，否则拒绝 `gh release create`。先让 main 上该提交 CI 变绿，再打 tag。  
+- macOS 策略（已文档化）：Windows 安装包是发布门槛；macos job 失败时仍发布，但 Release 里不带 `.dmg` 资产。  
+- 现 `v*` tag 在 CI 绿的前提下 `gh release create`，仍来不及先走验收表。合规顺序见验收表 §0.1。  
 - SQLite 等格式与 rc 版本兼容性以发版说明为准。
 
 ## 门槛
