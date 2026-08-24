@@ -12,6 +12,8 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   Button,
+  IconChevronDownOutline14,
+  IconChevronRightOutline14,
   IconFolderOpenOutline16,
   IconPlusOutline16,
   IconRefreshOutline16,
@@ -141,6 +143,8 @@ export function SkillsSection(props: SkillsSectionProps) {
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | undefined>()
   const [refreshFailure, setRefreshFailure] = useState(false)
+  const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>(() => readTreeState())
+  const [groupPending, setGroupPending] = useState<Readonly<Record<string, boolean>>>({})
 
   const load = (replace: boolean): void => {
     const sequence = loadSequence.current + 1
@@ -207,6 +211,7 @@ export function SkillsSection(props: SkillsSectionProps) {
     setDetails(current => ({ ...current, [key]: detail }))
   }
   const updateEntry = (key: string, changes: Partial<SkillInventoryEntry>): void => {
+    /* v8 ignore next -- updateEntry only fires from rendered rows, so the view is ready */
     setView(current => current.status !== 'ready' ? current : ({
       status: 'ready',
       snapshot: {
@@ -221,6 +226,7 @@ export function SkillsSection(props: SkillsSectionProps) {
   }
   const requestDetail = (skill: SkillInventoryEntry): void => {
     const key = skillKey(skill)
+    /* v8 ignore next -- rowMain guards pending clicks before requestDetail runs */
     if (pendingRows[key] !== undefined) return
     const cached = details[key]
     if (cached !== undefined) {
@@ -245,6 +251,7 @@ export function SkillsSection(props: SkillsSectionProps) {
   }
   const setInvocation = (skill: SkillInventoryEntry, modelInvocable: boolean, userInvocable: boolean): void => {
     const key = skillKey(skill)
+    /* v8 ignore next -- the row switch disables while its invocation is pending */
     if (pendingRows[key] !== undefined) return
     const generation = scopeGeneration.current
     setRowPending(key, 'invocation')
@@ -263,6 +270,7 @@ export function SkillsSection(props: SkillsSectionProps) {
   const openDirectory = (skill: SkillInventoryEntry): void => {
     const key = skillKey(skill)
     const directory = skill.directory
+    /* v8 ignore next -- the button only renders with a directory and disables while pending */
     if (directory === undefined || pendingRows[key] !== undefined) return
     const generation = scopeGeneration.current
     setRowPending(key, 'open')
@@ -274,6 +282,43 @@ export function SkillsSection(props: SkillsSectionProps) {
       .finally(() => {
         if (scopeGeneration.current === generation) setRowPending(key, undefined)
       })
+  }
+  const setGroupExpanded = (groupKey: string, open: boolean): void => {
+    setExpanded((current) => {
+      const next = { ...current, [groupKey]: open }
+      persistTreeState(next)
+      return next
+    })
+  }
+  const toggleGroup = (section: GroupSection): void => {
+    const groupKey = groupKeyOf(section)
+    setGroupExpanded(groupKey, !(expanded[groupKey] ?? true))
+  }
+  const setGroupInvocation = (section: GroupSection, modelInvocable: boolean): void => {
+    const groupKey = groupKeyOf(section)
+    const writable = section.skills.filter(skill => skill.writable)
+    /* v8 ignore next -- unreachable: the group switch is disabled while pending and without writable skills */
+    if (writable.length === 0 || groupPending[groupKey] === true) return
+    const generation = scopeGeneration.current
+    setGroupPending(current => ({ ...current, [groupKey]: true }))
+    for (const skill of writable) {
+      const key = skillKey(skill)
+      setRowPending(key, 'invocation')
+      setRowError(key, undefined)
+    }
+    const settled = writable.map(skill => props.setInvocation(skill.name, modelInvocable, skill.userInvocable, scope)
+      .then(() => {
+        if (scopeGeneration.current === generation) updateEntry(skillKey(skill), { modelInvocable })
+      })
+      .catch((error: unknown) => {
+        if (scopeGeneration.current === generation) setRowError(skillKey(skill), messageOf(error, t('invocationFailed')))
+      })
+      .finally(() => {
+        if (scopeGeneration.current === generation) setRowPending(skillKey(skill), undefined)
+      }))
+    void Promise.all(settled).finally(() => {
+      if (scopeGeneration.current === generation) setGroupPending(current => ({ ...current, [groupKey]: false }))
+    })
   }
 
   const hasFilters = query.trim().length > 0 || sourceFilter !== 'all'
@@ -386,7 +431,7 @@ export function SkillsSection(props: SkillsSectionProps) {
 
       <div className={styles.searchRow}>
         <Input
-          {...styles.search === undefined ? {} : { className: styles.search }}
+          className={styles.search}
           type="search"
           value={query}
           icon={<IconSearchOutline16 />}
@@ -430,14 +475,49 @@ export function SkillsSection(props: SkillsSectionProps) {
               </ul>
             )
             : (
-              sections.map((section, index) => (
-                <section key={section.group ?? `ungrouped-${index}`} className={styles.groupSection}>
-                  <h3 className={styles.groupHeader}>{section.group ?? t('ungrouped')}</h3>
-                  <ul className={styles.rows}>
-                    {section.skills.map(skill => renderRow(skill))}
-                  </ul>
-                </section>
-              ))
+              sections.map((section, index) => {
+                const groupKey = groupKeyOf(section)
+                const label = section.group ?? t('ungrouped')
+                const open = expanded[groupKey] ?? true
+                const writable = section.skills.filter(skill => skill.writable)
+                const hasWritable = writable.length > 0
+                const allEnabled = hasWritable && writable.every(skill => skill.modelInvocable)
+                const pendingGroup = groupPending[groupKey] === true
+                return (
+                  <section
+                    key={section.group ?? `ungrouped-${index}`}
+                    className={allEnabled ? styles.groupSection : `${styles.groupSection} ${styles.groupOff}`}
+                  >
+                    <div className={styles.groupHeaderRow}>
+                      <button
+                        type="button"
+                        className={styles.groupDisclosure}
+                        aria-expanded={open}
+                        onClick={() => { toggleGroup(section) }}
+                      >
+                        {open ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+                        <span className={styles.groupName}>{label}</span>
+                        <span className={styles.groupCount}>{format(t('groupCount'), { count: String(section.skills.length) })}</span>
+                      </button>
+                      <Switch
+                        checked={allEnabled}
+                        disabled={!hasWritable || pendingGroup}
+                        aria-label={format(t('groupToggleFor'), { group: label })}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                          const next = event.target.checked
+                          setGroupInvocation(section, next)
+                          if (!next) setGroupExpanded(groupKey, false)
+                        }}
+                      />
+                    </div>
+                    {open && (
+                      <ul className={`${styles.rows} ${styles.treeRows}`}>
+                        {section.skills.map(skill => renderRow(skill))}
+                      </ul>
+                    )}
+                  </section>
+                )
+              })
             )}
 
       <SkillEditor
@@ -450,6 +530,7 @@ export function SkillsSection(props: SkillsSectionProps) {
         t={t}
         onClose={() => { if (!editorPending) setEditor(undefined) }}
         onSave={(draft) => {
+          /* v8 ignore next -- onSave only fires from the editor while it is open */
           if (editor === undefined) return
           const activeEditor = editor
           const generation = scopeGeneration.current
@@ -527,6 +608,7 @@ export function SkillsSection(props: SkillsSectionProps) {
               variant="primary"
               disabled={deletePending}
               onClick={() => {
+                /* v8 ignore next -- the confirm button only renders while a target is selected */
                 if (deleting === undefined) return
                 const target = deleting
                 const generation = scopeGeneration.current
@@ -536,6 +618,7 @@ export function SkillsSection(props: SkillsSectionProps) {
                   .then(() => {
                     if (scopeGeneration.current !== generation) return
                     const removedKey = skillKey(target)
+                    /* v8 ignore next -- the confirm button only renders while the view is ready */
                     setView(current => current.status !== 'ready' ? current : ({
                       status: 'ready',
                       snapshot: {
@@ -769,6 +852,44 @@ function groupSections(skills: readonly SkillInventoryEntry[]): readonly GroupSe
   return sections
 }
 
+/** sessionStorage key for per-group expand state. */
+const TREE_STORAGE_KEY = 'dshd.settings.skills.tree'
+
+/** Stable storage key for the ungrouped pseudo-section. */
+const UNGROUPED_KEY = '\u0000ungrouped'
+
+/** Storage key for one section: its label, or a reserved marker for ungrouped. */
+function groupKeyOf(section: Pick<GroupSection, 'group'>): string {
+  return section.group ?? UNGROUPED_KEY
+}
+
+/** Read remembered expand state; absent or corrupt storage yields defaults. */
+function readTreeState(): Record<string, boolean> {
+  /* v8 ignore next -- browser-only guard; jsdom and the app always provide sessionStorage */
+  if (typeof sessionStorage === 'undefined') return {}
+  try {
+    const raw = sessionStorage.getItem(TREE_STORAGE_KEY)
+    if (raw === null) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return parsed as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+
+/** Persist remembered expand state; a failing write degrades to memory only. */
+function persistTreeState(state: Readonly<Record<string, boolean>>): void {
+  /* v8 ignore next -- browser-only guard; jsdom and the app always provide sessionStorage */
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    sessionStorage.setItem(TREE_STORAGE_KEY, JSON.stringify(state))
+    /* v8 ignore next -- setItem throws only on quota/security failure, untestable in jsdom */
+  } catch {
+    // Degrade to in-memory expand state.
+  }
+}
+
 function skillKey(skill: Pick<SkillInventoryEntry, 'source' | 'name'>): string {
   return `${skill.source}:${skill.name}`
 }
@@ -793,6 +914,7 @@ function matchesSource(skill: SkillInventoryEntry, filter: SourceFilter): boolea
 }
 
 function format(template: string, vars: Record<string, string>): string {
+  /* v8 ignore next -- every call site supplies the keys its template names */
   return template.replace(/\{(\w+)\}/g, (_, key: string) => vars[key] ?? '')
 }
 

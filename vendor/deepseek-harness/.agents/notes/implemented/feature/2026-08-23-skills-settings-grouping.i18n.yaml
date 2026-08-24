@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-23-skills-settings-grouping.md
-2026-08-23-skills-settings-grouping.md: 7ccd8106467f469f671cf08fdb4281bf2b53a18d
-2026-08-23-skills-settings-grouping.zh.md: ee44131c1d9d26d702d8dbf2ab23f3f988516c3b
+2026-08-23-skills-settings-grouping.md: 58e1c6a18a5e3b8f9f6fc32589ffde52a2af9079
+2026-08-23-skills-settings-grouping.zh.md: 508a041703d42d536a6b9b66a26b8976ce1405d8

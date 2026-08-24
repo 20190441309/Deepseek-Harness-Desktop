@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SkillInventoryDetail, SkillInventoryEntry } from '@deepseek-ai/dsh-api-remotes/client'
@@ -7,7 +7,10 @@ import { SkillsSection } from '../src/client/SkillsSection.tsx'
 import type { SkillsSectionInjected, SkillsSectionProps } from '../src/client/SkillsSection.tsx'
 import { en, type SkillsSettingsKey } from '../src/client/locales.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  sessionStorage.clear()
+})
 
 const t = ((key: SkillsSettingsKey): string => en[key])
 
@@ -107,7 +110,7 @@ async function renderCatalog(partial: SkillsOverrides = {}) {
   await screen.findByText(writableSkill.name)
 }
 
-function openDelete(name = writableSkill.name) {
+function openDelete(name: string = writableSkill.name) {
   fireEvent.click(screen.getByRole('button', { name: `Delete ${name}` }))
 }
 
@@ -169,17 +172,17 @@ describe('SkillsSection', () => {
     })} />)
     await screen.findByText(groupedA.name)
 
-    const headings = screen.getAllByRole('heading', { level: 3 })
-    expect(headings.map(heading => heading.textContent)).toEqual(['review', 'docs', en.ungrouped])
+    const disclosures = screen.getAllByRole('button', { name: /skills/ }).filter(button => button.getAttribute('aria-expanded') !== null)
+    expect(disclosures.map(button => button.textContent?.replace(/\d+ skills$/, '').trim())).toEqual(['review', 'docs', en.ungrouped])
 
-    const reviewSection = headings[0]!.closest('section')
+    const reviewSection = disclosures[0]!.closest('section')
     expect(reviewSection).not.toBeNull()
     expect(within(reviewSection!).getByText(groupedA.name)).toBeTruthy()
     expect(within(reviewSection!).getByText(groupedB.name)).toBeTruthy()
     expect(within(reviewSection!).queryByText(groupedC.name)).toBeNull()
     expect(within(reviewSection!).queryByText(plain.name)).toBeNull()
 
-    const ungroupedSection = headings[2]!.closest('section')
+    const ungroupedSection = disclosures[2]!.closest('section')
     expect(within(ungroupedSection!).getByText(plain.name)).toBeTruthy()
 
     const search = screen.getByRole('searchbox', { name: en.searchLabel })
@@ -187,17 +190,204 @@ describe('SkillsSection', () => {
     expect(screen.getByText(groupedC.name)).toBeTruthy()
     expect(screen.queryByText(groupedA.name)).toBeNull()
     expect(screen.queryByText(plain.name)).toBeNull()
-    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['docs'])
+    const afterSearch = screen.getAllByRole('button', { name: /skills/ }).filter(button => button.getAttribute('aria-expanded') !== null)
+    expect(afterSearch.map(button => button.textContent?.replace(/\d+ skills$/, '').trim())).toEqual(['docs'])
   })
 
-  it('shows a section header for a single group without ungrouped rows', async () => {
+  it('shows a tree node for a single group without ungrouped rows', async () => {
     const grouped = { ...writableSkill, name: 'lone-grouped', group: 'tooling' }
     render(<SkillsSection {...props({
       list: async () => ({ skills: [grouped] }),
       get: async () => detail(grouped),
     })} />)
     await screen.findByText(grouped.name)
-    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['tooling'])
+    const disclosure = screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)
+    expect(disclosure).not.toBeUndefined()
+    expect(disclosure!.getAttribute('aria-expanded')).toBe('true')
+    expect(disclosure!.textContent).toContain('tooling')
+  })
+
+  it('collapses and expands a group, remembering the state across remounts', async () => {
+    const groupedA = { ...writableSkill, name: 'tree-a', group: 'review' }
+    const plain: SkillInventoryEntry = {
+      name: 'tree-plain',
+      description: 'No group label',
+      source: 'user-dsh',
+      provider: 'filesystem',
+      path: '/home/me/.dsh/skills/tree-plain/SKILL.md',
+      directory: '/home/me/.dsh/skills/tree-plain',
+      writable: true,
+      modelInvocable: true,
+      userInvocable: true,
+    }
+    const base = {
+      list: async () => ({ skills: [groupedA, plain] }),
+      get: async () => detail(groupedA),
+    }
+    const { unmount } = render(<SkillsSection {...props(base)} />)
+    await screen.findByText(groupedA.name)
+
+    const disclosure = () => screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)!
+    fireEvent.click(disclosure())
+    expect(disclosure().getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText(groupedA.name)).toBeNull()
+
+    unmount()
+    render(<SkillsSection {...props(base)} />)
+    await screen.findByText(plain.name)
+    expect(disclosure().getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText(groupedA.name)).toBeNull()
+
+    fireEvent.click(disclosure())
+    expect(disclosure().getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText(groupedA.name)).toBeTruthy()
+  })
+
+  it('tolerates a corrupt or non-object remembered tree state', async () => {
+    const grouped = { ...writableSkill, name: 'corrupt-tree', group: 'review' }
+    const base = {
+      list: async () => ({ skills: [grouped] }),
+      get: async () => detail(grouped),
+    }
+    const disclosureOf = () => screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)!
+
+    sessionStorage.setItem('dshd.settings.skills.tree', '{not-json')
+    render(<SkillsSection {...props(base)} />)
+    await screen.findByText(grouped.name)
+    expect(disclosureOf().getAttribute('aria-expanded')).toBe('true')
+
+    cleanup()
+    sessionStorage.setItem('dshd.settings.skills.tree', '["review"]')
+    render(<SkillsSection {...props(base)} />)
+    await screen.findByText(grouped.name)
+    expect(disclosureOf().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('toggles the whole group through the group switch and collapses it on disable', async () => {
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const groupedB = { ...writableSkill, name: 'group-b', group: 'review' }
+    const setInvocation = vi.fn(async () => {})
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [groupedA, groupedB] }),
+      get: async () => detail(groupedA),
+      setInvocation,
+    })} />)
+    await screen.findByText(groupedA.name)
+
+    const groupSwitch = screen.getByRole('switch', { name: en.groupToggleFor.replace('{group}', 'review') })
+    const disclosure = () => screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)!
+
+    fireEvent.click(groupSwitch)
+    expect(setInvocation).toHaveBeenCalledTimes(2)
+    expect(setInvocation).toHaveBeenCalledWith(groupedA.name, false, true, {})
+    expect(setInvocation).toHaveBeenCalledWith(groupedB.name, false, true, {})
+    // Disabling collapses the group.
+    await waitFor(() => {
+      expect(disclosure().getAttribute('aria-expanded')).toBe('false')
+      expect(screen.queryByText(groupedA.name)).toBeNull()
+    })
+    // Expanding again shows the row switches now off.
+    fireEvent.click(disclosure())
+    await waitFor(() => {
+      const rows = screen.getAllByRole('switch', { name: /Model invocation for/ })
+      expect(rows.every(item => (item as HTMLInputElement).checked)).toBe(false)
+    })
+    expect(screen.getByRole<HTMLInputElement>('switch', { name: en.groupToggleFor.replace('{group}', 'review') }).checked).toBe(false)
+  })
+
+  it('keeps read-only skills out of a group toggle and disables all-readonly groups', async () => {
+    const writable = { ...writableSkill, name: 'mixed-writable', group: 'review' }
+    const readonly = { ...readOnlySkill, name: 'mixed-readonly', group: 'review' }
+    const setInvocation = vi.fn(async () => {})
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [writable, readonly] }),
+      get: async name => name === readonly.name ? detail(readonly) : detail(writable),
+      setInvocation,
+    })} />)
+    await screen.findByText(writable.name)
+
+    const groupSwitch = screen.getByRole('switch', { name: en.groupToggleFor.replace('{group}', 'review') })
+    fireEvent.click(groupSwitch)
+    expect(setInvocation).toHaveBeenCalledTimes(1)
+    expect(setInvocation).toHaveBeenCalledWith(writable.name, false, true, {})
+    const disclosure = screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)!
+    await waitFor(() => {
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false')
+    })
+    fireEvent.click(disclosure)
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLInputElement>('switch', { name: `Model invocation for ${writable.name}` }).checked).toBe(false)
+    })
+
+    cleanup()
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [readonly] }),
+      get: async () => detail(readonly),
+      setInvocation,
+    })} />)
+    await screen.findByText(readonly.name)
+    expect(screen.getByRole<HTMLInputElement>('switch', { name: en.groupToggleFor.replace('{group}', 'review') }).disabled).toBe(true)
+  })
+
+  it('reports per-row failures from a group toggle and re-enables the switch', async () => {
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const groupedB = { ...writableSkill, name: 'group-b', group: 'review' }
+    const first = deferred<undefined>()
+    const second = deferred<undefined>()
+    const setInvocation = vi.fn((name: string) => name === groupedA.name ? first.promise : second.promise)
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [groupedA, groupedB] }),
+      get: async () => detail(groupedA),
+      setInvocation,
+    })} />)
+    await screen.findByText(groupedA.name)
+
+    const groupSwitchName = en.groupToggleFor.replace('{group}', 'review')
+    fireEvent.click(screen.getByRole('switch', { name: groupSwitchName }))
+    // The group switch stays disabled while its batch is in flight.
+    expect(screen.getByRole<HTMLInputElement>('switch', { name: groupSwitchName }).disabled).toBe(true)
+    first.resolve(undefined)
+    second.reject(new Error('frontmatter is locked'))
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLInputElement>('switch', { name: groupSwitchName }).disabled).toBe(false)
+    })
+    const disclosure = screen.getAllByRole('button', { name: /skills/ }).find(button => button.getAttribute('aria-expanded') !== null)!
+    fireEvent.click(disclosure)
+    expect((await screen.findByRole('alert')).textContent).toContain('frontmatter is locked')
+  })
+
+  it('toggles ungrouped writable skills through the ungrouped node switch', async () => {
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const plainA: SkillInventoryEntry = {
+      name: 'plain-a',
+      description: 'Ungrouped one',
+      source: 'user-dsh',
+      provider: 'filesystem',
+      path: '/home/me/.dsh/skills/plain-a/SKILL.md',
+      directory: '/home/me/.dsh/skills/plain-a',
+      writable: true,
+      modelInvocable: true,
+      userInvocable: true,
+    }
+    const plainB = { ...plainA, name: 'plain-b', modelInvocable: false }
+    const setInvocation = vi.fn(async () => {})
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [groupedA, plainA, plainB] }),
+      get: async () => detail(plainA),
+      setInvocation,
+    })} />)
+    await screen.findByText(groupedA.name)
+
+    const ungroupedSwitch = screen.getByRole('switch', { name: en.groupToggleFor.replace('{group}', en.ungrouped) })
+    expect((ungroupedSwitch as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(ungroupedSwitch)
+    expect(setInvocation).toHaveBeenCalledTimes(2)
+    expect(setInvocation).toHaveBeenCalledWith(plainA.name, true, true, {})
+    expect(setInvocation).toHaveBeenCalledWith(plainB.name, true, true, {})
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLInputElement>('switch', { name: `Model invocation for ${plainA.name}` }).checked).toBe(true)
+      expect(screen.getByRole<HTMLInputElement>('switch', { name: `Model invocation for ${plainB.name}` }).checked).toBe(true)
+    })
   })
 
   it('opens the skill directory from the row and reports failures', async () => {
@@ -283,6 +473,11 @@ describe('SkillsSection', () => {
     setInvocation.mockImplementationOnce(async () => { throw new Error('frontmatter is locked') })
     fireEvent.click(screen.getByRole('switch', { name: `Model invocation for ${writableSkill.name}` }))
     expect((await screen.findByRole('alert')).textContent).toContain('frontmatter is locked')
+
+    // A non-Error rejection falls back to the localized failure copy.
+    setInvocation.mockImplementationOnce(async () => { throw 'plain failure' })
+    fireEvent.click(screen.getByRole('switch', { name: `Model invocation for ${writableSkill.name}` }))
+    expect((await screen.findByRole('alert')).textContent).toContain(en.invocationFailed)
   })
 
   it('reloads for the active project and ignores a late response from the previous project', async () => {
@@ -301,6 +496,138 @@ describe('SkillsSection', () => {
     await waitFor(() => { expect(screen.queryByText(writableSkill.name)).toBeNull() })
     expect(list).toHaveBeenCalledWith({ sessionId: 'session-1', cwd: '/work/one' })
     expect(list).toHaveBeenCalledWith({ sessionId: 'session-1', cwd: '/work/two' })
+  })
+
+  it('shows the error view on a failed first load and retries from it', async () => {
+    const list = vi.fn()
+      .mockRejectedValueOnce(new Error('catalog down'))
+      .mockResolvedValueOnce({ skills: [writableSkill] })
+    render(<SkillsSection {...props({ list })} />)
+
+    expect((await screen.findByRole('alert')).textContent).toContain(en.error)
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+    expect(await screen.findByText(writableSkill.name)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ignores a late rejected catalog load after the project changes', async () => {
+    const first = deferred<never>()
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => scope.cwd === '/work/one'
+      ? first.promise as Promise<{ skills: readonly SkillInventoryEntry[] }>
+      : Promise.resolve({ skills: [projectSkill] }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+
+    rerender(<SkillsSection {...props({
+      list,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    first.reject(new Error('catalog down'))
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
+    expect(screen.getByText(projectSkill.name)).toBeTruthy()
+  })
+
+  it('reopens a cached detail without refetching', async () => {
+    const get = vi.fn(async () => detail())
+    await renderCatalog({ get })
+
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    expect(await screen.findByRole('dialog', { name: en.editorTitleEdit })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    expect(await screen.findByRole('dialog', { name: en.editorTitleEdit })).toBeTruthy()
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a late detail response and reports same-generation detail failures', async () => {
+    const first = deferred<SkillInventoryDetail>()
+    const get = vi.fn(() => first.promise)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      get,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+
+    rerender(<SkillsSection {...props({
+      list,
+      get,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    first.resolve(detail())
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: en.editorTitleEdit })).toBeNull() })
+  })
+
+  it('reports a detail failure and ignores a late rejection', async () => {
+    const late = deferred<SkillInventoryDetail>()
+    const get = vi.fn()
+      .mockImplementationOnce(() => Promise.reject(new Error('detail locked')))
+      .mockImplementationOnce(() => late.promise)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      get,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    expect((await screen.findByRole('alert')).textContent).toContain('detail locked')
+
+    rerender(<SkillsSection {...props({
+      list,
+      get,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    fireEvent.click(screen.getByText(projectSkill.name).closest('button')!)
+    rerender(<SkillsSection {...props({
+      list,
+      get,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    expect(await screen.findByText(writableSkill.name)).toBeTruthy()
+    await act(async () => { late.reject(new Error('late detail failure')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ignores a late invocation update after the project changes', async () => {
+    const first = deferred<boolean>()
+    const setInvocation = vi.fn(async () => { await first.promise })
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByRole('switch', { name: `Model invocation for ${writableSkill.name}` }))
+
+    rerender(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    first.resolve(true)
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLInputElement>('switch', { name: `Model invocation for ${projectSkill.name}` }).checked).toBe(true)
+    })
   })
 
   it('keeps the last known cwd when the sessions store rebuilds without the entry', async () => {
@@ -374,6 +701,33 @@ describe('SkillsSection', () => {
     expect(screen.queryByRole('dialog', { name: en.editorTitleEdit })).toBeNull()
   })
 
+  it('opens the editor for a project skill without when-to-use text', async () => {
+    const projectSkill: SkillInventoryEntry = {
+      name: 'project-skill',
+      description: 'Project guidance',
+      source: 'project-dsh',
+      provider: 'filesystem',
+      path: '/work/project/.dsh/skills/project-skill/SKILL.md',
+      directory: '/work/project/.dsh/skills/project-skill',
+      writable: true,
+      modelInvocable: true,
+      userInvocable: true,
+    }
+    const get = vi.fn(async () => ({
+      ...detail(projectSkill),
+      ...projectSkill.group === undefined ? {} : { group: projectSkill.group },
+    }))
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [projectSkill] }),
+      get,
+      useSessions: sessionHook(sessionState('/work/project')),
+    })} />)
+    await screen.findByText(projectSkill.name)
+    fireEvent.click(screen.getByText(projectSkill.name).closest('button')!)
+    const dialog = await screen.findByRole('dialog', { name: en.editorTitleEdit })
+    expect(within(dialog).getByLabelText<HTMLInputElement>(en.name).disabled).toBe(true)
+  })
+
   it('creates a project skill with invocation flags and disables project scope without cwd', async () => {
     const create = vi.fn(async () => {})
     render(<SkillsSection {...props({ create })} />)
@@ -383,6 +737,7 @@ describe('SkillsSection', () => {
     const unavailableDialog = screen.getByRole('dialog', { name: en.editorTitleAdd })
     expect(within(unavailableDialog).getByRole<HTMLButtonElement>('button', { name: en.scopeProject }).disabled).toBe(true)
     expect(within(unavailableDialog).getByText(en.projectUnavailable)).toBeTruthy()
+    fireEvent.click(within(unavailableDialog).getByRole('button', { name: en.scopeUser }))
 
     cleanup()
     render(<SkillsSection {...props({
@@ -498,7 +853,238 @@ describe('SkillsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: en.deleteConfirm }))
     expect(remove).toHaveBeenCalledWith(writableSkill.name, {})
     expect(screen.getByRole<HTMLButtonElement>('button', { name: en.deleting }).disabled).toBe(true)
+    // Close stays blocked while the deletion is pending.
+    fireEvent.click(screen.getByRole('button', { name: en.close }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
     removeRequest.resolve(true)
     await waitFor(() => { expect(screen.queryByText(writableSkill.name)).toBeNull() })
+  })
+
+  it('reloads the catalog from the header refresh control', async () => {
+    const list = vi.fn(async () => ({ skills: [writableSkill] }))
+    render(<SkillsSection {...props({ list })} />)
+    await screen.findByText(writableSkill.name)
+    expect(list).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    await waitFor(() => { expect(list).toHaveBeenCalledTimes(2) })
+  })
+
+  it('shows the no-results empty state when every row is filtered out', async () => {
+    await renderCatalog()
+    const search = screen.getByRole('searchbox', { name: en.searchLabel })
+    fireEvent.change(search, { target: { value: 'no-such-skill' } })
+    expect(screen.getByText(en.noResults)).toBeTruthy()
+  })
+
+  it('keeps the editor open while a save is pending even when close is clicked', async () => {
+    const updateRequest = deferred<undefined>()
+    const update = vi.fn(() => updateRequest.promise)
+    await renderCatalog({ update })
+
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    const dialog = await screen.findByRole('dialog', { name: en.editorTitleEdit })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
+    fireEvent.click(within(dialog).getByRole('button', { name: en.close }))
+    expect(screen.getByRole('dialog', { name: en.editorTitleEdit })).toBeTruthy()
+    updateRequest.resolve(undefined)
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: en.editorTitleEdit })).toBeNull() })
+  })
+
+  it('clears whenToUse on edit when the field is emptied', async () => {
+    const update = vi.fn(async () => {})
+    const get = vi.fn(async () => detail())
+    await renderCatalog({ get, update })
+
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    const dialog = await screen.findByRole('dialog', { name: en.editorTitleEdit })
+    fireEvent.change(within(dialog).getByLabelText(en.whenToUse), { target: { value: '' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        name: writableSkill.name,
+        group: '',
+      }))
+    })
+    const saved = (update.mock.calls as unknown[][])[0]![0] as Record<string, unknown>
+    expect(saved).not.toHaveProperty('whenToUse')
+  })
+
+  it('ignores a save that rejects after the active project changes', async () => {
+    const updateRequest = deferred<never>()
+    const update = vi.fn(() => updateRequest.promise as Promise<undefined>)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const get = vi.fn(async () => detail())
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      get,
+      update,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByText(writableSkill.name).closest('button')!)
+    const dialog = await screen.findByRole('dialog', { name: en.editorTitleEdit })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
+
+    rerender(<SkillsSection {...props({
+      list,
+      get,
+      update,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    await act(async () => { updateRequest.reject(new Error('late save failure')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('closes the delete dialog from its close control and its cancel button', async () => {
+    await renderCatalog()
+
+    openDelete()
+    fireEvent.click(screen.getByRole('button', { name: en.close }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    openDelete()
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('reports delete failures and ignores late delete outcomes', async () => {
+    const failing = deferred<boolean>()
+    const lateResolve = deferred<boolean>()
+    const lateReject = deferred<boolean>()
+    const remove = vi.fn()
+      .mockImplementationOnce(() => failing.promise)
+      .mockImplementationOnce(() => lateResolve.promise)
+      .mockImplementationOnce(() => lateReject.promise)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      remove,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    openDelete()
+    fireEvent.click(screen.getByRole('button', { name: en.deleteConfirm }))
+    await act(async () => { failing.reject(new Error('directory locked')) })
+    expect(screen.getByRole('alert').textContent).toContain('directory locked')
+
+    rerender(<SkillsSection {...props({
+      list,
+      remove,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    openDelete(projectSkill.name)
+    fireEvent.click(screen.getByRole('button', { name: en.deleteConfirm }))
+    rerender(<SkillsSection {...props({
+      list,
+      remove,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    expect(await screen.findByText(writableSkill.name)).toBeTruthy()
+    await act(async () => { lateResolve.resolve(true) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(writableSkill.name)).toBeTruthy()
+
+    openDelete()
+    fireEvent.click(screen.getByRole('button', { name: en.deleteConfirm }))
+    rerender(<SkillsSection {...props({
+      list,
+      remove,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    await act(async () => { lateReject.reject(new Error('late delete failure')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(projectSkill.name)).toBeTruthy()
+  })
+
+  it('ignores a late open-directory failure after the project changes', async () => {
+    const pending = deferred<undefined>()
+    const openDirectory = vi.fn(() => pending.promise)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      openDirectory,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByRole('button', { name: `Open the directory containing ${writableSkill.name}` }))
+
+    rerender(<SkillsSection {...props({
+      list,
+      openDirectory,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    await act(async () => { pending.reject(new Error('late open failure')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ignores a late row invocation failure after the project changes', async () => {
+    const pending = deferred<undefined>()
+    const setInvocation = vi.fn(() => pending.promise)
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [writableSkill] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(writableSkill.name)
+    fireEvent.click(screen.getByRole('switch', { name: `Model invocation for ${writableSkill.name}` }))
+
+    rerender(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    await act(async () => { pending.reject(new Error('late invocation failure')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ignores late group-toggle outcomes after the project changes', async () => {
+    const first = deferred<undefined>()
+    const second = deferred<undefined>()
+    const setInvocation = vi.fn((name: string) => name === 'group-a' ? first.promise : second.promise)
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const groupedB = { ...writableSkill, name: 'group-b', group: 'review' }
+    const projectSkill = { ...writableSkill, name: 'project-skill', source: 'project-dsh' as const }
+    const list = vi.fn((scope: { cwd?: string }) => Promise.resolve({
+      skills: scope.cwd === '/work/one' ? [groupedA, groupedB] : [projectSkill],
+    }))
+    const { rerender } = render(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/one')),
+    })} />)
+    await screen.findByText(groupedA.name)
+    fireEvent.click(screen.getByRole('switch', { name: en.groupToggleFor.replace('{group}', 'review') }))
+
+    rerender(<SkillsSection {...props({
+      list,
+      setInvocation,
+      useSessions: sessionHook(sessionState('/work/two')),
+    })} />)
+    expect(await screen.findByText(projectSkill.name)).toBeTruthy()
+    await act(async () => {
+      first.resolve(undefined)
+      second.reject(new Error('late group failure'))
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(projectSkill.name)).toBeTruthy()
   })
 })
