@@ -184,11 +184,11 @@
 .groupOptionsButton {
   display: grid;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   place-items: center;
-  border: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
