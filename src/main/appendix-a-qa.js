@@ -43,7 +43,7 @@ const QA_PNG = Buffer.from(
   'base64',
 );
 
-const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|grok-4\.6|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色|包含非文本|暂不支持编辑|non-text/i;
+const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色|包含非文本|暂不支持编辑|non-text/i;
 const VISION_PRE_SEND_RE = /不支持图片|does not support images?|无法.*图|不能.*图|包含非文本|暂不支持编辑|non-text/i;
 
 function sleep(ms) {
@@ -535,12 +535,16 @@ async function runAppendixExtras(wc, helpers) {
         }, 30_000)
         : false;
       if (sendReady) await clickSend(wc);
+      await waitForIdle(wc, 300_000, true);
       const approval = await waitUntil(async () => {
         await clickSkipQuestion(wc);
         const snap = await pageEval(wc, chatSnapshot);
         if (snap.approval) return snap;
+        if (snap.toolCall && /bash|write|dshd-reject-probe|创建文件/i.test(snap.lastText || '')) {
+          return snap.approval ? snap : null;
+        }
         return null;
-      }, 180_000, 400);
+      }, 240_000, 400);
       let rejected = false;
       if (approval) {
         rejected = await clickRejectOnce(wc);
@@ -708,7 +712,7 @@ async function runAppendixExtras(wc, helpers) {
   const visionFailed = Boolean(vision && vision.failReason);
   extras.push({
     name: 'appendix.vision',
-    ok: Boolean(!visionFailed && vision && VISION_PASS_RE.test(visionText)),
+    ok: Boolean(!visionFailed && vision && vision.assistantCount > beforeVision.assistantCount && VISION_PASS_RE.test(visionText)),
     detail: visionFailed
       ? vision.failReason.slice(0, 160)
       : attached
