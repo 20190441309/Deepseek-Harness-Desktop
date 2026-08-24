@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-24 — 导入页改为分类页签 + 底栏主按钮；官方浅色/深色表不变 |
+| **last verified** | 2026-08-24 — 更新检查/下载加超时；Release 带 SHA512SUMS.txt 时下载后强制校验 |
 
 ## User paths
 
@@ -21,6 +21,8 @@
 - 市场 / 壁纸图库仍禁止另开产品窗。
 - `/releases/latest` 忽略 draft；草稿 0.2.7 不得当成现网更新源。
 - 换版本只下载该 tag 的 Setup 并拉起安装器，不单独切 `vendor/dsh` pin。
+- 更新检查请求 10s 超时、单次下载整体 15 分钟超时；失败不阻塞手动「启动桌面端」。
+- Release 若带 `SHA512SUMS.txt`，下载后强制 sha512 校验（失败即删除并报错）；老版本 Release 无清单则跳过校验（已知限制，见 build-release handbook）。
 - 关启动器：桌面主窗还在则只关启动器；主窗不在则退出应用。
 
 ## Allowed touch

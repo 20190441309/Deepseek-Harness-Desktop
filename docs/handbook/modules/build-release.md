@@ -36,6 +36,7 @@ npm run dist:mac      # macOS 真机
 - `after-pack` 拍平 pnpm 树后，MCP SDK 必须仍能解析到 ajv major ≥ 8（版本冲突的兄弟依赖嵌回 `sdk/node_modules`）；禁止把已安装 runtime 的 `node_modules` 当源码提交。
 - `release.yml` 的 release job 不重跑测试（见 `ci-isolation.test.js`），但发布前**机器校验同一 SHA 的 Desktop tests（test.yml）已绿**，否则拒绝 `gh release create`。先让 main 上该提交 CI 变绿，再打 tag。  
 - macOS 策略（已文档化）：Windows 安装包是发布门槛；macos job 失败时仍发布，但 Release 里不带 `.dmg` 资产。  
+- 下载校验：release job 生成 `SHA512SUMS.txt`（`sha512sum` 标准格式）并随 Release 发布；桌面更新器下载 Setup 后按清单强制校验（缺条目 / 不匹配 / 清单拉取失败均中止并删除下载文件）。**已知限制**：v0.2.7 及更早的 Release 无该清单，安装器不校验直接安装。  
 - 现 `v*` tag 在 CI 绿的前提下 `gh release create`，仍来不及先走验收表。合规顺序见验收表 §0.1。  
 - SQLite 等格式与 rc 版本兼容性以发版说明为准。
 

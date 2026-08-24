@@ -122,6 +122,21 @@ jobs:
           path: dist-out
           merge-multiple: true
 
+      # SHA512SUMS.txt lets the desktop updater (src/main/update.js) verify
+      # the downloaded Setup asset; releases without it install unverified.
+      - name: Write SHA512SUMS.txt
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd dist-out
+          files=(Deepseek-Harness-Desktop-Setup-*.exe Deepseek-Harness-Desktop-Setup-*.exe.blockmap Deepseek-Harness-Desktop-*.dmg)
+          if (( ${#files[@]} == 0 )); then
+            echo "No release artifacts to checksum." >&2
+            exit 1
+          fi
+          sha512sum "${files[@]}" > SHA512SUMS.txt
+          cat SHA512SUMS.txt
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -134,7 +149,7 @@ jobs:
             echo "Windows release artifacts are missing." >&2
             exit 1
           fi
-          assets=("${windows[@]}" "${macos[@]}")
+          assets=("${windows[@]}" "${macos[@]}" dist-out/SHA512SUMS.txt)
           gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Deepseek-Harness-Desktop $GITHUB_REF_NAME" \

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
@@ -14,6 +15,12 @@ const REPO_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const CHECK_TIMEOUT_MS = 10_000;
 /** Whole-download budget for one Setup asset (hundreds of MB on slow links). */
 const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+/**
+ * Release asset with `sha512sum` lines for every installer. Releases that
+ * carry it get mandatory post-download verification; older releases without
+ * it install unverified (documented limitation, not an error).
+ */
+const CHECKSUM_ASSET_NAME = 'SHA512SUMS.txt';
 
 function currentVersion() {
   try {
@@ -61,6 +68,75 @@ function pickInstaller(assets) {
     || exes.find((asset) => !/portable/i.test(asset.name))
     || exes[0]
     || null;
+}
+
+function pickChecksumAsset(assets) {
+  const list = Array.isArray(assets) ? assets : [];
+  return list.find((asset) => typeof asset?.name === 'string'
+    && asset.name.toLowerCase() === CHECKSUM_ASSET_NAME.toLowerCase()
+    && typeof asset.browser_download_url === 'string') || null;
+}
+
+/**
+ * Parse `sha512sum` output: one `<128-hex>  <filename>` line per asset
+ * (`*` binary-mode marker tolerated).
+ * @param {string} text
+ * @returns {Map<string, string>} filename -> lower-case hex digest
+ */
+function parseSha512Sums(text) {
+  const sums = new Map();
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const match = line.match(/^([0-9a-fA-F]{128})\s+\*?(.+?)\s*$/);
+    if (match) {
+      sums.set(match[2], match[1].toLowerCase());
+    }
+  }
+  return sums;
+}
+
+function sha512HexOfFile(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha512');
+    const stream = fs.createReadStream(file);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/**
+ * Mandatory verification once a release carries SHA512SUMS.txt: any failure
+ * (manifest fetch, missing entry, digest mismatch) throws so the installer
+ * is never launched from a partial or tampered download.
+ * @param {string} dest - downloaded installer path.
+ * @param {string} assetName - original release asset name (manifest key).
+ * @param {string} checksumUrl - browser_download_url of SHA512SUMS.txt.
+ */
+async function verifyAssetChecksum(dest, assetName, checksumUrl) {
+  let response;
+  try {
+    response = await fetch(checksumUrl, {
+      headers: downloadHeaders(true),
+      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error('校验清单下载超时');
+    }
+    throw new Error(`校验清单下载失败：${error.message || String(error)}`);
+  }
+  if (!response.ok) {
+    throw new Error(`校验清单下载失败（${response.status}）`);
+  }
+  const sums = parseSha512Sums(await response.text());
+  const expected = sums.get(assetName);
+  if (!expected) {
+    throw new Error(`校验清单缺少 ${assetName} 的条目`);
+  }
+  const actual = await sha512HexOfFile(dest);
+  if (actual !== expected) {
+    throw new Error('安装包校验失败（sha512 不匹配），已删除下载文件');
+  }
 }
 
 function isTimeoutError(error) {
@@ -114,6 +190,7 @@ async function checkUpdate() {
     }
     const latest = normalizeVersion(release.tag_name || release.name);
     const asset = pickInstaller(release.assets);
+    const checksum = pickChecksumAsset(release.assets);
     const newer = latest && compareVersions(latest, currentVersion()) > 0;
     return snapshot({
       status: newer ? 'available' : 'current',
@@ -123,6 +200,7 @@ async function checkUpdate() {
       notes: typeof release.body === 'string' ? release.body : '',
       assetName: asset?.name || '',
       assetUrl: asset?.browser_download_url || '',
+      checksumUrl: checksum?.browser_download_url || '',
     });
   } catch (error) {
     return snapshot({
@@ -241,6 +319,7 @@ function summarizeRelease(release, current) {
     return null;
   }
   const asset = pickInstaller(release.assets);
+  const checksum = pickChecksumAsset(release.assets);
   const version = normalizeVersion(release.tag_name || release.name);
   return {
     tag: release.tag_name || '',
@@ -252,6 +331,7 @@ function summarizeRelease(release, current) {
     newer: Boolean(version) && compareVersions(version, current) > 0,
     assetName: asset?.name || '',
     assetUrl: asset?.browser_download_url || '',
+    checksumUrl: checksum?.browser_download_url || '',
     installable: Boolean(asset),
   };
 }
@@ -288,6 +368,14 @@ async function installFromAsset(info, onProgress) {
   const safeName = path.basename(info.assetName || 'DeepSeek-Harness-Setup.exe').replace(/[^\w.\-]+/g, '_');
   const dest = path.join(dir, safeName);
   await downloadFile(info.assetUrl, dest, onProgress);
+  if (info.checksumUrl) {
+    try {
+      await verifyAssetChecksum(dest, info.assetName, info.checksumUrl);
+    } catch (error) {
+      cleanupPartial(dest);
+      throw error;
+    }
+  }
   if (typeof onProgress === 'function') {
     onProgress({ phase: 'install', percent: 100 });
   }
@@ -336,6 +424,7 @@ async function installUpdate(onProgress) {
     ...info,
     assetUrl: info.assetUrl,
     assetName: info.assetName,
+    checksumUrl: info.checksumUrl,
     htmlUrl: info.htmlUrl,
   }, onProgress);
 }
@@ -347,6 +436,7 @@ module.exports = {
   RELEASES_PAGE,
   CHECK_TIMEOUT_MS,
   DOWNLOAD_TIMEOUT_MS,
+  CHECKSUM_ASSET_NAME,
   currentVersion,
   checkUpdate,
   installUpdate,
@@ -354,4 +444,6 @@ module.exports = {
   listReleases,
   installRelease,
   downloadFile,
+  parseSha512Sums,
+  verifyAssetChecksum,
 };

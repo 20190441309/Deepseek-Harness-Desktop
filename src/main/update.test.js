@@ -7,7 +7,17 @@ const os = require('node:os');
 const path = require('node:path');
 const https = require('node:https');
 const { EventEmitter } = require('node:events');
-const { summarizeRelease, installRelease, checkUpdate, listReleases, downloadFile } = require('./update');
+const crypto = require('node:crypto');
+const {
+  summarizeRelease,
+  installRelease,
+  checkUpdate,
+  listReleases,
+  downloadFile,
+  parseSha512Sums,
+  verifyAssetChecksum,
+  CHECKSUM_ASSET_NAME,
+} = require('./update');
 
 test('summarizeRelease skips drafts and marks a missing installer', () => {
   assert.equal(summarizeRelease({ draft: true, tag_name: 'v0.2.7' }, '0.2.6'), null);
@@ -89,6 +99,73 @@ test('downloadFile fails, aborts the request, and removes the partial after the 
     assert.equal(fs.existsSync(dest), false);
   } finally {
     https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('summarizeRelease exposes the SHA512SUMS.txt checksum manifest when present', () => {
+  const listed = summarizeRelease({
+    draft: false,
+    tag_name: 'v0.2.8',
+    assets: [
+      { name: 'Deepseek-Harness-Desktop-Setup-0.2.8.exe', browser_download_url: 'https://example.test/setup.exe' },
+      { name: CHECKSUM_ASSET_NAME, browser_download_url: 'https://example.test/SHA512SUMS.txt' },
+    ],
+  }, '0.2.7');
+  assert.equal(listed.checksumUrl, 'https://example.test/SHA512SUMS.txt');
+  const withoutManifest = summarizeRelease({
+    draft: false,
+    tag_name: 'v0.2.6',
+    assets: [{ name: 'Deepseek-Harness-Desktop-Setup-0.2.6.exe', browser_download_url: 'https://example.test/setup.exe' }],
+  }, '0.2.7');
+  assert.equal(withoutManifest.checksumUrl, '');
+});
+
+test('parseSha512Sums reads sha512sum lines and ignores garbage', () => {
+  const hexA = 'a'.repeat(128);
+  const hexB = 'B'.repeat(128);
+  const sums = parseSha512Sums([
+    `${hexA}  Deepseek-Harness-Desktop-Setup-0.2.8.exe`,
+    `${hexB} *Deepseek-Harness-Desktop-0.2.8-mac-arm64.dmg`,
+    'not a checksum line',
+    'deadbeef  short-hash.exe',
+    '',
+  ].join('\n'));
+  assert.equal(sums.get('Deepseek-Harness-Desktop-Setup-0.2.8.exe'), hexA);
+  assert.equal(sums.get('Deepseek-Harness-Desktop-0.2.8-mac-arm64.dmg'), 'b'.repeat(128));
+  assert.equal(sums.size, 2);
+});
+
+test('verifyAssetChecksum passes a good digest and rejects mismatch or missing entry', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-sum-'));
+  const dest = path.join(dir, 'setup.exe');
+  fs.writeFileSync(dest, 'installer-bytes');
+  const digest = crypto.createHash('sha512').update('installer-bytes').digest('hex');
+  const previousFetch = global.fetch;
+  const respond = (text) => async () => ({ ok: true, status: 200, text: async () => text });
+  try {
+    global.fetch = respond(`${digest}  Setup.exe\n`);
+    await verifyAssetChecksum(dest, 'Setup.exe', 'https://example.test/SHA512SUMS.txt');
+
+    global.fetch = respond(`${'0'.repeat(128)}  Setup.exe\n`);
+    await assert.rejects(
+      () => verifyAssetChecksum(dest, 'Setup.exe', 'https://example.test/SHA512SUMS.txt'),
+      /sha512 不匹配/,
+    );
+
+    global.fetch = respond(`${digest}  Other.exe\n`);
+    await assert.rejects(
+      () => verifyAssetChecksum(dest, 'Setup.exe', 'https://example.test/SHA512SUMS.txt'),
+      /缺少 Setup\.exe/,
+    );
+
+    global.fetch = async () => ({ ok: false, status: 404, text: async () => '' });
+    await assert.rejects(
+      () => verifyAssetChecksum(dest, 'Setup.exe', 'https://example.test/SHA512SUMS.txt'),
+      /校验清单下载失败/,
+    );
+  } finally {
+    global.fetch = previousFetch;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
