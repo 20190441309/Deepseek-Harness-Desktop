@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const SHELL_ROLES = new Set(['boot', 'harness']);
+const SHELL_ROLES = new Set(['boot', 'harness', 'launcher']);
 
 // Keep in sync with REMOTE_FEATURE_ENABLED in src/main/config.js.
 // Preload cannot import that module. When false, omit the four
@@ -101,6 +101,7 @@ function harnessApi(renderer) {
     listEditors: invoke(renderer, 'shell:list-editors'),
     openInEditor: invoke(renderer, 'shell:open-in-editor'),
     showItemInFolder: invoke(renderer, 'shell:show-item-in-folder'),
+    openDshHome: invoke(renderer, 'shell:open-dsh-home'),
     openWithSystemDefault: invoke(renderer, 'shell:open-with-default'),
     gitStage: invoke(renderer, 'shell:git-stage'),
     gitUnstage: invoke(renderer, 'shell:git-unstage'),
@@ -167,9 +168,40 @@ function harnessApi(renderer) {
   };
 }
 
+function launcherApi(renderer) {
+  return {
+    ...windowApi(renderer),
+    getConfig: invoke(renderer, 'shell:get-config'),
+    saveLauncherConfig: invoke(renderer, 'shell:save-launcher-config'),
+    launcherStatus: invoke(renderer, 'shell:launcher-status'),
+    checkUpdate: invoke(renderer, 'shell:check-update'),
+    installUpdate: invoke(renderer, 'shell:install-update'),
+    onUpdateProgress: subscribe(renderer, 'shell:update-progress'),
+    scanImport: invoke(renderer, 'shell:scan-import'),
+    runImport: invoke(renderer, 'shell:run-import'),
+    pickImportSource: invoke(renderer, 'shell:pick-import-source'),
+    pickSkillDir: invoke(renderer, 'shell:pick-skill-dir'),
+    listReleases: invoke(renderer, 'shell:list-releases'),
+    installRelease: invoke(renderer, 'shell:install-release'),
+    pluginForensics: invoke(renderer, 'shell:plugin-forensics'),
+    disablePlugin: invoke(renderer, 'shell:disable-plugin'),
+    enablePlugin: invoke(renderer, 'shell:enable-plugin'),
+    removePlugin: invoke(renderer, 'shell:remove-plugin'),
+    startDesktop: invoke(renderer, 'shell:start-desktop'),
+    skipUserPlugins: invoke(renderer, 'shell:start-desktop-skipped'),
+    retryFullPlugins: invoke(renderer, 'shell:retry-full-plugins'),
+    onPluginProgress: subscribe(renderer, 'shell:plugin-progress'),
+    onDesktopFailed: subscribe(renderer, 'shell:desktop-failed'),
+    onDesktopReady: subscribe(renderer, 'shell:desktop-ready'),
+    onShowTab: subscribe(renderer, 'shell:show-tab'),
+    onLauncherHint: subscribe(renderer, 'shell:launcher-hint'),
+  };
+}
+
 function buildShellApi(role, renderer) {
   if (role === 'boot') return bootApi(renderer);
   if (role === 'harness') return harnessApi(renderer);
+  if (role === 'launcher') return launcherApi(renderer);
   return null;
 }
 

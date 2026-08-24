@@ -62,5 +62,9 @@ const dshmarket = path.join(root, 'vendor', 'dshmarket');
 if (fs.existsSync(path.join(dshmarket, 'package.json'))) {
   installPluginRuntimeDeps(dshmarket, { skipIfComplete: true });
 }
+const usagePanel = path.join(root, 'vendor', 'dsh-usage-panel');
+if (fs.existsSync(path.join(usagePanel, 'package.json'))) {
+  installPluginRuntimeDeps(usagePanel, { skipIfComplete: true });
+}
 
 console.log(`官方源码已就绪：${vendor}`);

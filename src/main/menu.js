@@ -2,7 +2,7 @@ const { Menu, shell, app } = require('electron');
 const { openHarnessSettings, openMarketplace } = require('./window');
 const { loadConfig } = require('./config');
 
-function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
+function buildMenu({ onOpenWorkspace, onOpenLauncher, onRestart, onReload }) {
   const isMac = process.platform === 'darwin';
 
   const template = [
@@ -23,6 +23,10 @@ function buildMenu({ onOpenWorkspace, onRestart, onReload }) {
           label: '打开工作区…',
           accelerator: 'CmdOrCtrl+O',
           click: () => onOpenWorkspace(),
+        },
+        {
+          label: '打开启动器',
+          click: () => onOpenLauncher && onOpenLauncher(),
         },
         {
           label: '在资源管理器中打开工作区',

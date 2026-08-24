@@ -7,6 +7,7 @@ const { app, shell } = require('electron');
 const GITHUB_OWNER = 'ChisaAlter';
 const GITHUB_REPO = 'Deepseek-Harness-Desktop';
 const RELEASES_LATEST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const RELEASES_LIST = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`;
 const RELEASES_PAGE = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
 const REPO_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 
@@ -201,16 +202,49 @@ function launchInstaller(file) {
   child.unref();
 }
 
-async function installUpdate(onProgress) {
-  const info = await checkUpdate();
-  if (info.status === 'error') {
-    return { ...info, launched: false, openedPage: false };
+function summarizeRelease(release, current) {
+  if (!release || release.draft) {
+    return null;
   }
-  if (!info.assetUrl) {
-    if (info.htmlUrl) {
+  const asset = pickInstaller(release.assets);
+  const version = normalizeVersion(release.tag_name || release.name);
+  return {
+    tag: release.tag_name || '',
+    version,
+    prerelease: Boolean(release.prerelease),
+    htmlUrl: release.html_url || RELEASES_PAGE,
+    notes: typeof release.body === 'string' ? release.body : '',
+    current: Boolean(version) && compareVersions(version, current) === 0,
+    newer: Boolean(version) && compareVersions(version, current) > 0,
+    assetName: asset?.name || '',
+    assetUrl: asset?.browser_download_url || '',
+    installable: Boolean(asset),
+  };
+}
+
+async function listReleases() {
+  try {
+    const list = await githubJson(RELEASES_LIST);
+    const current = currentVersion();
+    const releases = (Array.isArray(list) ? list : [])
+      .map((row) => summarizeRelease(row, current))
+      .filter(Boolean);
+    return snapshot({ status: 'ok', releases });
+  } catch (error) {
+    return snapshot({
+      status: 'error',
+      releases: [],
+      message: error.message || String(error),
+    });
+  }
+}
+
+async function installFromAsset(info, onProgress) {
+  if (!info?.assetUrl) {
+    if (info?.htmlUrl) {
       await shell.openExternal(info.htmlUrl);
     }
-    return { ...info, launched: false, openedPage: Boolean(info.htmlUrl) };
+    return { ...info, launched: false, openedPage: Boolean(info?.htmlUrl) };
   }
   if (typeof onProgress === 'function') {
     onProgress({ phase: 'download', percent: 0 });
@@ -230,6 +264,48 @@ async function installUpdate(onProgress) {
   return { ...info, launched: true, installer: dest };
 }
 
+async function installRelease(tag, onProgress) {
+  const raw = String(tag || '').trim();
+  if (!raw) {
+    return snapshot({ status: 'error', message: 'missing-tag', launched: false });
+  }
+  try {
+    const release = await githubJson(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${encodeURIComponent(raw)}`,
+    );
+    if (!release) {
+      return snapshot({ status: 'error', message: 'release-not-found', launched: false });
+    }
+    const summary = summarizeRelease(release, currentVersion());
+    if (!summary) {
+      return snapshot({ status: 'error', message: 'release-not-found', launched: false });
+    }
+    if (!summary.installable) {
+      return snapshot({ ...summary, status: 'error', message: 'no-installer', launched: false });
+    }
+    return installFromAsset(summary, onProgress);
+  } catch (error) {
+    return snapshot({
+      status: 'error',
+      message: error.message || String(error),
+      launched: false,
+    });
+  }
+}
+
+async function installUpdate(onProgress) {
+  const info = await checkUpdate();
+  if (info.status === 'error') {
+    return { ...info, launched: false, openedPage: false };
+  }
+  return installFromAsset({
+    ...info,
+    assetUrl: info.assetUrl,
+    assetName: info.assetName,
+    htmlUrl: info.htmlUrl,
+  }, onProgress);
+}
+
 module.exports = {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -238,4 +314,7 @@ module.exports = {
   currentVersion,
   checkUpdate,
   installUpdate,
+  summarizeRelease,
+  listReleases,
+  installRelease,
 };

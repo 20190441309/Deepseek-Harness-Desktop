@@ -11,8 +11,8 @@
 
 ## 架构要点
 
-- Preload：`src/preload/index.js` — **boot** API 子集 vs **harness** 全量桌面 API。  
-- Main：`ipc.js` + `ipc-authorization.js` 校验 sender。  
+- Preload：`src/preload/index.js` — **launcher**（导入/版本/问诊）vs **boot** API 子集 vs **harness** 全量桌面 API。  
+- Main：`ipc.js` + `ipc-authorization.js` 校验 sender。导入、装指定 Release、插件问诊仅 **launcher**。  
 - 完整方法表：[../appendix/shell-api.md](../appendix/shell-api.md)
 
 ```mermaid
@@ -30,6 +30,7 @@ flowchart LR
 
 ## 不变量
 
+- Boot / harness 页不得调用仅 launcher 的导入、装版本、问诊 API。  
 - Boot 页不得调用仅 harness 的破坏性 API。  
 - FS / Git / 打开路径必须落在工作区权威之内。
 

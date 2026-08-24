@@ -5,14 +5,24 @@ const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot } = r
 const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
-const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin } = require('./plugins');
+const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
 const { ensureDshMarketPlugin } = require('./dshmarket-preset');
+const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
 const { hideDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
 const { buildMenu } = require('./menu');
-const { createTray, showMain, invokeTrayAction } = require('./tray');
+const { createTray, invokeTrayAction } = require('./tray');
+const { checkUpdate, installUpdate } = require('./update');
+const { scanImport, shouldHoldForImport } = require('./data-import');
+const {
+  shouldPromptUpdate,
+  shouldAutoStartDesktop,
+  shouldCloseLauncher,
+  readLastDesktopStart,
+  writeLastDesktopStart,
+} = require('./launcher-gate');
 const {
   startDesktopInstallControl,
   stopDesktopInstallControl,
@@ -29,6 +39,11 @@ const {
   isBootLoaded,
   getHarnessWebContents,
   hideHarnessView,
+  showLauncher,
+  getLauncherWindow,
+  sendToLauncher,
+  closeLauncherWindow,
+  showMain,
 } = require('./window');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
@@ -77,11 +92,144 @@ async function resolveLaunchTarget() {
   return { port };
 }
 
+let mainCloseBound = false;
+const launcherCloseBound = new WeakSet();
+
+function bindMainClose(win) {
+  if (!win || mainCloseBound) {
+    return win;
+  }
+  mainCloseBound = true;
+  win.on('close', (event) => {
+    if (quitting) {
+      return;
+    }
+    if (hideOnClose(loadConfig(), quitting)) {
+      event.preventDefault();
+      win.hide();
+      return;
+    }
+    event.preventDefault();
+    quitApp();
+  });
+  return win;
+}
+
+function createMainWindowWithClose() {
+  return bindMainClose(createMainWindow());
+}
+
+function bindLauncherClose(win) {
+  if (!win || launcherCloseBound.has(win)) {
+    return win;
+  }
+  launcherCloseBound.add(win);
+  win.on('close', (event) => {
+    if (quitting) {
+      return;
+    }
+    if (getMainWindow()) {
+      return;
+    }
+    event.preventDefault();
+    quitApp();
+  });
+  return win;
+}
+
+async function openLauncher() {
+  const win = await showLauncher();
+  bindLauncherClose(win);
+  return win;
+}
+
+function showForeground() {
+  if (getMainWindow()) {
+    showMain();
+    return;
+  }
+  void openLauncher();
+}
+
+async function startDesktopFromLauncher() {
+  try {
+    await harness.start();
+    writeLastDesktopStart(app.getPath('userData'), { ok: true });
+    sendToLauncher('shell:desktop-ready', harness.snapshot());
+    if (shouldCloseLauncher({ desktopReady: true, quitAfterStart: loadConfig().quitAfterStart })) {
+      closeLauncherWindow();
+    }
+    return harness.snapshot();
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    writeLastDesktopStart(app.getPath('userData'), { ok: false, error: message });
+    await openLauncher();
+    sendToLauncher('shell:show-tab', { tab: 'plugins' });
+    sendToLauncher('shell:desktop-failed', { error: message });
+    return { ok: false, error: message };
+  }
+}
+
+async function runColdStartGate() {
+  const config = loadConfig();
+  let check = { status: 'current' };
+  try {
+    check = await checkUpdate();
+  } catch (error) {
+    check = { status: 'error', message: error.message || String(error) };
+  }
+  sendToLauncher('shell:launcher-hint', { check });
+  let updatePromptPending = false;
+  if (shouldPromptUpdate({ askOnUpdate: config.askOnUpdate, check })) {
+    updatePromptPending = true;
+    const result = await dialog.showMessageBox(getLauncherWindow() || undefined, {
+      type: 'question',
+      buttons: ['更新', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+      title: '发现新版本',
+      message: `是否更新到 ${check.latest || check.version || ''}？`,
+      noLink: true,
+    });
+    if (result.response === 0) {
+      try {
+        await installUpdate((payload) => {
+          sendToLauncher('shell:update-progress', payload);
+        });
+      } catch (error) {
+        sendToLauncher('shell:launcher-hint', {
+          check: { ...check, status: 'error', message: error.message || String(error) },
+        });
+      }
+      return;
+    }
+    updatePromptPending = false;
+  }
+  const scan = scanImport();
+  const holdForImport = shouldHoldForImport(scan);
+  if (holdForImport) {
+    sendToLauncher('shell:show-tab', { tab: 'import' });
+  }
+  const lastStart = readLastDesktopStart(app.getPath('userData'));
+  const lastStartFailed = lastStart.ok === false;
+  if (lastStartFailed && !holdForImport) {
+    sendToLauncher('shell:show-tab', { tab: 'plugins' });
+  }
+  if (shouldAutoStartDesktop({
+    autoStartDesktop: config.autoStartDesktop,
+    holdForImport,
+    updatePromptPending,
+    lastStartFailed,
+  })) {
+    await startDesktopFromLauncher();
+  }
+}
+
 const harness = new HarnessController({
   dsh,
   remote,
   loadConfig,
-  createMainWindow,
+  createMainWindow: createMainWindowWithClose,
   getMainWindow,
   showBoot,
   showHarness,
@@ -92,7 +240,9 @@ const harness = new HarnessController({
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
   ensureDshMarketPlugin,
+  ensureUsagePanelPlugin,
   hideDshbotPlugin,
+  applyDisabledBundles,
   healDanglingBundles,
   saveConfig,
   appVersion: app.getVersion(),
@@ -924,7 +1074,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    showMain();
+    showForeground();
   });
 
   app.setName('Deepseek-Harness-Desktop');
@@ -953,29 +1103,24 @@ if (!gotLock) {
       dsh.log(`桌面安装控制通道启动失败：${error.message || String(error)}`, 'error');
     }
 
-    desktopResources = registerIpc({ dsh, harness, startHarness: restartWithCleanup, remote });
+    desktopResources = registerIpc({
+      dsh,
+      harness,
+      startHarness: restartWithCleanup,
+      startDesktop: startDesktopFromLauncher,
+      remote,
+    });
     buildMenu({
       onOpenWorkspace: () => ignoreFailure(pickWorkspace()),
+      onOpenLauncher: () => ignoreFailure(openLauncher()),
       onRestart: () => ignoreFailure(restartWithCleanup()),
       onReload: () => ignoreFailure(reloadWithCleanup()),
     });
     createTray({
+      onShow: showForeground,
+      onOpenLauncher: () => ignoreFailure(openLauncher()),
       onRestart: () => ignoreFailure(restartWithCleanup()),
       onQuit: () => quitApp(),
-    });
-
-    const win = createMainWindow();
-    win.on('close', (event) => {
-      if (quitting) {
-        return;
-      }
-      if (hideOnClose(loadConfig(), quitting)) {
-        event.preventDefault();
-        win.hide();
-        return;
-      }
-      event.preventDefault();
-      quitApp();
     });
 
     session.defaultSession.on('will-download', (event, item) => {
@@ -984,28 +1129,23 @@ if (!gotLock) {
     });
 
     globalShortcut.register('CommandOrControl+Shift+I', () => {
-      const win = getMainWindow();
+      const win = getMainWindow() || getLauncherWindow();
       const wc = getHarnessWebContents(win) || win?.webContents;
       wc?.toggleDevTools();
     });
 
-    try {
-      await harness.start();
-    } catch {
-      // boot page already shows the error
-    }
+    await openLauncher();
+    await runColdStartGate();
     if (process.env.DSH_SMOKE === '1') {
+      if (!getMainWindow()) {
+        await startDesktopFromLauncher();
+      }
       void runSmoke(getMainWindow());
     }
   });
 
   app.on('activate', () => {
-    const win = getMainWindow();
-    if (win) {
-      win.show();
-    } else {
-      ignoreFailure(harness.start());
-    }
+    showForeground();
   });
 
   app.on('before-quit', (event) => {

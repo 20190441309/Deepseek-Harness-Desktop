@@ -71,9 +71,13 @@
 
 窗口控件仍走 [`window-controls.css`](../src/renderer/window-controls.css)。禁止 NERV / MAGI / SEELE / EVA 商标或官方标志。禁止把 `--boot-*` 用到设置页、关闭遮罩、标题栏或官方 Web UI。
 
+## 桌面启动器
+
+启动器是冷启动闸门窗，不是仪器画布。源文件是 [`launcher.html`](../src/renderer/launcher.html)、[`launcher.css`](../src/renderer/launcher.css)、[`launcher.js`](../src/renderer/launcher.js)。色表是 [`dsh-webui-tokens.css`](../src/shared/dsh-webui-tokens.css) 的官方浅色 `:root` 与深色 `html[data-ds-dark-theme]`。`html[data-shell-theme=official]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把 Appearance 壁纸种子写进 `--dsw-alias-*`。禁止 `--boot-*`、`data-boot-theme`，也禁止在 `launcher.css` 里写第二套 `[data-theme]` / `prefers-color-scheme` 色板。
+
 ## 现有偏差（不要再扩散）
 
-产品页使用官方 token 与 `ui-primitives`。手机远程 Web（`mobile/web`）是文档化例外：抄 `--dsw-alias-*`，不嵌入官方插件树，不用启动页仪器画布。设置里的插件市场是预置 `dshmarket` 插件的 `settings.section`（id `market`），沿用该插件自己的界面。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。
+产品页使用官方 token 与 `ui-primitives`。手机远程 Web（`mobile/web`）是文档化例外：抄 `--dsw-alias-*`，不嵌入官方插件树，不用启动页仪器画布。设置里的插件市场是预置 `dshmarket` 插件的 `settings.section`（id `market`），沿用该插件自己的界面。用量统计是预置改版 `dsh-usage-panel`（id `usage-stats`），必须跟官方设置页同一套 token / primitives，不沿用上游插件色板。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。冷启动启动器走官方 token，见 [桌面启动器](#桌面启动器)，不是第二套例外。
 
 ## 自检
 

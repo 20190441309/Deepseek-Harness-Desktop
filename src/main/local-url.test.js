@@ -8,6 +8,7 @@ const {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
+  isLauncherNavigationUrl,
   rewriteLoopbackLoadUrl,
   isHttpOrHttpsUrl,
   shouldAllowPrivilegedNavigate,
@@ -51,6 +52,19 @@ test('isLocalAppNavigationUrl allows only the packaged boot.html path', () => {
   assert.equal(isLocalAppNavigationUrl('http://127.0.0.1:3080/'), false);
   assert.equal(isLocalAppNavigationUrl('http://127.0.0.1.evil.example/'), false);
   fs.rmSync(path.dirname(boot), { recursive: true, force: true });
+});
+
+test('isLauncherNavigationUrl allows only the packaged launcher.html path', () => {
+  const launcher = path.join(os.tmpdir(), `dsh-launcher-${process.pid}`, 'launcher.html');
+  fs.mkdirSync(path.dirname(launcher), { recursive: true });
+  fs.writeFileSync(launcher, '<html></html>');
+  const resolveLauncherPath = () => launcher;
+  const packaged = pathToFileURL(launcher).href;
+  assert.equal(isLauncherNavigationUrl(packaged, { resolveLauncherPath }), true);
+  assert.equal(isLauncherNavigationUrl(pathToFileURL(path.join(path.dirname(launcher), 'evillauncher.html')).href, { resolveLauncherPath }), false);
+  assert.equal(isLauncherNavigationUrl(pathToFileURL(path.join(os.tmpdir(), 'Downloads', 'launcher.html')).href, { resolveLauncherPath }), false);
+  assert.equal(isLauncherNavigationUrl('http://127.0.0.1:3080/'), false);
+  fs.rmSync(path.dirname(launcher), { recursive: true, force: true });
 });
 
 test('local-url has no marketplace navigation policy', () => {

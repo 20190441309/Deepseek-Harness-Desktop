@@ -3,36 +3,47 @@
 ## 步骤
 
 1. 用户启动应用（安装包或 `npm start`）。单实例锁：已有实例则聚焦已有窗口。
-2. `whenReady` 绑定桌面 `$DSH_HOME` 为 `userData/dsh-home` 并建目录（不读 `~/.dsh`，见 [../modules/dsh-home.md](../modules/dsh-home.md)）；加载 boot 页（`src/renderer/boot.html`）；preload 角色为 **boot**。
-3. `HarnessController.start()`：起 `dsh web`、订端口、准备 BrowserView（尚可不露出）。
-4. Boot UI 显示状态戳（BOOT）与等宽日志；订阅 `onState` / `onLog` / `onPluginBoot`。
-5. Harness HTTP 起来后，客户端插件仍在后台 BrowserView 装载；状态行写「正在加载插件 n/m」，**不**切到官方「正在加载插件」页。
-6. 插件装完且就绪：main 露出 BrowserView（官方四栏 UI）；preload 角色为 **harness**，注入 chrome。
-7. 失败：boot 显示 ERROR / 重试 / 导出日志；用户插件弄挂时走跳过插件树（见 [plugin-recovery.md](plugin-recovery.md)）。
+2. `whenReady` 绑定桌面 `$DSH_HOME` 为 `userData/dsh-home` 并建目录（不读 `~/.dsh`，见 [../modules/dsh-home.md](../modules/dsh-home.md)）；注册 IPC / 菜单 / 托盘；**只开启动器窗**（preload 角色 **launcher**）。禁止无条件 `HarnessController.start()`。
+3. 启动器立刻 `checkUpdate()`（GitHub `/releases/latest`，draft 不会出现）。有新正式版则询问是否更新：是 → 现有 `installUpdate()`；否 → 当作本次跳过。检查失败不拦，启动器里留一行弱提示。
+4. 随后自动启动桌面端，除非：桌面 `sessions/` 为空且 `~/.dsh` 有可导入数据 → 停在「导入」，不自动启。上次桌面启动失败则切到「插件问诊」。
+5. 桌面启动走主窗 boot 页（`src/renderer/boot.html`，preload **boot**）：`HarnessController.start()` 起 `dsh web`、订端口、准备 BrowserView。插件进度留在 boot 画布，不切官方加载页。
+6. 插件装完且就绪：main 露出 BrowserView（官方四栏 UI）；preload 角色为 **harness**。若「启动后退出启动器」为开，关启动器窗。
+7. 桌面起不来或插件树失败：**不关**启动器，切到插件问诊。托盘 / 文件菜单「打开启动器」可随时再 `show()`。
 
 ```mermaid
 sequenceDiagram
   participant User
-  participant Boot
+  participant Launcher
   participant Main
+  participant Boot
   participant Dsh as dsh_web
   participant BV as BrowserView
   User->>Main: launch
   Main->>Main: bind userData/dsh-home
-  Main->>Boot: load boot.html
-  Main->>Dsh: start
-  Dsh-->>Main: HTTP ready
-  Main->>BV: load loopback
-  Main->>Boot: plugin-boot progress
-  Main->>Boot: reveal harness
-  Boot-->>User: hide behind BV
+  Main->>Launcher: show launcher only
+  Launcher->>Launcher: checkUpdate
+  alt newer formal release
+    Launcher->>User: ask update
+  end
+  alt empty dest and source has data
+    Launcher-->>User: stay on import
+  else auto-start
+    Main->>Boot: load boot.html
+    Main->>Dsh: start
+    Dsh-->>Main: HTTP ready
+    Main->>BV: load loopback
+    Main->>Boot: plugin-boot progress
+    Main->>Boot: reveal harness
+    Boot-->>User: hide behind BV
+  end
 ```
 
 ## 门槛
 
+- QA：`TC-LAUNCH-001` … `TC-LAUNCH-007`（冷启动闸门 / 导入拦截 / 失败留下启动器 / 官方浅色深色）
 - QA：`TC-INST-001` … `TC-INST-004`，`TC-INST-003`（插件进度留在启动页），`TC-INST-011`（官方 `~/.dsh` 不能拖死桌面）
 
 ## 入口
 
-- `src/main/index.js`、`harness-controller.js`、`window.js`、`dsh.js`、`src/shared/dsh-home.js`
-- `src/renderer/boot.js`、`boot-recovery.js`
+- `src/main/index.js`、`launcher-gate.js`、`window.js`、`harness-controller.js`、`dsh.js`、`src/shared/dsh-home.js`
+- `src/renderer/launcher.js`、`boot.js`、`boot-recovery.js`

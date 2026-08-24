@@ -8,7 +8,7 @@
 | --- | --- |
 | 搞清进程与表面怎么拼起来 | [blueprint.md](blueprint.md) |
 | 搞清会话/插件目录在哪、是否读 `~/.dsh` | [modules/dsh-home.md](modules/dsh-home.md) |
-| 跟一条端到端用户路径 | [flows/](flows/boot-to-ready.md) |
+| 跟一条端到端用户路径 | [flows/](flows/boot-to-ready.md)（冷启动先进启动器） |
 | 改某一能力、找文件与门槛 | [modules/](modules/overview.md) |
 | 查 `window.shell` / 设置 id / main 文件 | [appendix/](appendix/shell-api.md) |
 | 开会话改产品且防回归 | [../features/README.md](../features/README.md) + `Touching: <id>` |
@@ -52,6 +52,7 @@
 - [终端](modules/terminal.md)
 - [设置导航](modules/settings.md)
 - [插件市场](modules/marketplace.md)
+- [用量统计](modules/usage-stats.md)
 - [壁纸与外观桥接](modules/wallpaper.md)
 - [dshbot](modules/dshbot.md)
 - [托盘、关闭与更新](modules/tray-update.md)

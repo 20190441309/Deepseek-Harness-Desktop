@@ -1,0 +1,10 @@
+---
+description: Settings usage stats is the preset dsh-usage-panel restyle; tokens only, no billing
+alwaysApply: true
+---
+
+# Usage stats
+
+Settings section `usage-stats` is the desktop restyle of `dsh-usage-panel`. Tokens / `ui-primitives` only; no billing, CNY, or `/user/balance`. UTC day buckets in v1. Desktop `desktop-plugins` copy wins over a marketplace install of the same package. Empty state is no billed usage (blank-only sessions included) with no scan failures; light heatmap empty cells must stay visible.
+
+Full card: [docs/features/usage-stats.md](../../docs/features/usage-stats.md)

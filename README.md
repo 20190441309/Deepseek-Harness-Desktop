@@ -47,6 +47,22 @@ macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applica
 - **设置选择** — 设置里的值选择改为官方胶囊 + 菜单。
 - **终端资源** — Ghostty 的 wasm 和字体打进安装包；源码启动缺资源则拒绝启动。
 
+> [!CAUTION]
+> <p style="color:#d1242f"><strong>升级后不会自动导入旧对话，侧栏可能是空的。</strong> 请先完全退出应用（托盘也要退）。产品路径是冷启动进入<strong>启动器 → 导入</strong>，只读拷贝官方 <code>~/.dsh</code> 的会话和附件，并用 <code>dsh plugin add</code> 把插件名单重装到桌面 home。不要拷 <code>profiles</code>。会话按工作区路径分桶：仓库如果换过目录，侧栏要打开<strong>原来的路径</strong>才能看到旧记录。旧 rc 的 SQLite 会话库与本版不兼容，不要硬开。下面的 PowerShell 仅作启动器不可用时的兜底。</p>
+
+**把旧对话拷进 0.2.7（启动器不可用时的 Windows PowerShell 兜底）：**
+
+```powershell
+$old = "$env:USERPROFILE\.dsh"
+$new = "$env:APPDATA\Deepseek-Harness-Desktop\dsh-home"
+Copy-Item "$old\sessions\*" "$new\sessions\" -Recurse -Force
+if (Test-Path "$old\attachments") {
+  Copy-Item "$old\attachments\*" "$new\attachments\" -Recurse -Force
+}
+```
+
+macOS 把 `$HOME/.dsh/sessions` 拷到 `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home/sessions`（附件同理）。拷完后打开**当时聊天用的工作区路径**；未绑定工作区的对话在「无工作区」。
+
 ### 修复
 
 - 自定义网关不会写入官方 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`。主模型不识图时，识图走官方兜底（需要官方 key）；缺 key 报缺凭证。
@@ -62,7 +78,7 @@ macOS 安装包未签名：下载后右键打开，或执行 `xattr -cr /Applica
 - **模型** — 第三方思考强度、识图兜底；最新一条用户消息可改完再发。
 - **外观** — 浅色 / 深色主题。壁纸在外观里选或点「浏览」打开图库（分类、搜索、收藏，确认后按窗口比例裁切）；毛玻璃和像素化也在外观里调。
 - **扩展** — 设置里管理 MCP、技能和插件。市场是随应用内置的 [dsh-market](https://github.com/dsh-market/dsh-market)（`dshmarket`），没有独立窗口。
-- **桌面** — 关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。用户插件把启动弄挂时，启动页可以跳过它们。
+- **桌面** — 冷启动先开启动器（更新询问、导入、版本、插件问诊）；关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。用户插件把启动弄挂时，启动器可以按包禁用或先跳过用户插件。
 
 `Ctrl+,` 打开设置。
 

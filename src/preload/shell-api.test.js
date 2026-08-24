@@ -52,6 +52,7 @@ const { buildShellApi, shellRole } = loadPreload().exports;
 test('shellRole accepts only explicit desktop roles', () => {
   assert.equal(shellRole(['electron', '--dshd-shell-role=boot']), 'boot');
   assert.equal(shellRole(['electron', '--dshd-shell-role=harness']), 'harness');
+  assert.equal(shellRole(['electron', '--dshd-shell-role=launcher']), 'launcher');
   assert.equal(shellRole(['electron', '--dshd-shell-role=marketplace']), null);
   assert.equal(shellRole(['electron', '--dshd-shell-role=admin']), null);
   assert.equal(shellRole(['electron']), null);
@@ -75,6 +76,7 @@ test('boot preload exposes recovery but no workspace mutation', () => {
   assert.equal(api.writeFile, undefined);
   assert.equal(api.installPlugin, undefined);
   assert.equal(api.saveConfig, undefined);
+  assert.equal(api.openDshHome, undefined);
 });
 
 test('marketplace preload role is not exposed', () => {
@@ -90,6 +92,7 @@ test('harness preload keeps work loops and omits parked remote', () => {
   assert.equal(typeof api.listEditors, 'function');
   assert.equal(typeof api.openInEditor, 'function');
   assert.equal(typeof api.showItemInFolder, 'function');
+  assert.equal(typeof api.openDshHome, 'function');
   assert.equal(typeof api.openWithSystemDefault, 'function');
   assert.equal(typeof api.ptyCreate, 'function');
   assert.equal(typeof api.previewOpen, 'function');
@@ -185,4 +188,28 @@ test('harness preload exposes installMarketplacePlugin and omits seed install dr
   assert.equal(typeof api.installPlugin, 'function');
   assert.equal(api.seedInstallDraft, undefined);
   assert.equal(api.onSeedInstallDraft, undefined);
+});
+
+test('launcher preload exposes import, releases, and forensics', () => {
+  const api = buildShellApi('launcher', fakeRenderer());
+  assert.equal(typeof api.scanImport, 'function');
+  assert.equal(typeof api.runImport, 'function');
+  assert.equal(typeof api.pickImportSource, 'function');
+  assert.equal(typeof api.pickSkillDir, 'function');
+  assert.equal(typeof api.listReleases, 'function');
+  assert.equal(typeof api.installRelease, 'function');
+  assert.equal(typeof api.pluginForensics, 'function');
+  assert.equal(typeof api.startDesktop, 'function');
+  assert.equal(typeof api.skipUserPlugins, 'function');
+  assert.equal(typeof api.retryFullPlugins, 'function');
+  assert.equal(api.writeFile, undefined);
+  assert.equal(api.installPlugin, undefined);
+});
+
+test('boot preload cannot import data or install a release', () => {
+  const api = buildShellApi('boot', fakeRenderer());
+  assert.equal(api.scanImport, undefined);
+  assert.equal(api.runImport, undefined);
+  assert.equal(api.installRelease, undefined);
+  assert.equal(api.pluginForensics, undefined);
 });

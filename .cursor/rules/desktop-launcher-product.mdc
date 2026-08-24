@@ -1,0 +1,15 @@
+---
+description: Desktop launcher is the cold-start gate — update ask, import, versions, plugin forensics
+alwaysApply: true
+---
+
+# Desktop launcher
+
+Cold start opens the **launcher window only** (same Electron process). Do not call `dsh web` until after `checkUpdate()`. Newer formal GitHub release → ask; skip or no update → start desktop unless dest `sessions/` is empty and `~/.dsh` has importable data. Desktop ready + `quitAfterStart` → close launcher. Start / plugin-tree failure → keep launcher and open forensics.
+
+Launcher uses official `--dsw-alias-*` and the official light/dark tables (`data-ds-dark-theme`). Do not paint Appearance wallpaper seeds onto the launcher. `--boot-*` stays on the main-window boot canvas. Marketplace / wallpaper gallery still must not open extra product windows.
+
+Versions are desktop Setup.exe from non-draft GitHub Releases, not a `vendor/dsh` pin switch. Keep 0.2.7 a GitHub **draft** until this launcher ships in the installer (`/releases/latest` must not push 0.2.6 users onto a build without the launcher).
+
+Full card: [docs/features/desktop-launcher.md](../../docs/features/desktop-launcher.md)
+Import: [docs/features/data-import.md](../../docs/features/data-import.md)

@@ -9,7 +9,9 @@
 | `index.js` | 应用入口 |
 | `harness-controller.js` | Harness 启停、揭示、恢复模式 |
 | `dsh.js` | `dsh web` 子进程管理 |
-| `window.js` | 主窗 / BrowserView |
+| `window.js` | 主窗 / BrowserView / 启动器窗 |
+| `launcher-gate.js` | 冷启动是否询问更新、自动启桌面、关启动器 |
+| `data-import.js` | 只读扫描/拷贝官方 `~/.dsh` 会话与附件；插件名单重装 |
 | `chrome.js` / `harness-chrome-inject.js` | 桌面 chrome 注入 |
 | `closing-overlay.js` | 关闭遮罩 |
 | `config.js` / `remote-patch.js` | 路径与壳配置；远程 IPC 补丁白名单 |
@@ -41,8 +43,9 @@
 | 文件 | 职责 |
 | --- | --- |
 | `marketplace-catalog.js` / `marketplace-install.js` / `marketplace-spec.js` / `marketplace-allowbuilds.js` | 市场 |
-| `dshmarket-preset.js` / `desktop-install-control.js` | 预置与安装控制 |
-| `plugins.js` / `plugin-runtime-files.js` | 插件列表与运行时文件 |
+| `dshmarket-preset.js` / `usage-panel-preset.js` / `desktop-install-control.js` | 预置与安装控制 |
+| `plugins.js` / `plugin-runtime-files.js` | 插件列表、禁用 bundles、运行时文件 |
+| `plugin-forensics.js` | 不启内核解析日志嫌疑包 |
 | `plugin-tree-failure.js` / `plugin-recovery-actions.js` | 启动失败恢复 |
 | `dshbot-preset.js` | dshbot 预置隐藏 |
 | `harness-extract.js` | 打包 harness 提取 |

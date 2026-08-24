@@ -2,6 +2,22 @@
 
 相对 0.2.6：Harness 钉到 `0.1.1-rc.1`，桌面家目录与官方 `~/.dsh` 隔离，终端 Ghostty 资源打进安装包，识图不再把第三方网关误写成官方 `DEEPSEEK_*`。
 
+> [!CAUTION]
+> <p style="color:#d1242f"><strong>升级后不会自动导入旧对话，侧栏可能是空的。</strong> 0.2.7 起桌面只用自己的 <code>dsh-home</code>，不读、不迁官方 <code>~/.dsh</code>。请先完全退出应用（托盘也要退）。产品路径是冷启动进入<strong>启动器 → 导入</strong>。不要拷 <code>profiles</code>。旧 rc 的 SQLite 会话库与本版不兼容，不要硬开。下面的 PowerShell 仅作启动器不可用时的兜底。</p>
+
+**把旧对话拷进 0.2.7（启动器不可用时的 Windows PowerShell 兜底）：**
+
+```powershell
+$old = "$env:USERPROFILE\.dsh"
+$new = "$env:APPDATA\Deepseek-Harness-Desktop\dsh-home"
+Copy-Item "$old\sessions\*" "$new\sessions\" -Recurse -Force
+if (Test-Path "$old\attachments") {
+  Copy-Item "$old\attachments\*" "$new\attachments\" -Recurse -Force
+}
+```
+
+macOS：把 `$HOME/.dsh/sessions` 拷到 `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home/sessions`（附件目录 `attachments` 同理）。拷完后打开**当时聊天用的工作区路径**；未绑定工作区的对话在「无工作区」。
+
 ### 安装包
 
 - Windows x64：`Deepseek-Harness-Desktop-Setup-0.2.7.exe`

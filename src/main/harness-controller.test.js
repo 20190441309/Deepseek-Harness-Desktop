@@ -250,9 +250,17 @@ test('hides dshbot after dshmarket and before Harness start', async () => {
       order.push('dshmarket');
       return { ok: true, added: true };
     },
+    ensureUsagePanelPlugin: async () => {
+      order.push('usage-panel');
+      return { ok: true, added: true };
+    },
     hideDshbotPlugin: async () => {
       order.push('dshbot-hide');
       return { ok: true, stripped: true };
+    },
+    applyDisabledBundles: () => {
+      order.push('disabled-bundles');
+      return { ok: true, changed: false };
     },
   });
   const origStart = f.dsh.start.bind(f.dsh);
@@ -261,8 +269,17 @@ test('hides dshbot after dshmarket and before Harness start', async () => {
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'dshbot-hide', 'start']);
+  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'usage-panel', 'dshbot-hide', 'disabled-bundles', 'start']);
   assert.ok(f.dsh.logs.some((line) => /已隐藏预置 dshbot/.test(line)));
+});
+
+test('logs and continues when the usage-panel preset fails', async () => {
+  const f = fixture({
+    ensureUsagePanelPlugin: async () => ({ ok: false, error: 'missing-zod' }),
+  });
+  await f.controller.start();
+  assert.equal(f.dsh.startCalls, 1);
+  assert.ok(f.dsh.logs.some((line) => /用量统计/.test(line) && /missing-zod/.test(line)));
 });
 
 test('refuses to start Harness when hiding dshbot fails', async () => {

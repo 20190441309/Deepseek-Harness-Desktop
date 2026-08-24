@@ -79,15 +79,21 @@ export type DesktopConfig = {
   repoUrl?: string
   releasesUrl?: string
   closeToTray?: boolean
+  dshHome?: string
 } & Partial<HarnessRestartConfig>
 
 /** The preload-exposed desktop API surface used by the settings UI. */
+export type OpenDshHomeResult =
+  | { ok: true, path: string }
+  | { ok: false, error: string }
+
 export type DesktopShell = {
   getConfig?: () => Promise<DesktopConfig>
   saveConfig?: (patch: Partial<DesktopConfig>) => Promise<DesktopConfig>
   checkUpdate?: () => Promise<UpdateInfo>
   installUpdate?: () => Promise<UpdateInfo>
   onUpdateProgress?: (handler: (payload: ProgressPayload) => void) => () => void
+  openDshHome?: () => Promise<OpenDshHomeResult>
 }
 
 /**

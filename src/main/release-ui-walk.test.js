@@ -49,6 +49,7 @@ test('release walk helpers stay injectable into the harness page', () => {
   assert.ok(QA_REQUIRED_STEPS.includes('plugin.dshbot.tabAbsent'));
   assert.equal(QA_REQUIRED_STEPS.includes('plugin.dshbot.tab'), false);
   assert.ok(QA_REQUIRED_STEPS.includes('market.installed'));
+  assert.ok(QA_REQUIRED_STEPS.includes('usage-stats.section'));
   assert.ok(QA_REQUIRED_STEPS.includes('files.mentionAppended'));
   assert.ok(QA_REQUIRED_STEPS.includes('files.mentionVisible'));
   assert.ok(QA_REQUIRED_STEPS.includes('composer.skillMenuAbsent'));
@@ -95,6 +96,8 @@ test('release walk source clicks Mention and asserts the composer markdown link'
   assert.match(walk, /\^必应\$\|\^bing\$/);
   assert.match(walk, /Bing thumbnails did not load/);
   assert.match(walk, /models\.customForm/);
+  assert.match(walk, /usage-stats\.section/);
+  assert.match(walk, /data-dsh-settings-section="usage-stats"/);
   assert.match(walk, /dshCustomProviderCard/);
   assert.match(walk, /\^显示名称\$\|\^display name\$/);
   assert.match(walk, /typeIntoAriaField/);

@@ -31,6 +31,7 @@ const {
   saveConfig,
   normalizeHarnessRecovery,
   normalizeRendererConfigPatch,
+  normalizeLauncherConfigPatch,
   normalizeRemotePatch,
 } = require('./config');
 
@@ -105,6 +106,9 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     { apiKey: 'sk-stolen' },
     { workspace: 'C:\\' },
     { githubToken: 'ghp_stolen' },
+    { quitAfterStart: false },
+    { autoStartDesktop: true },
+    { askOnUpdate: false },
     { remoteToken: 'pair-me' },
     { remoteRelayToken: 'a'.repeat(32) },
     { closeToTray: false },
@@ -183,4 +187,26 @@ test('publicConfig masks credentials and only reports presence flags', () => {
   } finally {
     saveConfig({ apiKey: before.apiKey, githubToken: before.githubToken, remoteToken: before.remoteToken });
   }
+});
+
+test('launcher defaults auto-start desktop, ask on update, and quit after a successful start', () => {
+  assert.equal(DEFAULTS.quitAfterStart, true);
+  assert.equal(DEFAULTS.autoStartDesktop, true);
+  assert.equal(DEFAULTS.askOnUpdate, true);
+  assert.deepEqual(DEFAULTS.disabledPlugins, []);
+});
+
+test('launcher config patch only accepts the three boolean shell settings', () => {
+  assert.deepEqual(normalizeLauncherConfigPatch({
+    quitAfterStart: false,
+    autoStartDesktop: false,
+    askOnUpdate: false,
+  }), {
+    quitAfterStart: false,
+    autoStartDesktop: false,
+    askOnUpdate: false,
+  });
+  assert.throws(() => normalizeLauncherConfigPatch({ quitAfterStart: 'yes' }));
+  assert.throws(() => normalizeLauncherConfigPatch({ disabledPlugins: ['evil'] }));
+  assert.throws(() => normalizeLauncherConfigPatch({ apiKey: 'sk-stolen' }));
 });

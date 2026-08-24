@@ -2,12 +2,24 @@ const { BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('./config');
-const { resolveTheme } = require('../shared/themes');
+const { resolveTheme, officialShellBackground, windowBackgroundForShell } = require('../shared/themes');
 const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
 
 const TITLEBAR_HEIGHT = 48;
 const injectScript = fs.readFileSync(path.join(__dirname, 'harness-chrome-inject.js'), 'utf8');
 let ipcBound = false;
+const chromeRoles = new WeakMap();
+
+function chromeBackgroundFor(win, theme = currentTheme()) {
+  const role = chromeRoles.get(win);
+  let url;
+  try {
+    url = win.webContents.getURL();
+  } catch {
+    // window already gone; role from WeakMap is still enough for the launcher
+  }
+  return windowBackgroundForShell(theme, { role, url });
+}
 
 function currentTheme() {
   return resolveTheme(loadConfig(), {
@@ -46,7 +58,7 @@ function paintBackground(win, color) {
   win.setBackgroundColor(color);
 }
 
-const WINDOW_ROLES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
+const WINDOW_ROLES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.LAUNCHER];
 
 function authorizedRole(event, roles) {
   try {
@@ -173,7 +185,7 @@ function applyAppTheme() {
     } else if (isHarnessUrl(win.webContents.getURL())) {
       syncHarnessChrome(win);
     } else {
-      paintBackground(win, theme.bg);
+      paintBackground(win, chromeBackgroundFor(win, theme));
       win.webContents.send('shell:theme', theme);
     }
     sendWindowState(win);
@@ -181,10 +193,13 @@ function applyAppTheme() {
   return theme;
 }
 
-function attachIntegratedChrome(win) {
+function attachIntegratedChrome(win, options = {}) {
+  if (options.role) {
+    chromeRoles.set(win, options.role);
+  }
   bindChromeIpc();
   hideNativeMenu(win);
-  paintBackground(win, currentTheme().bg);
+  paintBackground(win, chromeBackgroundFor(win));
 
   const apply = () => {
     if (win.isDestroyed()) {
@@ -197,7 +212,7 @@ function attachIntegratedChrome(win) {
       syncHarnessChrome(win);
       return;
     }
-    paintBackground(win, currentTheme().bg);
+    paintBackground(win, chromeBackgroundFor(win));
   };
 
   win.on('maximize', () => sendWindowState(win));
@@ -217,4 +232,5 @@ module.exports = {
   syncHarnessChrome,
   currentTheme,
   isHarnessUrl,
+  officialShellBackground,
 };

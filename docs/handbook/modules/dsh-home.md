@@ -3,14 +3,15 @@
 ## 职责与非目标
 
 **职责：** 桌面拉起的 `dsh web` / `dsh plugin` 使用独立 `$DSH_HOME`，与官方 CLI 的 `~/.dsh` 分开。  
-**非目标：** 不从 `~/.dsh` 迁移数据；不清理官方 home；不增加家目录设置页；不把隔离当成「跳过桌面市场插件」的恢复手段。
+**非目标：** 不静默从 `~/.dsh` 迁移；不清理官方 home；不增加家目录设置页；不把隔离当成「跳过桌面市场插件」的恢复手段。用户确认的只读导入见启动器 [data-import](../../features/data-import.md)。
 
 ## 用户路径
 
 1. 安装或覆盖升级后冷启动：桌面 **不读** 官方 `~/.dsh` 的会话、设置、插件。  
 2. 设置 → 市场安装的插件进入桌面 `profiles/web`。  
-3. 底栏终端里运行官方 `dsh` 仍用 `~/.dsh`（或用户自己的 `DSH_HOME`）。  
-4. 覆盖升级后须在桌面重配会话 / 主题 / 自定义模型；壳层 API key 与工作区路径仍在。
+3. 设置 → 关于 →「打开运行目录」打开桌面 `userData/dsh-home`。  
+4. 底栏终端里运行官方 `dsh` 仍用 `~/.dsh`（或用户自己的 `DSH_HOME`）。  
+5. 覆盖升级后须在桌面重配会话 / 主题 / 自定义模型；壳层 API key 与工作区路径仍在。
 
 ## 架构要点
 
@@ -38,20 +39,21 @@ macOS：`~/Library/Application Support/Deepseek-Harness-Desktop/`
 ## 实现入口
 
 - `src/shared/dsh-home.js`、`src/shared/official-deepseek-env.js`
-- `src/main/index.js` `whenReady`；`dsh.js` `spawnEnv`；`marketplace-install.js` `pluginEnv`；`plugins.js` `webProfileDir`；`workspace-authority.js`；`src/shared/themes.js`
+- `src/main/index.js` `whenReady`；`open-dsh-home.js`；`dsh.js` `spawnEnv`；`marketplace-install.js` `pluginEnv`；`plugins.js` `webProfileDir`；`workspace-authority.js`；`src/shared/themes.js`
+- 设置关于页：`vendor/deepseek-harness/packages/client/ui-settings-general/src/client/AboutSection.tsx`
 
 ## 不变量
 
 - Feature card：[../../features/dsh-home.md](../../features/dsh-home.md)
 - 短规则：[../../../.cursor/rules/dsh-home-product.mdc](../../../.cursor/rules/dsh-home-product.mdc)
-- 桌面不读、不写、不迁移、不清理 `~/.dsh`。
+- Harness/PTY 不读、不写、不清理 `~/.dsh`。壳层启动器可只读扫描官方 home、用户技能根与 MCP 文件，经勾选导入到桌面 home（用户确认）。
 - 隔离挡的是官方 home 污染；桌面 `dsh-home` 里的用户插件弄挂仍走既有 skip 恢复。
 
 ## 门槛
 
-- 单测：`src/shared/dsh-home.test.js` 及 spawnEnv / pluginEnv / PTY
+- 单测：`src/shared/dsh-home.test.js` 及 spawnEnv / pluginEnv / PTY / `open-dsh-home` / ipc 打开家目录
 - 自动化：`qa:source` / `qa:composer` 不得向 Electron 注入 `DSH_HOME`；结果须含桌面 `dsh-home`
-- QA：`TC-INST-009`、`TC-INST-011`
+- QA：`TC-INST-009`、`TC-INST-011`、`TC-DESK-009`
 
 ## 延伸阅读
 

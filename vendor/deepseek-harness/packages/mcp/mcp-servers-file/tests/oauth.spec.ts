@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authorizeMcpHttp, type McpOAuthRuntime } from '../src/oauth.ts'
+import { authorizeMcpHttp, authorizationServerMetadataUrl, browserLaunch, windowsBrowserLaunchArgs, type McpOAuthRuntime } from '../src/oauth.ts'
 
 const RESOURCE = 'https://mcp.example.test/mcp'
 const METADATA = 'https://mcp.example.test/.well-known/oauth-protected-resource/mcp'
@@ -114,5 +114,161 @@ describe('authorizeMcpHttp', () => {
     const { runtime: oauth } = runtime({ probeHeaders: {} })
     const tokens = await authorizeMcpHttp(RESOURCE, oauth)
     expect(tokens.access_token).toBe('tok-live')
+  })
+
+  it('discovers a path-bearing issuer via RFC 8414 well-known insertion', async () => {
+    const pathIssuer = 'https://auth.example.test/realms/foo'
+    const rfcUrl = `${ISSUER}/.well-known/oauth-authorization-server/realms/foo`
+    const opened: string[] = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url === RESOURCE && method === 'POST') {
+        return jsonResponse(401, { error: 'missing bearer token' }, {
+          'www-authenticate': `Bearer error="invalid_token", resource_metadata="${METADATA}"`,
+        })
+      }
+      if (url === METADATA && method === 'GET') {
+        return jsonResponse(200, { resource: RESOURCE, authorization_servers: [pathIssuer], scopes_supported: ['mcp:use'] })
+      }
+      if (url === rfcUrl && method === 'GET') {
+        return jsonResponse(200, {
+          issuer: pathIssuer,
+          authorization_endpoint: AUTHORIZE,
+          token_endpoint: TOKEN,
+          registration_endpoint: REGISTER,
+          code_challenge_methods_supported: ['S256'],
+        })
+      }
+      if (url === REGISTER && method === 'POST') {
+        return jsonResponse(201, { client_id: 'client-1', token_endpoint_auth_method: 'none' })
+      }
+      if (url === TOKEN && method === 'POST') {
+        return jsonResponse(200, { access_token: 'tok-live' })
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`)
+    }
+    const tokens = await authorizeMcpHttp(RESOURCE, {
+      fetch: fetchImpl,
+      openBrowser: (url) => { opened.push(url) },
+      createListener: async () => ({
+        redirectUri: 'http://127.0.0.1:9/callback',
+        waitForCode: async () => 'auth-code',
+        close: async () => {},
+      }),
+    })
+    expect(tokens.access_token).toBe('tok-live')
+    expect(opened).toHaveLength(1)
+  })
+
+  it('falls back to issuer-path well-known when RFC 8414 insertion 404s', async () => {
+    const pathIssuer = 'https://auth.example.test/realms/foo'
+    const rfcUrl = `${ISSUER}/.well-known/oauth-authorization-server/realms/foo`
+    const suffixUrl = `${pathIssuer}/.well-known/oauth-authorization-server`
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url === RESOURCE && method === 'POST') {
+        return jsonResponse(401, {}, {
+          'www-authenticate': `Bearer resource_metadata="${METADATA}"`,
+        })
+      }
+      if (url === METADATA && method === 'GET') {
+        return jsonResponse(200, { resource: RESOURCE, authorization_servers: [pathIssuer], scopes_supported: ['mcp:use'] })
+      }
+      if (url === rfcUrl && method === 'GET') {
+        return new Response('missing', { status: 404 })
+      }
+      if (url === suffixUrl && method === 'GET') {
+        return jsonResponse(200, {
+          issuer: pathIssuer,
+          authorization_endpoint: AUTHORIZE,
+          token_endpoint: TOKEN,
+          registration_endpoint: REGISTER,
+          code_challenge_methods_supported: ['S256'],
+        })
+      }
+      if (url === REGISTER && method === 'POST') {
+        return jsonResponse(201, { client_id: 'client-1' })
+      }
+      if (url === TOKEN && method === 'POST') {
+        return jsonResponse(200, { access_token: 'tok-path' })
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`)
+    }
+    const tokens = await authorizeMcpHttp(RESOURCE, {
+      fetch: fetchImpl,
+      openBrowser: () => {},
+      createListener: async () => ({
+        redirectUri: 'http://127.0.0.1:9/callback',
+        waitForCode: async () => 'auth-code',
+        close: async () => {},
+      }),
+    })
+    expect(tokens.access_token).toBe('tok-path')
+  })
+})
+
+describe('authorizationServerMetadataUrl', () => {
+  it('keeps a host-only issuer at origin well-known', () => {
+    expect(authorizationServerMetadataUrl(ISSUER)).toBe(`${ISSUER}/.well-known/oauth-authorization-server`)
+  })
+
+  it('inserts well-known between origin and issuer path', () => {
+    expect(authorizationServerMetadataUrl('https://auth.example.test/realms/foo')).toBe(
+      'https://auth.example.test/.well-known/oauth-authorization-server/realms/foo',
+    )
+  })
+})
+
+describe('windowsBrowserLaunchArgs', () => {
+  it('quotes the authorize URL so cmd does not split on &', () => {
+    const url = 'https://auth.example.test/oauth/authorize?response_type=code&client_id=abc'
+    expect(windowsBrowserLaunchArgs(url)).toEqual(['/c', 'start', '""', `"${url}"`])
+  })
+})
+
+describe('browserLaunch', () => {
+  const url = 'https://auth.example.test/oauth/authorize?response_type=code&client_id=abc'
+
+  function withPlatform(platform: NodeJS.Platform, run: () => void): void {
+    const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+    try {
+      run()
+    } finally {
+      if (descriptor === undefined) {
+        Object.defineProperty(process, 'platform', { configurable: true, value: process.platform })
+        return
+      }
+      Object.defineProperty(process, 'platform', descriptor)
+    }
+  }
+
+  it('uses quoted cmd start on Windows', () => {
+    withPlatform('win32', () => {
+      expect(browserLaunch(url)).toEqual({
+        command: 'cmd',
+        args: windowsBrowserLaunchArgs(url),
+        options: { detached: true, stdio: 'ignore', windowsVerbatimArguments: true },
+      })
+    })
+  })
+
+  it('uses open on macOS and xdg-open on other platforms', () => {
+    withPlatform('darwin', () => {
+      expect(browserLaunch(url)).toEqual({
+        command: 'open',
+        args: [url],
+        options: { detached: true, stdio: 'ignore' },
+      })
+    })
+    withPlatform('linux', () => {
+      expect(browserLaunch(url)).toEqual({
+        command: 'xdg-open',
+        args: [url],
+        options: { detached: true, stdio: 'ignore' },
+      })
+    })
   })
 })

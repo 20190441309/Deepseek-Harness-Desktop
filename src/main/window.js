@@ -1,11 +1,12 @@
 const { BrowserView, BrowserWindow, shell, nativeImage } = require('electron');
 const { rendererFile, assetFile, preloadFile } = require('./paths');
-const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChrome, syncHarnessChrome, currentTheme } = require('./chrome');
+const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChrome, syncHarnessChrome, currentTheme, officialShellBackground } = require('./chrome');
 const { normalizeSettingsSection, buildSettingsSectionScript } = require('./settings-jump');
 const {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
+  isLauncherNavigationUrl,
   isHttpOrHttpsUrl,
   rewriteLoopbackLoadUrl,
   shouldAllowPrivilegedNavigate,
@@ -33,6 +34,7 @@ let harnessRevealed = false;
 let harnessOrigin = '';
 let pluginBootWatch = null;
 let pendingMarketplaceJump = false;
+let launcherWindow = null;
 
 function pluginBootCancelled(message = 'Web UI 插件加载已取消') {
   const error = new Error(message);
@@ -463,6 +465,87 @@ function sendToBoot(channel, payload) {
   }
 }
 
+function getLauncherWindow() {
+  return launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null;
+}
+
+function isLauncherLoaded(win) {
+  const url = win?.webContents.getURL() || '';
+  return isLauncherNavigationUrl(url);
+}
+
+function createLauncherWindow() {
+  if (launcherWindow && !launcherWindow.isDestroyed()) {
+    return launcherWindow;
+  }
+  launcherWindow = new BrowserWindow({
+    ...windowChrome({
+      width: 900,
+      height: 680,
+      minWidth: 760,
+      minHeight: 520,
+      show: false,
+      icon: iconImage(),
+      backgroundColor: officialShellBackground(currentTheme()),
+    }),
+    webPreferences: {
+      preload: preloadFile(),
+      additionalArguments: ['--dshd-shell-role=launcher'],
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+  attachIntegratedChrome(launcherWindow, { role: 'launcher' });
+  launcherWindow.once('ready-to-show', () => {
+    hideNativeMenu(launcherWindow);
+    launcherWindow.show();
+  });
+  launcherWindow.on('closed', () => {
+    launcherWindow = null;
+  });
+  attachPrivilegedNavigationGuards(launcherWindow.webContents, {
+    allowUrl: isLauncherNavigationUrl,
+    openDeniedExternal: true,
+  });
+  return launcherWindow;
+}
+
+function showLauncher() {
+  const win = createLauncherWindow();
+  const ready = isLauncherLoaded(win)
+    ? Promise.resolve()
+    : win.loadFile(rendererFile('launcher.html'));
+  return ready.then(() => {
+    if (win.isMinimized()) {
+      win.restore();
+    }
+    win.show();
+    win.focus();
+    return win;
+  });
+}
+
+function sendToLauncher(channel, payload) {
+  const win = getLauncherWindow();
+  if (!win) {
+    return;
+  }
+  const url = win.webContents.getURL();
+  if (isLauncherNavigationUrl(url)) {
+    win.webContents.send(channel, payload);
+  }
+}
+
+function closeLauncherWindow() {
+  const win = getLauncherWindow();
+  if (!win) {
+    return;
+  }
+  win.close();
+}
+
 module.exports = {
   createMainWindow,
   getMainWindow,
@@ -477,6 +560,11 @@ module.exports = {
   openMarketplace,
   openRemote,
   sendToBoot,
+  createLauncherWindow,
+  getLauncherWindow,
+  showLauncher,
+  sendToLauncher,
+  closeLauncherWindow,
   setBootHarnessCovered,
   isBootLoaded,
   isHarnessLoaded,

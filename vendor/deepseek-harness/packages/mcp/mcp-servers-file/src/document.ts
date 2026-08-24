@@ -68,8 +68,8 @@ export function serializeDocument(document: McpServersDocument): string {
 
 /**
  * Replace or append one record. A masked or blank secret keeps the previous
- * value; an omitted env/headers map clears it, because the upsert is a
- * complete spec.
+ * value. An omitted or empty env/headers map keeps previous secret keys and
+ * drops non-secret keys. An explicit new map that omits a key deletes that key.
  * @param document - current document.
  * @param upsert - incoming record.
  * @returns the next document with the upserted record.
@@ -215,7 +215,14 @@ function mergeSecretMap(
   previous: Readonly<Record<string, string>> | undefined,
   next: Readonly<Record<string, string>> | undefined,
 ): Readonly<Record<string, string>> | undefined {
-  if (next === undefined) return undefined
+  if (next === undefined || Object.keys(next).length === 0) {
+    if (previous === undefined) return undefined
+    const kept: Record<string, string> = {}
+    for (const [key, value] of Object.entries(previous)) {
+      if (isSecretKey(key)) kept[key] = value
+    }
+    return Object.keys(kept).length === 0 ? undefined : kept
+  }
   const merged: Record<string, string> = {}
   for (const [key, value] of Object.entries(next)) {
     if ((value === '' || value === SECRET_MASK) && previous?.[key] !== undefined) {

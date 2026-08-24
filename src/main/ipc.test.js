@@ -39,6 +39,16 @@ function bootEvent() {
   };
 }
 
+function launcherEvent() {
+  return {
+    role: IPC_ROLES.LAUNCHER,
+    sender: {
+      isDestroyed: () => false,
+      send() {},
+    },
+  };
+}
+
 function stubModule(id, exports) {
   const filename = require.resolve(id);
   const previous = require.cache[filename];
@@ -77,6 +87,7 @@ function gitStubs() {
 function loadIpc(options = {}) {
   const restoreEntries = [];
   const handlers = new Map();
+  const openedPaths = [];
   const listMarketplaceCalls = [];
   const listWallpaperCatalogCalls = [];
   const installMarketplaceCalls = [];
@@ -99,12 +110,19 @@ function loadIpc(options = {}) {
     },
     dialog: {
       showSaveDialog: options.showSaveDialog || (async () => ({ canceled: true })),
+      showOpenDialog: options.showOpenDialog || (async () => ({ canceled: true, filePaths: [] })),
     },
     app: {
       setLoginItemSettings() {},
       getPath: options.getPath || ((name) => (name === 'downloads' ? '/tmp/downloads' : '/tmp')),
     },
-    shell: { openExternal: async () => true },
+    shell: {
+      openExternal: async () => true,
+      openPath: options.openPath || (async (target) => {
+        openedPaths.push(target);
+        return '';
+      }),
+    },
     nativeTheme: { shouldUseDarkColors: false },
   });
   stub('./config', {
@@ -129,10 +147,12 @@ function loadIpc(options = {}) {
       token: '',
     }),
     normalizeRendererConfigPatch: (patch) => patch || {},
+    normalizeLauncherConfigPatch: (patch) => patch || {},
   });
   stub('./window', {
     getMainWindow: () => null,
     getHarnessWebContents: () => null,
+    getLauncherWindow: () => null,
     openHarnessSettings() {},
     openMarketplace() {},
     openRemote() {},
@@ -150,9 +170,37 @@ function loadIpc(options = {}) {
   stub('./update', {
     checkUpdate() { return {}; },
     installUpdate: async () => ({}),
+    listReleases: async () => ({ status: 'ok', releases: [] }),
+    installRelease: async () => ({ status: 'error', message: 'no-installer', launched: false }),
     currentVersion: () => '0.0.0',
     REPO_URL: '',
     RELEASES_PAGE: '',
+  });
+  const scanImportCalls = [];
+  const runImportCalls = [];
+  stub('./data-import', {
+    scanImport: (opts) => {
+      scanImportCalls.push(opts);
+      return { ok: true, destEmpty: true, sourceHasData: false, sessions: [], plugins: [], skills: [], mcp: [] };
+    },
+    shouldHoldForImport: () => false,
+    runImport: async (opts) => {
+      runImportCalls.push(opts);
+      return { ok: true, empty: true, sessions: [], skills: [], plugins: [], mcp: [] };
+    },
+  });
+  stub('./plugin-forensics', {
+    inspectPlugins: () => ({ genericCause: null, suspects: [], plugins: [] }),
+    isPresetPlugin: () => false,
+  });
+  stub('./plugins', {
+    listInstalledPlugins: () => ({ plugins: [], bundles: [] }),
+    applyDisabledBundles: () => ({ ok: true, changed: false, bundles: [] }),
+    setBundleEnabled: () => ({ ok: true, changed: false }),
+    OFFICIAL_TEMPLATE_BUNDLES: new Set(['@deepseek-ai/dsh-base']),
+  });
+  stub('./launcher-gate', {
+    readLastDesktopStart: () => ({ ok: true, at: '', error: '' }),
   });
   stub('./marketplace-catalog', {
     listMarketplace: async (opts) => {
@@ -206,6 +254,7 @@ function loadIpc(options = {}) {
 
   const previousIpc = require.cache[ipcPath];
   delete require.cache[ipcPath];
+  let startDesktopCalls = 0;
   const { registerIpc } = require('./ipc');
   registerIpc({
     dsh: options.dsh || { snapshot: () => ({}), logs: [] },
@@ -213,6 +262,10 @@ function loadIpc(options = {}) {
     startHarness: async () => {
       startHarnessCalls += 1;
       return startHarnessImpl();
+    },
+    startDesktop: async () => {
+      startDesktopCalls += 1;
+      return { ok: true };
     },
     remote: options.remote === undefined ? null : options.remote,
   });
@@ -242,9 +295,15 @@ function loadIpc(options = {}) {
     installPluginCalls,
     uninstallCalls,
     saveConfigCalls,
+    openedPaths,
     startHarness() {
       return startHarnessCalls;
     },
+    startDesktop() {
+      return startDesktopCalls;
+    },
+    scanImportCalls,
+    runImportCalls,
   };
 }
 
@@ -613,6 +672,37 @@ test('shell:get-remote stays unavailable when remote is null', async () => {
   }
 });
 
+test('shell:get-config includes the bound desktop DSH home', async () => {
+  const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
+  const home = path.join(os.tmpdir(), 'dsh-home-config-view');
+  setDesktopDshHome(home);
+  const ipc = loadIpc();
+  try {
+    const config = await ipc.invoke('shell:get-config', harnessEvent());
+    assert.equal(config.dshHome, path.resolve(home));
+  } finally {
+    ipc.restore();
+    clearDesktopDshHome();
+  }
+});
+
+test('shell:open-dsh-home opens the bound home and ignores a renderer path', async () => {
+  const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
+  const home = path.join(os.tmpdir(), 'dsh-home-open-bound');
+  setDesktopDshHome(home);
+  const ipc = loadIpc();
+  try {
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(() => ipc.invoke('shell:open-dsh-home', bootEvent()), unauthorized);
+    const result = await ipc.invoke('shell:open-dsh-home', harnessEvent(), 'C:\\evil\\from-renderer');
+    assert.deepEqual(result, { ok: true, path: path.resolve(home) });
+    assert.deepEqual(ipc.openedPaths, [path.resolve(home)]);
+  } finally {
+    ipc.restore();
+    clearDesktopDshHome();
+  }
+});
+
 test('shell:get-remote reports unavailable when the feature is parked', async () => {
   const remote = {
     snapshot() {
@@ -630,6 +720,74 @@ test('shell:get-remote reports unavailable when the feature is parked', async ()
     const saved = await ipc.invoke('shell:save-remote', harnessEvent(), { remoteEnabled: true });
     assert.equal(saved.available, false);
     assert.equal(saved.enabled, false);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher-only import and release channels reject boot and harness senders', async () => {
+  const ipc = loadIpc();
+  try {
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(() => ipc.invoke('shell:scan-import', bootEvent()), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:scan-import', harnessEvent()), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:run-import', bootEvent(), {}), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:install-release', harnessEvent(), 'v0.2.6'), unauthorized);
+    await assert.rejects(() => ipc.invoke('shell:list-releases', leftoverMarketplaceEvent()), unauthorized);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher sender can scan-import and list-releases', async () => {
+  const ipc = loadIpc();
+  try {
+    const scan = await ipc.invoke('shell:scan-import', launcherEvent());
+    assert.equal(scan.ok, true);
+    const releases = await ipc.invoke('shell:list-releases', launcherEvent());
+    assert.equal(releases.status, 'ok');
+    const start = await ipc.invoke('shell:start-desktop', launcherEvent());
+    assert.equal(start.ok, true);
+    assert.equal(ipc.startDesktop(), 1);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher scan-import and run-import forward extra skill dirs and selections', async () => {
+  const ipc = loadIpc();
+  try {
+    await ipc.invoke('shell:scan-import', launcherEvent(), {
+      sourceHome: 'C:\\official-home',
+      extraSkillDirs: ['C:\\skills-extra'],
+    });
+    assert.equal(ipc.scanImportCalls.length, 1);
+    assert.equal(ipc.scanImportCalls[0].sourceHome, 'C:\\official-home');
+    assert.deepEqual(ipc.scanImportCalls[0].extraSkillDirs, ['C:\\skills-extra']);
+
+    const payload = {
+      sourceHome: 'C:\\official-home',
+      extraSkillDirs: ['C:\\skills-extra'],
+      overwrite: true,
+      importAttachments: true,
+      selectedRels: ['proj/sess-a'],
+      selectedSkillIds: ['home:alpha'],
+      selectedPluginNames: ['good-plugin'],
+      selectedMcpIds: ['wiki'],
+    };
+    const result = await ipc.invoke('shell:run-import', launcherEvent(), payload);
+    assert.equal(result.empty, true);
+    assert.equal(ipc.runImportCalls.length, 1);
+    const opts = ipc.runImportCalls[0];
+    assert.equal(opts.sourceHome, payload.sourceHome);
+    assert.deepEqual(opts.extraSkillDirs, payload.extraSkillDirs);
+    assert.equal(opts.overwrite, true);
+    assert.equal(opts.importAttachments, true);
+    assert.deepEqual(opts.selectedRels, payload.selectedRels);
+    assert.deepEqual(opts.selectedSkillIds, payload.selectedSkillIds);
+    assert.deepEqual(opts.selectedPluginNames, payload.selectedPluginNames);
+    assert.deepEqual(opts.selectedMcpIds, payload.selectedMcpIds);
+    assert.equal(typeof opts.installPlugin, 'function');
   } finally {
     ipc.restore();
   }

@@ -1,0 +1,728 @@
+'use strict';
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { getDesktopDshHome, tryGetDesktopDshHome } = require('../shared/dsh-home');
+const { DROPPED, OFFICIAL_TEMPLATE_BUNDLES, listInstalledPlugins } = require('./plugins');
+
+const SESSION_LOG = /^session\.jsonl(\.zstd)?$/i;
+const UNSUPPORTED_DB = /\.db$/i;
+const PATH_TRAVERSAL = /(^|[\\/])\.\.([\\/]|$)/;
+const LOCAL_SPEC = /^(file:|link:|workspace:)/i;
+const MCP_FILE = 'mcp-servers.yaml';
+const SKILL_DOC = 'SKILL.md';
+
+function officialDshHome() {
+  return path.join(os.homedir(), '.dsh');
+}
+
+function defaultAgentsSkillsRoot() {
+  return path.join(os.homedir(), '.agents', 'skills');
+}
+
+function resolveSourceHome(sourceHome) {
+  const raw = typeof sourceHome === 'string' && sourceHome.trim() ? sourceHome.trim() : officialDshHome();
+  return path.resolve(raw);
+}
+
+function destHome(explicit) {
+  if (typeof explicit === 'string' && explicit.trim()) {
+    return path.resolve(explicit.trim());
+  }
+  return tryGetDesktopDshHome() || getDesktopDshHome();
+}
+
+function journalPath(userDataDir) {
+  return path.join(userDataDir, 'import-journal.json');
+}
+
+function isUnsafeRel(rel) {
+  return !rel || PATH_TRAVERSAL.test(rel) || path.isAbsolute(rel);
+}
+
+function isInside(root, target) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  const rel = path.relative(resolvedRoot, resolvedTarget);
+  return rel === '' || (Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function walkSessionDirs(sessionsRoot) {
+  const found = [];
+  if (!fs.existsSync(sessionsRoot)) {
+    return found;
+  }
+  const stack = [sessionsRoot];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const logs = entries.filter((entry) => entry.isFile() && SESSION_LOG.test(entry.name));
+    const dbs = entries.filter((entry) => entry.isFile() && UNSUPPORTED_DB.test(entry.name));
+    if (logs.length) {
+      const encodings = new Set(logs.map((entry) => (entry.name.endsWith('.zstd') ? 'zstd' : 'plain')));
+      found.push({
+        abs: dir,
+        rel: path.relative(sessionsRoot, dir).split(path.sep).join('/'),
+        logs: logs.map((entry) => entry.name),
+        mixedEncoding: encodings.size > 1,
+        unsupported: false,
+      });
+      continue;
+    }
+    if (dbs.length) {
+      found.push({
+        abs: dir,
+        rel: path.relative(sessionsRoot, dir).split(path.sep).join('/'),
+        logs: dbs.map((entry) => entry.name),
+        mixedEncoding: false,
+        unsupported: true,
+      });
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== '.' && entry.name !== '..') {
+        stack.push(path.join(dir, entry.name));
+      }
+    }
+  }
+  return found.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+function destHasSession(destSessions, rel) {
+  const target = path.join(destSessions, ...rel.split('/'));
+  if (!fs.existsSync(target)) {
+    return false;
+  }
+  try {
+    return fs.readdirSync(target).some((name) => SESSION_LOG.test(name));
+  } catch {
+    return false;
+  }
+}
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function pluginCandidates(sourceHome) {
+  const manifest = readJson(path.join(sourceHome, 'profiles', 'web', 'package.json'));
+  const dependencies = manifest?.dependencies && typeof manifest.dependencies === 'object'
+    ? manifest.dependencies
+    : {};
+  const installed = new Set((listInstalledPlugins().plugins || []).map((row) => row.name));
+  return Object.entries(dependencies).map(([name, spec]) => {
+    const value = String(spec || '').trim();
+    const reason = OFFICIAL_TEMPLATE_BUNDLES.has(name)
+      ? 'template'
+      : DROPPED.includes(name)
+        ? 'dropped'
+        : LOCAL_SPEC.test(value)
+          ? 'local-spec'
+          : '';
+    return {
+      name,
+      spec: value,
+      skipped: Boolean(reason),
+      reason,
+      alreadyInstalled: installed.has(name),
+    };
+  });
+}
+
+function coerceYaml(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    const inner = raw.slice(1, -1);
+    try {
+      return JSON.parse(raw.startsWith('"') ? raw : `"${inner.replace(/"/g, '\\"')}"`);
+    } catch {
+      return inner;
+    }
+  }
+  if (raw === 'true') {
+    return true;
+  }
+  if (raw === 'false') {
+    return false;
+  }
+  if (raw === 'null' || raw === '~') {
+    return null;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(raw)) {
+    return Number(raw);
+  }
+  return raw;
+}
+
+function parseMcpServersYaml(text) {
+  const servers = [];
+  let current = null;
+  let inHeaders = false;
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
+    if (!rawLine.trim() || rawLine.trim().startsWith('#')) {
+      continue;
+    }
+    const indent = rawLine.match(/^ */)[0].length;
+    const line = rawLine.trim();
+    if (line === 'servers:') {
+      current = null;
+      inHeaders = false;
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      current = {};
+      servers.push(current);
+      inHeaders = false;
+      const rest = line.slice(2).trim();
+      if (rest.includes(':')) {
+        const idx = rest.indexOf(':');
+        const key = rest.slice(0, idx).trim();
+        const val = rest.slice(idx + 1);
+        if (key === 'headers' && !String(val).trim()) {
+          inHeaders = true;
+          current.headers = {};
+        } else {
+          current[key] = coerceYaml(val);
+        }
+      }
+      continue;
+    }
+    if (!current) {
+      continue;
+    }
+    const idx = line.indexOf(':');
+    if (idx === -1) {
+      continue;
+    }
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1);
+    if (key === 'headers' && !String(val).trim()) {
+      inHeaders = true;
+      current.headers = {};
+      continue;
+    }
+    if (inHeaders && indent >= 6) {
+      current.headers = current.headers || {};
+      current.headers[key] = coerceYaml(val);
+      continue;
+    }
+    inHeaders = false;
+    current[key] = coerceYaml(val);
+  }
+  return servers.filter((row) => row && row.id != null && String(row.id));
+}
+
+function readMcpServers(home) {
+  const file = path.join(home, MCP_FILE);
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  try {
+    return parseMcpServersYaml(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function dumpYamlScalar(value) {
+  if (value === true || value === false) {
+    return String(value);
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  const text = String(value);
+  if (text === '' || /[:#{}[\],&*?!|>%@`]|^\s|\s$|\n/.test(text)) {
+    return JSON.stringify(text);
+  }
+  return text;
+}
+
+function dumpMcpServersYaml(servers) {
+  const lines = ['servers:'];
+  for (const server of servers) {
+    let first = true;
+    for (const [key, value] of Object.entries(server)) {
+      if (key === 'headers' && value && typeof value === 'object' && !Array.isArray(value)) {
+        lines.push(`${first ? '  - ' : '    '}headers:`);
+        first = false;
+        for (const [headerKey, headerVal] of Object.entries(value)) {
+          lines.push(`      ${headerKey}: ${dumpYamlScalar(headerVal)}`);
+        }
+        continue;
+      }
+      if (Array.isArray(value)) {
+        lines.push(`${first ? '  - ' : '    '}${key}:`);
+        first = false;
+        for (const item of value) {
+          lines.push(`      - ${dumpYamlScalar(item)}`);
+        }
+        continue;
+      }
+      if (value && typeof value === 'object') {
+        continue;
+      }
+      lines.push(`${first ? '  - ' : '    '}${key}: ${dumpYamlScalar(value)}`);
+      first = false;
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function publicMcpRow(server, destIds) {
+  const id = String(server.id);
+  return {
+    id,
+    name: server.serverName || server.name || id,
+    endpoint: server.url || server.command || '',
+    enabled: server.enabled !== false,
+    conflict: destIds.has(id),
+  };
+}
+
+function isSkillPackage(dir) {
+  try {
+    return fs.existsSync(path.join(dir, SKILL_DOC));
+  } catch {
+    return false;
+  }
+}
+
+function listSkillPackages(root, prefix) {
+  const found = [];
+  if (!root || !fs.existsSync(root)) {
+    return found;
+  }
+  let stat;
+  try {
+    stat = fs.statSync(root);
+  } catch {
+    return found;
+  }
+  if (!stat.isDirectory()) {
+    return found;
+  }
+  if (isSkillPackage(root)) {
+    const name = path.basename(root);
+    if (!name.startsWith('.')) {
+      found.push({
+        id: `${prefix}:${name}`,
+        name,
+        destName: name,
+        abs: path.resolve(root),
+        source: prefix,
+      });
+    }
+    return found;
+  }
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === '.' || entry.name === '..' || entry.name.startsWith('.')) {
+      continue;
+    }
+    const abs = path.join(root, entry.name);
+    if (!isSkillPackage(abs)) {
+      continue;
+    }
+    found.push({
+      id: `${prefix}:${entry.name}`,
+      name: entry.name,
+      destName: entry.name,
+      abs: path.resolve(abs),
+      source: prefix,
+    });
+  }
+  return found.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function collectSkills({ source, extraSkillDirs, agentsSkillsRoot, destSkills }) {
+  const roots = [
+    { prefix: 'home', dir: path.join(source, 'skills') },
+    { prefix: 'agents', dir: agentsSkillsRoot || defaultAgentsSkillsRoot() },
+  ];
+  const extras = Array.isArray(extraSkillDirs) ? extraSkillDirs : [];
+  extras.forEach((dir, index) => {
+    if (typeof dir === 'string' && dir.trim()) {
+      roots.push({ prefix: extras.length === 1 ? 'extra' : `extra${index}`, dir: path.resolve(dir.trim()) });
+    }
+  });
+  const seen = new Set();
+  const skills = [];
+  for (const root of roots) {
+    for (const row of listSkillPackages(root.dir, root.prefix)) {
+      if (seen.has(row.id) || !isInside(root.dir, row.abs)) {
+        continue;
+      }
+      seen.add(row.id);
+      skills.push({
+        ...row,
+        conflict: destHasSkill(destSkills, row.destName),
+      });
+    }
+  }
+  return { skills, skillRoots: roots.map((row) => path.resolve(row.dir)) };
+}
+
+function destHasSkill(destSkills, name) {
+  if (!name || isUnsafeRel(name)) {
+    return false;
+  }
+  return isSkillPackage(path.join(destSkills, name));
+}
+
+function scanImport({
+  sourceHome,
+  destHome: dest,
+  extraSkillDirs,
+  agentsSkillsRoot,
+} = {}) {
+  const source = resolveSourceHome(sourceHome);
+  const target = destHome(dest);
+  const sourceSessions = path.join(source, 'sessions');
+  const destSessions = path.join(target, 'sessions');
+  const sessions = walkSessionDirs(sourceSessions).map((row) => ({
+    ...row,
+    conflict: !row.unsupported && destHasSession(destSessions, row.rel),
+  }));
+  const attachmentsDir = path.join(source, 'attachments');
+  const plugins = pluginCandidates(source);
+  const { skills, skillRoots } = collectSkills({
+    source,
+    extraSkillDirs,
+    agentsSkillsRoot,
+    destSkills: path.join(target, 'skills'),
+  });
+  const destMcpIds = new Set(readMcpServers(target).map((row) => String(row.id)));
+  const mcp = readMcpServers(source).map((row) => publicMcpRow(row, destMcpIds));
+  const hasAttachments = fs.existsSync(attachmentsDir);
+  const sourceHasData = sessions.some((row) => !row.unsupported)
+    || hasAttachments
+    || skills.length > 0
+    || plugins.some((row) => !row.skipped)
+    || mcp.length > 0;
+  return {
+    sourceHome: source,
+    destHome: target,
+    destEmpty: walkSessionDirs(destSessions).length === 0,
+    sourceHasData,
+    sessions,
+    plugins,
+    skills,
+    mcp,
+    skillRoots,
+    extraSkillDirs: Array.isArray(extraSkillDirs) ? extraSkillDirs.filter(Boolean) : [],
+    hasAttachments,
+  };
+}
+
+function shouldHoldForImport(scan) {
+  return Boolean(scan && scan.destEmpty && scan.sourceHasData);
+}
+
+function writeJournal(file, payload) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
+
+function copyDirAtomic(from, to) {
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  const tmp = `${to}.import-tmp`;
+  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.cpSync(from, tmp, { recursive: true });
+  fs.rmSync(to, { recursive: true, force: true });
+  fs.renameSync(tmp, to);
+}
+
+function importSessions({
+  sourceHome,
+  destHome: dest,
+  selectedRels,
+  overwrite = false,
+  userDataDir,
+  extraSkillDirs,
+  agentsSkillsRoot,
+  importAttachments,
+} = {}) {
+  const scan = scanImport({ sourceHome, destHome: dest, extraSkillDirs, agentsSkillsRoot });
+  const chosen = Array.isArray(selectedRels) ? selectedRels : scan.sessions.map((row) => row.rel);
+  const journalFile = journalPath(userDataDir || path.join(scan.destHome, '..'));
+  const results = [];
+  writeJournal(journalFile, { phase: 'copying', sourceHome: scan.sourceHome, destHome: scan.destHome, items: [] });
+
+  const byRel = new Map(scan.sessions.map((row) => [row.rel, row]));
+  for (const rel of chosen) {
+    if (isUnsafeRel(rel)) {
+      results.push({ rel, status: 'rejected', error: 'invalid-path' });
+      continue;
+    }
+    const row = byRel.get(rel);
+    if (!row) {
+      results.push({ rel, status: 'missing' });
+      continue;
+    }
+    if (row.unsupported || row.mixedEncoding) {
+      results.push({ rel, status: 'unsupported' });
+      continue;
+    }
+    if (row.conflict && !overwrite) {
+      results.push({ rel, status: 'skipped' });
+      continue;
+    }
+    try {
+      copyDirAtomic(row.abs, path.join(scan.destHome, 'sessions', ...rel.split('/')));
+      results.push({ rel, status: 'copied' });
+    } catch (error) {
+      results.push({ rel, status: 'failed', error: error.message || String(error) });
+    }
+  }
+
+  let attachments = 'absent';
+  const shouldCopyAttachments = importAttachments !== false;
+  const sourceAttachments = path.join(scan.sourceHome, 'attachments');
+  if (shouldCopyAttachments && fs.existsSync(sourceAttachments)) {
+    try {
+      copyDirAtomic(sourceAttachments, path.join(scan.destHome, 'attachments'));
+      attachments = 'copied';
+    } catch (error) {
+      attachments = `failed:${error.message || String(error)}`;
+    }
+  }
+
+  writeJournal(journalFile, {
+    phase: 'done',
+    sourceHome: scan.sourceHome,
+    destHome: scan.destHome,
+    items: results,
+    attachments,
+  });
+  return { ok: results.every((row) => row.status !== 'failed'), sessions: results, attachments, journal: journalFile };
+}
+
+async function importPlugins({
+  sourceHome,
+  destHome: dest,
+  selectedNames,
+  overwrite = false,
+  installPlugin,
+  extraSkillDirs,
+  agentsSkillsRoot,
+} = {}) {
+  const scan = scanImport({ sourceHome, destHome: dest, extraSkillDirs, agentsSkillsRoot });
+  const chosen = new Set(
+    Array.isArray(selectedNames)
+      ? selectedNames
+      : scan.plugins.filter((row) => !row.skipped).map((row) => row.name),
+  );
+  if (Array.isArray(selectedNames) && chosen.size === 0) {
+    return { ok: true, plugins: [] };
+  }
+  const run = typeof installPlugin === 'function' ? installPlugin : null;
+  const results = [];
+  if (!run) {
+    return { ok: false, error: 'missing-installer', plugins: results };
+  }
+  for (const row of scan.plugins) {
+    if (!chosen.has(row.name)) {
+      continue;
+    }
+    if (row.skipped) {
+      results.push({ name: row.name, status: 'skipped', reason: row.reason });
+      continue;
+    }
+    if (row.alreadyInstalled && !overwrite) {
+      results.push({ name: row.name, status: 'skipped', reason: 'installed' });
+      continue;
+    }
+    const spec = LOCAL_SPEC.test(row.spec)
+      ? row.name
+      : (row.spec && !row.spec.startsWith('^') && !row.spec.startsWith('~') ? row.spec : row.name);
+    try {
+      const installed = await run(spec);
+      results.push({
+        name: row.name,
+        status: installed?.ok === false ? 'failed' : 'installed',
+        error: installed?.error,
+      });
+    } catch (error) {
+      results.push({ name: row.name, status: 'failed', error: error.message || String(error) });
+    }
+  }
+  return { ok: results.every((row) => row.status !== 'failed'), plugins: results };
+}
+
+function destNameFromSkillId(id) {
+  const text = String(id || '');
+  const idx = text.indexOf(':');
+  return idx === -1 ? text : text.slice(idx + 1);
+}
+
+function importSkills({ scan, selectedIds, overwrite }) {
+  const chosen = Array.isArray(selectedIds) ? selectedIds : [];
+  const byId = new Map((scan.skills || []).map((row) => [row.id, row]));
+  const results = [];
+  for (const id of chosen) {
+    const destName = destNameFromSkillId(id);
+    if (isUnsafeRel(destName)) {
+      results.push({ id, status: 'rejected', error: 'invalid-path' });
+      continue;
+    }
+    const row = byId.get(id);
+    if (!row) {
+      results.push({ id, status: 'missing' });
+      continue;
+    }
+    const allowed = (scan.skillRoots || []).some((root) => isInside(root, row.abs));
+    if (!allowed || isUnsafeRel(row.destName)) {
+      results.push({ id, status: 'rejected', error: 'invalid-path' });
+      continue;
+    }
+    if (row.conflict && !overwrite) {
+      results.push({ id, status: 'skipped' });
+      continue;
+    }
+    try {
+      copyDirAtomic(row.abs, path.join(scan.destHome, 'skills', row.destName));
+      results.push({ id, status: 'copied' });
+    } catch (error) {
+      results.push({ id, status: 'failed', error: error.message || String(error) });
+    }
+  }
+  return results;
+}
+
+function importMcp({ scan, selectedIds, overwrite }) {
+  const chosen = Array.isArray(selectedIds) ? selectedIds : [];
+  const results = [];
+  if (!chosen.length) {
+    return results;
+  }
+  const sourceServers = readMcpServers(scan.sourceHome);
+  const destFile = path.join(scan.destHome, MCP_FILE);
+  const destExisted = fs.existsSync(destFile);
+  const destServers = destExisted ? readMcpServers(scan.destHome) : [];
+  const destById = new Map(destServers.map((row) => [String(row.id), row]));
+  let changed = false;
+  for (const id of chosen) {
+    const record = sourceServers.find((row) => String(row.id) === String(id));
+    if (!record) {
+      results.push({ id, status: 'missing' });
+      continue;
+    }
+    if (destById.has(String(id)) && !overwrite) {
+      results.push({ id, status: 'skipped' });
+      continue;
+    }
+    destById.set(String(id), record);
+    changed = true;
+    results.push({ id, status: 'copied' });
+  }
+  if (changed) {
+    fs.mkdirSync(path.dirname(destFile), { recursive: true });
+    fs.writeFileSync(destFile, dumpMcpServersYaml([...destById.values()]));
+  }
+  return results;
+}
+
+async function runImport(options = {}) {
+  const selectedRels = Array.isArray(options.selectedRels) ? options.selectedRels : [];
+  const selectedSkillIds = Array.isArray(options.selectedSkillIds) ? options.selectedSkillIds : [];
+  const selectedPluginNames = Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [];
+  const selectedMcpIds = Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [];
+  const importAttachments = options.importAttachments === true;
+  const empty = selectedRels.length === 0
+    && selectedSkillIds.length === 0
+    && selectedPluginNames.length === 0
+    && selectedMcpIds.length === 0
+    && !importAttachments;
+  const scan = scanImport(options);
+  const journalFile = journalPath(options.userDataDir || path.join(scan.destHome, '..'));
+  if (empty) {
+    writeJournal(journalFile, {
+      phase: 'done',
+      sourceHome: scan.sourceHome,
+      destHome: scan.destHome,
+      empty: true,
+      items: [],
+    });
+    return {
+      ok: true,
+      empty: true,
+      sessions: [],
+      skills: [],
+      plugins: [],
+      mcp: [],
+      attachments: 'absent',
+      journal: journalFile,
+    };
+  }
+
+  const sessions = importSessions({
+    ...options,
+    selectedRels,
+    importAttachments,
+  });
+  const skills = importSkills({ scan, selectedIds: selectedSkillIds, overwrite: options.overwrite === true });
+  const plugins = await importPlugins({
+    ...options,
+    selectedNames: selectedPluginNames,
+  });
+  const mcp = importMcp({ scan, selectedIds: selectedMcpIds, overwrite: options.overwrite === true });
+  writeJournal(journalFile, {
+    phase: 'done',
+    sourceHome: scan.sourceHome,
+    destHome: scan.destHome,
+    sessions: sessions.sessions,
+    skills,
+    plugins: plugins.plugins,
+    mcp,
+    attachments: sessions.attachments,
+  });
+  const ok = sessions.ok
+    && plugins.ok
+    && skills.every((row) => row.status !== 'failed')
+    && mcp.every((row) => row.status !== 'failed');
+  return {
+    ok,
+    empty: false,
+    sessions: sessions.sessions,
+    skills,
+    plugins: plugins.plugins,
+    mcp,
+    attachments: sessions.attachments,
+    journal: journalFile,
+  };
+}
+
+module.exports = {
+  officialDshHome,
+  scanImport,
+  shouldHoldForImport,
+  importSessions,
+  importPlugins,
+  runImport,
+  journalPath,
+  SESSION_LOG,
+};

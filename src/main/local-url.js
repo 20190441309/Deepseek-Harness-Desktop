@@ -133,6 +133,13 @@ function isLocalAppNavigationUrl(raw, options = {}) {
   });
 }
 
+function isLauncherNavigationUrl(raw, options = {}) {
+  if (typeof raw !== 'string' || raw.trim() === '') return false;
+  return raw.startsWith('file:') && isPackagedRendererFileUrl(raw, 'launcher.html', {
+    resolvePath: options.resolveLauncherPath,
+  });
+}
+
 /**
  * Pure policy for will-navigate: allow when the URL is permitted or equals
  * the current document (same-document reload / hash churn).
@@ -158,12 +165,15 @@ module.exports = {
   isLoopbackHttpUrl,
   isSameOriginLoopbackUrl,
   isLocalAppNavigationUrl,
+  isLauncherNavigationUrl,
   isPackagedRendererFileUrl,
   rewriteLoopbackLoadUrl,
   isHttpOrHttpsUrl,
   packagedRendererPath,
   packagedBootPath: (resolveBootPath) => packagedRendererPath('boot.html', resolveBootPath),
   packagedBootFileUrl: (resolveBootPath) => pathToFileURL(packagedRendererPath('boot.html', resolveBootPath)).href,
+  packagedLauncherPath: (resolveLauncherPath) => packagedRendererPath('launcher.html', resolveLauncherPath),
+  packagedLauncherFileUrl: (resolveLauncherPath) => pathToFileURL(packagedRendererPath('launcher.html', resolveLauncherPath)).href,
   shouldAllowPrivilegedNavigate,
   shouldAllowPrivilegedRedirect,
 };

@@ -207,6 +207,18 @@ function resolveTheme(config = {}, options = {}) {
   return tokensFromSeeds(family.id || familyId, family.name || familyId, mode, seeds);
 }
 
+function officialShellBackground(theme = {}) {
+  return theme.scheme === 'dark' ? '#151517' : '#FFFFFF';
+}
+
+function usesOfficialShellChrome(role, url) {
+  return role === 'launcher' || /launcher\.html(?:[?#]|$)/i.test(String(url || ''));
+}
+
+function windowBackgroundForShell(theme = {}, { role, url } = {}) {
+  return usesOfficialShellChrome(role, url) ? officialShellBackground(theme) : theme.bg;
+}
+
 function themeCssVars(theme) {
   return {
     '--bg': theme.bg,
@@ -228,6 +240,9 @@ module.exports = {
   FAMILY_SEEDS,
   listThemes,
   resolveTheme,
+  officialShellBackground,
+  usesOfficialShellChrome,
+  windowBackgroundForShell,
   themeCssVars,
   harnessThemeCss,
   readHarnessThemeSettings,

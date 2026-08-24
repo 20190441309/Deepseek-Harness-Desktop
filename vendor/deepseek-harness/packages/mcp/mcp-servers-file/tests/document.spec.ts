@@ -89,7 +89,7 @@ servers:
     expect(kept.servers[0]?.transport === 'stdio' && kept.servers[0].env?.GITHUB_TOKEN).toBe('secret-token')
   })
 
-  it('clears the stored map when the upsert omits env or headers', () => {
+  it('keeps secret keys when the upsert omits env or headers and drops non-secret keys', () => {
     const document = parseDocument(stdio)
     const cleared = upsertRecord(document, {
       id: 'github',
@@ -99,8 +99,29 @@ servers:
       command: 'npx',
     })
     const record = cleared.servers[0]
-    expect(record?.transport === 'stdio' && record.env).toBeUndefined()
-    expect(serializeDocument(cleared)).not.toContain('secret-token')
+    expect(record?.transport === 'stdio' && record.env).toEqual({ GITHUB_TOKEN: 'secret-token' })
+    expect(serializeDocument(cleared)).toContain('secret-token')
+
+    const withPath = parseDocument(`
+servers:
+  - id: github
+    enabled: true
+    transport: stdio
+    serverName: github
+    command: npx
+    env:
+      GITHUB_TOKEN: 'secret-token'
+      PATH: '/usr/bin'
+`)
+    const droppedPath = upsertRecord(withPath, {
+      id: 'github',
+      enabled: true,
+      transport: 'stdio',
+      serverName: 'github',
+      command: 'npx',
+    })
+    const dropped = droppedPath.servers[0]
+    expect(dropped?.transport === 'stdio' && dropped.env).toEqual({ GITHUB_TOKEN: 'secret-token' })
 
     const httpDocument = parseDocument(`
 servers:
@@ -111,16 +132,40 @@ servers:
     headers:
       Authorization: 'secret-token'
 `)
-    const clearedHttp = upsertRecord(httpDocument, {
+    const keptHttp = upsertRecord(httpDocument, {
       id: 'remote',
       enabled: true,
       transport: 'streamable-http',
       serverName: 'remote',
       url: 'http://127.0.0.1:9/mcp',
     })
-    const httpRecord = clearedHttp.servers[0]
-    expect(httpRecord?.transport === 'streamable-http' && httpRecord.headers).toBeUndefined()
-    expect(serializeDocument(clearedHttp)).not.toContain('secret-token')
+    const httpRecord = keptHttp.servers[0]
+    expect(httpRecord?.transport === 'streamable-http' && httpRecord.headers).toEqual({ Authorization: 'secret-token' })
+    expect(serializeDocument(keptHttp)).toContain('secret-token')
+
+    const emptyHeaders = upsertRecord(httpDocument, {
+      id: 'remote',
+      enabled: true,
+      transport: 'streamable-http',
+      serverName: 'remote',
+      url: 'http://127.0.0.1:9/mcp',
+      headers: {},
+    })
+    expect(emptyHeaders.servers[0]?.transport === 'streamable-http' && emptyHeaders.servers[0].headers).toEqual({
+      Authorization: 'secret-token',
+    })
+
+    const droppedAuth = upsertRecord(httpDocument, {
+      id: 'remote',
+      enabled: true,
+      transport: 'streamable-http',
+      serverName: 'remote',
+      url: 'http://127.0.0.1:9/mcp',
+      headers: { Accept: 'application/json' },
+    })
+    expect(droppedAuth.servers[0]?.transport === 'streamable-http' && droppedAuth.servers[0].headers).toEqual({
+      Accept: 'application/json',
+    })
   })
 
   it('rejects invalid records, transports, and duplicate serverName', () => {

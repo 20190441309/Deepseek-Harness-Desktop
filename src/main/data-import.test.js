@@ -1,0 +1,317 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
+
+function makeTree() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-import-'));
+  const source = path.join(root, 'official');
+  const dest = path.join(root, 'desktop');
+  const userData = path.join(root, 'userData');
+  fs.mkdirSync(path.join(source, 'sessions', 'proj', 'sess-a'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'sessions', 'proj', 'sess-a', 'session.jsonl'), '{"id":"a"}\n');
+  fs.mkdirSync(path.join(source, 'sessions', 'proj', 'sess-b'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'sessions', 'proj', 'sess-b', 'session.jsonl'), '{"id":"b"}\n');
+  fs.mkdirSync(path.join(source, 'sessions', 'legacy'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'sessions', 'legacy', 'chat.db'), 'sqlite');
+  fs.mkdirSync(path.join(source, 'attachments'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'attachments', 'file.bin'), 'blob');
+  fs.mkdirSync(path.join(source, 'profiles', 'web'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'profiles', 'web', 'package.json'), JSON.stringify({
+    dependencies: {
+      '@deepseek-ai/dsh-base': '1.0.0',
+      'good-plugin': 'github:acme/good',
+      'file-plugin': 'file:../local',
+    },
+  }));
+  fs.mkdirSync(userData, { recursive: true });
+  setDesktopDshHome(dest);
+  return { root, source, dest, userData };
+}
+
+function writeSkill(root, name, body = `# ${name}\n`) {
+  const dir = path.join(root, name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), body);
+  return dir;
+}
+
+const MCP_FIXTURE = `servers:
+  - id: wiki
+    enabled: true
+    transport: streamable-http
+    serverName: wiki
+    url: https://example.test/mcp
+  - id: secret-mcp
+    enabled: true
+    transport: streamable-http
+    serverName: secret
+    url: https://example.test/secure
+    headers:
+      Authorization: Bearer test-token-not-real
+`;
+
+test.afterEach(() => {
+  clearDesktopDshHome();
+});
+
+test('scanImport lists sessions, skips sqlite, and flags dest conflicts', () => {
+  const tree = makeTree();
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a'), { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a', 'session.jsonl'), '{"id":"old"}\n');
+  const { scanImport } = require('./data-import');
+  const scan = scanImport({ sourceHome: tree.source, destHome: tree.dest });
+  assert.equal(scan.sourceHasData, true);
+  assert.equal(scan.destEmpty, false);
+  const byRel = Object.fromEntries(scan.sessions.map((row) => [row.rel, row]));
+  assert.equal(byRel['proj/sess-a'].conflict, true);
+  assert.equal(byRel['proj/sess-b'].conflict, false);
+  assert.equal(byRel.legacy.unsupported, true);
+  const plugins = Object.fromEntries(scan.plugins.map((row) => [row.name, row]));
+  assert.equal(plugins['@deepseek-ai/dsh-base'].skipped, true);
+  assert.equal(plugins['file-plugin'].reason, 'local-spec');
+  assert.equal(plugins['good-plugin'].skipped, false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('shouldHoldForImport is true only when dest sessions are empty and source has data', () => {
+  const { shouldHoldForImport } = require('./data-import');
+  assert.equal(shouldHoldForImport({ destEmpty: true, sourceHasData: true }), true);
+  assert.equal(shouldHoldForImport({ destEmpty: false, sourceHasData: true }), false);
+  assert.equal(shouldHoldForImport({ destEmpty: true, sourceHasData: false }), false);
+});
+
+test('importSessions skips conflicts by default, overwrites when asked, and never writes the source', () => {
+  const tree = makeTree();
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a'), { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a', 'session.jsonl'), 'OLD\n');
+  const { importSessions } = require('./data-import');
+  const skipped = importSessions({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    userDataDir: tree.userData,
+  });
+  assert.equal(skipped.sessions.find((row) => row.rel === 'proj/sess-a').status, 'skipped');
+  assert.equal(fs.readFileSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a', 'session.jsonl'), 'utf8'), 'OLD\n');
+  assert.equal(skipped.sessions.find((row) => row.rel === 'proj/sess-b').status, 'copied');
+  assert.equal(skipped.sessions.find((row) => row.rel === 'legacy').status, 'unsupported');
+  assert.equal(fs.existsSync(path.join(tree.userData, 'import-journal.json')), true);
+  assert.equal(fs.readFileSync(path.join(tree.source, 'sessions', 'proj', 'sess-a', 'session.jsonl'), 'utf8'), '{"id":"a"}\n');
+
+  const overwritten = importSessions({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    overwrite: true,
+    selectedRels: ['proj/sess-a'],
+    userDataDir: tree.userData,
+  });
+  assert.equal(overwritten.sessions[0].status, 'copied');
+  assert.equal(fs.readFileSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a', 'session.jsonl'), 'utf8'), '{"id":"a"}\n');
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('importSessions rejects relative escape paths', () => {
+  const tree = makeTree();
+  const { importSessions } = require('./data-import');
+  const result = importSessions({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    selectedRels: ['../escape'],
+    userDataDir: tree.userData,
+  });
+  assert.equal(result.sessions[0].status, 'rejected');
+  assert.equal(fs.existsSync(path.join(tree.dest, 'escape')), false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('importPlugins skips templates and local specs, and reinstalls selected names', async () => {
+  const tree = makeTree();
+  const calls = [];
+  const { importPlugins } = require('./data-import');
+  const result = await importPlugins({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    installPlugin: async (spec) => {
+      calls.push(spec);
+      return { ok: true };
+    },
+  });
+  assert.deepEqual(calls, ['github:acme/good']);
+  assert.equal(result.plugins.find((row) => row.name === 'good-plugin').status, 'installed');
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('scanImport lists skills and MCP without exposing secrets, and holds on skills-only homes', () => {
+  const tree = makeTree();
+  writeSkill(path.join(tree.source, 'skills'), 'alpha');
+  fs.mkdirSync(path.join(tree.source, 'skills', '.system'), { recursive: true });
+  fs.writeFileSync(path.join(tree.source, 'skills', '.system', 'SKILL.md'), '# hidden\n');
+  fs.writeFileSync(path.join(tree.source, 'mcp-servers.yaml'), MCP_FIXTURE);
+  const agentsRoot = path.join(tree.root, 'agents-skills');
+  writeSkill(agentsRoot, 'beta');
+  const extraRoot = path.join(tree.root, 'extra-skills');
+  writeSkill(extraRoot, 'gamma');
+  const { scanImport, shouldHoldForImport } = require('./data-import');
+  const scan = scanImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: agentsRoot,
+    extraSkillDirs: [extraRoot],
+  });
+  const skillIds = scan.skills.map((row) => row.id).sort();
+  assert.deepEqual(skillIds, ['agents:beta', 'extra:gamma', 'home:alpha']);
+  assert.equal(scan.skills.some((row) => row.name === '.system' || row.id.includes('.system')), false);
+  assert.equal(scan.mcp.length, 2);
+  assert.equal(scan.mcp.find((row) => row.id === 'wiki').endpoint, 'https://example.test/mcp');
+  const secret = JSON.stringify(scan.mcp);
+  assert.equal(secret.includes('test-token-not-real'), false);
+  assert.equal(secret.includes('Authorization'), false);
+  assert.equal(scan.sourceHasData, true);
+
+  const emptyDest = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-empty-dest-'));
+  const skillsOnly = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-skills-only-'));
+  writeSkill(path.join(skillsOnly, 'skills'), 'solo');
+  const skillsScan = scanImport({
+    sourceHome: skillsOnly,
+    destHome: emptyDest,
+    agentsSkillsRoot: path.join(tree.root, 'missing-agents'),
+  });
+  assert.equal(skillsScan.sessions.length, 0);
+  assert.equal(skillsScan.skills.length, 1);
+  assert.equal(skillsScan.sourceHasData, true);
+  assert.equal(skillsScan.destEmpty, true);
+  assert.equal(shouldHoldForImport(skillsScan), true);
+  fs.rmSync(emptyDest, { recursive: true, force: true });
+  fs.rmSync(skillsOnly, { recursive: true, force: true });
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('runImport copies only selected rows and never writes the source', async () => {
+  const tree = makeTree();
+  writeSkill(path.join(tree.source, 'skills'), 'alpha');
+  writeSkill(path.join(tree.source, 'skills'), 'omega');
+  fs.writeFileSync(path.join(tree.source, 'mcp-servers.yaml'), MCP_FIXTURE);
+  const extraRoot = path.join(tree.root, 'extra-skills');
+  writeSkill(extraRoot, 'gamma');
+  const sourceSkill = fs.readFileSync(path.join(tree.source, 'skills', 'alpha', 'SKILL.md'));
+  const sourceMcp = fs.readFileSync(path.join(tree.source, 'mcp-servers.yaml'));
+  const sourceSess = fs.readFileSync(path.join(tree.source, 'sessions', 'proj', 'sess-b', 'session.jsonl'));
+  const { runImport } = require('./data-import');
+  const empty = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    extraSkillDirs: [extraRoot],
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: [],
+    selectedSkillIds: [],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    importAttachments: false,
+    installPlugin: async () => ({ ok: true }),
+  });
+  assert.equal(empty.empty, true);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'skills')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'mcp-servers.yaml')), false);
+
+  const calls = [];
+  const result = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    extraSkillDirs: [extraRoot],
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: ['proj/sess-a'],
+    selectedSkillIds: ['home:alpha', 'extra:gamma'],
+    selectedPluginNames: ['good-plugin'],
+    selectedMcpIds: ['secret-mcp'],
+    importAttachments: true,
+    overwrite: false,
+    installPlugin: async (spec) => {
+      calls.push(spec);
+      return { ok: true };
+    },
+  });
+  assert.equal(result.empty, false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'proj', 'sess-a', 'session.jsonl')), true);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'sessions', 'proj', 'sess-b', 'session.jsonl')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'attachments', 'file.bin')), true);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'skills', 'alpha', 'SKILL.md')), true);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'skills', 'omega', 'SKILL.md')), false);
+  assert.equal(fs.existsSync(path.join(tree.dest, 'skills', 'gamma', 'SKILL.md')), true);
+  assert.deepEqual(calls, ['github:acme/good']);
+  const destMcp = fs.readFileSync(path.join(tree.dest, 'mcp-servers.yaml'), 'utf8');
+  assert.match(destMcp, /id: secret-mcp/);
+  assert.match(destMcp, /Bearer test-token-not-real/);
+  assert.equal(destMcp.includes('id: wiki'), false);
+  assert.deepEqual(sourceSkill, fs.readFileSync(path.join(tree.source, 'skills', 'alpha', 'SKILL.md')));
+  assert.deepEqual(sourceMcp, fs.readFileSync(path.join(tree.source, 'mcp-servers.yaml')));
+  assert.deepEqual(sourceSess, fs.readFileSync(path.join(tree.source, 'sessions', 'proj', 'sess-b', 'session.jsonl')));
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('runImport skips MCP/skill conflicts unless overwrite, and rejects paths outside roots', async () => {
+  const tree = makeTree();
+  writeSkill(path.join(tree.source, 'skills'), 'alpha');
+  fs.writeFileSync(path.join(tree.source, 'mcp-servers.yaml'), MCP_FIXTURE);
+  fs.mkdirSync(path.join(tree.dest, 'skills', 'alpha'), { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'skills', 'alpha', 'SKILL.md'), '# dest\n');
+  fs.writeFileSync(path.join(tree.dest, 'mcp-servers.yaml'), `servers:
+  - id: secret-mcp
+    enabled: false
+    url: https://dest.test
+`);
+  const { runImport } = require('./data-import');
+  const skipped = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: [],
+    selectedSkillIds: ['home:alpha'],
+    selectedPluginNames: [],
+    selectedMcpIds: ['secret-mcp'],
+    importAttachments: false,
+  });
+  assert.equal(skipped.skills.find((row) => row.id === 'home:alpha').status, 'skipped');
+  assert.equal(fs.readFileSync(path.join(tree.dest, 'skills', 'alpha', 'SKILL.md'), 'utf8'), '# dest\n');
+  assert.match(fs.readFileSync(path.join(tree.dest, 'mcp-servers.yaml'), 'utf8'), /https:\/\/dest\.test/);
+
+  const overwritten = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    overwrite: true,
+    selectedRels: [],
+    selectedSkillIds: ['home:alpha'],
+    selectedPluginNames: [],
+    selectedMcpIds: ['secret-mcp'],
+    importAttachments: false,
+  });
+  assert.equal(overwritten.skills[0].status, 'copied');
+  assert.match(fs.readFileSync(path.join(tree.dest, 'skills', 'alpha', 'SKILL.md'), 'utf8'), /# alpha/);
+  assert.match(fs.readFileSync(path.join(tree.dest, 'mcp-servers.yaml'), 'utf8'), /example\.test\/secure/);
+
+  const escaped = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    extraSkillDirs: [path.join(tree.source, 'skills')],
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: ['../escape'],
+    selectedSkillIds: ['extra:..'],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    importAttachments: false,
+  });
+  assert.equal(escaped.sessions[0].status, 'rejected');
+  assert.equal(escaped.skills[0].status, 'rejected');
+  assert.equal(fs.existsSync(path.join(tree.dest, 'escape')), false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});

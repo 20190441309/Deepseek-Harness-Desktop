@@ -71,9 +71,13 @@ Color and theme: [`boot-tokens.css`](../src/renderer/boot-tokens.css) is the onl
 
 Window controls stay on [`window-controls.css`](../src/renderer/window-controls.css). Do not use NERV / MAGI / SEELE / EVA marks or official logos. Do not use `--boot-*` on settings, the closing overlay, the title bar, or the official Web UI.
 
+## Desktop launcher
+
+The launcher is the cold-start gate window, not the instrument canvas. Sources: [`launcher.html`](../src/renderer/launcher.html), [`launcher.css`](../src/renderer/launcher.css), [`launcher.js`](../src/renderer/launcher.js). Color comes from the official light `:root` and dark `html[data-ds-dark-theme]` tables in [`dsh-webui-tokens.css`](../src/shared/dsh-webui-tokens.css). `html[data-shell-theme=official]` makes [`theme.js`](../src/renderer/theme.js) apply only the light/dark half of `theme.scheme` and skip Appearance wallpaper seeds on `--dsw-alias-*`. Do not use `--boot-*` or `data-boot-theme`, and do not add a second `[data-theme]` / `prefers-color-scheme` palette in `launcher.css`.
+
 ## Known drift (do not spread)
 
-Product pages use official tokens and `ui-primitives`. Mobile remote Web (`mobile/web`) is a documented exception: it copies `--dsw-alias-*`, does not embed the official plugin tree, and does not use the boot instrument canvas. The Settings marketplace is the preset `dshmarket` plugin’s `settings.section` (id `market`) and keeps that plugin’s own UI. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet.
+Product pages use official tokens and `ui-primitives`. Mobile remote Web (`mobile/web`) is a documented exception: it copies `--dsw-alias-*`, does not embed the official plugin tree, and does not use the boot instrument canvas. The Settings marketplace is the preset `dshmarket` plugin’s `settings.section` (id `market`) and keeps that plugin’s own UI. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet. The cold-start launcher uses official tokens; see [Desktop launcher](#desktop-launcher). It is not a second exception.
 
 ## Self-check
 

@@ -1,11 +1,13 @@
 const {
   isLocalAppNavigationUrl,
+  isLauncherNavigationUrl,
   isSameOriginLoopbackUrl,
 } = require('./local-url');
 
 const IPC_ROLES = Object.freeze({
   BOOT: 'boot',
   HARNESS: 'harness',
+  LAUNCHER: 'launcher',
 });
 
 function defaultSurfaces() {
@@ -13,12 +15,15 @@ function defaultSurfaces() {
     getMainWindow,
     getHarnessWebContents,
     getHarnessOrigin,
+    getLauncherWindow,
   } = require('./window');
   const mainWindow = getMainWindow();
+  const launcherWindow = getLauncherWindow();
   return {
     boot: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null,
     harness: getHarnessWebContents(mainWindow),
     harnessOrigin: getHarnessOrigin(),
+    launcher: launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow.webContents : null,
   };
 }
 
@@ -32,12 +37,16 @@ function ipcSenderRole(event, options = {}) {
   const surfaces = options.surfaces || defaultSurfaces();
   const bootUrl = options.isBootUrl || isLocalAppNavigationUrl;
   const harnessUrl = options.isHarnessUrl || isSameOriginLoopbackUrl;
+  const launcherUrl = options.isLauncherUrl || isLauncherNavigationUrl;
 
   if (sender === surfaces.boot && bootUrl(frame.url)) {
     return IPC_ROLES.BOOT;
   }
   if (sender === surfaces.harness && harnessUrl(frame.url, surfaces.harnessOrigin)) {
     return IPC_ROLES.HARNESS;
+  }
+  if (sender === surfaces.launcher && launcherUrl(frame.url)) {
+    return IPC_ROLES.LAUNCHER;
   }
   return null;
 }

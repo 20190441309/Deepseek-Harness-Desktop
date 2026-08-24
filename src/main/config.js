@@ -37,6 +37,10 @@ const DEFAULTS = {
     at: '',
     appVersion: '',
   },
+  quitAfterStart: true,
+  autoStartDesktop: true,
+  askOnUpdate: true,
+  disabledPlugins: [],
 };
 
 function isPlainObject(value) {
@@ -156,6 +160,40 @@ function normalizePluginRecovery(config) {
   };
 }
 
+function normalizeDisabledPlugins(list) {
+  return [...new Set((Array.isArray(list) ? list : [])
+    .map((name) => String(name || '').trim())
+    .filter(Boolean))];
+}
+
+function normalizeLauncherSettings(config) {
+  return {
+    ...config,
+    quitAfterStart: config.quitAfterStart !== false,
+    autoStartDesktop: config.autoStartDesktop !== false,
+    askOnUpdate: config.askOnUpdate !== false,
+    disabledPlugins: normalizeDisabledPlugins(config.disabledPlugins),
+  };
+}
+
+function normalizeLauncherConfigPatch(patch) {
+  if (!isPlainObject(patch)) {
+    throw new TypeError('Config patch must be an object');
+  }
+  const next = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (['quitAfterStart', 'autoStartDesktop', 'askOnUpdate'].includes(key)) {
+      if (typeof value !== 'boolean') {
+        throw new TypeError(`${key} must be a boolean`);
+      }
+      next[key] = value;
+      continue;
+    }
+    throw new Error(`Config field is not launcher-writable: ${key}`);
+  }
+  return next;
+}
+
 function configPath() {
   return path.join(app.getPath('userData'), 'config.json');
 }
@@ -208,7 +246,9 @@ function loadConfig() {
     remoteRelayToken: typeof creds.remoteRelayToken === 'string' ? creds.remoteRelayToken : '',
     remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
-  config = normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery(config)));
+  config = normalizeLauncherSettings(
+    normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery(config))),
+  );
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
   }
@@ -222,7 +262,9 @@ function loadConfig() {
 
 function saveConfig(next) {
   const current = loadConfig();
-  const merged = normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery({ ...current, ...next })));
+  const merged = normalizeLauncherSettings(
+    normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery({ ...current, ...next }))),
+  );
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
   }
@@ -287,6 +329,7 @@ module.exports = {
   normalizeHarnessRecovery,
   normalizePluginRecovery,
   normalizeRendererConfigPatch,
+  normalizeLauncherConfigPatch,
   normalizeRemotePatch,
   normalizeRelayOrigin,
   normalizeRemoteConfig,

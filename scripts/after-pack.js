@@ -75,8 +75,8 @@ function defaultNpmInstall(packageDir) {
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const lockFile = path.join(packageDir, 'package-lock.json');
   const args = fs.existsSync(lockFile)
-    ? ['ci', '--omit=dev', '--ignore-scripts', '--no-fund', '--no-audit']
-    : ['install', '--omit=dev', '--ignore-scripts', '--no-fund', '--no-audit'];
+    ? ['ci', '--omit=dev', '--omit=peer', '--ignore-scripts', '--no-fund', '--no-audit']
+    : ['install', '--omit=dev', '--omit=peer', '--ignore-scripts', '--no-fund', '--no-audit'];
   const result = spawnSync(npmCmd, args, {
     cwd: packageDir,
     stdio: 'inherit',
@@ -335,6 +335,196 @@ function deployCliEntries(deployDir) {
     .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'vendor');
 }
 
+function packageJsonVersion(pkgDir) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+    return typeof pkg.version === 'string' ? pkg.version : '';
+  } catch {
+    return '';
+  }
+}
+
+function destForPackageName(root, name) {
+  return path.join(root, ...String(name).split('/'));
+}
+
+function listNodeModulesPackages(nodeModulesDir) {
+  const packages = [];
+  if (!fs.existsSync(nodeModulesDir)) {
+    return packages;
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(nodeModulesDir, { withFileTypes: true });
+  } catch {
+    return packages;
+  }
+  for (const entry of entries) {
+    if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith('.')) {
+      continue;
+    }
+    if (entry.name.startsWith('@')) {
+      const scopeDir = path.join(nodeModulesDir, entry.name);
+      let scoped;
+      try {
+        scoped = fs.readdirSync(scopeDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const child of scoped) {
+        if (!child.isDirectory() && !child.isSymbolicLink()) {
+          continue;
+        }
+        const pkgDir = path.join(scopeDir, child.name);
+        if (fs.existsSync(path.join(pkgDir, 'package.json'))) {
+          packages.push({ name: `${entry.name}/${child.name}`, dir: pkgDir });
+        }
+      }
+      continue;
+    }
+    const pkgDir = path.join(nodeModulesDir, entry.name);
+    if (fs.existsSync(path.join(pkgDir, 'package.json'))) {
+      packages.push({ name: entry.name, dir: pkgDir });
+    }
+  }
+  return packages;
+}
+
+function hostPackageFromPnpmEntry(entryName) {
+  const parts = entryName.split('+');
+  const scope = parts.length > 1 ? parts[0] : null;
+  const bare = (parts.length > 1 ? parts[1] : parts[0]).split('@')[0].split('_')[0];
+  return { scope, bare, name: scope ? `${scope}/${bare}` : bare };
+}
+
+/**
+ * Flatten `.pnpm` store entries to top-level node_modules, then nest siblings
+ * whose version differs from the already-copied top-level package under the
+ * host package (so MCP SDK keeps ajv@8 when the tree also has ajv@6).
+ * @param {string} storeDir - deploy `node_modules/.pnpm`
+ * @param {string} nmDest - packaged `node_modules`
+ * @returns {{ src: string, dest: string }[]}
+ */
+function collectPnpmFlattenFiles(storeDir, nmDest) {
+  const flattened = [];
+  const seen = new Set();
+  const flattenPkg = (pkgDir, destDir) => {
+    if (!fs.existsSync(path.join(pkgDir, 'package.json'))) {
+      return;
+    }
+    if (seen.has(destDir) || fs.existsSync(path.join(destDir, 'package.json'))) {
+      return;
+    }
+    seen.add(destDir);
+    const files = collectFiles(pkgDir, destDir, false, false);
+    for (const f of files) {
+      flattened.push(f);
+    }
+  };
+  if (!fs.existsSync(storeDir)) {
+    return flattened;
+  }
+  for (const entry of fs.readdirSync(storeDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const entryNm = path.join(storeDir, entry.name, 'node_modules');
+    if (!fs.existsSync(entryNm)) {
+      continue;
+    }
+    const host = hostPackageFromPnpmEntry(entry.name);
+    flattenPkg(
+      destForPackageName(entryNm, host.name),
+      destForPackageName(nmDest, host.name),
+    );
+  }
+  const sharedDir = path.join(storeDir, 'node_modules');
+  if (fs.existsSync(sharedDir)) {
+    for (const n of fs.readdirSync(sharedDir, { withFileTypes: true })) {
+      if (!n.isDirectory() && !n.isSymbolicLink()) {
+        continue;
+      }
+      const sharedPkg = path.join(sharedDir, n.name);
+      if (n.name.startsWith('@')) {
+        for (const s of fs.readdirSync(sharedPkg, { withFileTypes: true })) {
+          if (s.isDirectory() || s.isSymbolicLink()) {
+            flattenPkg(path.join(sharedPkg, s.name), path.join(nmDest, n.name, s.name));
+          }
+        }
+      } else {
+        flattenPkg(sharedPkg, path.join(nmDest, n.name));
+      }
+    }
+  }
+  const seenNested = new Set();
+  for (const entry of fs.readdirSync(storeDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'node_modules') {
+      continue;
+    }
+    const entryNm = path.join(storeDir, entry.name, 'node_modules');
+    if (!fs.existsSync(entryNm)) {
+      continue;
+    }
+    const host = hostPackageFromPnpmEntry(entry.name);
+    const hostDest = destForPackageName(nmDest, host.name);
+    for (const sibling of listNodeModulesPackages(entryNm)) {
+      if (sibling.name === host.name) {
+        continue;
+      }
+      const topVersion = packageJsonVersion(destForPackageName(nmDest, sibling.name));
+      const siblingVersion = packageJsonVersion(sibling.dir);
+      if (!topVersion || !siblingVersion || topVersion === siblingVersion) {
+        continue;
+      }
+      const nestedDest = path.join(hostDest, 'node_modules', ...sibling.name.split('/'));
+      if (seenNested.has(nestedDest) || fs.existsSync(path.join(nestedDest, 'package.json'))) {
+        continue;
+      }
+      seenNested.add(nestedDest);
+      const files = collectFiles(sibling.dir, nestedDest, false, false);
+      for (const f of files) {
+        flattened.push(f);
+      }
+    }
+  }
+  return flattened;
+}
+
+function resolvePackageFrom(fromDir, packageName, stopDir) {
+  let current = path.resolve(fromDir);
+  const stop = path.resolve(stopDir);
+  const segments = String(packageName).split('/');
+  while (true) {
+    const candidate = path.join(current, 'node_modules', ...segments);
+    if (fs.existsSync(path.join(candidate, 'package.json'))) {
+      return candidate;
+    }
+    if (current === stop) {
+      return null;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+function assertMcpSdkAjv(harnessDest) {
+  const sdkDir = path.join(harnessDest, 'node_modules', '@modelcontextprotocol', 'sdk');
+  if (!fs.existsSync(path.join(sdkDir, 'package.json'))) {
+    throw new Error('安装包缺少 @modelcontextprotocol/sdk');
+  }
+  const ajvDir = resolvePackageFrom(sdkDir, 'ajv', harnessDest);
+  const version = ajvDir ? packageJsonVersion(ajvDir) : '';
+  const major = Number.parseInt(String(version).split('.')[0], 10);
+  if (!Number.isInteger(major) || major < 8) {
+    throw new Error(
+      `拍平丢掉了 SDK 嵌套 ajv@8（MCP SDK 解析到 ajv@${version || 'missing'}）`,
+    );
+  }
+}
+
 /**
  * 用精简 deploy 目录组装 resources/vendor/deepseek-harness：
  *   apps/cli     <- deploy 根内容（lib/ config/ package.json，不含 node_modules）
@@ -370,57 +560,7 @@ async function assembleFromDeploy(projectDir, deployDir, harnessDest) {
   }
   const storeDir = path.join(nmSrc, '.pnpm');
   if (fs.existsSync(storeDir)) {
-    const flattened = [];
-    const seen = new Set();
-    const flattenPkg = (pkgDir, destDir) => {
-      if (!fs.existsSync(path.join(pkgDir, 'package.json'))) {
-        return;
-      }
-      if (seen.has(destDir) || fs.existsSync(path.join(destDir, 'package.json'))) {
-        return;
-      }
-      seen.add(destDir);
-      const files = collectFiles(pkgDir, destDir, false, false);
-      for (const f of files) {
-        flattened.push(f);
-      }
-    };
-    for (const entry of fs.readdirSync(storeDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const entryNm = path.join(storeDir, entry.name, 'node_modules');
-      if (!fs.existsSync(entryNm)) {
-        continue;
-      }
-      // 条目名 -> 包名：@scope+name@ver 或 @scope+name_hash -> [@scope, name]；name@ver / name_hash -> [name]
-      const parts = entry.name.split('+');
-      const scope = parts.length > 1 ? parts[0] : null;
-      const bare = (parts.length > 1 ? parts[1] : parts[0]).split('@')[0].split('_')[0];
-      flattenPkg(
-        path.join(entryNm, scope || '', bare),
-        path.join(nmDest, scope || '', bare)
-      );
-    }
-    // 共享目录 .pnpm/node_modules（被多个条目引用的包；条目是 junction 链接）
-    const sharedDir = path.join(storeDir, 'node_modules');
-    if (fs.existsSync(sharedDir)) {
-      for (const n of fs.readdirSync(sharedDir, { withFileTypes: true })) {
-        if (!n.isDirectory() && !n.isSymbolicLink()) {
-          continue;
-        }
-        const sharedPkg = path.join(sharedDir, n.name);
-        if (n.name.startsWith('@')) {
-          for (const s of fs.readdirSync(sharedPkg, { withFileTypes: true })) {
-            if (s.isDirectory() || s.isSymbolicLink()) {
-              flattenPkg(path.join(sharedPkg, s.name), path.join(nmDest, n.name, s.name));
-            }
-          }
-        } else {
-          flattenPkg(sharedPkg, path.join(nmDest, n.name));
-        }
-      }
-    }
+    const flattened = collectPnpmFlattenFiles(storeDir, nmDest);
     console.log(`拍平 .pnpm store: ${flattened.length} 个文件`);
     total += await copyFiles(flattened, 32);
   }
@@ -588,6 +728,7 @@ function assertHarnessRuntime(harnessDest, pin) {
   }
   assertHarnessVersions(harnessDest, pin);
   assertNodePtyPrebuild(harnessDest);
+  assertMcpSdkAjv(harnessDest);
 }
 
 module.exports = async function afterPack(context) {
@@ -596,6 +737,9 @@ module.exports = async function afterPack(context) {
   restoreVendoredPluginNodeModules(projectDir, resources, 'dshmarket');
   installPluginRuntimeDeps(path.join(resources, 'vendor', 'dshmarket'), { skipIfComplete: true });
   assertVendoredPluginRuntimeDeps(resources, 'dshmarket');
+  restoreVendoredPluginNodeModules(projectDir, resources, 'dsh-usage-panel');
+  installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-usage-panel'), { skipIfComplete: true });
+  assertVendoredPluginRuntimeDeps(resources, 'dsh-usage-panel');
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();
@@ -641,6 +785,7 @@ module.exports = async function afterPack(context) {
 };
 
 module.exports.collectFiles = collectFiles;
+module.exports.collectPnpmFlattenFiles = collectPnpmFlattenFiles;
 module.exports.copyFiles = copyFiles;
 module.exports.deployCliEntries = deployCliEntries;
 module.exports.resolveDeployDir = resolveDeployDir;

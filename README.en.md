@@ -27,6 +27,22 @@ The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applicatio
 - **Settings controls** — value picks in Settings use the official capsule + menu.
 - **Terminal assets** — Ghostty wasm and fonts ship in the installer. A source launch with missing assets refuses to start.
 
+> [!CAUTION]
+> <p style="color:#d1242f"><strong>Old chats are not imported automatically.</strong> Quit the app completely (including the tray). The product path is the <strong>launcher → Import</strong> tab: it read-only copies official <code>~/.dsh</code> sessions and attachments, then reinstalls the plugin list into the desktop home. Do not copy <code>profiles</code>. If you moved the repo, reopen the <strong>original workspace path</strong> in the sidebar. Do not force-open an older rc SQLite session store. The PowerShell below is only a fallback if the launcher is unavailable.</p>
+
+Windows PowerShell fallback:
+
+```powershell
+$old = "$env:USERPROFILE\.dsh"
+$new = "$env:APPDATA\Deepseek-Harness-Desktop\dsh-home"
+Copy-Item "$old\sessions\*" "$new\sessions\" -Recurse -Force
+if (Test-Path "$old\attachments") {
+  Copy-Item "$old\attachments\*" "$new\attachments\" -Recurse -Force
+}
+```
+
+On macOS copy `$HOME/.dsh/sessions` to `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home/sessions` (same for `attachments`).
+
 ### Fixes
 
 - A custom gateway is not written into official `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`. When the main model cannot see images, vision fallback uses the official route (needs an official key) and reports missing credentials if the key is absent.
@@ -42,7 +58,7 @@ The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applicatio
 - **Models** — Thinking intensity for third-party models, vision fallback; the latest user message can be edited and resent.
 - **Appearance** — Light / dark themes. Pick a wallpaper or Browse the gallery (categories, search, favorites; confirm crops to the window). Frost and pixelate stay on Appearance.
 - **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is the bundled [dsh-market](https://github.com/dsh-market/dsh-market) plugin (`dshmarket`). There is no standalone marketplace window.
-- **Desktop** — Minimize to tray, auto-update. If Harness dies, the window returns to a failure page and restarts. If a user plugin blocks startup, the boot page can skip the plugin tree.
+- **Desktop** — Cold start opens the launcher (update prompt, import, versions, plugin forensics); then minimize to tray and auto-update. If Harness dies, the window returns to a failure page and restarts. If a user plugin blocks startup, the launcher stays open so you can disable that package or skip user plugins.
 
 `Ctrl+,` opens Settings.
 

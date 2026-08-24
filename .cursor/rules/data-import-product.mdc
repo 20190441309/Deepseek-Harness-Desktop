@@ -1,0 +1,12 @@
+---
+description: Launcher import copies only checked sessions/skills/plugins/MCP into desktop dsh-home; official homes stay read-only
+alwaysApply: true
+---
+
+# Official home import
+
+Dest is always desktop `userData/dsh-home`. Auto-scan (read-only): `~/.dsh` (sessions, attachments, plugin list, `skills/`, `mcp-servers.yaml`) plus `~/.agents/skills`. Extra source dirs are additional roots, not a dest picker.
+
+`runImport` requires checkboxes. Empty selection writes nothing. Plugins reinstall by spec (`dsh plugin add`); never copy `node_modules`. MCP merges by id into dest YAML (tokens on disk, never in UI/logs). Official `~/.dsh` and `~/.agents` stay read-only.
+
+Full card: [docs/features/data-import.md](../../docs/features/data-import.md)

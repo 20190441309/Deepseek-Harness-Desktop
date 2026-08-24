@@ -8,15 +8,25 @@ const {
   publicConfig,
   parkRemoteSnapshot,
   normalizeRendererConfigPatch,
+  normalizeLauncherConfigPatch,
 } = require('./config');
 const { normalizeRemotePatch } = require('./remote-patch');
-const { getMainWindow, openHarnessSettings, openMarketplace, openRemote } = require('./window');
+const { getMainWindow, openHarnessSettings, openMarketplace, openRemote, getLauncherWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
-const { checkUpdate, installUpdate, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
+const { checkUpdate, installUpdate, listReleases, installRelease, currentVersion, REPO_URL, RELEASES_PAGE } = require('./update');
 const { listMarketplace } = require('./marketplace-catalog');
 const { listInstalledPlugins, installPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
+const {
+  listInstalledPlugins: listProfilePlugins,
+  applyDisabledBundles,
+  setBundleEnabled,
+  OFFICIAL_TEMPLATE_BUNDLES,
+} = require('./plugins');
+const { scanImport, shouldHoldForImport, runImport } = require('./data-import');
+const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
+const { readLastDesktopStart } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
@@ -24,11 +34,15 @@ const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
 const { listAvailableEditors, openInEditor, revealInFolder, openWithSystemDefault } = require('./editors');
 const { IPC_ROLES, assertIpcSender } = require('./ipc-authorization');
+const { tryGetDesktopDshHome } = require('../shared/dsh-home');
+const { openDesktopDshHome } = require('./open-dsh-home');
 
 const BOOT_ONLY = [IPC_ROLES.BOOT];
 const HARNESS_ONLY = [IPC_ROLES.HARNESS];
+const LAUNCHER_ONLY = [IPC_ROLES.LAUNCHER];
 const CONFIG_SURFACES = [IPC_ROLES.HARNESS];
-const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
+const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.LAUNCHER];
+const UPDATE_SURFACES = [IPC_ROLES.HARNESS, IPC_ROLES.LAUNCHER];
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -54,6 +68,7 @@ function configPayload(config) {
     appVersion: currentVersion(),
     repoUrl: REPO_URL,
     releasesUrl: RELEASES_PAGE,
+    dshHome: tryGetDesktopDshHome(),
   };
 }
 
@@ -101,7 +116,7 @@ async function restartAfterProfileWrite(event, result, startHarness, downError, 
   return { ...result, harnessStarted: true };
 }
 
-function registerIpc({ dsh, harness, startHarness, remote }) {
+function registerIpc({ dsh, harness, startHarness, startDesktop, remote }) {
   const handle = (channel, roles, listener) => {
     ipcMain.handle(channel, (event, ...args) => {
       assertIpcSender(event, roles);
@@ -185,7 +200,9 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
 
   handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
 
-  handle('shell:check-update', HARNESS_ONLY, () => checkUpdate());
+  handle('shell:open-dsh-home', HARNESS_ONLY, () => openDesktopDshHome());
+
+  handle('shell:check-update', UPDATE_SURFACES, () => checkUpdate());
 
   handle('shell:list-marketplace', HARNESS_ONLY, async (_event, options = {}) => {
     return listMarketplace({
@@ -342,7 +359,7 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
     return remote ? remote.snapshot() : null;
   });
 
-  handle('shell:install-update', HARNESS_ONLY, async (event) => {
+  handle('shell:install-update', UPDATE_SURFACES, async (event) => {
     try {
       return await installUpdate((payload) => {
         if (!event.sender.isDestroyed()) {
@@ -363,6 +380,185 @@ function registerIpc({ dsh, harness, startHarness, remote }) {
         message: error.message || String(error),
       };
     }
+  });
+
+  function collectForensics() {
+    const listed = listProfilePlugins();
+    const config = loadConfig();
+    const logs = Array.isArray(dsh?.logs)
+      ? dsh.logs.map((row) => (typeof row === 'string' ? row : row.message || row.line || String(row)))
+      : [];
+    return inspectPlugins({
+      logs,
+      plugins: listed.plugins || [],
+      bundles: listed.bundles || [],
+      disabledPlugins: config.disabledPlugins,
+    });
+  }
+
+  async function stopKernelIfRunning() {
+    if (!dsh || typeof dsh.stop !== 'function') {
+      return;
+    }
+    const state = dsh.state || (typeof dsh.snapshot === 'function' ? dsh.snapshot().state : '');
+    if (state === 'ready' || state === 'starting' || state === 'error') {
+      await dsh.stop();
+    }
+  }
+
+  handle('shell:launcher-status', LAUNCHER_ONLY, () => ({
+    config: configPayload(loadConfig()),
+    desktop: harness ? harness.snapshot() : dsh.snapshot(),
+    lastStart: readLastDesktopStart(app.getPath('userData')),
+    version: currentVersion(),
+  }));
+
+  handle('shell:save-launcher-config', LAUNCHER_ONLY, (_event, patch) => {
+    const next = saveConfig(normalizeLauncherConfigPatch(patch || {}));
+    return configPayload(next);
+  });
+
+  handle('shell:scan-import', LAUNCHER_ONLY, (_event, payload) => {
+    if (typeof payload === 'string') {
+      return scanImport({ sourceHome: payload });
+    }
+    const options = payload && typeof payload === 'object' ? payload : {};
+    return scanImport({
+      sourceHome: typeof options.sourceHome === 'string' ? options.sourceHome : undefined,
+      extraSkillDirs: Array.isArray(options.extraSkillDirs) ? options.extraSkillDirs : [],
+    });
+  });
+
+  handle('shell:pick-import-source', LAUNCHER_ONLY, async () => {
+    const win = getLauncherWindow();
+    const result = await dialog.showOpenDialog(win || undefined, {
+      title: configLocale() === 'en' ? 'Choose official home' : '选择官方数据目录',
+      defaultPath: require('node:os').homedir(),
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  handle('shell:pick-skill-dir', LAUNCHER_ONLY, async () => {
+    const win = getLauncherWindow();
+    const result = await dialog.showOpenDialog(win || undefined, {
+      title: configLocale() === 'en' ? 'Choose a skill folder' : '选择技能目录',
+      defaultPath: require('node:os').homedir(),
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  handle('shell:run-import', LAUNCHER_ONLY, async (_event, options = {}) => {
+    await stopKernelIfRunning();
+    const sourceHome = typeof options.sourceHome === 'string' ? options.sourceHome : undefined;
+    const extraSkillDirs = Array.isArray(options.extraSkillDirs)
+      ? options.extraSkillDirs.filter((row) => typeof row === 'string')
+      : [];
+    const overwrite = options.overwrite === true;
+    const userDataDir = app.getPath('userData');
+    const result = await runImport({
+      sourceHome,
+      extraSkillDirs,
+      overwrite,
+      userDataDir,
+      selectedRels: Array.isArray(options.selectedRels) ? options.selectedRels : [],
+      selectedSkillIds: Array.isArray(options.selectedSkillIds) ? options.selectedSkillIds : [],
+      selectedPluginNames: Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [],
+      selectedMcpIds: Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [],
+      importAttachments: options.importAttachments === true,
+      installPlugin: (spec) => installPlugin(spec, { token: loadConfig().githubToken }),
+    });
+    return {
+      ...result,
+      hold: shouldHoldForImport(scanImport({ sourceHome, extraSkillDirs })),
+    };
+  });
+
+  handle('shell:list-releases', LAUNCHER_ONLY, () => listReleases());
+
+  handle('shell:install-release', LAUNCHER_ONLY, async (event, tag) => {
+    try {
+      return await installRelease(tag, (payload) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('shell:update-progress', payload);
+        }
+      });
+    } catch (error) {
+      return { status: 'error', launched: false, message: error.message || String(error) };
+    }
+  });
+
+  handle('shell:plugin-forensics', LAUNCHER_ONLY, () => collectForensics());
+
+  handle('shell:disable-plugin', LAUNCHER_ONLY, (_event, name) => {
+    const raw = String(name || '').trim();
+    if (!raw) {
+      return { ok: false, error: 'missing-name' };
+    }
+    if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
+      return { ok: false, error: 'official-template' };
+    }
+    const config = loadConfig();
+    const disabled = [...new Set([...(config.disabledPlugins || []), raw])];
+    applyDisabledBundles(disabled);
+    saveConfig({ disabledPlugins: disabled });
+    return { ok: true, forensics: collectForensics() };
+  });
+
+  handle('shell:enable-plugin', LAUNCHER_ONLY, (_event, name) => {
+    const raw = String(name || '').trim();
+    if (!raw) {
+      return { ok: false, error: 'missing-name' };
+    }
+    const disabled = (loadConfig().disabledPlugins || []).filter((item) => item !== raw);
+    const enabled = setBundleEnabled(raw, true);
+    applyDisabledBundles(disabled);
+    saveConfig({ disabledPlugins: disabled });
+    return { ok: enabled.ok !== false, ...enabled, forensics: collectForensics() };
+  });
+
+  handle('shell:remove-plugin', LAUNCHER_ONLY, async (event, name) => {
+    const raw = String(name || '').trim();
+    if (!raw) {
+      return { ok: false, error: 'missing-name' };
+    }
+    if (isPresetPlugin(raw) || OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
+      return { ok: false, error: 'preset' };
+    }
+    await stopKernelIfRunning();
+    const result = await uninstallPlugin(raw, {
+      onProgress: (payload) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('shell:plugin-progress', payload);
+        }
+      },
+    });
+    const disabled = (loadConfig().disabledPlugins || []).filter((item) => item !== raw);
+    saveConfig({ disabledPlugins: disabled });
+    return { ...result, forensics: collectForensics() };
+  });
+
+  handle('shell:start-desktop', LAUNCHER_ONLY, async () => {
+    if (harness && typeof harness.clearPluginRecovery === 'function') {
+      harness.clearPluginRecovery();
+    }
+    const start = typeof startDesktop === 'function' ? startDesktop : startHarness;
+    return start();
+  });
+
+  handle('shell:start-desktop-skipped', LAUNCHER_ONLY, async () => {
+    if (harness && typeof harness.writePluginSkip === 'function') {
+      harness.writePluginSkip(new Error('launcher-skip-user-plugins'));
+    }
+    const start = typeof startDesktop === 'function' ? startDesktop : startHarness;
+    return start();
   });
 
   return { pty, preview };

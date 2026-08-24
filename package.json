@@ -63,7 +63,8 @@
         "from": "vendor",
         "to": "vendor",
         "filter": [
-          "dshmarket/**"
+          "dshmarket/**",
+          "dsh-usage-panel/**"
         ]
       },
       {

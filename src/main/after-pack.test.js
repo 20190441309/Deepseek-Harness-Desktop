@@ -10,6 +10,7 @@ const {
   assertHarnessRuntime,
   assertVendoredPluginRuntimeDeps,
   collectFiles,
+  collectPnpmFlattenFiles,
   deployCliEntries,
   nodePtyPrebuildRelative,
   resolveDeployDir,
@@ -193,6 +194,17 @@ function writeGhosttyTerminalPackage(root) {
   }
 }
 
+function writeMcpSdk(root) {
+  const sdk = path.join(root, 'node_modules', '@modelcontextprotocol', 'sdk');
+  fs.mkdirSync(sdk, { recursive: true });
+  fs.writeFileSync(path.join(sdk, 'package.json'), '{"name":"@modelcontextprotocol/sdk","version":"1.29.0"}\n');
+}
+
+function writeAjv(dir, version) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'ajv', version })}\n`);
+}
+
 test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-runtime-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -228,6 +240,8 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   writeRuntimeVersions(root, RC7_PIN.npm);
   writeNodePtyPrebuild(root);
   writeGhosttyTerminalPackage(root);
+  writeMcpSdk(root);
+  writeAjv(path.join(root, 'node_modules', '@modelcontextprotocol', 'sdk', 'node_modules', 'ajv'), '8.17.1');
 
   assert.doesNotThrow(() => assertHarnessRuntime(root, RC7_PIN));
 });
@@ -591,4 +605,78 @@ test('installPluginRuntimeDeps skipIfComplete does not run npm when export files
   });
   assert.equal(result.installed, false);
   assert.equal(ran, false);
+});
+
+test('collectPnpmFlattenFiles nests ajv@8 under MCP SDK when top-level is ajv@6', (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-ajv-flatten-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const nmDest = path.join(workspace, 'dest', 'node_modules');
+  const storeDir = path.join(workspace, 'src', 'node_modules', '.pnpm');
+  const sdkEntry = path.join(storeDir, '@modelcontextprotocol+sdk@1.29.0', 'node_modules');
+  const sdkDir = path.join(sdkEntry, '@modelcontextprotocol', 'sdk');
+  const siblingAjv = path.join(sdkEntry, 'ajv');
+  fs.mkdirSync(sdkDir, { recursive: true });
+  fs.writeFileSync(path.join(sdkDir, 'package.json'), '{"name":"@modelcontextprotocol/sdk","version":"1.29.0"}\n');
+  fs.writeFileSync(path.join(sdkDir, 'index.js'), 'module.exports = {}\n');
+  writeAjv(siblingAjv, '8.17.1');
+  fs.writeFileSync(path.join(siblingAjv, 'index.js'), 'module.exports = 8\n');
+  writeAjv(path.join(nmDest, 'ajv'), '6.15.0');
+  fs.writeFileSync(path.join(nmDest, 'ajv', 'index.js'), 'module.exports = 6\n');
+
+  const files = collectPnpmFlattenFiles(storeDir, nmDest);
+  for (const item of files) {
+    fs.mkdirSync(path.dirname(item.dest), { recursive: true });
+    fs.copyFileSync(item.src, item.dest);
+  }
+
+  const nested = JSON.parse(fs.readFileSync(path.join(
+    nmDest, '@modelcontextprotocol', 'sdk', 'node_modules', 'ajv', 'package.json',
+  ), 'utf8'));
+  const top = JSON.parse(fs.readFileSync(path.join(nmDest, 'ajv', 'package.json'), 'utf8'));
+  assert.equal(nested.version, '8.17.1');
+  assert.equal(top.version, '6.15.0');
+});
+
+test('assertHarnessRuntime rejects MCP SDK resolving ajv major 6', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-ajv6-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  writeRuntimeVersions(root, RC7_PIN.npm);
+  writeNodePtyPrebuild(root);
+  writeGhosttyTerminalPackage(root);
+  writeMcpSdk(root);
+  writeAjv(path.join(root, 'node_modules', 'ajv'), '6.15.0');
+
+  assert.throws(
+    () => assertHarnessRuntime(root, RC7_PIN),
+    /拍平丢掉了 SDK 嵌套 ajv@8/,
+  );
 });

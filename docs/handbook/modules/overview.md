@@ -9,11 +9,11 @@
 
 - 安装即可用：本机起官方 Web UI，无需用户手跑 `dsh web`。桌面 Harness **不读** 官方 `~/.dsh`；数据在 `userData/dsh-home`（见 [dsh-home.md](dsh-home.md)）。
 - 主框：对话 + 工具审批 + 侧栏会话；`Ctrl+\` 右栏 Surfaces；`` Ctrl+` `` 底栏终端；`Ctrl+,` 设置。
-- 桌面增强：Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、托盘/更新、插件恢复。手机远程停放（无侧栏入口、不监听）。
+- 桌面增强：冷启动启动器（更新询问、导入、版本、插件问诊）、Git 标题栏、工作区文件、内嵌 Browser 预览、壁纸图库、设置内市场、设置内用量统计、托盘/更新、插件恢复。手机远程停放（无侧栏入口、不监听）。
 
 ## 架构要点
 
-见 [../blueprint.md](../blueprint.md)。官方 UI 在 BrowserView；壳只提供 boot、IPC、预置插件与打包。
+见 [../blueprint.md](../blueprint.md)。官方 UI 在 BrowserView；壳提供启动器、boot、IPC、预置插件与打包。市场 / 壁纸图库仍禁止另开产品窗。
 
 ## 实现入口
 
@@ -32,4 +32,4 @@
 
 ## 延伸阅读
 
-- [dsh-home.md](dsh-home.md)、[boot-lifecycle.md](boot-lifecycle.md)、[design-and-spine.md](design-and-spine.md)
+- [dsh-home.md](dsh-home.md)、[boot-lifecycle.md](boot-lifecycle.md)、[../../features/desktop-launcher.md](../../features/desktop-launcher.md)、[design-and-spine.md](design-and-spine.md)

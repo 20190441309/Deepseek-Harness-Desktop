@@ -36,6 +36,8 @@ function statusCopy(
 /** Render the About column: this desktop app, version check, and official Harness. */
 export function AboutSection({ t }: AboutSectionProps): ReactNode {
   const [version, setVersion] = useState('')
+  const [homePath, setHomePath] = useState('')
+  const [homeError, setHomeError] = useState('')
   const [busy, setBusy] = useState(false)
   const [percent, setPercent] = useState(0)
   const [status, setStatus] = useState<UpdateStatus>('idle')
@@ -80,11 +82,23 @@ export function AboutSection({ t }: AboutSectionProps): ReactNode {
     }
   }, [applyInfo, shell])
 
+  const openHome = useCallback(async () => {
+    if (!shell?.openDshHome) return
+    setHomeError('')
+    try {
+      const result = await shell.openDshHome()
+      if (result && result.ok === false) setHomeError(result.error || 'failed')
+    } catch (error) {
+      setHomeError(error instanceof Error ? error.message : String(error))
+    }
+  }, [shell])
+
   useEffect(() => {
     if (!shell) return undefined
     let cancelled = false
     void shell.getConfig?.().then((config) => {
       if (!cancelled && config?.appVersion) setVersion(config.appVersion)
+      if (!cancelled && typeof config?.dshHome === 'string') setHomePath(config.dshHome)
     }).catch(() => {})
     void check()
     const stop = shell.onUpdateProgress?.((payload) => {
@@ -132,6 +146,17 @@ export function AboutSection({ t }: AboutSectionProps): ReactNode {
           ) : (
             <p className={css.meta}>{t('about.desktopOnly')}</p>
           )}
+          {shell?.openDshHome ? (
+            <>
+              {homePath ? <p className={css.meta}>{t('about.homePath', { path: homePath })}</p> : null}
+              {homeError ? <p className={css.status} role="status">{t('about.openHomeError', { message: homeError })}</p> : null}
+              <div className={css.actions}>
+                <Button variant="outline" size="sm" onClick={() => { void openHome() }}>
+                  {t('about.openHome')}
+                </Button>
+              </div>
+            </>
+          ) : null}
           <a className={css.link} href={info?.releasesUrl || RELEASES_URL} target="_blank" rel="noreferrer noopener">
             {t('about.releases')}
           </a>

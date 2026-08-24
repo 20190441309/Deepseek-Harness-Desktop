@@ -54,6 +54,7 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 
 // vi.mock is hoisted above static imports, so the module under test sees the
 // mocked SDK even through a static import.
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { apply, name, inject, Config as ConfigSchema } from '@deepseek-ai/dsh-mcp-client/src/index.ts'
 
 // ---- Helpers ----
@@ -174,6 +175,9 @@ describe('apply (plugin lifecycle)', () => {
   it('connects, syncs tools under the namespace, and registers a notification handler', async () => {
     await apply(ctx, stdioConfig)
 
+    const spawnParams = vi.mocked(StdioClientTransport).mock.calls[0]?.[0] as Record<string, unknown> | undefined
+    expect(spawnParams).toBeDefined()
+    expect(spawnParams).not.toHaveProperty('cwd')
     expect(mockConnect).toHaveBeenCalled()
     expect(mockListTools).toHaveBeenCalled()
     expect(mockSetNotificationHandler).toHaveBeenCalled()

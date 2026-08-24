@@ -4,7 +4,7 @@
 export const zh = {
   nav: 'MCP',
   title: 'MCP 服务器',
-  intro: '管理本机 MCP 服务器。受管条目写入 ~/.dsh/mcp-servers.yaml；HTTP 服务器可在本页登录后在对话里使用工具。组成配置条目只读。',
+  intro: '管理本机 MCP 服务器。受管条目写入 $DSH_HOME/mcp-servers.yaml；HTTP 服务器可在本页登录后在对话里使用工具。组成配置条目只读。',
   add: '添加服务器',
   refresh: '刷新',
   empty: '还没有 MCP 服务器。添加一个服务器以连接本地工具或远程服务。',
@@ -104,7 +104,7 @@ export type McpSettingsKey = keyof typeof zh
 export const en = {
   nav: 'MCP',
   title: 'MCP servers',
-  intro: 'Manage local MCP servers. Managed rows write ~/.dsh/mcp-servers.yaml. Sign in on an HTTP row so its tools are available in chat. Composition rows are read-only.',
+  intro: 'Manage local MCP servers. Managed rows write $DSH_HOME/mcp-servers.yaml. Sign in on an HTTP row so its tools are available in chat. Composition rows are read-only.',
   add: 'Add server',
   refresh: 'Refresh',
   empty: 'No MCP servers yet. Add one to connect local tools or a remote service.',

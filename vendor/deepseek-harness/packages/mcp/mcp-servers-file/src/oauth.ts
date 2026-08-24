@@ -5,7 +5,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn, type SpawnOptions } from 'node:child_process'
 
 /** Tokens returned by the authorization-code exchange. */
 export interface McpOAuthTokens {
@@ -54,7 +54,7 @@ export async function authorizeMcpHttp(resource: string, runtime: McpOAuthRuntim
   if (issuer === undefined) {
     throw new Error('mcp-servers-file: OAuth metadata is missing authorization_servers')
   }
-  const asMeta = await getJson(runtime.fetch, new URL('/.well-known/oauth-authorization-server', issuer).href)
+  const asMeta = await getAuthorizationServerMetadata(runtime.fetch, issuer)
   const methods = asMeta.code_challenge_methods_supported
   if (!Array.isArray(methods) || !methods.includes('S256')) {
     throw new Error('mcp-servers-file: authorization server does not advertise PKCE S256')
@@ -135,6 +135,31 @@ function wellKnownProtectedResource(resource: string): string {
   const url = new URL(resource)
   const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '')
   return `${url.origin}/.well-known/oauth-protected-resource${path}`
+}
+
+/**
+ * RFC 8414 authorization-server metadata URL: insert
+ * `/.well-known/oauth-authorization-server` between origin and issuer path.
+ * @param issuer - authorization server issuer identifier.
+ * @returns the metadata URL.
+ */
+export function authorizationServerMetadataUrl(issuer: string): string {
+  const url = new URL(issuer)
+  const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '')
+  return `${url.origin}/.well-known/oauth-authorization-server${path}`
+}
+
+async function getAuthorizationServerMetadata(
+  fetchImpl: typeof fetch,
+  issuer: string,
+): Promise<Record<string, unknown>> {
+  const primary = authorizationServerMetadataUrl(issuer)
+  const fallback = `${issuer.replace(/\/$/, '')}/.well-known/oauth-authorization-server`
+  const first = await fetchImpl(primary)
+  if (first.status !== 404 || primary === fallback) {
+    return readJson(first)
+  }
+  return getJson(fetchImpl, fallback)
 }
 
 async function registerClient(
@@ -237,10 +262,43 @@ function pkce(): { verifier: string; challenge: string } {
   return { verifier, challenge }
 }
 
+/**
+ * Windows `cmd /c start` argv that keeps `&` inside the authorize URL.
+ * @param url - absolute authorize URL.
+ * @returns argv after `cmd`.
+ */
+export function windowsBrowserLaunchArgs(url: string): string[] {
+  return ['/c', 'start', '""', `"${url.replace(/"/g, '')}"`]
+}
+
+/**
+ * OS browser launch for the authorize URL. Windows quotes the URL so `cmd`
+ * does not split on `&`.
+ * @param url - absolute authorize URL.
+ * @returns spawn command, args, and options.
+ */
+export function browserLaunch(url: string): {
+  readonly command: string
+  readonly args: string[]
+  readonly options: SpawnOptions
+} {
+  if (process.platform === 'win32') {
+    return {
+      command: 'cmd',
+      args: windowsBrowserLaunchArgs(url),
+      options: { detached: true, stdio: 'ignore', windowsVerbatimArguments: true },
+    }
+  }
+  return {
+    command: process.platform === 'darwin' ? 'open' : 'xdg-open',
+    args: [url],
+    options: { detached: true, stdio: 'ignore' },
+  }
+}
+
 function openBrowser(url: string): void {
-  const command = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open'
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url]
-  spawn(command, args, { detached: true, stdio: 'ignore' }).unref()
+  const launch = browserLaunch(url)
+  spawn(launch.command, launch.args, launch.options).unref()
 }
 
 function createListener(): Promise<McpOAuthListener> {

@@ -20,6 +20,7 @@ import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/typ
 import type { Context } from '@deepseek-ai/cordis'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { createTransport } from './transport.ts'
+import { formatMcpClientError, isMcpAuthError } from './last-error.ts'
 import { reportMcpClientStatus, type McpConnectionHealth } from './status.ts'
 import { syncTools } from './tools.ts'
 import type { ToolBridgeOptions, ToolDisposers } from './tools.ts'
@@ -208,7 +209,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         ? 'connection lost and reconnect is disabled — registered tools will fail until an HMR reload or Host restart'
         : 'connection failed and reconnect is disabled — no tools were registered; reload the plugin or restart the Host to connect'
       ctx.logger.error(`${label}: ${message}`)
-      report('failed', message)
+      report('failed', lastErrorText ?? message)
       return
     }
     // A connection that stayed up past the stability window (= maxDelayMs, the
@@ -287,7 +288,19 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       },
     )
     try {
-      await generation.connect(createTransport(config))
+      const transport = createTransport(config)
+      if (config.transport === 'streamable-http') {
+        const streamable = transport as typeof transport & { onerror?: (error: Error) => void }
+        streamable.onerror = (error: Error) => {
+          if (!isMcpAuthError(error)) return
+          const text = formatMcpClientError(error)
+          lastErrorText = text
+          if (attemptSettled && isCurrent(generation) && connectedAt !== undefined) {
+            report('failed', text)
+          }
+        }
+      }
+      await generation.connect(transport)
       if (hasClosed()) {
         attemptSettled = true
         generationDown(generation)
@@ -296,7 +309,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       await enqueueSync(generation, startup ? startupOpts : opts)
     } catch (error) {
       if (firstAttemptError === undefined) firstAttemptError = error
-      lastErrorText = String(error)
+      lastErrorText = formatMcpClientError(error)
       // Disposal clears current ownership before it closes the generation, so
       // only a live supervisor reports an attempt failure.
       if (isCurrent(generation)) ctx.logger.warn(`${label}: connection attempt failed: ${String(error)}`)
@@ -309,7 +322,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         clientClosed = undefined
         const message = `failed generation did not close within ${GENERATION_CLOSE_TIMEOUT_MS}ms — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`
         ctx.logger.error(`${label}: ${message}`)
-        report('failed', message)
+        report('failed', lastErrorText)
         return
       }
       generationDown(generation)

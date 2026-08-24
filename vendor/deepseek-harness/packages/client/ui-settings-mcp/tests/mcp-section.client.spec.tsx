@@ -255,7 +255,7 @@ describe('McpSection', () => {
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
   })
 
-  it('lists registered tool names on a connected row', async () => {
+  it('shows a tool count on a connected row without listing tool names', async () => {
     render(<McpSection {...props({
       list: async () => ({
         servers: [{
@@ -268,7 +268,8 @@ describe('McpSection', () => {
       }),
     })} />)
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
-    expect(screen.getByText(/2 tools · mcp__github__create_issue, mcp__github__list/)).toBeTruthy()
+    expect(screen.getByText('2 tools')).toBeTruthy()
+    expect(screen.queryByText(/mcp__github__create_issue/)).toBeNull()
   })
 
   it('remounts failed managed rows when refresh is clicked', async () => {
@@ -298,7 +299,7 @@ describe('McpSection', () => {
     const authorize = vi.fn(async () => {})
     const failedHttp = {
       ...managedHttp,
-      connection: { health: 'failed' as const, lastError: 'Error: missing bearer token' },
+      connection: { health: 'failed' as const, lastError: 'Error: HTTP 401 Unauthorized' },
     }
     const failedStdio = {
       ...managedStdio,
@@ -313,6 +314,115 @@ describe('McpSection', () => {
     expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-tools') })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') }))
     await waitFor(() => { expect(authorize).toHaveBeenCalledWith('remote-id') })
+  })
+
+  it('clears Sign in pending after authorize even if list identity changes', async () => {
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers()
+    const authorize = vi.fn(async () => { await gate.promise })
+    const failedHttp = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: HTTP 401 Unauthorized' },
+    }
+    const snapshot = { servers: [failedHttp] }
+    const { rerender } = render(<McpSection {...props({
+      list: async () => snapshot,
+      authorize,
+    })} />)
+    fireEvent.click(await screen.findByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') }))
+    expect(await screen.findByText(en.signingIn)).toBeTruthy()
+    rerender(<McpSection {...props({
+      list: async () => snapshot,
+      authorize,
+    })} />)
+    expect(screen.getByText(en.signingIn)).toBeTruthy()
+    gate.resolve()
+    await waitFor(() => { expect(screen.queryByText(en.signingIn)).toBeNull() })
+  })
+
+  it('does not throw when Sign in settles after unmount', async () => {
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers()
+    const authorize = vi.fn(async () => { await gate.promise })
+    const failedHttp = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: HTTP 401 Unauthorized' },
+    }
+    const { unmount } = render(<McpSection {...props({
+      list: async () => ({ servers: [failedHttp] }),
+      authorize,
+    })} />)
+    fireEvent.click(await screen.findByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') }))
+    unmount()
+    gate.resolve()
+    await waitFor(() => { expect(authorize).toHaveBeenCalledWith('remote-id') })
+  })
+
+  it('hides Sign in on a failed managed HTTP row unless lastError is an auth challenge', async () => {
+    const networkFailed = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: fetch failed' },
+    }
+    const { unmount } = render(<McpSection {...props({
+      list: async () => ({ servers: [networkFailed] }),
+    })} />)
+    expect(await screen.findByText('Error: fetch failed')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeNull()
+    unmount()
+
+    const noError = {
+      ...managedHttp,
+      connection: { health: 'failed' as const },
+    }
+    const { unmount: unmountNoError } = render(<McpSection {...props({
+      list: async () => ({ servers: [noError] }),
+    })} />)
+    expect(await screen.findByText(en.healthFailed)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeNull()
+    unmountNoError()
+
+    const portFalsePositive = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'ECONNREFUSED 127.0.0.1:4010' },
+    }
+    const { unmount: unmountPort } = render(<McpSection {...props({
+      list: async () => ({ servers: [portFalsePositive] }),
+    })} />)
+    expect(await screen.findByText('ECONNREFUSED 127.0.0.1:4010')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeNull()
+    unmountPort()
+
+    const oauthHost = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'getaddrinfo ENOTFOUND foo.oauth.example.com' },
+    }
+    render(<McpSection {...props({
+      list: async () => ({ servers: [oauthHost] }),
+    })} />)
+    expect(await screen.findByText('getaddrinfo ENOTFOUND foo.oauth.example.com')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeNull()
+  })
+
+  it('shows Sign in for SDK POST 401 lastError and missing bearer bodies', async () => {
+    const sdkPost = {
+      ...managedHttp,
+      connection: {
+        health: 'failed' as const,
+        lastError: 'HTTP 401: StreamableHTTPError: Streamable HTTP error: Error POSTing to endpoint: ',
+      },
+    }
+    const { unmount } = render(<McpSection {...props({
+      list: async () => ({ servers: [sdkPost] }),
+    })} />)
+    expect(await screen.findByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeTruthy()
+    unmount()
+
+    const bearer = {
+      ...managedHttp,
+      connection: { health: 'failed' as const, lastError: 'Error: missing bearer token' },
+    }
+    render(<McpSection {...props({
+      list: async () => ({ servers: [bearer] }),
+    })} />)
+    expect(await screen.findByRole('button', { name: en.signInFor.replace('{name}', 'remote-managed') })).toBeTruthy()
   })
 
 
@@ -449,6 +559,37 @@ describe('McpSection', () => {
         transport: 'streamable-http',
         url: 'https://mcp.example.test/api',
       })
+    })
+  })
+
+  it('round-trips failOnStartupError and reconnect through JSON', async () => {
+    const upsert = vi.fn(async () => {})
+    const dialog = await openAddEditor({ upsert })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.editorModeJson }))
+    fireEvent.change(within(dialog).getByLabelText(en.jsonLabel), {
+      target: {
+        value: JSON.stringify({
+          memory: {
+            command: 'mcp-memory',
+            failOnStartupError: true,
+            reconnect: { enabled: false, initialDelayMs: 10, maxDelayMs: 20, maxAttempts: 3 },
+          },
+        }),
+      },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.editorModeForm }))
+    fireEvent.click(within(dialog).getByRole('button', { name: en.editorModeJson }))
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>(en.jsonLabel).value).toContain('"failOnStartupError": true')
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>(en.jsonLabel).value).toContain('"maxAttempts": 3')
+    fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
+    await waitFor(() => {
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'memory',
+        serverName: 'memory',
+        command: 'mcp-memory',
+        failOnStartupError: true,
+        reconnect: { enabled: false, initialDelayMs: 10, maxDelayMs: 20, maxAttempts: 3 },
+      }))
     })
   })
 })

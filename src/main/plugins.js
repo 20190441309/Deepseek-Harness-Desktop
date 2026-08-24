@@ -269,13 +269,100 @@ function listInstalledPlugins() {
   }
 }
 
+function uniqueNames(names) {
+  return [...new Set((Array.isArray(names) ? names : [])
+    .map((name) => String(name || '').trim())
+    .filter(Boolean))];
+}
+
+/**
+ * Drop disabled user bundles from the live profile. Official template
+ * bundles stay loaded. Enabling a name puts it back when it is still a
+ * dependency.
+ */
+function applyDisabledBundles(names, options = {}) {
+  const file = options.manifestPath || manifestPath();
+  if (!fs.existsSync(file)) {
+    return { ok: false, reason: 'missing-profile', changed: false, bundles: [] };
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { ok: false, reason: 'invalid-profile', changed: false, bundles: [] };
+  }
+  const disabled = new Set(uniqueNames(names).filter((name) => !OFFICIAL_TEMPLATE_BUNDLES.has(name)));
+  const current = Array.isArray(manifest.dsh?.profile?.bundles) ? manifest.dsh.profile.bundles : [];
+  const bundles = current.filter((name) => typeof name === 'string' && !disabled.has(name));
+  const changed = bundles.length !== current.length || bundles.some((name, index) => name !== current[index]);
+  if (changed) {
+    manifest.dsh = {
+      ...manifest.dsh,
+      profile: {
+        ...manifest.dsh?.profile,
+        bundles,
+      },
+    };
+    writeAtomic(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+  return { ok: true, changed, bundles, disabled: [...disabled] };
+}
+
+function setBundleEnabled(name, enabled, options = {}) {
+  const raw = String(name || '').trim();
+  if (!raw) {
+    return { ok: false, reason: 'missing-name', changed: false };
+  }
+  if (OFFICIAL_TEMPLATE_BUNDLES.has(raw) && enabled === false) {
+    return { ok: false, reason: 'official-template', changed: false };
+  }
+  const file = options.manifestPath || manifestPath();
+  if (!fs.existsSync(file)) {
+    return { ok: false, reason: 'missing-profile', changed: false };
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { ok: false, reason: 'invalid-profile', changed: false };
+  }
+  const current = Array.isArray(manifest.dsh?.profile?.bundles) ? [...manifest.dsh.profile.bundles] : [];
+  const dependencies = manifest.dependencies && typeof manifest.dependencies === 'object'
+    ? manifest.dependencies
+    : {};
+  let bundles;
+  if (enabled) {
+    if (!Object.prototype.hasOwnProperty.call(dependencies, raw)) {
+      return { ok: false, reason: 'missing-dependency', changed: false, bundles: current };
+    }
+    bundles = current.includes(raw) ? current : [...current, raw];
+  } else {
+    bundles = current.filter((item) => item !== raw);
+  }
+  const changed = bundles.length !== current.length || bundles.some((item, index) => item !== current[index]);
+  if (changed) {
+    manifest.dsh = {
+      ...manifest.dsh,
+      profile: {
+        ...manifest.dsh?.profile,
+        bundles,
+      },
+    };
+    writeAtomic(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+  return { ok: true, changed, bundles };
+}
+
 module.exports = {
   PROFILE,
   DROPPED,
+  OFFICIAL_TEMPLATE_BUNDLES,
   webProfileDir,
   stripDroppedPlugins,
   healDanglingBundles,
   listInstalledPlugins,
+  applyDisabledBundles,
+  setBundleEnabled,
   ensureDesktopInstallPlugin,
   upsertManagedBlock,
   stripBlockFromFile,

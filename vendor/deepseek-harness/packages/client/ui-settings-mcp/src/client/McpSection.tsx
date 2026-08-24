@@ -98,7 +98,7 @@ const HEALTH_DOT: Record<ConnectionHealth, StateDotState> = {
 /** Render the MCP settings page. */
 export function McpSection(props: McpSectionProps) {
   const t = props.t
-  const lifecycleGeneration = useRef(0)
+  const mountedRef = useRef(true)
   const loadSequence = useRef(0)
   const [view, setView] = useState<View>({ status: 'loading' })
   const [request, setRequest] = useState(0)
@@ -112,6 +112,11 @@ export function McpSection(props: McpSectionProps) {
   const [signInPending, setSignInPending] = useState<ReadonlySet<string>>(new Set())
   const [rowFailures, setRowFailures] = useState<Readonly<Record<string, string>>>({})
   const [refreshFailure, setRefreshFailure] = useState(false)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     const sequence = loadSequence.current + 1
@@ -128,7 +133,6 @@ export function McpSection(props: McpSectionProps) {
       },
     )
     return () => {
-      lifecycleGeneration.current += 1
       loadSequence.current += 1
     }
   }, [props.list, request])
@@ -209,7 +213,6 @@ export function McpSection(props: McpSectionProps) {
 
   const toggle = (entry: McpServerEntry, enabled: boolean): void => {
     if (togglePending.has(entry.id)) return
-    const generation = lifecycleGeneration.current
     setTogglePending(current => new Set(current).add(entry.id))
     setRowFailures(current => omitKey(current, entry.id))
     setView(current => current.status !== 'ready' ? current : ({
@@ -228,11 +231,11 @@ export function McpSection(props: McpSectionProps) {
       })
     }
     void props.setEnabled(entry.id, enabled).then(() => {
-      if (lifecycleGeneration.current !== generation) return
+      if (!mountedRef.current) return
       clearPending()
       void reloadReady().catch(() => {})
     }).catch((error: unknown) => {
-      if (lifecycleGeneration.current !== generation) return
+      if (!mountedRef.current) return
       setView(current => current.status !== 'ready' ? current : ({
         status: 'ready',
         snapshot: {
@@ -249,7 +252,6 @@ export function McpSection(props: McpSectionProps) {
 
   const signIn = (entry: McpServerEntry): void => {
     if (signInPending.has(entry.id)) return
-    const generation = lifecycleGeneration.current
     setSignInPending(current => new Set(current).add(entry.id))
     setRowFailures(current => omitKey(current, entry.id))
     const clearPending = (): void => {
@@ -260,11 +262,11 @@ export function McpSection(props: McpSectionProps) {
       })
     }
     void props.authorize(entry.id).then(() => {
-      if (lifecycleGeneration.current !== generation) return
+      if (!mountedRef.current) return
       clearPending()
       void reloadReady().catch(() => {})
     }).catch((error: unknown) => {
-      if (lifecycleGeneration.current !== generation) return
+      if (!mountedRef.current) return
       setRowFailures(current => ({ ...current, [entry.id]: messageOf(error, t('signInFailed')) }))
       clearPending()
     })
@@ -421,18 +423,17 @@ export function McpSection(props: McpSectionProps) {
               onClick={() => {
                 if (deleting === undefined || deletePending) return
                 const target = deleting
-                const generation = lifecycleGeneration.current
                 setDeletePending(true)
                 setDeleteFailure(undefined)
                 void props.remove(target.id)
                   .then(() => {
-                    if (lifecycleGeneration.current !== generation) return
+                    if (!mountedRef.current) return
                     setDeletePending(false)
                     setDeleting(undefined)
                     void reloadReady().catch(() => {})
                   })
                   .catch((error: unknown) => {
-                    if (lifecycleGeneration.current !== generation) return
+                    if (!mountedRef.current) return
                     setDeleteFailure(messageOf(error, t('deleteFailed')))
                     setDeletePending(false)
                   })
@@ -451,8 +452,9 @@ export function McpSection(props: McpSectionProps) {
 
 function needsSignIn(entry: McpServerEntry): boolean {
   if (!entry.writable || !entry.enabled || entry.spec.transport !== 'streamable-http') return false
-  const health = entry.connection?.health
-  return health !== 'connected' && health !== 'connecting' && health !== 'reconnecting'
+  const lastError = entry.connection?.lastError
+  if (typeof lastError !== 'string') return false
+  return /\b(?:HTTP\s+)?(?:401|403)\b|\b(?:unauthorized|forbidden)\b|\b(?:invalid_token|invalid_grant|insufficient_scope)\b|missing bearer token/i.test(lastError)
 }
 
 function ServerRow({
@@ -495,8 +497,6 @@ function ServerRow({
           {connection?.tools === undefined || connection.tools.length === 0 ? null : (
             <span className={styles.tools}>
               {format(t('toolCount'), { count: String(connection.tools.length) })}
-              {' · '}
-              {connection.tools.join(', ')}
             </span>
           )}
         </span>
@@ -997,6 +997,8 @@ function toJsonText(form: EditorDraft): string {
     if (Object.keys(headers).length > 0) body.headers = headers
   }
   if (TIMEOUT.test(form.timeout.trim())) body.toolCallTimeoutMs = Number(form.timeout.trim())
+  if (form.retained.failOnStartupError !== undefined) body.failOnStartupError = form.retained.failOnStartupError
+  if (form.retained.reconnect !== undefined) body.reconnect = form.retained.reconnect
   return JSON.stringify({ [name]: body }, null, 2)
 }
 
@@ -1024,6 +1026,30 @@ function parseServerJson(
   return { ok: true, record: specToRecord(match[0], match[1], fallback) }
 }
 
+function retainedFromSpec(spec: Record<string, unknown>): Pick<McpServerRecord, 'failOnStartupError' | 'reconnect'> {
+  const failOnStartupError = typeof spec.failOnStartupError === 'boolean' ? spec.failOnStartupError : undefined
+  const reconnect = parseReconnect(spec.reconnect)
+  return {
+    ...(failOnStartupError === undefined ? {} : { failOnStartupError }),
+    ...(reconnect === undefined ? {} : { reconnect }),
+  }
+}
+
+function parseReconnect(value: unknown): McpServerRecord['reconnect'] {
+  if (!isPlainObject(value)) return undefined
+  const reconnect = {
+    ...(typeof value.enabled === 'boolean' ? { enabled: value.enabled } : {}),
+    ...(isPositiveNumber(value.initialDelayMs) ? { initialDelayMs: value.initialDelayMs } : {}),
+    ...(isPositiveNumber(value.maxDelayMs) ? { maxDelayMs: value.maxDelayMs } : {}),
+    ...(isPositiveNumber(value.maxAttempts) ? { maxAttempts: value.maxAttempts } : {}),
+  }
+  return Object.keys(reconnect).length === 0 ? undefined : reconnect
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
 function specToRecord(
   name: string,
   spec: Record<string, unknown>,
@@ -1039,10 +1065,12 @@ function specToRecord(
   const timeout = typeof spec.toolCallTimeoutMs === 'number' && Number.isInteger(spec.toolCallTimeoutMs) && spec.toolCallTimeoutMs > 0
     ? spec.toolCallTimeoutMs
     : undefined
+  const retained = retainedFromSpec(spec)
   const shared = {
     id,
     serverName,
     enabled,
+    ...retained,
     ...(timeout === undefined ? {} : { toolCallTimeoutMs: timeout }),
   }
   if (httpish) {

@@ -216,6 +216,7 @@ const QA_REQUIRED_STEPS = [
   'market.section',
   'market.discover',
   'market.installed',
+  'usage-stats.section',
   'plugin.dshbot.tabAbsent',
 ];
 
@@ -1196,6 +1197,15 @@ async function runReleaseUiWalk(wc, helpers) {
     installed?.dshbot ? 'listed on Installed' : 'preset Cordis plugin, not a market catalog row',
     true,
   );
+
+  const usageOpened = await openSettings('usage-stats');
+  const usage = await waitUntil(() => pageEval(wc, () => {
+    const nav = document.querySelector('[data-dsh-settings-section="usage-stats"]');
+    return {
+      nav: Boolean(nav && (nav.getAttribute('aria-current') === 'true' || dshShown(nav))),
+    };
+  }), 10_000);
+  rec('usage-stats.section', Boolean(usageOpened && usage?.nav), usageOpened ? '' : 'usage-stats section missing');
 
   await dismiss();
   await sleep(300);

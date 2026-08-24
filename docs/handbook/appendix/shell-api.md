@@ -1,6 +1,6 @@
 # 附录：`window.shell` 能力索引
 
-来源：[`src/preload/index.js`](../../../src/preload/index.js)。角色由 `--dshd-shell-role=boot|harness` 决定；仅主 frame 暴露。
+来源：[`src/preload/index.js`](../../../src/preload/index.js)。角色由 `--dshd-shell-role=boot|harness|launcher` 决定；仅主 frame 暴露。
 
 ## Boot 角色
 
@@ -18,6 +18,24 @@
 | `onState` | `shell:state` |
 | `onLog` | `shell:log` |
 | `onPluginBoot` | `shell:plugin-boot` |
+
+## Launcher 角色
+
+窗口 API 同 boot 的 `windowApi`。配置只走 `saveLauncherConfig`（`quitAfterStart` / `autoStartDesktop` / `askOnUpdate`），不得写 renderer 补丁字段。
+
+| API | Channel |
+| --- | --- |
+| `getConfig` | `shell:get-config` |
+| `saveLauncherConfig` | `shell:save-launcher-config` |
+| `launcherStatus` | `shell:launcher-status` |
+| `checkUpdate` / `installUpdate` | `shell:check-update` / `shell:install-update` |
+| `scanImport` / `runImport` / `pickImportSource` / `pickSkillDir` | `shell:scan-import` / `shell:run-import` / `shell:pick-import-source` / `shell:pick-skill-dir` |
+| `listReleases` / `installRelease` | `shell:list-releases` / `shell:install-release` |
+| `pluginForensics` | `shell:plugin-forensics` |
+| `disablePlugin` / `enablePlugin` / `removePlugin` | `shell:disable-plugin` / `shell:enable-plugin` / `shell:remove-plugin` |
+| `startDesktop` / `skipUserPlugins` / `retryFullPlugins` | `shell:start-desktop` / `shell:start-desktop-skipped` / `shell:retry-full-plugins` |
+
+订阅：`onUpdateProgress`、`onPluginProgress`、`onDesktopFailed`、`onDesktopReady`、`onShowTab`、`onLauncherHint`。boot / harness 不得调用导入、装指定 Release、问诊。
 
 ## Harness 角色（含窗口 + 配置）
 

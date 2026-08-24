@@ -7,6 +7,25 @@ function isBootTheme() {
   return document.documentElement.hasAttribute('data-boot-theme');
 }
 
+function isOfficialShell() {
+  return document.documentElement.getAttribute('data-shell-theme') === 'official';
+}
+
+function clearWallpaperOverrides(root) {
+  for (const name of [
+    '--dsw-alias-bg-base',
+    '--dsw-alias-label-primary',
+    '--dsw-alias-label-tertiary',
+    '--dsw-alias-label-secondary',
+    '--dsw-alias-state-business-primary',
+    '--dsw-alias-button-info-fill',
+    '--dsw-alias-border-l2',
+  ]) {
+    root.style.removeProperty(name);
+  }
+  document.body?.style.removeProperty('background');
+}
+
 function applyTheme(theme) {
   if (!theme) {
     return;
@@ -15,8 +34,8 @@ function applyTheme(theme) {
   applyDarkAttribute(dark);
   const root = document.documentElement;
   root.style.colorScheme = theme.scheme || 'dark';
-  if (isBootTheme()) {
-    document.body?.style.removeProperty('background');
+  if (isBootTheme() || isOfficialShell()) {
+    clearWallpaperOverrides(root);
     return;
   }
   if (theme.bg) {

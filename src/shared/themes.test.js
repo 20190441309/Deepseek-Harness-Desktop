@@ -1,6 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseSimpleYaml, resolveTheme, FAMILY_SEEDS, listThemes } = require('./themes');
+const {
+  parseSimpleYaml,
+  resolveTheme,
+  officialShellBackground,
+  usesOfficialShellChrome,
+  windowBackgroundForShell,
+  FAMILY_SEEDS,
+  listThemes,
+} = require('./themes');
 const { clearDesktopDshHome } = require('./dsh-home');
 
 test('parseSimpleYaml reads a ui-theme section with custom families', () => {
@@ -46,6 +54,28 @@ test('resolveTheme follows system preference and lists builtin families', () => 
   const dark = resolveTheme({}, { harness: { preference: 'system' }, systemDark: true });
   assert.equal(dark.scheme, 'dark');
   assert.ok(listThemes().some((item) => item.id === 'paper'));
+});
+
+test('officialShellBackground follows the official dsh web canvas, not wallpaper seeds', () => {
+  assert.equal(officialShellBackground({ scheme: 'light', bg: '#f3efe6' }), '#FFFFFF');
+  assert.equal(officialShellBackground({ scheme: 'dark', bg: '#14100b' }), '#151517');
+});
+
+test('usesOfficialShellChrome is true for launcher role or launcher.html URL', () => {
+  assert.equal(usesOfficialShellChrome('launcher', ''), true);
+  assert.equal(usesOfficialShellChrome(undefined, 'file:///app/src/renderer/launcher.html'), true);
+  assert.equal(usesOfficialShellChrome(undefined, 'file:///app/src/renderer/launcher.html?x=1'), true);
+  assert.equal(usesOfficialShellChrome(undefined, 'file:///app/src/renderer/boot.html'), false);
+  assert.equal(usesOfficialShellChrome('main', 'https://127.0.0.1:8080/'), false);
+});
+
+test('windowBackgroundForShell uses official canvas on launcher, wallpaper seed elsewhere', () => {
+  const paper = { scheme: 'light', bg: '#f3efe6' };
+  const grove = { scheme: 'dark', bg: '#14100b' };
+  assert.equal(windowBackgroundForShell(paper, { role: 'launcher' }), '#FFFFFF');
+  assert.equal(windowBackgroundForShell(grove, { url: 'file:///x/launcher.html' }), '#151517');
+  assert.equal(windowBackgroundForShell(paper, { url: 'file:///x/boot.html' }), '#f3efe6');
+  assert.equal(windowBackgroundForShell(grove, { role: 'main' }), '#14100b');
 });
 
 test('resolveTheme without a desktop home does not require ~/.dsh', () => {

@@ -9,6 +9,7 @@ const { pathToFileURL } = require('url');
 const {
   ensureDesktopInstallPlugin,
   healDanglingBundles,
+  applyDisabledBundles,
   webProfileDir,
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
@@ -54,6 +55,29 @@ test('healDanglingBundles removes only unresolved user bundles and preserves dep
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(install, { recursive: true, force: true });
+  }
+});
+
+test('applyDisabledBundles drops a user bundle and keeps the official template', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({
+      dependencies: { 'user-pack': '1.0.0', '@deepseek-ai/dsh-base': '1.0.0' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'user-pack'] } },
+    }, null, 2)}\n`, 'utf8');
+    setDesktopDshHome(home);
+    const result = applyDisabledBundles(['user-pack', '@deepseek-ai/dsh-base']);
+    assert.equal(result.ok, true);
+    assert.equal(result.changed, true);
+    assert.ok(!result.bundles.includes('user-pack'));
+    assert.ok(result.bundles.includes('@deepseek-ai/dsh-base'));
+    const manifest = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'));
+    assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base']);
+  } finally {
+    clearDesktopDshHome();
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
 

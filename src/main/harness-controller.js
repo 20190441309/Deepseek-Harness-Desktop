@@ -45,8 +45,12 @@ class HarnessController extends EventEmitter {
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
     this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
       || (async () => ({ ok: true, added: false }));
+    this.ensureUsagePanelPlugin = options.ensureUsagePanelPlugin
+      || (async () => ({ ok: true, added: false }));
     this.hideDshbotPlugin = options.hideDshbotPlugin
       || (async () => ({ ok: true, stripped: false }));
+    this.applyDisabledBundles = options.applyDisabledBundles
+      || (() => ({ ok: true, changed: false }));
     this.ensureWorkspace = options.ensureWorkspace;
     this.setTimer = options.setTimer || setTimeout;
     this.clearTimer = options.clearTimer || clearTimeout;
@@ -418,6 +422,15 @@ class HarnessController extends EventEmitter {
     } catch (error) {
       this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
     }
+    try {
+      const usage = await this.ensureUsagePanelPlugin();
+      this.assertOperationCurrent(generation);
+      if (usage && usage.ok === false) {
+        this.dsh.log(`预置用量统计失败：${usage.error || 'unknown'}`, 'app');
+      }
+    } catch (error) {
+      this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
+    }
     const dshbot = await this.hideDshbotPlugin();
     this.assertOperationCurrent(generation);
     if (dshbot && dshbot.ok === false) {
@@ -425,6 +438,16 @@ class HarnessController extends EventEmitter {
     }
     if (dshbot && (dshbot.stripped || dshbot.manifestRemoved)) {
       this.dsh.log('已隐藏预置 dshbot 侧栏入口', 'app');
+    }
+    try {
+      const disabled = this.applyDisabledBundles((this.loadConfig() || {}).disabledPlugins);
+      if (disabled && disabled.changed) {
+        this.dsh.log('已按启动器禁用名单更新插件 bundles', 'app');
+      } else if (disabled && disabled.ok === false && disabled.reason) {
+        this.dsh.log(`应用插件禁用名单跳过：${disabled.reason}`, 'app');
+      }
+    } catch (error) {
+      this.dsh.log(`应用插件禁用名单失败：${errorMessage(error)}`, 'app');
     }
     const startOptions = {
       ...target,

@@ -15,7 +15,7 @@ import type { Config } from '@deepseek-ai/dsh-mcp-client'
 
 // vi.mock factories are hoisted above every import/const, so the mock fns and
 // class must be created inside vi.hoisted to exist when the factories run.
-const { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotificationHandler, MockClient, instances } = vi.hoisted(() => {
+const { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotificationHandler, MockClient, instances, HttpTransport, httpTransports } = vi.hoisted(() => {
   const mockConnect = vi.fn<() => Promise<void>>()
   const mockClose = vi.fn<() => Promise<void>>()
   const mockListTools = vi.fn<(_params?: Record<string, unknown>) => Promise<unknown>>()
@@ -41,7 +41,12 @@ const { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotification
     constructor() { instances.push(this) }
   }
   const instances: MockClient[] = []
-  return { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotificationHandler, MockClient, instances }
+  const httpTransports: HttpTransport[] = []
+  class HttpTransport {
+    onerror: ((error: Error) => void) | undefined
+    constructor() { httpTransports.push(this) }
+  }
+  return { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotificationHandler, MockClient, instances, HttpTransport, httpTransports }
 })
 
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
@@ -53,7 +58,7 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
 }))
 
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
-  StreamableHTTPClientTransport: vi.fn(),
+  StreamableHTTPClientTransport: HttpTransport,
 }))
 
 // vi.mock is hoisted above static imports, so the modules under test see the
@@ -107,6 +112,18 @@ function stdioConfig(reconnect?: Config['reconnect']): Config {
   }
 }
 
+function httpConfig(reconnect?: Config['reconnect']): Config {
+  return {
+    transport: 'streamable-http',
+    serverName: 'srv',
+    url: 'https://mcp.example.test/mcp',
+    headers: {},
+    toolCallTimeoutMs: 60_000,
+    failOnStartupError: false,
+    ...reconnect === undefined ? {} : { reconnect },
+  }
+}
+
 /** The tool list the mock server advertises after a successful (re)connect. */
 function listing(...names: string[]): { tools: { name: string; inputSchema: { type: string } }[]; nextCursor: undefined } {
   return {
@@ -128,6 +145,7 @@ describe('reconnect supervisor', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     instances.length = 0
+    httpTransports.length = 0
     mockConnect.mockResolvedValue(undefined)
     mockClose.mockImplementation(function (this: { onclose?: () => void }) {
       this.onclose?.()
@@ -483,6 +501,7 @@ describe('connection status reporting', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     instances.length = 0
+    httpTransports.length = 0
     mockConnect.mockResolvedValue(undefined)
     mockClose.mockImplementation(function (this: { onclose?: () => void }) {
       this.onclose?.()
@@ -543,6 +562,74 @@ describe('connection status reporting', () => {
     await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
     instances[0]!.onclose?.()
     await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('failed') })
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps formatted HTTP 401 when reconnect is disabled after a failed connect', async () => {
+    class StreamableHTTPError extends Error {
+      constructor(public readonly code: number, message: string) {
+        super(message)
+        this.name = 'StreamableHTTPError'
+      }
+    }
+    mockConnect.mockRejectedValue(new StreamableHTTPError(401, 'Error POSTing to endpoint: '))
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, httpConfig({ enabled: false }))
+    await vi.waitFor(() => {
+      expect(mcpClientStatus(ctx, 'srv')).toMatchObject({
+        health: 'failed',
+        lastError: 'HTTP 401: StreamableHTTPError: Error POSTing to endpoint: ',
+      })
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('fails health on streamable HTTP auth onerror without reconnecting', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, httpConfig({ enabled: true, maxAttempts: 10 }))
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    const transport = httpTransports.at(-1)
+    expect(transport?.onerror).toEqual(expect.any(Function))
+    class StreamableHTTPError extends Error {
+      constructor(public readonly code: number, message: string) {
+        super(message)
+        this.name = 'StreamableHTTPError'
+      }
+    }
+    transport!.onerror!(new StreamableHTTPError(401, 'Failed to open SSE stream'))
+    await vi.waitFor(() => {
+      expect(mcpClientStatus(ctx, 'srv')).toMatchObject({
+        health: 'failed',
+        lastError: 'HTTP 401: StreamableHTTPError: Failed to open SSE stream',
+      })
+    })
+    expect(instances).toHaveLength(1)
+    await ctx.fiber.dispose()
+  })
+
+  it('ignores a non-auth SSE onerror while connected', async () => {
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, httpConfig())
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    httpTransports.at(-1)!.onerror!(new Error('network blip'))
+    expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected')
+    await ctx.fiber.dispose()
+  })
+
+  it('records SSE auth onerror during connect without leaving health failed', async () => {
+    class StreamableHTTPError extends Error {
+      constructor(public readonly code: number, message: string) {
+        super(message)
+        this.name = 'StreamableHTTPError'
+      }
+    }
+    mockConnect.mockImplementation(async () => {
+      httpTransports.at(-1)!.onerror!(new StreamableHTTPError(401, 'sse during connect'))
+    })
+    const ctx = await mountRegistry()
+    ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, httpConfig())
+    await vi.waitFor(() => { expect(mcpClientStatus(ctx, 'srv')?.health).toBe('connected') })
+    expect(mcpClientStatus(ctx, 'srv')?.lastError).toBeUndefined()
     await ctx.fiber.dispose()
   })
 
