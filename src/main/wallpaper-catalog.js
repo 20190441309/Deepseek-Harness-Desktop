@@ -1,5 +1,7 @@
 /** Fetch and parse wallpaper catalogs (Bing today/year, Wallhaven SFW, custom JSON). */
 
+const dns = require('node:dns');
+
 const USER_AGENT = 'Deepseek-Harness-Desktop';
 const MAX_CATALOG_BYTES = 4_000_000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -109,7 +111,11 @@ function isBlockedWallpaperHost(hostname) {
       || a === 0
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
-      || (a === 169 && b === 254);
+      || (a === 169 && b === 254)
+      // Carrier-grade NAT 100.64.0.0/10 and benchmark 198.18.0.0/15: both are
+      // non-public and reachable only inside an operator / lab network.
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 198 && (b === 18 || b === 19));
   }
   if (host.includes(':')) {
     if (host === '::1' || host === '0:0:0:0:0:0:0:1') return !allowHttp();
@@ -186,6 +192,40 @@ function resolveAgainst(url, base) {
     return new URL(url, base).href;
   } catch {
     return '';
+  }
+}
+
+function isIpLiteralHost(host) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':');
+}
+
+/**
+ * Post-DNS recheck: resolve the hostname and reject when any returned
+ * address falls in a blocked range, so a public-looking name cannot point
+ * catalog IPC at loopback / RFC1918 / CGNAT targets. IP literals were
+ * already checked lexically; legitimate public image hosts resolve to
+ * public addresses and pass through unchanged. (A rebind between this
+ * lookup and the fetch connect is out of scope for this layer.)
+ * @param {string} hostname
+ * @param {string} url - for the error message.
+ * @param {(host: string, options: object) => Promise<Array<{ address: string }>>} [lookup]
+ */
+async function assertResolvedWallpaperHost(hostname, url, lookup = dns.promises.lookup) {
+  const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host || isIpLiteralHost(host)) {
+    return;
+  }
+  let records;
+  try {
+    records = await lookup(host, { all: true, verbatim: true });
+  } catch {
+    // Let fetch produce its own DNS failure message.
+    return;
+  }
+  for (const record of Array.isArray(records) ? records : []) {
+    if (record && typeof record.address === 'string' && isBlockedWallpaperHost(record.address)) {
+      throw new Error(catalogError(url, '解析到不允许的内网地址'));
+    }
   }
 }
 
@@ -400,7 +440,7 @@ async function readLimitedBody(response, maxBytes, url) {
  * @param {number} [hops]
  * @returns {Promise<{ buffer: Buffer, contentType: string, finalUrl: string }>}
  */
-async function fetchBuffer(url, { maxBytes, timeoutMs }, hops = 0) {
+async function fetchBuffer(url, { maxBytes, timeoutMs, lookup }, hops = 0) {
   const parsed = parseHttpUrl(url);
   if (!parsed) {
     throw new Error(catalogError(url, '地址无效'));
@@ -408,6 +448,7 @@ async function fetchBuffer(url, { maxBytes, timeoutMs }, hops = 0) {
   if (hops > MAX_REDIRECTS) {
     throw new Error(catalogError(url, '重定向过多'));
   }
+  await assertResolvedWallpaperHost(parsed.hostname, url, lookup);
   const controller = new AbortController();
   const timer = setTimeout(() => { controller.abort(); }, timeoutMs);
   try {
@@ -429,7 +470,7 @@ async function fetchBuffer(url, { maxBytes, timeoutMs }, hops = 0) {
       if (!location) {
         throw new Error(catalogError(url, '重定向无效'));
       }
-      return fetchBuffer(resolveAgainst(location, parsed.href), { maxBytes, timeoutMs }, hops + 1);
+      return fetchBuffer(resolveAgainst(location, parsed.href), { maxBytes, timeoutMs, lookup }, hops + 1);
     }
     if (!parseHttpUrl(response.url || parsed.href)) {
       throw new Error(catalogError(url, '重定向到了不允许的地址'));
@@ -593,5 +634,7 @@ module.exports = {
   listWallpaperCatalog,
   downloadWallpaper,
   isAllowedWallpaperUrl,
+  isBlockedWallpaperHost,
+  assertResolvedWallpaperHost,
   fetchFailureDetail,
 };

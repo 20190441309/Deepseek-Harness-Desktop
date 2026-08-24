@@ -2,9 +2,11 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
 const {
+  assertResolvedWallpaperHost,
   bingCatalogUrls,
   downloadWallpaper,
   fetchFailureDetail,
+  isBlockedWallpaperHost,
   listWallpaperCatalog,
   parseCatalogJson,
 } = require('./wallpaper-catalog');
@@ -219,6 +221,70 @@ test('listWallpaperCatalog does not fetch private or link-local HTTPS hosts', as
     assert.equal(result.items.length, 0, url);
     assert.match(result.warning, /壁纸目录/, url);
   }
+});
+
+test('isBlockedWallpaperHost blocks CGNAT and benchmark ranges but keeps neighbours public', () => {
+  delete process.env.DSHD_WALLPAPER_ALLOW_HTTP;
+  // 100.64.0.0/10 (carrier-grade NAT)
+  assert.equal(isBlockedWallpaperHost('100.64.0.0'), true);
+  assert.equal(isBlockedWallpaperHost('100.100.50.1'), true);
+  assert.equal(isBlockedWallpaperHost('100.127.255.255'), true);
+  assert.equal(isBlockedWallpaperHost('100.63.255.255'), false);
+  assert.equal(isBlockedWallpaperHost('100.128.0.0'), false);
+  // 198.18.0.0/15 (benchmarking)
+  assert.equal(isBlockedWallpaperHost('198.18.0.1'), true);
+  assert.equal(isBlockedWallpaperHost('198.19.255.254'), true);
+  assert.equal(isBlockedWallpaperHost('198.17.255.255'), false);
+  assert.equal(isBlockedWallpaperHost('198.20.0.1'), false);
+  // Existing public hosts stay allowed.
+  assert.equal(isBlockedWallpaperHost('93.184.216.34'), false);
+  assert.equal(isBlockedWallpaperHost('cn.bing.com'), false);
+});
+
+test('listWallpaperCatalog rejects HTTPS CGNAT and benchmark IP literals', async () => {
+  delete process.env.DSHD_WALLPAPER_ALLOW_HTTP;
+  for (const url of [
+    'https://100.64.1.2/secret.json',
+    'https://198.18.7.7/secret.json',
+  ]) {
+    const result = await listWallpaperCatalog({ kind: 'catalog', url });
+    assert.equal(result.items.length, 0, url);
+    assert.match(result.warning, /壁纸目录/, url);
+  }
+});
+
+test('assertResolvedWallpaperHost rejects hostnames resolving to private addresses', async () => {
+  delete process.env.DSHD_WALLPAPER_ALLOW_HTTP;
+  const privateLookup = async () => [{ address: '10.11.12.13', family: 4 }];
+  await assert.rejects(
+    () => assertResolvedWallpaperHost('evil.example.com', 'https://evil.example.com/x.json', privateLookup),
+    /解析到不允许的内网地址/,
+  );
+  const cgnatLookup = async () => [
+    { address: '93.184.216.34', family: 4 },
+    { address: '100.64.9.9', family: 4 },
+  ];
+  await assert.rejects(
+    () => assertResolvedWallpaperHost('half.example.com', 'https://half.example.com/x.json', cgnatLookup),
+    /解析到不允许的内网地址/,
+  );
+});
+
+test('assertResolvedWallpaperHost keeps public results and tolerates DNS failure', async () => {
+  delete process.env.DSHD_WALLPAPER_ALLOW_HTTP;
+  const publicLookup = async () => [
+    { address: '93.184.216.34', family: 4 },
+    { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+  ];
+  await assertResolvedWallpaperHost('example.com', 'https://example.com/x.json', publicLookup);
+  const failingLookup = async () => { throw new Error('getaddrinfo ENOTFOUND'); };
+  await assertResolvedWallpaperHost('gone.example.com', 'https://gone.example.com/x.json', failingLookup);
+  // IP literals were checked lexically; the resolver must not be consulted.
+  let called = 0;
+  const countingLookup = async () => { called += 1; return []; };
+  await assertResolvedWallpaperHost('93.184.216.34', 'https://93.184.216.34/x.json', countingLookup);
+  await assertResolvedWallpaperHost('[2606:2800::1]', 'https://[2606:2800::1]/x.json', countingLookup);
+  assert.equal(called, 0);
 });
 
 test('listWallpaperCatalog accepts a catalog under 4MB and drops one above it', async () => {
