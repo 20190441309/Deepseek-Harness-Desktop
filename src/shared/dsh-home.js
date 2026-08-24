@@ -45,6 +45,24 @@ function tryGetDesktopDshHome() {
   }
 }
 
+/**
+ * In packaged builds an inherited `DSHD_HOME` must not silently redirect the
+ * desktop home away from `userData/dsh-home`; it is honored only with the
+ * explicit `DSHD_ALLOW_ENV_HOME=1` switch. Dev / debug (non-packaged) runs
+ * keep the override as-is. Call once at main-process startup, before the
+ * home is first resolved.
+ * @param {{ isPackaged?: boolean, env?: NodeJS.ProcessEnv }} [options]
+ * @returns {{ dropped: boolean, value: string }}
+ */
+function sanitizePackagedDshHomeEnv({ isPackaged = false, env = process.env } = {}) {
+  const value = typeof env.DSHD_HOME === 'string' ? env.DSHD_HOME : '';
+  if (!isPackaged || !value.trim() || env.DSHD_ALLOW_ENV_HOME === '1') {
+    return { dropped: false, value };
+  }
+  delete env.DSHD_HOME;
+  return { dropped: true, value };
+}
+
 function applyDesktopDshHome(env = {}) {
   const next = { ...env };
   for (const key of Object.keys(next)) {
@@ -62,4 +80,5 @@ module.exports = {
   getDesktopDshHome,
   tryGetDesktopDshHome,
   applyDesktopDshHome,
+  sanitizePackagedDshHomeEnv,
 };

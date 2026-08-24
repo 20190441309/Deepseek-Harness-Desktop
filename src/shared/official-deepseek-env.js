@@ -8,7 +8,8 @@ const OFFICIAL_DEEPSEEK_HOST = 'api.deepseek.com';
 
 /**
  * True when the shell gateway is official DeepSeek: empty/whitespace (public
- * API default) or a URL whose hostname is api.deepseek.com.
+ * API default) or an https URL whose hostname is api.deepseek.com. Plain
+ * http is rejected so credentials are never aliased onto a cleartext origin.
  * @param {unknown} baseUrl
  * @returns {boolean}
  */
@@ -21,7 +22,7 @@ function isOfficialDeepSeekBaseUrl(baseUrl) {
   } catch {
     return false;
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+  if (parsed.protocol !== 'https:') return false;
   return parsed.hostname.toLowerCase() === OFFICIAL_DEEPSEEK_HOST;
 }
 

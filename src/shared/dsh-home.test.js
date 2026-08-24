@@ -13,6 +13,7 @@ const {
   getDesktopDshHome,
   tryGetDesktopDshHome,
   applyDesktopDshHome,
+  sanitizePackagedDshHomeEnv,
 } = require('./dsh-home');
 
 function withEnv(key, value, work) {
@@ -74,6 +75,29 @@ test('applyDesktopDshHome overwrites an inherited DSH_HOME', () => {
   });
   assert.equal(env.DSH_HOME, path.resolve(configured));
   assert.equal(env.KEEP, 'yes');
+});
+
+test('sanitizePackagedDshHomeEnv drops DSHD_HOME in packaged builds without the switch', () => {
+  const inherited = path.join(os.tmpdir(), 'stray-dshd-home');
+  const env = { DSHD_HOME: inherited };
+  const result = sanitizePackagedDshHomeEnv({ isPackaged: true, env });
+  assert.equal(result.dropped, true);
+  assert.equal(result.value, inherited);
+  assert.equal('DSHD_HOME' in env, false);
+});
+
+test('sanitizePackagedDshHomeEnv keeps DSHD_HOME with DSHD_ALLOW_ENV_HOME=1 or in dev', () => {
+  const inherited = path.join(os.tmpdir(), 'wanted-dshd-home');
+  const packagedAllowed = { DSHD_HOME: inherited, DSHD_ALLOW_ENV_HOME: '1' };
+  assert.equal(sanitizePackagedDshHomeEnv({ isPackaged: true, env: packagedAllowed }).dropped, false);
+  assert.equal(packagedAllowed.DSHD_HOME, inherited);
+
+  const dev = { DSHD_HOME: inherited };
+  assert.equal(sanitizePackagedDshHomeEnv({ isPackaged: false, env: dev }).dropped, false);
+  assert.equal(dev.DSHD_HOME, inherited);
+
+  const unset = {};
+  assert.equal(sanitizePackagedDshHomeEnv({ isPackaged: true, env: unset }).dropped, false);
 });
 
 test('applyDesktopDshHome drops case variants then sets DSH_HOME', () => {

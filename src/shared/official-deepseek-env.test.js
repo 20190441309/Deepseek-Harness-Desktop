@@ -13,19 +13,28 @@ test('empty or whitespace baseUrl is official DeepSeek (public API default)', ()
   assert.equal(isOfficialDeepSeekBaseUrl('   '), true);
 });
 
-test('api.deepseek.com http(s) URLs are official', () => {
+test('api.deepseek.com https URLs are official', () => {
   assert.equal(isOfficialDeepSeekBaseUrl('https://api.deepseek.com'), true);
   assert.equal(isOfficialDeepSeekBaseUrl('https://api.deepseek.com/'), true);
   assert.equal(isOfficialDeepSeekBaseUrl('https://api.deepseek.com/v1'), true);
   assert.equal(isOfficialDeepSeekBaseUrl('https://API.DEEPSEEK.COM/v1'), true);
-  assert.equal(isOfficialDeepSeekBaseUrl('http://api.deepseek.com'), true);
 });
 
-test('third-party and invalid URLs are not official DeepSeek', () => {
+test('third-party, cleartext, and invalid URLs are not official DeepSeek', () => {
   assert.equal(isOfficialDeepSeekBaseUrl('https://ayase.cn/v1'), false);
   assert.equal(isOfficialDeepSeekBaseUrl('https://api.deepseek.com.evil.example/v1'), false);
   assert.equal(isOfficialDeepSeekBaseUrl('not a url'), false);
   assert.equal(isOfficialDeepSeekBaseUrl('ftp://api.deepseek.com'), false);
+  assert.equal(isOfficialDeepSeekBaseUrl('http://api.deepseek.com'), false);
+});
+
+test('applyOfficialDeepSeekSpawnEnv never aliases onto a cleartext official host', () => {
+  const env = applyOfficialDeepSeekSpawnEnv({}, {
+    apiKey: 'sk-official',
+    baseUrl: 'http://api.deepseek.com',
+  });
+  assert.equal(env.DEEPSEEK_API_KEY, undefined);
+  assert.equal(env.DEEPSEEK_BASE_URL, undefined);
 });
 
 test('applyOfficialDeepSeekSpawnEnv does not write Ayase onto DEEPSEEK_*', () => {

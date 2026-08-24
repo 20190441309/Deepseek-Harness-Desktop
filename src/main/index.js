@@ -2,7 +2,7 @@ const { app, dialog, globalShortcut, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot } = require('./config');
-const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome } = require('../shared/dsh-home');
+const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome, sanitizePackagedDshHomeEnv } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
@@ -1101,6 +1101,10 @@ if (!gotLock) {
   app.setAppUserModelId('ai.deepseek.harness.gui');
 
   app.whenReady().then(async () => {
+    const homeEnv = sanitizePackagedDshHomeEnv({ isPackaged: app.isPackaged });
+    if (homeEnv.dropped) {
+      dsh.log(`忽略继承的 DSHD_HOME=${homeEnv.value}（packaged 下需要 DSHD_ALLOW_ENV_HOME=1）`, 'app');
+    }
     const desktopHome = setDesktopDshHome(desktopDshHomeFromUserData(app.getPath('userData')));
     fs.mkdirSync(desktopHome, { recursive: true });
     dsh.log(`Harness 家目录 ${desktopHome}`, 'app');
