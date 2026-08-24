@@ -2,7 +2,7 @@
  * Settings Skills page: searchable flat catalog with a local editor.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import type {
   SkillInventoryDetail,
@@ -21,11 +21,13 @@ import {
   IconSkillOutline16,
   IconTrashOutline16,
   Input,
+  Menu,
   Modal,
   Pill,
   SettingsSelect,
   Switch,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SkillsSettingsKey } from './locales.ts'
 import styles from './SkillsSection.module.css'
@@ -330,6 +332,7 @@ export function SkillsSection(props: SkillsSectionProps) {
     ['other', t('sourceOther')],
   ] as const
   const sections = groupSections(filtered)
+  const groupOptions = distinctGroups(view.snapshot.skills)
 
   const renderRow = (skill: SkillInventoryEntry) => {
     const key = skillKey(skill)
@@ -525,6 +528,7 @@ export function SkillsSection(props: SkillsSectionProps) {
         creating={editor?.mode === 'create'}
         draft={editor?.mode === 'edit' ? editorDraft(editor.detail) : emptySkill()}
         cwd={cwd}
+        groups={groupOptions}
         pending={editorPending}
         submitError={editorError}
         t={t}
@@ -647,11 +651,12 @@ export function SkillsSection(props: SkillsSectionProps) {
   )
 }
 
-function SkillEditor({ open, creating, draft, cwd, pending, submitError, t, onClose, onSave }: {
+function SkillEditor({ open, creating, draft, cwd, groups, pending, submitError, t, onClose, onSave }: {
   open: boolean
   creating: boolean
   draft: EditorDraft
   cwd: string | undefined
+  groups: readonly string[]
   pending: boolean
   submitError: string | undefined
   t: SkillsSectionInjected['t']
@@ -759,12 +764,12 @@ function SkillEditor({ open, creating, draft, cwd, pending, submitError, t, onCl
         </label>
         <label className={styles.field}>
           <span className={styles.label}>{t('group')}</span>
-          <Input
+          <GroupField
             value={form.group}
-            aria-label={t('group')}
-            placeholder={t('groupPlaceholder')}
             disabled={pending}
-            onChange={(event) => { setField('group', event.target.value) }}
+            groups={groups}
+            t={t}
+            onChange={(value) => { setField('group', value) }}
           />
         </label>
         <label className={styles.field}>
@@ -800,6 +805,66 @@ function SkillEditor({ open, creating, draft, cwd, pending, submitError, t, onCl
         {submitError !== undefined && <p className={styles.modalError} role="alert">{submitError}</p>}
       </div>
     </Modal>
+  )
+}
+
+/** Editable group combobox: pick an existing label from a Menu or type a new one. */
+function GroupField({ value, disabled, groups, t, onChange }: {
+  value: string
+  disabled: boolean
+  groups: readonly string[]
+  t: SkillsSectionInjected['t']
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rowRef = useRef<HTMLDivElement>(null)
+  const getRowRect = useCallback(() => rowRef.current?.getBoundingClientRect() ?? null, [])
+  const trimmed = value.trim()
+  const items: MenuEntry[] = [
+    ...groups.map(label => ({ id: label, label })),
+    ...(groups.length > 0 ? [{ type: 'separator' as const, id: 'group-clear-separator' }] : []),
+    { id: '', label: t('groupClearOption'), disabled: trimmed.length === 0 },
+  ]
+  return (
+    <div ref={rowRef}>
+      <Menu
+        open={open && !disabled}
+        onClose={() => { setOpen(false) }}
+        items={items}
+        selectedId={groups.includes(trimmed) ? trimmed : undefined}
+        onSelect={(id) => {
+          onChange(id)
+          setOpen(false)
+        }}
+        align="start"
+        portal
+        matchAnchorWidth
+        getAnchorRect={getRowRect}
+        anchor={(
+          <div className={styles.groupFieldRow}>
+            <Input
+              className={styles.groupInput}
+              value={value}
+              aria-label={t('group')}
+              placeholder={t('groupPlaceholder')}
+              disabled={disabled}
+              onChange={(event) => { onChange(event.target.value) }}
+            />
+            <button
+              type="button"
+              className={styles.groupOptionsButton}
+              aria-label={t('groupOptionsLabel')}
+              aria-haspopup="menu"
+              aria-expanded={open && !disabled}
+              disabled={disabled}
+              onClick={() => { setOpen(current => !current) }}
+            >
+              <IconChevronDownOutline14 />
+            </button>
+          </div>
+        )}
+      />
+    </div>
   )
 }
 
@@ -850,6 +915,19 @@ function groupSections(skills: readonly SkillInventoryEntry[]): readonly GroupSe
   const sections: GroupSection[] = [...byGroup.entries()].map(([group, groupSkills]) => ({ group, skills: groupSkills }))
   if (ungrouped.length > 0) sections.push({ group: undefined, skills: ungrouped })
   return sections
+}
+
+/** Distinct non-empty group labels in first-appearance order. */
+function distinctGroups(skills: readonly SkillInventoryEntry[]): readonly string[] {
+  const seen = new Set<string>()
+  const groups: string[] = []
+  for (const skill of skills) {
+    const group = skill.group?.trim() ?? ''
+    if (group.length === 0 || seen.has(group)) continue
+    seen.add(group)
+    groups.push(group)
+  }
+  return groups
 }
 
 /** sessionStorage key for per-group expand state. */

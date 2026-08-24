@@ -728,6 +728,51 @@ describe('SkillsSection', () => {
     expect(within(dialog).getByLabelText<HTMLInputElement>(en.name).disabled).toBe(true)
   })
 
+  it('offers existing groups in an editable dropdown and still accepts free text', async () => {
+    const groupedA = { ...writableSkill, name: 'group-a', group: 'review' }
+    const groupedB = { ...writableSkill, name: 'group-b', group: 'docs' }
+    const create = vi.fn(async () => {})
+    render(<SkillsSection {...props({
+      list: async () => ({ skills: [groupedA, groupedB] }),
+      get: async () => detail(groupedA),
+      create,
+    })} />)
+    await screen.findByText(groupedA.name)
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    const dialog = screen.getByRole('dialog', { name: en.editorTitleAdd })
+
+    // Pick an existing group from the dropdown.
+    fireEvent.click(within(dialog).getByRole('button', { name: en.groupOptionsLabel }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'review' }))
+    expect(within(dialog).getByLabelText<HTMLInputElement>(en.group).value).toBe('review')
+
+    // The clear row empties the field.
+    fireEvent.click(within(dialog).getByRole('button', { name: en.groupOptionsLabel }))
+    fireEvent.click(screen.getByRole('menuitem', { name: en.groupClearOption }))
+    expect(within(dialog).getByLabelText<HTMLInputElement>(en.group).value).toBe('')
+
+    // Free text still works and reaches create.
+    fireEvent.change(within(dialog).getByLabelText(en.group), { target: { value: 'brand-new' } })
+    fireEvent.change(within(dialog).getByLabelText(en.name), { target: { value: 'new-skill' } })
+    fireEvent.change(within(dialog).getByLabelText(en.description), { target: { value: 'Does work' } })
+    fireEvent.change(within(dialog).getByLabelText(en.content), { target: { value: 'Instructions' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.save }))
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ group: 'brand-new' }))
+    })
+  })
+
+  it('shows only the clear row in the group dropdown when no groups exist', async () => {
+    render(<SkillsSection {...props()} />)
+    await screen.findByRole('button', { name: en.add })
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    const dialog = screen.getByRole('dialog', { name: en.editorTitleAdd })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.groupOptionsLabel }))
+    expect(screen.getByRole('menuitem', { name: en.groupClearOption })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'review' })).toBeNull()
+  })
+
   it('creates a project skill with invocation flags and disables project scope without cwd', async () => {
     const create = vi.fn(async () => {})
     render(<SkillsSection {...props({ create })} />)
