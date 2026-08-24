@@ -10,6 +10,11 @@ const { spawnSync } = require('node:child_process');
 const { readPin, writePin } = require('./harness-upstream');
 const { parseSyncArgs, syncHarness, BACKUP_REF, STATE_RELATIVE } = require('./harness-sync');
 
+// Keep git fixtures hermetic: no global insteadOf rewrites or system config.
+process.env.GIT_CONFIG_GLOBAL = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-isolation-')), 'gitconfig');
+fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+
 function git(cwd, args, options = {}) {
   return spawnSync('git', args, { cwd, encoding: 'utf8', shell: false, ...options });
 }

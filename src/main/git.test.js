@@ -10,6 +10,13 @@ const { COMMIT_TIMEOUT_MS, FETCH_TIMEOUT_MS, GH_TIMEOUT_MS, commitArgs, gitBranc
 const { parseRepositoryNameWithOwnerFromNormalized } = require('./git-pullrequest');
 const { setTextGenerator } = require('./git-generate.js');
 
+// Isolate every git child (direct spawns and module-spawned via gitChildEnv)
+// from the developer's global/system config: url.*.insteadOf rewrites,
+// init.defaultBranch, or hook templates must not leak into these fixtures.
+process.env.GIT_CONFIG_GLOBAL = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-isolation-')), 'gitconfig');
+fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+
 function makeTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-'));
   // Pin the workspace authority so cwd checks pass inside this test root.
