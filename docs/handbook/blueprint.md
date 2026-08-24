@@ -48,6 +48,7 @@ flowchart TB
 | 设置各 section | Harness `settings.section` 插件 | 市场安装、用量统计、壁纸 catalog、跳转 IPC |
 | 托盘 / 应用菜单 | main `tray.js` / `menu.js` | 打开设置、显示窗口、退出 |
 | 手机 SPA | `mobile/web` | main `remote.js` / `mobile-web.js` 代理到 loopback harness |
+| Android | `mobile/android` | 同一网关；JSON 登录 + `/__remote__/shell` |
 
 视觉语言：除启动页仪器例外外，一律官方 `dsh web`（[design-language.md](../design-language.md)）。
 

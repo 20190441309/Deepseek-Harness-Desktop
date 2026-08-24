@@ -4,6 +4,7 @@ const zlib = require('zlib');
 const fs = require('fs');
 const { EventEmitter } = require('events');
 const { resolveMobileWebRoot, shouldProxyToHost, resolveSpaAsset } = require('./mobile-web');
+const { isRemoteShellName, shellNameFromUrl } = require('./remote-shell');
 const {
   generateToken,
   isAuthorized,
@@ -40,6 +41,9 @@ function rewriteProxyHeaders(headers, target, options = {}) {
   for (const [key, value] of Object.entries(headers || {})) {
     const name = String(key).toLowerCase();
     if (name.startsWith('sec-fetch-')) {
+      continue;
+    }
+    if (name === 'cookie' || name === 'authorization') {
       continue;
     }
     if (!keepUpgrade && HOP_BY_HOP.has(name)) {
@@ -203,6 +207,29 @@ function parseFormToken(body) {
   }
 }
 
+function wantsJson(req) {
+  const accept = String((req && req.headers && req.headers.accept) || '');
+  const type = String((req && req.headers && req.headers['content-type']) || '');
+  return /application\/json/i.test(accept) || /application\/json/i.test(type);
+}
+
+function parseJsonToken(body) {
+  try {
+    const value = JSON.parse(body);
+    return value && typeof value.token === 'string' ? value.token : '';
+  } catch {
+    return '';
+  }
+}
+
+function parseLoginToken(req, body) {
+  const type = String((req && req.headers && req.headers['content-type']) || '');
+  if (/application\/json/i.test(type)) {
+    return parseJsonToken(body);
+  }
+  return parseFormToken(body);
+}
+
 class RemoteGateway extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -217,6 +244,7 @@ class RemoteGateway extends EventEmitter {
     this.sockets = new Map();
     this.relayOp = 0;
     this.mobileWebRoot = options.mobileWebRoot || resolveMobileWebRoot();
+    this.invokeShell = typeof options.invokeShell === 'function' ? options.invokeShell : null;
     this.relay = options.relay || new RelayClient({
       ...options.relayOptions,
       getLocal: () => (this.port ? { port: this.port } : null),
@@ -533,12 +561,29 @@ class RemoteGateway extends EventEmitter {
         this.send(res, 413, { 'content-type': 'text/plain; charset=utf-8' }, '请求过大');
         return;
       }
-      const token = parseFormToken(body);
+      const json = wantsJson(req);
+      const token = parseLoginToken(req, body);
       if (!tokensEqual(token, this.token)) {
+        if (json) {
+          this.send(
+            res,
+            401,
+            { 'content-type': 'application/json; charset=utf-8' },
+            JSON.stringify({ ok: false, error: '配对密钥无效' }),
+          );
+          return;
+        }
         this.send(res, 401, { 'content-type': 'text/html; charset=utf-8' }, loginPage());
         return;
       }
       const device = this.pairDevice(req);
+      if (json) {
+        this.send(res, 200, {
+          'content-type': 'application/json; charset=utf-8',
+          'set-cookie': cookieHeader(device.token),
+        }, JSON.stringify({ ok: true, deviceToken: device.token }));
+        return;
+      }
       this.send(res, 302, { location: '/', 'set-cookie': cookieHeader(device.token) }, '');
       return;
     }
@@ -565,6 +610,14 @@ class RemoteGateway extends EventEmitter {
     const device = this.deviceForToken(presented);
     if (device) {
       this.touchDevice(device.id);
+    }
+
+    if (req.method === 'POST') {
+      const shellName = shellNameFromUrl(url);
+      if (shellName) {
+        await this.handleShell(req, res, shellName);
+        return;
+      }
     }
 
     if (!shouldProxyToHost(url)) {
@@ -609,6 +662,53 @@ class RemoteGateway extends EventEmitter {
       }
     });
     req.pipe(proxy);
+  }
+
+  async handleShell(req, res, name) {
+    const jsonHeaders = { 'content-type': 'application/json; charset=utf-8' };
+    if (!isRemoteShellName(name)) {
+      this.send(res, 404, jsonHeaders, JSON.stringify({ ok: false, error: 'not found' }));
+      return;
+    }
+    if (typeof this.invokeShell !== 'function') {
+      this.send(res, 501, jsonHeaders, JSON.stringify({ ok: false, error: 'shell unavailable' }));
+      return;
+    }
+    let raw = '';
+    try {
+      raw = await readBody(req, 262144);
+    } catch {
+      this.send(res, 413, jsonHeaders, JSON.stringify({ ok: false, error: '请求过大' }));
+      return;
+    }
+    let payload = {};
+    if (raw) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        this.send(res, 400, jsonHeaders, JSON.stringify({ ok: false, error: 'invalid json' }));
+        return;
+      }
+    }
+    let outcome;
+    try {
+      outcome = await this.invokeShell(name, payload);
+    } catch (error) {
+      this.send(res, 500, jsonHeaders, JSON.stringify({
+        ok: false,
+        error: error && error.message ? error.message : 'shell failed',
+      }));
+      return;
+    }
+    if (!outcome || outcome.ok !== true) {
+      const status = Number(outcome && outcome.status) || 400;
+      this.send(res, status, jsonHeaders, JSON.stringify({
+        ok: false,
+        error: (outcome && outcome.error) || '请求失败',
+      }));
+      return;
+    }
+    this.send(res, 200, jsonHeaders, JSON.stringify({ ok: true, result: outcome.result }));
   }
 
   serveMobileWeb(req, res, url) {

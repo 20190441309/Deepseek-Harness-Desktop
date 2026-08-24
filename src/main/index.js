@@ -12,6 +12,9 @@ const { ensureDshbotPlugin, hideDshbotPlugin } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
+const { invokeDesktopShell } = require('./remote-shell');
+const git = require('./git');
+const { listDir } = require('./workspace-fs');
 const { buildMenu } = require('./menu');
 const { createTray, invokeTrayAction } = require('./tray');
 const { checkUpdate, installUpdate } = require('./update');
@@ -66,6 +69,17 @@ const remote = new RemoteGateway({
     const port = Number(dsh.port);
     return port ? { host: '127.0.0.1', port } : null;
   },
+  invokeShell: (name, payload) => invokeDesktopShell({
+    name,
+    payload,
+    git,
+    fs: { listDir },
+    host: {
+      openSettings: (sectionId) => openHarnessSettings(sectionId),
+      getConfig: () => publicConfig(loadConfig()),
+      saveConfig: (patch) => publicConfig(saveConfig(normalizeRendererConfigPatch(patch || {}))),
+    },
+  }),
 });
 
 async function probeRemoteSnapshot() {

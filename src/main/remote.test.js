@@ -141,6 +141,17 @@ test('rewriteProxyHeaders forces loopback Host and Origin', () => {
   assert.equal(headers.connection, undefined);
 });
 
+test('rewriteProxyHeaders strips cookie and authorization so device tokens stay off loopback', () => {
+  const headers = rewriteProxyHeaders({
+    host: '192.168.1.8:3180',
+    cookie: 'dsh_remote=device-secret',
+    authorization: 'Bearer device-secret',
+  }, { port: 3080 });
+  assert.equal(headers.host, '127.0.0.1:3080');
+  assert.equal(headers.cookie, undefined);
+  assert.equal(headers.authorization, undefined);
+});
+
 test('pairingUrl puts the token in the hash offer, not the query', () => {
   const url = pairingUrl('10.0.0.4', 3180, 'abc');
   assert.equal(url.startsWith('http://10.0.0.4:3180/'), true);
@@ -627,5 +638,118 @@ test('paired HTML comes from the mobile SPA; /api still hits the host', async ()
   await gateway.stop();
   await close(upstream);
   fs.rmSync(spaRoot, { recursive: true, force: true });
+});
+
+test('JSON login mints a device token without an HTML body', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
+  const gateway = new RemoteGateway(config);
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port || gateway.server.address().port;
+
+  const login = await request(port, '/__remote__/login', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'user-agent': 'DshAndroid/1',
+    },
+    body: JSON.stringify({ token }),
+  });
+  assert.equal(login.status, 200);
+  const json = JSON.parse(login.body);
+  assert.equal(json.ok, true);
+  assert.ok(json.deviceToken);
+  assert.notEqual(json.deviceToken, token);
+  assert.match(String(login.headers.get('set-cookie') || ''), /dsh_remote=/);
+
+  const denied = await request(port, '/__remote__/login', {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ token: 'nope' }),
+  });
+  assert.equal(denied.status, 401);
+  assert.equal(JSON.parse(denied.body).error, '配对密钥无效');
+  assert.doesNotMatch(denied.body, /<!DOCTYPE html>/i);
+
+  await gateway.stop();
+  await close(upstream);
+});
+
+test('proxied API does not forward device authorization to harness', async () => {
+  let seenAuth = 'missing';
+  let seenCookie = 'missing';
+  const upstream = http.createServer((req, res) => {
+    seenAuth = req.headers.authorization;
+    seenCookie = req.headers.cookie;
+    res.end('ok');
+  });
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const gateway = new RemoteGateway();
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port || gateway.server.address().port;
+
+  const allowed = await request(port, '/api/ping', {
+    headers: {
+      authorization: `Bearer ${token}`,
+      cookie: `dsh_remote=${token}`,
+    },
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(seenAuth, undefined);
+  assert.equal(seenCookie, undefined);
+
+  await gateway.stop();
+  await close(upstream);
+});
+
+test('shell whitelist requires login and rejects unknown names', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const seen = [];
+  const gateway = new RemoteGateway({
+    invokeShell: async (name, payload) => {
+      seen.push({ name, payload });
+      return { ok: true, result: { refName: 'main', isRepo: true } };
+    },
+  });
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port || gateway.server.address().port;
+
+  const anon = await request(port, '/__remote__/shell/gitStatus', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd: '/ws' }),
+  });
+  assert.equal(anon.status, 401);
+
+  const unknown = await request(port, '/__remote__/shell/writeFile', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ cwd: '/ws', relativePath: 'x' }),
+  });
+  assert.equal(unknown.status, 404);
+
+  const allowed = await request(port, '/__remote__/shell/gitStatus', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ cwd: '/ws' }),
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(JSON.parse(allowed.body).result.refName, 'main');
+  assert.deepEqual(seen, [{ name: 'gitStatus', payload: { cwd: '/ws' } }]);
+
+  await gateway.stop();
+  await close(upstream);
 });
 

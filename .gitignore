@@ -56,3 +56,7 @@ docs/qa/results/**/ci-installer/*.dmg
 .zcode/
 plugins/
 .final-gates/
+mobile/android/.gradle/
+mobile/android/**/build/
+mobile/android/local.properties
+

@@ -58,7 +58,7 @@
 
 - **xterm / diff / 代码**：等宽、ANSI、字符网格，不套胶囊按钮。
 - **原生窗口控件**：最小化 / 最大化 / 关闭保持系统命中区；颜色仍跟随当前主题 token。
-- **无法 import 主题包的壳层**（远程登录页、手机 Web SPA）：复用同一套语义色和几何。手机 SPA 把 `--dsw-alias-*` 抄进 `mobile/web/tokens.css`，不挂官方 CSS Modules，也不把启动页 `--boot-*` 带过去。禁止再开 `--bg` / `--accent` 平行色板。
+- **无法 import 主题包的壳层**（远程登录页、手机 Web SPA、Android Compose）：复用同一套语义色和几何。手机 SPA 把 `--dsw-alias-*` 抄进 `mobile/web/tokens.css`；Android 抄进 `mobile/android` 的 Compose `DshTokens` / `Color` 表。都不挂官方 CSS Modules，也不把启动页 `--boot-*` 带过去。禁止再开 `--bg` / `--accent` 平行色板，禁止 Material 默认紫或动态取色覆盖语义表。Git 胶囊上的 Commit / Push / Pull 等 action 标签保持英文。
 - **桌面启动页**：整页仪器画布与独立 `--boot-*` 表，详见 [桌面启动页](#桌面启动页)。
 
 ## 桌面启动页
