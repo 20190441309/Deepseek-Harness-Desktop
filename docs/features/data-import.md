@@ -24,6 +24,7 @@
 - `runImport` 必收勾选；省略选择 = 零写入。路径穿越与源根外技能路径拒绝落盘。
 - 插件重装规格只允许 `github:owner/repo[#ref]` 或 `name@<semver>`（`installImportPlugin` 受控通道，仅主进程 LAUNCHER IPC 使用）；渲染进程 / 工具的 `installPlugin` 通道保持 github-only。
 - journal 在 `userData/import-journal.json`，不在 `dsh-home/sessions` 里。`recoverInterruptedImport` 只清 journal 自己的 destHome 且必须等于当前桌面 home；官方来源仍只读。
+- 已知权衡（MCP 凭据）：MCP merge 原样拷贝 header/token 进桌面 `mcp-servers.yaml`（明文，与官方 CLI 相同的落盘形态）；OAuth 类服务器的会话态/刷新令牌不迁移，导入后可能需在桌面端重新授权。桌面不回写官方文件。
 
 ## Allowed touch
 

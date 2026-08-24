@@ -80,7 +80,11 @@ function shouldGzipProxy(headers, contentType) {
   return /javascript|text\/html|text\/css|image\/svg/i.test(String(contentType || ''));
 }
 
-/** Startup remote face: never listens and never creates an HTTP server. */
+/**
+ * Never-listening remote face. Production always constructs `RemoteGateway`
+ * (`remote.test.js` asserts index.js does not use this); the export stays as
+ * a test stub for the fail-closed IPC paths in `ipc.test.js` / `remote.test.js`.
+ */
 function createDisabledRemote() {
   const snapshot = () => ({
     available: false,
