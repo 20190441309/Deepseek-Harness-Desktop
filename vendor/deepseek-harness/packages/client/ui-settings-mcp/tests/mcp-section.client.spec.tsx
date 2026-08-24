@@ -255,7 +255,7 @@ describe('McpSection', () => {
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
   })
 
-  it('shows a tool count on a connected row without listing tool names', async () => {
+  it('shows the tool count and opens a closable tool dialog on a connected row', async () => {
     render(<McpSection {...props({
       list: async () => ({
         servers: [{
@@ -268,8 +268,16 @@ describe('McpSection', () => {
       }),
     })} />)
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
-    expect(screen.getByText('2 tools')).toBeTruthy()
-    expect(screen.queryByText(/mcp__github__create_issue/)).toBeNull()
+    expect(screen.queryByText('mcp__github__create_issue')).toBeNull()
+    fireEvent.click(screen.getByText('2 tools'))
+    expect(await screen.findByText('github tools')).toBeTruthy()
+    expect(screen.getByText('mcp__github__create_issue')).toBeTruthy()
+    expect(screen.getByText('mcp__github__list')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.close }))
+    await waitFor(() => {
+      expect(screen.queryByText('mcp__github__create_issue')).toBeNull()
+      expect(screen.queryByText('mcp__github__list')).toBeNull()
+    })
   })
 
   it('remounts failed managed rows when refresh is clicked', async () => {

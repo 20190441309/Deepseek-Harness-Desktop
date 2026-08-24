@@ -113,7 +113,7 @@ test('release.yml still publishes when Windows succeeds and macOS fails (documen
   assert.match(yml, /needs\.windows\.result == 'success'/);
   // The policy stays documented next to the if: guard: mac assets are simply
   // absent when the macos job fails; Windows gates the release.
-  assert.match(yml, /macOS is\n\s*# best-effort/);
+  assert.match(yml, /macOS is\r?\n\s*# best-effort/);
 });
 
 test('test workflow keeps portable quality gates without the viewport-dependent smoke', () => {

@@ -161,7 +161,96 @@
 }
 
 .tools {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
   color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.tools:hover,
+.tools:focus-visible {
+  color: var(--dsw-alias-label-primary);
+}
+
+.tools:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.toolsDialog {
+  width: min(480px, 100%);
+  max-height: min(640px, calc(100vh - 180px));
+}
+
+.toolsDialogHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 22px 14px 0 24px;
+}
+
+.toolsDialogTitle {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolsDialogClose {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.toolsDialogClose:hover,
+.toolsDialogClose:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolsDialogClose:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.toolsDialogList {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 24px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.toolsDialogItem {
+  padding: 4px 0;
+  color: var(--dsw-alias-label-secondary);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
   line-height: 18px;
