@@ -69,6 +69,7 @@ test('appendix send looks up the official 发送消息 control', () => {
   assert.match(src, /dshd-reject-probe\.txt/);
   assert.match(src, /bash 命令/);
   assert.match(src, /setWorkspaceWriteAccess/);
+  assert.match(src, /VISION_PASS_RE/);
   assert.match(src, /openFreshSession/);
   assert.doesNotMatch(src, /申请写入工作区权限/);
   assert.match(src, /stripVisionFallback/);

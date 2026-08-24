@@ -43,6 +43,9 @@ const QA_PNG = Buffer.from(
   'base64',
 );
 
+const VISION_PASS_RE = /不支持图片|does not support images?|无法查看|不能读图|无法识图|不能识图|没有.*视觉|识图|grok-4\.6|像素|multimodal|image input|这张.*图|图中|图片里|PNG|rgb|红|蓝|绿|颜色/i;
+const VISION_PRE_SEND_RE = /不支持图片|does not support images?|无法.*图|不能.*图/i;
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -153,6 +156,14 @@ function chatSnapshot() {
       return trigger ? dshLabel(trigger) : '';
     })(),
   };
+}
+
+function lastAssistantText() {
+  const assistants = Array.from(document.querySelectorAll(
+    '[data-chat-flow-kind="assistant"], [data-chat-flow-kind="assistant-step"]',
+  ));
+  const last = assistants.at(-1);
+  return last ? (last.innerText || '').trim() : '';
 }
 
 async function ensureGrokModel(wc) {
@@ -592,6 +603,15 @@ async function runAppendixExtras(wc, helpers) {
     });
     return extras;
   }
+  const modeOk = await pageEval(wc, () => {
+    const btn = dshFind('access mode|访问模式');
+    const aria = (btn && btn.getAttribute('aria-label')) || '';
+    return /当前[:：]\s*可写入工作区|current:\s*workspace write/i.test(aria);
+  });
+  if (!modeOk) {
+    extras.push({ name: 'appendix.vision', ok: false, detail: 'access mode still not workspace-write after preset' });
+    return extras;
+  }
 
   try {
     const { clipboard, nativeImage } = require('electron');
@@ -638,7 +658,7 @@ async function runAppendixExtras(wc, helpers) {
         .map((el) => (el.innerText || '').trim()),
       card ? (card.innerText || '') : '',
     ].filter(Boolean);
-    const hit = texts.find((text) => /不支持图片|does not support images/i.test(text));
+    const hit = texts.find((text) => VISION_PRE_SEND_RE.test(text));
     if (hit) return { refused: true, attached, text: hit.slice(0, 160) };
     if (attached) return { refused: false, attached: true, text: 'image attached' };
     return null;
@@ -670,17 +690,19 @@ async function runAppendixExtras(wc, helpers) {
           return card ? (card.innerText || '') : '';
         })(),
       ].filter(Boolean);
-      const hit = texts.find((text) => /不支持图片|does not support image/i.test(text));
+      const hit = texts.find((text) => VISION_PRE_SEND_RE.test(text));
       return hit ? hit.slice(0, 160) : '';
     });
     if (toast) return { lastText: toast, failReason: '', assistantCount: beforeVision.assistantCount, approval: false, busy: false };
     const snap = await pageEval(wc, chatSnapshot);
     if (snap.failReason) return snap;
     if (snap.busy || snap.approval) return null;
+    const reply = await pageEval(wc, () => lastAssistantText());
+    if (!reply) return null;
     if (snap.assistantCount <= beforeVision.assistantCount) return null;
-    if (/Deep diving|深潜/.test(snap.lastText || '')) return null;
-    if (/不支持图片|does not support image|无法查看|不能读图|识图模型|grok-4\.6|像素/i.test(snap.lastText || '')) {
-      return snap;
+    if (/Deep diving|深潜/.test(reply)) return null;
+    if (VISION_PASS_RE.test(reply)) {
+      return { lastText: reply.slice(0, 1500), failReason: '', assistantCount: snap.assistantCount, approval: false, busy: false };
     }
     return null;
   }, 90_000, 400);
@@ -688,7 +710,7 @@ async function runAppendixExtras(wc, helpers) {
   const visionFailed = Boolean(vision && vision.failReason);
   extras.push({
     name: 'appendix.vision',
-    ok: Boolean(!visionFailed && vision && /不支持图片|does not support images|无法查看|不能读图|识图|grok-4\.6|像素/i.test(visionText)),
+    ok: Boolean(!visionFailed && vision && VISION_PASS_RE.test(visionText)),
     detail: visionFailed
       ? vision.failReason.slice(0, 160)
       : attached
