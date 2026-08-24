@@ -1162,6 +1162,7 @@ if (!gotLock) {
       startDesktop: startDesktopFromLauncher,
       stopDesktopCleanup: cleanupDesktopResources,
       remote,
+      onOpenLauncher: () => openLauncher(),
     });
     buildMenu({
       onOpenWorkspace: () => ignoreFailure(pickWorkspace()),

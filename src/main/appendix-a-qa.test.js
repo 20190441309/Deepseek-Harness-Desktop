@@ -67,6 +67,9 @@ test('appendix send looks up the official 发送消息 control', () => {
   assert.match(src, /\^拒绝\$/);
   assert.match(src, /仅可查看\|read only/);
   assert.match(src, /dshd-reject-probe\.txt/);
+  assert.match(src, /bash 命令/);
+  assert.match(src, /setWorkspaceWriteAccess/);
+  assert.doesNotMatch(src, /申请写入工作区权限/);
   assert.match(src, /stripVisionFallback/);
   assert.match(src, /不支持图片\|does not support images/);
   assert.match(src, /Deep diving\|深潜/);

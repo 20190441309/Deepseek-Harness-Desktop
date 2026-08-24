@@ -150,7 +150,9 @@ async function restartAfterProfileWrite(event, result, startHarness, downError, 
   return { ...result, harnessStarted: true };
 }
 
-function registerIpc({ dsh, harness, startHarness, startDesktop, stopDesktopCleanup, remote }) {
+function registerIpc({
+  dsh, harness, startHarness, startDesktop, stopDesktopCleanup, remote, onOpenLauncher,
+}) {
   const handle = (channel, roles, listener) => {
     ipcMain.handle(channel, (event, ...args) => {
       assertIpcSender(event, roles);
@@ -261,6 +263,14 @@ function registerIpc({ dsh, harness, startHarness, startDesktop, stopDesktopClea
   });
 
   handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
+
+  handle('shell:open-launcher', HARNESS_ONLY, async () => {
+    if (typeof onOpenLauncher !== 'function') {
+      return { ok: false, reason: 'unavailable' };
+    }
+    await onOpenLauncher();
+    return { ok: true };
+  });
 
   handle('shell:open-dsh-home', HARNESS_ONLY, () => openDesktopDshHome());
 

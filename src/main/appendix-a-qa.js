@@ -278,6 +278,45 @@ async function setReadOnlyAccess(wc) {
   return applied || { ok: false, reason: 'preset-did-not-apply' };
 }
 
+/**
+ * Switch the session permission preset to workspace-write so vision paste/send
+ * is not blocked by a prior read-only reject step.
+ * @param {import('electron').WebContents} wc
+ */
+async function setWorkspaceWriteAccess(wc) {
+  const opened = await pageEval(wc, () => {
+    const btn = dshFind('access mode|访问模式');
+    if (!btn || btn.disabled) return { ok: false, reason: btn ? 'disabled' : 'no-trigger' };
+    const aria = btn.getAttribute('aria-label') || '';
+    if (/当前[:：]\s*可写入工作区|current:\s*workspace write/i.test(aria)) {
+      return { ok: true, already: true, label: aria };
+    }
+    btn.click();
+    return { ok: true, already: false, label: aria };
+  });
+  if (!opened.ok || opened.already) return opened;
+  await sleep(300);
+  const picked = await pageEval(wc, () => {
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]')).filter(dshShown);
+    const item = items.find((el) => {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      return /^(可写入工作区|workspace write)$/i.test(text);
+    }) || dshFind('^可写入工作区$|^workspace write$');
+    if (!item) return { ok: false, reason: 'no-workspace-write-item' };
+    item.click();
+    return { ok: true, label: (item.getAttribute('aria-label') || item.textContent || '').trim().slice(0, 80) };
+  });
+  if (!picked.ok) return picked;
+  const applied = await waitUntil(() => pageEval(wc, () => {
+    const btn = dshFind('access mode|访问模式');
+    const aria = (btn && btn.getAttribute('aria-label')) || '';
+    return btn && /当前[:：]\s*可写入工作区|current:\s*workspace write/i.test(aria)
+      ? { ok: true, label: aria }
+      : null;
+  }), 8_000);
+  return applied || { ok: false, reason: 'preset-did-not-apply' };
+}
+
 async function typePrompt(wc, prompt) {
   await pageScript(wc, `
     const ta = document.querySelector('[data-composer-card] textarea');
@@ -437,7 +476,7 @@ async function runAppendixExtras(wc, helpers) {
   const probeFile = helpers?.workspacePath
     ? path.join(helpers.workspacePath, 'dshd-reject-probe.txt')
     : '';
-  const rejectPrompt = '当前会话是只读。请申请写入工作区权限并说明原因，获用户批准后再在工作区根目录创建文件 dshd-reject-probe.txt，内容恰好一行：dshd-reject-probe。未获批准前不要声称已写完。';
+  const rejectPrompt = '请用一条 bash 命令在工作区根目录创建文件 dshd-reject-probe.txt，内容恰好一行 dshd-reject-probe。完成后只回复 DONE。';
   const newSession = await pageEval(wc, () => {
     const buttons = Array.from(document.querySelectorAll('button')).filter(dshShown);
     const btn = buttons.find((el) => {
@@ -522,6 +561,16 @@ async function runAppendixExtras(wc, helpers) {
   const idleAfterReject = await waitForIdle(wc, 60_000, false);
   if (!idleAfterReject) {
     extras.push({ name: 'appendix.vision', ok: false, detail: 'composer still busy after reject' });
+    return extras;
+  }
+
+  const writeAccess = await setWorkspaceWriteAccess(wc);
+  if (!writeAccess?.ok) {
+    extras.push({
+      name: 'appendix.vision',
+      ok: false,
+      detail: `workspace-write preset failed (${writeAccess?.reason || writeAccess?.label || 'unknown'})`,
+    });
     return extras;
   }
 

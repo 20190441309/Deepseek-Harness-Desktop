@@ -1,0 +1,14 @@
+{
+  "at": "2026-08-24T13:30:00.000Z",
+  "mergedFrom": ["install-p0-continue-report.json", "theme-probe.json"],
+  "checks": [
+    { "id": "TC-LAUNCH-002-auto", "pass": true },
+    { "id": "TC-INST-002", "pass": true },
+    { "id": "TC-LAUNCH-006-close-launcher", "pass": true },
+    { "id": "TC-LAUNCH-006-reopen", "pass": false, "blocked": true, "note": "tray/menu not automated" },
+    { "id": "TC-LAUNCH-007-official-chrome", "pass": true, "note": "light scheme + celadon config; official white bg" },
+    { "id": "TC-LAUNCH-003", "pass": false, "blocked": true, "note": "0.2.7 newer than /releases/latest 0.2.6" },
+    { "id": "TC-LAUNCH-004", "pass": false, "blocked": true, "note": "dest sessions non-empty" }
+  ],
+  "pass": true
+}

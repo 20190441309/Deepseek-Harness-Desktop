@@ -93,6 +93,7 @@ test('harness preload keeps work loops and omits parked remote', () => {
   assert.equal(typeof api.openInEditor, 'function');
   assert.equal(typeof api.showItemInFolder, 'function');
   assert.equal(typeof api.openDshHome, 'function');
+  assert.equal(typeof api.openLauncher, 'function');
   assert.equal(typeof api.openWithSystemDefault, 'function');
   assert.equal(typeof api.ptyCreate, 'function');
   assert.equal(typeof api.previewOpen, 'function');

@@ -67,6 +67,7 @@ function harnessApi(renderer) {
     pickWorkspace: invoke(renderer, 'shell:pick-workspace'),
     openExternal: invoke(renderer, 'shell:open-external'),
     openSettings: invoke(renderer, 'shell:open-settings'),
+    openLauncher: invoke(renderer, 'shell:open-launcher'),
     retryFullPlugins: invoke(renderer, 'shell:retry-full-plugins'),
     checkUpdate: invoke(renderer, 'shell:check-update'),
     installUpdate: invoke(renderer, 'shell:install-update'),

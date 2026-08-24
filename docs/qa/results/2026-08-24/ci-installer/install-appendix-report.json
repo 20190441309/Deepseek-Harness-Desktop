@@ -1,0 +1,112 @@
+{
+  "at": "2026-08-24T13:27:41.352Z",
+  "productExe": "C:\\Users\\48818\\AppData\\Local\\Programs\\Deepseek-Harness-Desktop\\Deepseek-Harness-Desktop.exe",
+  "userData": "C:\\Users\\48818\\AppData\\Roaming\\Deepseek-Harness-Desktop",
+  "ciRun": "https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32727819174",
+  "setupSha256": "602DC9C01AADC87AE0928BD49B2DCCB0CB9E75218BFD73E9872B6BD0FEE12B27",
+  "exit": {
+    "code": 1,
+    "signal": null
+  },
+  "pass": false,
+  "smokeOk": false,
+  "appendixQa": {
+    "ok": false,
+    "failed": [
+      "appendix.reject",
+      "appendix.vision"
+    ],
+    "steps": [
+      {
+        "name": "appendix.workspace",
+        "ok": true,
+        "detail": "C:\\Ai\\Deepseek-Harness-Desktop"
+      },
+      {
+        "name": "appendix.composer",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "appendix.model",
+        "ok": true,
+        "detail": "选择模型，当前 grok-4.6，推理等级 High grok-4.6High"
+      },
+      {
+        "name": "appendix.turn1.connect",
+        "ok": true,
+        "detail": "你已连通，验证码是 456。"
+      },
+      {
+        "name": "appendix.turn2.recall",
+        "ok": true,
+        "detail": "456"
+      },
+      {
+        "name": "appendix.turn3.readReadme",
+        "ok": true,
+        "detail": "tool-card | dshmarket 是 DeepSeek Harness 内置的插件市场插件。 它提供了一站式界面，支持浏览搜索社区插件、安装主题以及一键管理更新、备份和卸载。 通过 Settings → Plugin Market，用户可实时查看、安装并诊断插件，无需手动配置。"
+      },
+      {
+        "name": "appendix.turn4.shell",
+        "ok": true,
+        "detail": "tool-card | C:\\Ai\\Deepseek-Harness-Desktop"
+      },
+      {
+        "name": "appendix.turn5.summary",
+        "ok": true,
+        "detail": "456 dsh-market 是 DeepSeek Harness 内置的插件市场插件。 C:\\Ai\\Deepseek-Harness-Desktop"
+      },
+      {
+        "name": "appendix.editUser",
+        "ok": true,
+        "detail": "已改写。"
+      },
+      {
+        "name": "appendix.reject",
+        "ok": false,
+        "detail": "no approval (access=访问模式，当前：仅可查看; switched=true)"
+      },
+      {
+        "name": "appendix.vision",
+        "ok": false,
+        "detail": "Write permission request status: Denied (no user approval received via the configured answerer).\n\nReason provided (as requested): The current DSH file policy is"
+      }
+    ],
+    "codePresent": true
+  },
+  "error": "In-app appendix A failed: appendix.reject, appendix.vision",
+  "logTail": [
+    "",
+    "[DSH_SMOKE] {\"hasFrame\":true,\"gridColumns\":\"280px 1160px 0px 0px\",\"hasTitlebar\":true,\"titlebarButtons\":[\"Session log\",\"切换分支\",\"Commit\",\"Git 操作\",\"切换终端抽屉\",\"切换右侧栏\"],\"hasTerminalToggle\":true,\"hasSurfacesToggle\":true,\"hasDragStrip\":false,\"hasDragMark\":false,\"hasHitMark\":false,\"captionRegion\":\"drag\",\"hasHarnessShellApi\":true,\"harnessShellApiIsScoped\":true,\"hasBootShellApi\":true,\"bootShellApiIsScoped\":true,\"pageErrors\":[]}",
+    "[DSH_SMOKE_PTY] echoed:ok",
+    "[DSH_QA] PASS workspace.path — C:\\Ai\\Deepseek-Harness-Desktop",
+    "[DSH_QA] PASS workspace.addClicked",
+    "[DSH_QA] PASS workspace.picker",
+    "[DSH_QA] PASS workspace.pickerClosed",
+    "[DSH_QA] PASS workspace.connected — C:\\Ai\\Deepseek-Harness-Desktop",
+    "[DSH_SMOKE_HITS] {\"hits\":{\"surfaces\":1,\"branch\":1,\"git\":1},\"error\":null}",
+    "[DSH_QA_APPENDIX] PASS appendix.workspace — C:\\Ai\\Deepseek-Harness-Desktop",
+    "[DSH_QA_APPENDIX] PASS appendix.composer",
+    "[DSH_QA_APPENDIX] PASS appendix.model — 选择模型，当前 grok-4.6，推理等级 High grok-4.6High",
+    "[DSH_QA_APPENDIX] PASS appendix.turn1.connect — 你已连通，验证码是 456。",
+    "[DSH_QA_APPENDIX] PASS appendix.turn2.recall — 456",
+    "[DSH_QA_APPENDIX] PASS appendix.turn3.readReadme — tool-card | dshmarket 是 DeepSeek Harness 内置的插件市场插件。 它提供了一站式界面，支持浏览搜索社区插件、安装主题以及一键管理更新、备份和卸载。 通过 Settings → Plugin Market，用户可实时查看、安装并诊断插件，无需手动配置。",
+    "[DSH_QA_APPENDIX] PASS appendix.turn4.shell — tool-card | C:\\Ai\\Deepseek-Harness-Desktop",
+    "[DSH_QA_APPENDIX] PASS appendix.turn5.summary — 456 dsh-market 是 DeepSeek Harness 内置的插件市场插件。 C:\\Ai\\Deepseek-Harness-Desktop",
+    "[DSH_QA_APPENDIX] PASS appendix.editUser — 已改写。",
+    "[DSH_QA_APPENDIX] FAIL appendix.reject — no approval (access=访问模式，当前：仅可查看; switched=true)",
+    "[DSH_QA_APPENDIX] FAIL appendix.vision — Write permission request status: Denied (no user approval received via the configured answerer).",
+    "",
+    "Reason provided (as requested): The current DSH file policy is",
+    "[DSH_QA_APPENDIX] {\"ok\":false,\"failed\":[\"appendix.reject\",\"appendix.vision\"],\"steps\":[{\"name\":\"appendix.workspace\",\"ok\":true,\"detail\":\"C:\\\\Ai\\\\Deepseek-Harness-Desktop\"},{\"name\":\"appendix.composer\",\"ok\":true,\"detail\":\"\"},{\"name\":\"appendix.model\",\"ok\":true,\"detail\":\"选择模型，当前 grok-4.6，推理等级 High grok-4.6High\"},{\"name\":\"appendix.turn1.connect\",\"ok\":true,\"detail\":\"你已连通，验证码是 456。\"},{\"name\":\"appendix.turn2.recall\",\"ok\":true,\"detail\":\"456\"},{\"name\":\"appendix.turn3.readReadme\",\"ok\":true,\"detail\":\"tool-card | dshmarket 是 DeepSeek Harness 内置的插件市场插件。 它提供了一站式界面，支持浏览搜索社区插件、安装主题以及一键管理更新、备份和卸载。 通过 Settings → Plugin Market，用户可实时查看、安装并诊断插件，无需手动配置。\"},{\"name\":\"appendix.turn4.shell\",\"ok\":true,\"detail\":\"tool-card | C:\\\\Ai\\\\Deepseek-Harness-Desktop\"},{\"name\":\"appendix.turn5.summary\",\"ok\":true,\"detail\":\"456 dsh-market 是 DeepSeek Harness 内置的插件市场插件。 C:\\\\Ai\\\\Deepseek-Harness-Desktop\"},{\"name\":\"appendix.editUser\",\"ok\":true,\"detail\":\"已改写。\"},{\"name\":\"appendix.reject\",\"ok\":false,\"detail\":\"no approval (access=访问模式，当前：仅可查看; switched=true)\"},{\"name\":\"appendix.vision\",\"ok\":false,\"detail\":\"Write permission request status: Denied (no user approval received via the configured answerer).\\n\\nReason provided (as requested): The current DSH file policy is\"}]}",
+    "Error occurred in handler for 'shell:git-status': Error: Unauthorized IPC sender",
+    "    at assertIpcSender (C:\\Users\\48818\\AppData\\Local\\Programs\\Deepseek-Harness-Desktop\\resources\\app.asar\\src\\main\\ipc-authorization.js:58:19)",
+    "    at C:\\Users\\48818\\AppData\\Local\\Programs\\Deepseek-Harness-Desktop\\resources\\app.asar\\src\\main\\ipc.js:156:7",
+    "    at Session.<anonymous> (node:electron/js2c/browser_init:2:118329)",
+    "    at Session.emit (node:events:509:28) {",
+    "  code: 'ERR_DSH_IPC_SENDER'",
+    "}",
+    ""
+  ]
+}

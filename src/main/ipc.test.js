@@ -274,6 +274,7 @@ function loadIpc(options = {}) {
     },
     stopDesktopCleanup: options.stopDesktopCleanup,
     remote: options.remote === undefined ? null : options.remote,
+    onOpenLauncher: options.onOpenLauncher,
   });
 
   async function invoke(channel, event, ...args) {
@@ -1147,6 +1148,26 @@ test('launcher-only stop-desktop rejects boot and harness senders', async () => 
     const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
     await assert.rejects(() => ipc.invoke('shell:stop-desktop', bootEvent()), unauthorized);
     await assert.rejects(() => ipc.invoke('shell:stop-desktop', harnessEvent()), unauthorized);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('harness open-launcher invokes onOpenLauncher and rejects launcher sender', async () => {
+  let calls = 0;
+  const ipc = loadIpc({
+    onOpenLauncher: async () => {
+      calls += 1;
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:open-launcher', harnessEvent());
+    assert.equal(result.ok, true);
+    assert.equal(calls, 1);
+    await assert.rejects(
+      () => ipc.invoke('shell:open-launcher', launcherEvent()),
+      (error) => error.code === 'ERR_DSH_IPC_SENDER',
+    );
   } finally {
     ipc.restore();
   }
