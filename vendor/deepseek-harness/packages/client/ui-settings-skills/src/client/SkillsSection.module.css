@@ -176,6 +176,12 @@
   min-width: 0;
 }
 
+.groupInputBox {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
 .groupInput {
   flex: 1;
   min-width: 0;

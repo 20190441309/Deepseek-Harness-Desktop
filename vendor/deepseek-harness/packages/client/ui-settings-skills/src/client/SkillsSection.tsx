@@ -817,8 +817,8 @@ function GroupField({ value, disabled, groups, t, onChange }: {
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const rowRef = useRef<HTMLDivElement>(null)
-  const getRowRect = useCallback(() => rowRef.current?.getBoundingClientRect() ?? null, [])
+  const inputBoxRef = useRef<HTMLSpanElement>(null)
+  const getInputRect = useCallback(() => inputBoxRef.current?.getBoundingClientRect() ?? null, [])
   const trimmed = value.trim()
   const items: MenuEntry[] = [
     ...groups.map(label => ({ id: label, label })),
@@ -826,7 +826,7 @@ function GroupField({ value, disabled, groups, t, onChange }: {
     { id: '', label: t('groupClearOption'), disabled: trimmed.length === 0 },
   ]
   return (
-    <div ref={rowRef}>
+    <div>
       <Menu
         open={open && !disabled}
         onClose={() => { setOpen(false) }}
@@ -839,17 +839,19 @@ function GroupField({ value, disabled, groups, t, onChange }: {
         align="start"
         portal
         matchAnchorWidth
-        getAnchorRect={getRowRect}
+        getAnchorRect={getInputRect}
         anchor={(
           <div className={styles.groupFieldRow}>
-            <Input
-              className={styles.groupInput}
-              value={value}
-              aria-label={t('group')}
-              placeholder={t('groupPlaceholder')}
-              disabled={disabled}
-              onChange={(event) => { onChange(event.target.value) }}
-            />
+            <span ref={inputBoxRef} className={styles.groupInputBox}>
+              <Input
+                className={styles.groupInput}
+                value={value}
+                aria-label={t('group')}
+                placeholder={t('groupPlaceholder')}
+                disabled={disabled}
+                onChange={(event) => { onChange(event.target.value) }}
+              />
+            </span>
             <button
               type="button"
               className={styles.groupOptionsButton}
