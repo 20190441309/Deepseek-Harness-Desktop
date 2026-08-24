@@ -317,6 +317,37 @@ async function setWorkspaceWriteAccess(wc) {
   return applied || { ok: false, reason: 'preset-did-not-apply' };
 }
 
+/**
+ * Open a blank composer session so a prior read-only reject turn does not
+ * block vision paste/send on the same access chip state.
+ * @param {import('electron').WebContents} wc
+ */
+async function openFreshSession(wc) {
+  const clicked = await pageEval(wc, () => {
+    const buttons = Array.from(document.querySelectorAll('button')).filter(dshShown);
+    const btn = buttons.find((el) => {
+      const aria = el.getAttribute('aria-label') || '';
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      return /新建会话|new session in/i.test(aria) || (text === '新会话' && /新建|new session/i.test(aria + text));
+    }) || buttons.find((el) => {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      return text === '新会话' || text === '新对话';
+    });
+    if (!btn || btn.disabled) {
+      return { ok: false, reason: btn ? 'disabled' : 'no-button' };
+    }
+    btn.click();
+    return { ok: true, label: dshLabel(btn).slice(0, 80) };
+  });
+  if (!clicked.ok) return clicked;
+  const switched = await waitUntil(() => pageEval(wc, () => {
+    const flow = document.querySelector('[data-chat-flow]');
+    const text = (flow && flow.innerText) || '';
+    return /验证码|已改写|dshd-reject-probe|user rejected/i.test(text) ? null : true;
+  }), 12_000);
+  return switched ? { ok: true, label: clicked.label } : { ok: false, reason: 'session-still-shows-prior-turn' };
+}
+
 async function typePrompt(wc, prompt) {
   await pageScript(wc, `
     const ta = document.querySelector('[data-composer-card] textarea');
@@ -477,34 +508,12 @@ async function runAppendixExtras(wc, helpers) {
     ? path.join(helpers.workspacePath, 'dshd-reject-probe.txt')
     : '';
   const rejectPrompt = '请用一条 bash 命令在工作区根目录创建文件 dshd-reject-probe.txt，内容恰好一行 dshd-reject-probe。完成后只回复 DONE。';
-  const newSession = await pageEval(wc, () => {
-    const buttons = Array.from(document.querySelectorAll('button')).filter(dshShown);
-    const btn = buttons.find((el) => {
-      const aria = el.getAttribute('aria-label') || '';
-      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      return /新建会话|new session in/i.test(aria) || (text === '新会话' && /新建|new session/i.test(aria + text));
-    }) || buttons.find((el) => {
-      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      return text === '新会话' || text === '新对话';
-    });
-    if (!btn || btn.disabled) {
-      return { clicked: false, reason: btn ? 'disabled' : 'no-button' };
-    }
-    btn.click();
-    return { clicked: true, label: dshLabel(btn).slice(0, 80) };
-  });
-  const switched = newSession?.clicked
-    ? await waitUntil(() => pageEval(wc, () => {
-      const flow = document.querySelector('[data-chat-flow]');
-      const text = (flow && flow.innerText) || '';
-      return /验证码|已改写/.test(text) ? null : true;
-    }), 12_000)
-    : false;
-  if (!newSession?.clicked || !switched) {
+  const freshReject = await openFreshSession(wc);
+  if (!freshReject?.ok) {
     extras.push({
       name: 'appendix.reject',
       ok: false,
-      detail: `did not open a fresh session (newSession=${newSession?.clicked ? newSession.label : newSession?.reason || 'no'}; switched=${Boolean(switched)})`,
+      detail: `did not open a fresh session (${freshReject?.reason || 'unknown'})`,
     });
   } else {
     const access = await setReadOnlyAccess(wc);
@@ -552,7 +561,7 @@ async function runAppendixExtras(wc, helpers) {
             : ((afterReject && afterReject.lastText) || 'rejected').slice(0, 160))
           : (approval
             ? 'reject click failed'
-            : `no approval (access=${access.label || 'read-only'}; switched=${Boolean(switched)})`),
+            : `no approval (access=${access.label || 'read-only'}; switched=${Boolean(freshReject?.ok)})`),
       });
     }
   }
@@ -561,6 +570,16 @@ async function runAppendixExtras(wc, helpers) {
   const idleAfterReject = await waitForIdle(wc, 60_000, false);
   if (!idleAfterReject) {
     extras.push({ name: 'appendix.vision', ok: false, detail: 'composer still busy after reject' });
+    return extras;
+  }
+
+  const freshVision = await openFreshSession(wc);
+  if (!freshVision?.ok) {
+    extras.push({
+      name: 'appendix.vision',
+      ok: false,
+      detail: `fresh session failed (${freshVision?.reason || 'unknown'})`,
+    });
     return extras;
   }
 

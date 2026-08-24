@@ -112,6 +112,12 @@ async function buildApi(
     } as never)
   }
   if (services.sessions !== undefined) ctx.provide('sessions', services.sessions as never)
+  ctx.provide('agents', {
+    resume: vi.fn(async () => ({
+      agent: {} as never,
+      dispose: vi.fn(async () => {}),
+    })),
+  } as never)
   return createApiProxy(ctx, {
     defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
     cwd: '/tmp',

@@ -82,6 +82,7 @@ test('discoverWindowsInstall resolves uninstall exe under InstallLocation', () =
     `UninstallString    REG_SZ    "${uninstallExe}" /currentuser`,
   ].join('\n');
   const discovery = discoverWindowsInstall({
+    platform: 'win32',
     isPackaged: false,
     existsSync: (candidate) => candidate === uninstallExe,
     execFileSync: (_cmd, args) => {
@@ -106,6 +107,7 @@ test('discoverWindowsInstall falls back to settings when uninstall exe is missin
     `UninstallString    REG_SZ    "${uninstallExe}" /currentuser`,
   ].join('\n');
   const discovery = discoverWindowsInstall({
+    platform: 'win32',
     isPackaged: true,
     existsSync: () => false,
     execFileSync: (_cmd, args) => {
@@ -129,6 +131,7 @@ test('getInstalledAppInfo exposes registered install while running from source',
     `UninstallString    REG_SZ    "${uninstallExePath(installDir)}" /currentuser`,
   ].join('\n');
   const info = getInstalledAppInfo({
+    platform: 'win32',
     isPackaged: false,
     existsSync: (candidate) => candidate === uninstallExePath(installDir),
     execFileSync: (_cmd, args) => {

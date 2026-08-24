@@ -3,11 +3,23 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 
-export const installDir = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Deepseek-Harness-Desktop')
+function resolveInstallDir() {
+  if (process.env.DSHD_INSTALL_DIR) return process.env.DSHD_INSTALL_DIR
+  const candidates = [
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Deepseek-Harness-Desktop'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Deepseek-Harness-Desktop'),
+  ]
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, 'Deepseek-Harness-Desktop.exe'))) return dir
+  }
+  return candidates[0]
+}
+
+export const installDir = resolveInstallDir()
 export const productExe = path.join(installDir, 'Deepseek-Harness-Desktop.exe')
 export const userData = path.join(process.env.APPDATA || '', 'Deepseek-Harness-Desktop')
-export const CI_RUN = 'https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32727819174'
-export const SETUP_SHA256 = '602DC9C01AADC87AE0928BD49B2DCCB0CB9E75218BFD73E9872B6BD0FEE12B27'
+export const CI_RUN = 'https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32735432340'
+export const SETUP_SHA256 = '52EBFCF4B43214988750552A66FF0087B1A70CD43FB6C4430F241917F7C06666'
 
 export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))

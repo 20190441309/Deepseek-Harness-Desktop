@@ -439,8 +439,12 @@ function queryRegKey(key, deps = {}) {
   }
 }
 
+function resolvePlatform(deps = {}) {
+  return typeof deps.platform === 'string' ? deps.platform : process.platform;
+}
+
 function findRegisteredWindowsInstall(deps = {}) {
-  if (process.platform !== 'win32') {
+  if (resolvePlatform(deps) !== 'win32') {
     return null;
   }
   for (const key of uninstallRegistryKeyPaths()) {
@@ -486,7 +490,7 @@ function discoverWindowsInstall(deps = {}) {
   const packaged = deps.isPackaged !== undefined ? deps.isPackaged : readPackagedFlag();
   const searchedPaths = [];
 
-  if (process.platform !== 'win32') {
+  if (resolvePlatform(deps) !== 'win32') {
     return {
       registered: packaged,
       installPath: packaged ? path.dirname(process.execPath) : '',

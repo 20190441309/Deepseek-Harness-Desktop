@@ -997,7 +997,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-SESS-002 | P1 | Pass | CI SHA + 已装 exe | 侧栏两会话可见 | Trent | 2026-08-23 |
 | TC-SESS-003 | P0 | Pass | CI SHA + 已装 exe | 托盘恢复后会话与 grok 仍在 | Trent | 2026-08-23 |
 | TC-APPROVE-001 | P0 | Pass | CI SHA + 已装 exe | 可写会话工具卡跑完；只读下无「允许一次」 | Trent | 2026-08-23 |
-| TC-APPROVE-002 | P0 | Pass | CI SHA + 已装 exe | 拒绝后未写 dshd-reject-probe.txt | Trent | 2026-08-23 |
+| TC-APPROVE-002 | P0 | Pass | CI SHA `47ad187` + 已装 exe | reject 审批流；未写 probe 文件 | Trent | 2026-08-24 |
 | TC-APPROVE-003 | P1 | Pass | CI SHA + 已装 exe | Pwsh/Write 工具卡可读 | Trent | 2026-08-23 |
 | TC-GIT-001 | P0 | Pass | CI SHA + 已装 exe | 分支 master、111 | Trent | 2026-08-23 |
 | TC-GIT-002 | P1 |  |  | 未切测试分支 | Trent | 2026-08-23 |
@@ -1037,9 +1037,9 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-EXT-007 | P0 | Pass | CI SHA + 已装 exe | 无机器人入口；已安装空 | Trent | 2026-08-23 |
 | TC-EXT-008 | P0 |  | 源码实机 53709（非 CI 包） | 设置有「用量统计」；零用量 KPI；安装包未测 | Trent | 2026-08-23 |
 | TC-DESK-001 | P0 | Pass | CI SHA + 已装 exe | 关窗无标题；进程与 3080 仍在 | Trent | 2026-08-23 |
-| TC-DESK-002 | P0 | Blocked | CI SHA + 已装 exe | 未点托盘五项；快捷方式可恢复 | Trent | 2026-08-23 |
+| TC-DESK-002 | P0 | Pass | CI SHA `47ad187` + 已装 exe | `run-installed-shell-p0.mjs` invokeTrayAction 五项 | Trent | 2026-08-24 |
 | TC-DESK-003 | P0 | Pass | CI SHA + 已装 exe | 直接退出后进程 0、3080 关 | Trent | 2026-08-23 |
-| TC-DESK-004 | P0 | Blocked | CI SHA + 已装 exe | 未点托盘退出 | Trent | 2026-08-23 |
+| TC-DESK-004 | P0 | Pass | CI SHA `47ad187` + 已装 exe | `run-installed-tray-quit.mjs` 进程归零 | Trent | 2026-08-24 |
 | TC-DESK-005 | P1 | Pass | CI SHA + 已装 exe | About「已是最新版本 0.2.6」 | Trent | 2026-08-23 |
 | TC-DESK-006 | P1 | N/A | CI SHA + 已装 exe | 无新版本 | Trent | 2026-08-23 |
 | TC-DESK-007 | P2 | N/A | CI SHA + 已装 exe | 未测开机启动 | Trent | 2026-08-23 |
@@ -1063,21 +1063,21 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 | 项 | 内容 |
 | --- | --- |
-| Actions run URL | https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32612504239 |
+| Actions run URL | https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32735432340 |
 | Artifact 名 | `DeepSeek-Harness-windows-x64` |
-| 安装包文件名 | `Deepseek-Harness-Desktop-Setup-0.2.6.exe` |
-| SHA256（已测文件） | `5AED64D7F2E834636D398B6174BCD00E02568B2D919B436EC10353D6EBF4BE73` |
-| Release 将上传同一 SHA | □ |
-| 应用 About 版本 | `0.2.6` |
+| 安装包文件名 | `Deepseek-Harness-Desktop-Setup-0.2.7.exe` |
+| SHA256（已测文件） | `52EBFCF4B43214988750552A66FF0087B1A70CD43FB6C4430F241917F7C06666` |
+| Release 将上传同一 SHA | □（vision 附加步骤待下一 artifact 复验后勾选） |
+| 应用 About 版本 | `0.2.7` |
 | 该包内 harness 基线（勿混源码钉） | stamp `0.1.1-rc.1` / `dsh-v0.1.1-rc.1` / sha `528c682e061696f5a160f363f236ecbf53cbd006` |
 | Windows 版本 / 机型 | Windows 10.0.26200 x64 |
 | 模型：`ayase` / `grok-4.6` @ `https://ayase.cn/v1` | 已配置 ☑ |
-| 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 ☑ |
-| P0 结果 | 全 Pass □ / 有 Fail □ / 有 Blocked+负责人忽略 ☑ |
-| P1 豁免/发布说明 | 见 [results/2026-08-23/EXECUTION-REPORT.md](results/2026-08-23/EXECUTION-REPORT.md)；Wallhaven 缩略图 fetch failed，Bing 设壁纸；托盘/造障 Blocked 由负责人忽略后发 0.2.7 |
-| 结论 | **可交付** □ / **不可交付** ☑ / **负责人忽略剩余 Blocked，改发 v0.2.7 tag** ☑ |
-| 测试负责人 / 日期 | Trent / Cursor Grok 4.6 · 2026-08-23 |
-| 产品负责人 / 日期 | Trent · 2026-08-23（忽略托盘/造障，发 0.2.7 Windows+macOS） |
+| 附录 A 五轮（安装包会话，TC-WS-006 仓） | 全过 ☑（reject ☑；vision □ 待下一 CI 包） |
+| P0 结果 | 全 Pass □ / 有 Fail ☑（vision） / 有 Blocked+负责人忽略 □ |
+| P1 豁免/发布说明 | 见 [results/2026-08-24/ci-installer/EXECUTION-REPORT.md](results/2026-08-24/ci-installer/EXECUTION-REPORT.md) |
+| 结论 | **可交付** □ / **不可交付** ☑ / **负责人忽略剩余 Blocked** □ |
+| 测试负责人 / 日期 | Trent · 2026-08-24 |
+| 产品负责人 / 日期 | □（vision 复验 + 勾同一 SHA 后再签） |
 
 ---
 

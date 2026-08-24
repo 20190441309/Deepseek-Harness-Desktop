@@ -991,12 +991,17 @@ async function runSmoke(win) {
       console.log('[DSH_QA_SHELL]', JSON.stringify({
         ok: result.shellP0Qa?.ok,
         failed: result.shellP0Qa?.failed,
+        trayQuitRequested: result.shellP0Qa?.trayQuitRequested === true,
         steps: (result.shellP0Qa?.steps || []).map((step) => ({
           name: step.name,
           ok: step.ok,
           detail: String(step.detail || '').slice(0, 200),
         })),
       }));
+      if (result.shellP0Qa?.trayQuitRequested) {
+        await exitSmoke(0);
+        return;
+      }
     }
     if (needsPersistQa) {
       try {

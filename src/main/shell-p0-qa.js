@@ -12,6 +12,7 @@ const SHELL_P0_STEPS = Object.freeze([
   'shell.window.controlsClickable',
   'shell.desk.closeToTray',
   'shell.desk.trayShow',
+  'shell.desk.trayOpenLauncher',
   'shell.desk.traySettings',
   'shell.desk.trayMarketplace',
   'shell.desk.noExtraWindow',
@@ -269,6 +270,21 @@ async function runShellP0Qa(wc, helpers) {
   const shown = Boolean(win && !win.isDestroyed() && win.isVisible());
   rec('shell.desk.trayShow', shown, shown ? 'showMain from tray' : 'window stayed hidden');
 
+  helpers.invokeTrayAction('openLauncher');
+  await sleep(500);
+  const { getLauncherWindow } = require('./window');
+  const launcherWin = getLauncherWindow();
+  const launcherUp = Boolean(launcherWin && !launcherWin.isDestroyed());
+  rec(
+    'shell.desk.trayOpenLauncher',
+    launcherUp,
+    launcherUp ? 'tray 打开启动器 raised launcher window' : 'tray 打开启动器 did not open launcher',
+  );
+  if (launcherUp) {
+    launcherWin.close();
+    await sleep(300);
+  }
+
   helpers.invokeTrayAction('settings');
   const traySettings = await waitUntil(() => settingsOpen(wc).then((open) => (open ? true : null)), 8_000);
   rec('shell.desk.traySettings', Boolean(traySettings), traySettings ? 'settings from tray' : 'tray 设置 did not open settings');
@@ -310,6 +326,12 @@ async function runShellP0Qa(wc, helpers) {
     written.closeToTray === true && written.theme === 'midnight',
     `closeToTray=${written.closeToTray}; theme=${written.theme}`,
   );
+
+  if (process.env.DSH_QA_TRAY_QUIT === '1') {
+    process.env.DSH_QA_ALLOW_QUIT = '1';
+    helpers.invokeTrayAction('quit');
+    return { ok: true, failed: [], steps, trayQuitRequested: true };
+  }
 
   const failed = steps.filter((s) => !s.ok && !s.optional).map((s) => s.name);
   return { ok: failed.length === 0, failed, steps };

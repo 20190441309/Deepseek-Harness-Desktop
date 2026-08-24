@@ -1,32 +1,36 @@
-# 0.2.7 发版交接（2026-08-24）
+# 0.2.7 发版交接（2026-08-24 · 23:40 更新）
 
 ## 代码门禁
 
-- [x] `npm test` — 876/876（本地）
+- [x] `npm test` — 876/876（本地，Windows）
 - [x] `node scripts/check-release-version.mjs v0.2.7`
-- [x] **Build installers** CI 绿（run [32727819174](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32727819174)，SHA `52bdfbc1a6`）
-- [ ] GitHub `test.yml` 对 PR #23 变绿
+- [x] **Build installers** CI 绿（run [32735432340](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/actions/runs/32735432340)，SHA `47ad18710b`）
+- [ ] GitHub `test.yml` 对 PR #23 变绿（macOS discoverWindowsInstall + vendor-gui — 本 push 修复中）
 
-## CI 安装包（已下载并 `/S` 安装）
+## CI 安装包（已装 `Program Files`）
 
 | 项 | 值 |
 | --- | --- |
-| Setup SHA256 | `602DC9C01AADC87AE0928BD49B2DCCB0CB9E75218BFD73E9872B6BD0FEE12B27` |
-| 自动化子集 | 见 `ci-installer/EXECUTION-REPORT.md` — 启动器 P0 + **附录 1–5 轮 Pass** |
-| 全表 P0 | **未闭环** — 审批拒绝/vision 附加 Fail；托盘/§16 待办 |
+| Setup SHA256 | `52EBFCF4B43214988750552A66FF0087B1A70CD43FB6C4430F241917F7C06666` |
+| 自动化 | 见 `ci-installer/EXECUTION-REPORT.md` |
+| Pass | 启动器 P0、reopen、shell 托盘 P0、附录 1–5 + reject |
+| Fail | appendix.vision（同会话 read-only；源码已修，待下一 CI 包） |
 
-## 合规发版顺序（production-acceptance-test-cases.md）
+## 合规发版顺序
 
-**当前阶段：CI 包已装、启动器子集通过；仍不打 `v0.2.7` tag。**
+**当前阶段：47ad187 包已装、P0 子集通过；仍不打 `v0.2.7` tag，直至 vision 在新 artifact 上 Pass + §16 勾同一 SHA。**
 
-1. 走完剩余 P0（至少附录 A + 托盘 + 自动进桌面路径）。
-2. 填 §16，勾「Release 将上传同一 SHA」。
-3. 再打 tag / 更新 draft Release。
+1. Push 本批 QA/CI 修复 → 新 `workflow_dispatch` Build installers。
+2. 重装 → 仅重跑 `run-installed-appendix.mjs`。
+3. 填 §16（`production-acceptance-test-cases.md`）勾「Release 将上传同一 SHA」。
+4. 打 tag / 更新 draft Release。
 
-## 源码实机预检（非打包验收）
+## 脚本索引（`docs/qa/results/2026-08-24/ci-installer/`）
 
-见 `docs/qa/results/2026-08-24-stop-autostart/`。**不能**代替 §16。
-
-## 发版说明
-
-- `.github/release-notes.md` 已补启动器 / 启动时 / 关闭桌面端条目。
+| 脚本 | 用途 |
+| --- | --- |
+| `install-p0-probe.mjs` | 冷启动 / stop-desktop / 版本 tab |
+| `install-p0-continue.mjs` | 自动进桌面、单实例、TC-LAUNCH-006/007 |
+| `run-installed-shell-p0.mjs` | TC-DESK-002（托盘 IPC 探针） |
+| `run-installed-tray-quit.mjs` | TC-DESK-004 |
+| `run-installed-appendix.mjs` | 附录 A + reject/vision |
