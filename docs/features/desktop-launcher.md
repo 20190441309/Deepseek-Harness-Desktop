@@ -46,6 +46,7 @@
 - `src/renderer/theme.js`、`src/main/chrome.js`、`src/shared/themes.js`
 - `src/main/launcher-gate.js`、`src/main/update.js`、`src/main/plugin-forensics.js`
 - `src/main/index.js` 冷启动闸门、`src/main/ipc.js`、`src/preload/index.js`、托盘/菜单
+- `src/main/harness-controller.js` 仅限 sticky skip 判定委托给 `launcher-gate.stickySkipActive`（不动生命周期语义）
 - 本卡与 QA `TC-LAUNCH-*`
 
 ## Do not touch
