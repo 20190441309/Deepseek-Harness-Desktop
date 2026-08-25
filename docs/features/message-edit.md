@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `message-edit` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — `pnpm vitest run packages/client/ui-message-edit`（35 通过）+ `pnpm run test:gui` |
+| **last verified** | 2026-08-25 — `pnpm vitest run packages/client/ui-message-edit`（35 通过）+ `pnpm run test:gui` + `DSH_SNAPSHOT=replay` 下 `apps/web/tests/message-edit.e2e.ts`（6 通过）+ 真浏览器手动走查（截图见交付记录） |
 
 ## User paths
 
@@ -40,7 +40,7 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `pnpm vitest run packages/client/ui-message-edit`；`pnpm run test:gui`；触碰文件受 `test:coverage` per-file 100% 门槛 |
+| Automated | `pnpm vitest run packages/client/ui-message-edit`；`pnpm run test:gui`；`DSH_SNAPSHOT=replay pnpm run test:web` 中的 `apps/web/tests/message-edit.e2e.ts`（keyless 端到端：铅笔不 fork、Escape 焦点归还、fork-重发、源会话不变）；触碰文件受 `test:coverage` per-file 100% 门槛 |
 | Manual / QA | 发消息→等空闲→点铅笔→改字→发送：子会话出现并从新文本继续；取消恢复原气泡；运行中铅笔禁用 |
 
 ## Sources
