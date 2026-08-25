@@ -51,9 +51,11 @@ function collectFiles(
 /**
  * Workspace file tree occupant of `surfaces.files`. Clicking a file opens a
  * `file:` surface through the owner `openFile` callback. A root listing in
- * flight shows `listing` instead of `empty.dir`. Refresh reloads the root
- * listing; while a search query is active it re-walks that search instead of
- * dropping nested matches. Mention is omitted without a session id. A nested
+ * flight shows `listing` instead of `empty.dir`. Entering search walks the
+ * tree once (uncapped DFS) and caches it; keystrokes filter that cache in
+ * memory. Refresh reloads the root listing; while a search query is active it
+ * re-walks that search instead of dropping nested matches. Mention is omitted
+ * without a session id. A nested
  * `listDir` failure keeps the tree and shows a banner; only the workspace-root
  * listing replaces the tree.
  * @param props - session-maybe seats, listing IPC, locale, and openFile.
@@ -81,6 +83,7 @@ export function FilesPanel({
   const [generation, setGeneration] = useState(0)
   const [query, setQuery] = useState('')
   const [editors, setEditors] = useState<readonly { id: string, label: string }[]>([])
+  const searching = query.trim() !== ''
 
   useEffect(() => {
     if (cwd === undefined) {
@@ -112,8 +115,12 @@ export function FilesPanel({
     return () => { cancelled = true }
   }, [cwd, listDir, t, generation])
 
+  // One walk per search session: the DFS runs when the query first becomes
+  // non-empty (and on Refresh via `generation`); further keystrokes only
+  // filter the cached listing in memory. The cleanup flag also cancels an
+  // in-flight walk when the session ends, so walks never stack.
   useEffect(() => {
-    if (cwd === undefined || query.trim() === '') return
+    if (cwd === undefined || !searching) return
     let cancelled = false
     const walk = async (
       parent: string,
@@ -141,7 +148,7 @@ export function FilesPanel({
       setExpanded(new Set(Object.keys(acc).filter(path => path !== '')))
     })
     return () => { cancelled = true }
-  }, [cwd, listDir, query, generation])
+  }, [cwd, listDir, searching, generation])
 
   useEffect(() => {
     if (listEditors === undefined) return
@@ -186,7 +193,6 @@ export function FilesPanel({
     setQuery('')
   }
 
-  const searching = query.trim() !== ''
   const visibleRoot = filterEntries(root, query, childrenByPath)
   const pickerMatches = searching
     ? getProjectFilePickerMatches(collectFiles(root, childrenByPath), query)

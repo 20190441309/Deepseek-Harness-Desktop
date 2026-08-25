@@ -712,6 +712,45 @@ describe('FilesPanel', () => {
     expect(screen.getByText('index.ts')).toBeTruthy()
   })
 
+  it('walks once per search session and filters further keystrokes in memory', async () => {
+    const listDir = vi.fn(listDirFake)
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={() => {}}
+        listDir={listDir}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'i' } })
+    expect(await screen.findByText('src/index.ts')).toBeTruthy()
+    const callsAfterWalk = listDir.mock.calls.length
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'in' } })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'index' } })
+    expect(await screen.findByText('src/index.ts')).toBeTruthy()
+    // Keystrokes inside one search session must not re-walk the tree.
+    expect(listDir.mock.calls.length).toBe(callsAfterWalk)
+    // Clearing and retyping starts a new session and re-walks once.
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'read' } })
+    await waitFor(() => {
+      expect(listDir.mock.calls.length).toBeGreaterThan(callsAfterWalk)
+    })
+  })
+
   it('walks nested directories with no depth cap during search', async () => {
     const deepList: FilesPanelProps['listDir'] = async (_cwd, relativePath) => {
       const depth = relativePath === '' ? 0 : relativePath.split('/').length
