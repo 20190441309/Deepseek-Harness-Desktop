@@ -1,36 +1,35 @@
 # Deepseek-Harness-Desktop
 
-Desktop client based on the official DeepSeek Harness Web UI.
-
-Themes, wallpapers, and other personalization options.
-
-Download, install, and run — DSH is bundled.
+Desktop client for the official DeepSeek Harness Web UI — download, install, and run without starting `dsh web` yourself.
 
 [中文](README.md) · English · [Download](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest) · [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 
 ## Install
 
-Grab a build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest). No local Node required. Current release is **0.2.7**.
+Grab a build from [Releases](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/latest). No local Node required. Current release is **[0.2.7](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.7)**.
 
 | | |
 | --- | --- |
-| Windows x64 | `Deepseek-Harness-Desktop-Setup-*.exe` |
-| macOS Apple Silicon | `Deepseek-Harness-Desktop-*-mac-arm64.dmg` |
+| Windows x64 | `Deepseek-Harness-Desktop-Setup-0.2.7.exe` |
+| macOS Apple Silicon | `Deepseek-Harness-Desktop-0.2.7-mac-arm64.dmg` |
 | Intel Mac, Linux | [Run from source](#run-from-source) |
 
-The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`.
+The macOS build is unsigned: right-click → Open, or run `xattr -cr /Applications/Deepseek-Harness-Desktop.app`. Checksums are in `SHA512SUMS.txt` on the release page.
 
-## What's new
+## What's new in 0.2.7
 
-- **Harness `0.1.1-rc.1`** — the desktop installer pins official `dsh-v0.1.1-rc.1`.
+- **Cold-start launcher** — opens before the desktop: update check, official-home import, versions, plugin Recovery Board; “Stop desktop” keeps the app running.
 - **Separate home** — sessions, settings, and marketplace plugins live in `dsh-home` under app data. The app does not read, migrate, or change the official CLI `~/.dsh`.
-- **Settings controls** — value picks in Settings use the official capsule + menu.
-- **Terminal assets** — Ghostty wasm and fonts ship in the installer. A source launch with missing assets refuses to start.
+- **Harness `0.1.1-rc.1`** — installer pins official `dsh-v0.1.1-rc.1`.
+- **Terminal assets** — Ghostty wasm and fonts ship in the installer; a source launch with missing assets refuses to start.
+- **Vision / gateway** — custom gateways are not written into official `DEEPSEEK_*`; vision fallback uses the official route when the main model cannot see images.
+
+Full notes: [Release Notes](https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/tag/v0.2.7).
 
 > [!CAUTION]
-> <p style="color:#d1242f"><strong>Old chats are not imported automatically.</strong> Quit the app completely (including the tray). The product path is the <strong>launcher → Import</strong> tab: it read-only copies official <code>~/.dsh</code> sessions and attachments, then reinstalls the plugin list into the desktop home. Do not copy <code>profiles</code>. If you moved the repo, reopen the <strong>original workspace path</strong> in the sidebar. Do not force-open an older rc SQLite session store. The PowerShell below is only a fallback if the launcher is unavailable.</p>
+> **Old chats are not imported automatically.** Quit completely (including the tray). Prefer **launcher → Import**. Do not copy `profiles`. Do not force-open an older rc SQLite session store.
 
-Windows PowerShell fallback:
+Windows PowerShell fallback if the launcher is unavailable:
 
 ```powershell
 $old = "$env:USERPROFILE\.dsh"
@@ -41,24 +40,20 @@ if (Test-Path "$old\attachments") {
 }
 ```
 
-On macOS copy `$HOME/.dsh/sessions` to `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home/sessions` (same for `attachments`).
+On macOS copy `$HOME/.dsh/sessions` to `~/Library/Application Support/Deepseek-Harness-Desktop/dsh-home/sessions` (same for `attachments`). Then reopen the **original workspace path**.
 
-### Fixes
-
-- A custom gateway is not written into official `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`. When the main model cannot see images, vision fallback uses the official route (needs an official key) and reports missing credentials if the key is absent.
-- Files no longer paints an empty directory while a listing is in progress.
-- Wallhaven network failures and timeouts show a readable message.
-- Packing fails if Ghostty assets are missing. An incomplete runtime is extracted again on the next launch.
+If the terminal still shows `Unable to load libghostty-vt (404)`, or you installed 0.2.4 / 0.2.5, install 0.2.7.
 
 ## Features
 
-- **Official UI** — Chat, tool calls, and approvals are `dsh web`. There is no custom chat page.
-- **Git** — Switch branches, commit, push, and open a pull request from the title bar.
+- **Official UI** — chat, tool calls, and approvals are `dsh web`. There is no custom chat page.
+- **Launcher** — cold start opens the launcher (update prompt, import, versions, plugin forensics); tray can reopen it anytime.
+- **Git** — switch branches, commit, push, and open a pull request from the title bar.
 - **Files and terminal** — `Ctrl+\` opens the right column (Files / Diff / Browser / Agents); `` Ctrl+` `` opens the bottom terminal. A selection can join chat.
-- **Models** — Thinking intensity for third-party models, vision fallback; the latest user message can be edited and resent.
-- **Appearance** — Light / dark themes. Pick a wallpaper or Browse the gallery (categories, search, favorites; confirm crops to the window). Frost and pixelate stay on Appearance.
+- **Models** — thinking intensity for third-party models, vision fallback; the latest user message can be edited and resent.
+- **Appearance** — light / dark themes. Pick a wallpaper or Browse the gallery (categories, search, favorites; confirm crops to the window). Frost and pixelate stay on Appearance.
 - **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is the bundled [dsh-market](https://github.com/dsh-market/dsh-market) plugin (`dshmarket`). There is no standalone marketplace window.
-- **Desktop** — Cold start opens the launcher (update prompt, import, versions, plugin forensics); then minimize to tray and auto-update. If Harness dies, the window returns to a failure page and restarts. If a user plugin blocks startup, the launcher stays open so you can disable that package or skip user plugins.
+- **Desktop shell** — minimize to tray, auto-update; if Harness dies, the window returns to a failure page and restarts. If a user plugin blocks startup, the launcher can disable that package or skip user plugins.
 
 `Ctrl+,` opens Settings.
 
@@ -73,17 +68,6 @@ The desktop Harness **does not read** the official CLI `~/.dsh`. Sessions, setti
 | Plugins | `dsh-home/profiles/web` |
 
 Workspace path and the shell API key stay in `config.json` / `credentials.json` one level up. Official `dsh` typed in the bottom terminal still uses `~/.dsh`.
-
-<table>
-  <tr>
-    <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="Chat and Files column" /></td>
-    <td align="center" width="50%"><img src="assets/screenshot-wallpaper.jpg" alt="Wallpaper" /></td>
-  </tr>
-  <tr>
-    <td align="center" width="50%"><img src="assets/screenshot-themes.jpg" alt="Theme library" /></td>
-    <td align="center" width="50%"><img src="assets/screenshot-appearance.jpg" alt="Appearance settings" /></td>
-  </tr>
-</table>
 
 ## Run from source
 
@@ -101,7 +85,7 @@ The first `setup:harness` builds the vendored `vendor/deepseek-harness` — slow
 
 ## Development
 
-Edit the UI in `vendor/deepseek-harness`. Follow the [design language](docs/design-language.en.md) and [motion](docs/motion.en.md). After changing client sources, run `pnpm run build:lib:client` there and restart the desktop app.
+Edit the UI in `vendor/deepseek-harness`. Follow the [design language](docs/design-language.en.md) and [motion](docs/motion.en.md). Product handbook: [docs/handbook](docs/handbook/README.md); behavior contracts: [Feature Spine](docs/features/README.md). After changing client sources, run `pnpm run build:lib:client` there and restart the desktop app.
 
 The current official baseline is `vendor/harness-upstream.json`: `0.1.1-rc.1` (`dsh-v0.1.1-rc.1` / `528c682e061696f5a160f363f236ecbf53cbd006`). The npx fallback is official `@deepseek-ai/dsh@0.1.1-rc.1` and does not include the titlebar, Git, surfaces column, or terminal drawer; those ship only on the source and packaged paths.
 
@@ -116,7 +100,7 @@ Push a `v*` tag that matches `package.json`; GitHub Actions builds the Windows a
 
 ## Community
 
-Scan to join. Issues and PRs are welcome. Thanks to [Linux.do](https://linux.do).
+Issues and PRs are welcome. Thanks to [Linux.do](https://linux.do).
 
 ## License
 

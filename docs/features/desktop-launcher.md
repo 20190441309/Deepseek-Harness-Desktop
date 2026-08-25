@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-24 — 通用设置「启动时」与冷启动直进桌面；关闭桌面端销毁主窗 |
+| **last verified** | 2026-08-25 — v0.2.7 正式发布（启动器随 Setup）；`/releases/latest` 指向 0.2.7 |
 
 ## User paths
 
@@ -22,7 +22,7 @@
 - 启动器走官方 `--dsw-alias-*`；`--boot-*` 不得用在启动器页。
 - 启动器浅色/深色跟官方 dsh web 表（`data-ds-dark-theme`），不把 Appearance 壁纸种子写进 token。
 - 市场 / 壁纸图库仍禁止另开产品窗。
-- `/releases/latest` 忽略 draft；草稿 0.2.7 不得当成现网更新源。
+- `/releases/latest` 忽略 draft；正式版 0.2.7 起启动器随 Setup 提供。
 - 换版本只下载该 tag 的 Setup 并拉起安装器，不单独切 `vendor/dsh` pin。
 - 更新检查请求 10s 超时、单次下载整体 15 分钟超时；失败不阻塞手动「启动桌面端」。
 - Release 若带 `SHA512SUMS.txt`，下载后强制 sha512 校验（失败即删除并报错）；老版本 Release 无清单则跳过校验（已知限制，见 build-release handbook）。
