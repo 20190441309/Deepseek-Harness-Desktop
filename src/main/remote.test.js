@@ -753,3 +753,143 @@ test('shell whitelist requires login and rejects unknown names', async () => {
   await close(upstream);
 });
 
+// —— P0 回归：#offer= 首访自动登录全链路必须在「真实 mobile/web 树」上走通 ——
+// 上一轮云端实机测试曾因 (a) 网关 serve 错分支的 SPA、(b) offer 编码错误被静默吞掉
+// 而停在「等待配对」。本组测试把 encodeOffer → loginPage 内联脚本 → 表单登录 →
+// parity SPA → SPA 侧 offer/login 模块整条链钉死在同一棵树上。
+
+function decodeLikeLoginPageScript(encoded) {
+  // 与 loginPage() 内联脚本逐行同构：base64url 归一化 + padding + UTF-8 JSON。
+  let padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  while (padded.length % 4) padded += '=';
+  const json = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  return json && json.token ? String(json.token) : '';
+}
+
+test('#offer= first visit: login page auto-login decodes pairingUrl and lands on the parity SPA', async () => {
+  const upstream = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      let rpcId = '';
+      try { rpcId = JSON.parse(raw || '{}').rpcId || ''; } catch { /* keep empty */ }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        type: 'server-response',
+        rpcId,
+        result: { ok: true, value: { name: 'DESKTOP-E2E', cwd: '/repo' } },
+      }));
+    });
+  });
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
+  // 不注入 mobileWebRoot：必须落在仓库内真实的 mobile/web 树上。
+  const gateway = new RemoteGateway(config);
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port;
+
+  // 1. 未认证首访（浏览器打开二维码 URL；hash 不上行）→ 401 legacy 登录页。
+  const first = await request(port, '/', { headers: { accept: 'text/html' } });
+  assert.equal(first.status, 401);
+  assert.match(first.body, /login-error/);
+  assert.match(first.body, /配对链接无效/);
+  assert.match(first.body, /配对密钥无效/);
+  assert.match(first.body, /无法连接桌面端/);
+
+  // 2. 桌面二维码 payload 与登录页内联脚本解码互通（base64url / token 字段）。
+  const url = pairingUrl('192.168.1.2', port, token, { mode: 'lan' });
+  const encoded = new URL(url).hash.match(/offer=([^&]+)/)[1];
+  assert.equal(decodeLikeLoginPageScript(encoded), token);
+
+  // 3. 内联脚本同款表单登录 → 302 + 设备 cookie。
+  const login = await request(port, '/__remote__/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `token=${encodeURIComponent(decodeLikeLoginPageScript(encoded))}`,
+    redirect: 'manual',
+  });
+  assert.equal(login.status, 302);
+  const deviceToken = cookieFrom(login);
+  assert.ok(deviceToken);
+
+  // 4. 认证后的 / 是 parity SPA（扫码/权限屏在 index.html 里），不是 v1。
+  const spa = await request(port, '/', {
+    headers: { accept: 'text/html', cookie: `dsh_remote=${deviceToken}` },
+  });
+  assert.equal(spa.status, 200);
+  assert.match(spa.body, /screen-scan/);
+  assert.match(spa.body, /screen-permission/);
+  assert.match(spa.body, /等待配对/);
+
+  // 5. app.js 是对齐分支的接线：扫码模块 + 设置 Hub + 无效 offer 显式报错。
+  const appJs = await request(port, '/app.js', {
+    headers: { cookie: `dsh_remote=${deviceToken}` },
+  });
+  assert.equal(appJs.status, 200);
+  assert.match(appJs.body, /\.\/pair\/scan\.js/);
+  assert.match(appJs.body, /settings-hub/);
+  assert.match(appJs.body, /hashHasOffer/);
+  assert.match(appJs.body, /配对链接无效/);
+  assert.match(appJs.body, /status === 401/);
+
+  // 6. SPA 侧 ESM 模块（真实手机代码）对同一个二维码 payload 直接可用。
+  const { pathToFileURL } = require('url');
+  const webHost = (name) => pathToFileURL(path.join(__dirname, '..', '..', 'mobile', 'web', 'host', name)).href;
+  const { offerFromHash: spaOfferFromHash, hashHasOffer } = await import(webHost('offer.js'));
+  const { loginWithOffer } = await import(webHost('login.js'));
+  const offer = spaOfferFromHash(new URL(url).hash);
+  assert.equal(offer.token, token);
+  assert.equal(offer.mode, 'lan');
+  let spaCookie = '';
+  await loginWithOffer({
+    origin: `http://127.0.0.1:${port}`,
+    offer,
+    fetchImpl: async (target, init) => {
+      const response = await fetch(target, { ...init, redirect: 'manual' });
+      const header = String(response.headers.get('set-cookie') || '');
+      const match = header.match(/dsh_remote=([^;]+)/);
+      if (match) spaCookie = decodeURIComponent(match[1]);
+      return response;
+    },
+  });
+  assert.ok(spaCookie);
+  const proxied = await request(port, '/api/host.describe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: `dsh_remote=${spaCookie}` },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'e2e-1', method: 'host.describe', payload: {} }),
+  });
+  assert.equal(proxied.status, 200);
+  assert.equal(JSON.parse(proxied.body).result.value.name, 'DESKTOP-E2E');
+
+  // 7. 无效 offer 不是「无 offer」：SPA 模块必须能区分，boot 才能报错而非静默。
+  assert.equal(spaOfferFromHash('#offer=%%%broken%%%'), null);
+  assert.equal(hashHasOffer('#offer=%%%broken%%%'), true);
+  assert.equal(hashHasOffer('#'), false);
+
+  await gateway.stop();
+  await close(upstream);
+});
+
+test('login page auto-login rejection re-serves the form with the error line intact', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const config = memoryConfig({ remoteToken: token, remoteDevices: [] });
+  const gateway = new RemoteGateway(config);
+  await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+  const port = gateway.port;
+
+  const denied = await request(port, '/__remote__/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'token=wrong-token',
+    redirect: 'manual',
+  });
+  assert.equal(denied.status, 401);
+  assert.match(denied.body, /login-error/);
+  assert.match(denied.body, /访问令牌/);
+
+  await gateway.stop();
+  await close(upstream);
+});
