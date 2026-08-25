@@ -180,15 +180,15 @@
 
 ### M1 — 协议层补齐（纯逻辑 + 测试，不动 UI）
 
-- [ ] `shell/remote-shell.js` + 测试（fetch 注入；401 抛 unauthorized；非 2xx/`ok:false` 归一错误）
-- [ ] `git/vcs-parse.js` + 测试（用 `src/main/git.js` 真实输出形状做夹具，与 `VcsParse.kt` 用例同表）
-- [ ] `git/quick.js` + 测试（与 `GitQuickShellTest.kt` 同一决策表：busy/无分支/有改动×PR/upstream/diverged/behind/ahead/clean）
-- [ ] `host/prompt.js` + 测试（image 类型白名单、base64、`mode:'queue'`）
-- [ ] `fence.test.js` 扩展到新目录
+- [x] `shell/remote-shell.js` + 测试（fetch 注入；401 抛 unauthorized；非 2xx/`ok:false` 归一错误）
+- [x] `git/vcs-parse.js` + 测试（用 `src/main/git.js` 真实输出形状做夹具，与 `VcsParse.kt` 用例同表）
+- [x] `git/quick.js` + 测试（与 `GitQuickShellTest.kt` 同一决策表：busy/无分支/有改动×PR/upstream/diverged/behind/ahead/clean）
+- [x] `host/prompt.js` + 测试（image 类型白名单、base64、`mode:'queue'`）
+- [x] `fence.test.js` 扩展到新目录
 
 ### M2 — 扫码（本需求核心）
 
-- [ ] `pair/scan.js` + 测试：offer 解析复用、同/异 origin 分派、无效码
+- [x] `pair/scan.js` + 测试：offer 解析复用、同/异 origin 分派、无效码
 - [ ] 连接页「扫描二维码」按钮：`isSecureContext && mediaDevices && BarcodeDetector(qr_code)` 三重探测，任一缺失不渲染并给出对应文案（LAN 明文 / 浏览器不支持）
 - [ ] 扫码屏：getUserMedia 后置摄像头、rAF 检测循环、命中即停流、角标取景框、取消；`NotAllowedError` → 权限说明屏
 - [ ] 手电筒按钮（`track.getCapabilities().torch` 才渲染）
