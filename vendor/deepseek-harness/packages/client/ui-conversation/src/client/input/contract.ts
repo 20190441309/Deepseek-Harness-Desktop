@@ -29,10 +29,63 @@ export interface InputTarget {
   insertReference(ref: ReferenceInsert, span: TokenSpan): boolean
 }
 
+/**
+ * Published projection of one live edit session: the composer paints the
+ * banner from `label`, and `key` equality is a contributor's liveness test
+ * for its own edit.
+ */
+export interface InputEditState {
+  /** Caller-scoped identity (`<owner>:<discriminator>`), stable for the session's lifetime. */
+  readonly key: string
+  /** Caller-localized banner label the composer shows while the edit is live. */
+  readonly label: string
+}
+
+/**
+ * One edit session accepted by {@link SessionInput.beginEdit}: the composer
+ * keeps every capability (draft machine, decorations, attachments, IME,
+ * keyboard policy) while submission is redirected to `submit`. Entering
+ * stashes the current draft and images and seeds the draft with `seed`;
+ * cancel restores the stash; a successful `submit` ends the edit and
+ * restores the stash too.
+ */
+export interface InputEditSpec extends InputEditState {
+  /** Draft text replacing the composer draft while the pre-edit draft is stashed. */
+  readonly seed: string
+  /**
+   * Replacement submit sink while the edit is live. Receives the
+   * occurrence-serialized draft and the captured image ids — exactly what the
+   * default sink would send. A success outcome ends the edit (consumed images
+   * leave the composer; the stashed pre-edit draft returns); an error outcome
+   * or rejection keeps the edit armed with the draft, and its text surfaces
+   * as a composer notice.
+   * @param text - serialized draft (reference occurrences expanded to model forms).
+   * @param imageIds - ordered browser-owned draft image ids captured at submit.
+   * @param signal - the submit attempt's abort signal (session teardown aborts).
+   * @returns the submit outcome.
+   */
+  submit(text: string, imageIds: readonly DraftAttachmentId[], signal: AbortSignal): Promise<SubmitOutcome>
+}
+
 /** Per-session input facade owned by the conversation wiring layer. */
 export interface SessionInput extends InputTarget {
   /** Single write path for draft text (all mutation rides machine events). */
   setDraft(text: string): void
+  /**
+   * Begin one edit session: stash the current draft and images, seed the
+   * draft, and redirect submission to the spec's sink until the edit ends.
+   * Refused (false) while another edit is live or an admission transaction
+   * is in flight — the caller keeps its non-edit presentation.
+   * @param spec - identity, banner label, draft seed, and the replacement sink.
+   * @returns whether the edit session started.
+   */
+  beginEdit(spec: InputEditSpec): boolean
+  /**
+   * End the live edit session and restore the stashed pre-edit draft and
+   * images. No-op without a live edit; refused while an admission
+   * transaction is in flight (the settlement re-arms or ends the edit).
+   */
+  cancelEdit(): void
   /** Append ordered browser-owned image ids; busy admission phases refuse. */
   addImages(ids: readonly DraftAttachmentId[]): boolean
   /** Remove one browser-owned image id; busy admission phases refuse. */
@@ -124,6 +177,8 @@ export interface ComposerKeyboard {
   space(): boolean
   /** Dismiss the popupSelect shell (any interaction outside the box). */
   dismissPopup(): void
+  /** End the live edit session (banner button / Escape); no-op without one. */
+  cancelEdit(): void
 }
 
 /** One independently addressable row projected from the transient queue snapshot. */
@@ -225,6 +280,8 @@ export interface InputState {
   readonly paste?: PasteAttemptState
   /** Read-only transient inbox projection (`session/queue`, including pending steering). */
   readonly queue: readonly QueuedMessage[]
+  /** Live edit session redirecting submission (absent while the composer sends normally). */
+  readonly edit?: InputEditState
 }
 
 /**
