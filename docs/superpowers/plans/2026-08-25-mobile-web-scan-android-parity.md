@@ -189,46 +189,47 @@
 ### M2 — 扫码（本需求核心）
 
 - [x] `pair/scan.js` + 测试：offer 解析复用、同/异 origin 分派、无效码
-- [ ] 连接页「扫描二维码」按钮：`isSecureContext && mediaDevices && BarcodeDetector(qr_code)` 三重探测，任一缺失不渲染并给出对应文案（LAN 明文 / 浏览器不支持）
-- [ ] 扫码屏：getUserMedia 后置摄像头、rAF 检测循环、命中即停流、角标取景框、取消；`NotAllowedError` → 权限说明屏
-- [ ] 手电筒按钮（`track.getCapabilities().torch` 才渲染）
-- [ ] 权限说明屏（指引站点设置 + 「改用粘贴链接」）
-- [ ] 加载时无 `#offer=` 先试探握手（cookie 复用），401 静默落回连接页（C9/C10）
+- [x] 连接页「扫描二维码」按钮：`isSecureContext && mediaDevices && BarcodeDetector(qr_code)` 三重探测，任一缺失不渲染并给出对应文案（LAN 明文 / 浏览器不支持）
+- [x] 扫码屏：getUserMedia 后置摄像头、rAF 检测循环、命中即停流、角标取景框、取消；`NotAllowedError` → 权限说明屏
+- [x] 手电筒按钮（`track.getCapabilities().torch` 才渲染）
+- [x] 权限说明屏（指引站点设置 + 「改用粘贴链接」）
+- [x] 加载时无 `#offer=` 先试探握手（cookie 复用），401 静默落回连接页（C9/C10）
 
 ### M3 — 对话增强
 
-- [ ] 附件 sheet + 两个 file input（capture / 相册）+ 「从工作区选文件」跳文件 pane
-- [ ] 附件 rail（缩略图、删除、点开 lightbox）+ lightbox overlay
-- [ ] `sendPrompt` 走 `host/prompt.js`，text+images；发送键空态禁用
-- [ ] 气泡图片渲染（单图 180 / 多图 64，base64 `data:` URL）
-- [ ] 运行中：发送键变 Stop → `session.cancel`；顶栏「运行中」保持
-- [ ] 对话页 banner（与 connect error 分离）
-- [ ] composer 权限芯片 + 模型芯片（跳对应设置 pane）
+- [x] 附件 sheet + 两个 file input（capture / 相册）+ 「从工作区选文件」跳文件 pane
+- [x] 附件 rail（缩略图、删除、点开 lightbox）+ lightbox overlay
+- [x] `sendPrompt` 走 `host/prompt.js`，text+images；发送键空态禁用
+- [x] 气泡图片渲染（单图 180 / 多图 64，base64 `data:` URL）
+- [x] 运行中：发送键变 Stop → `session.cancel`；顶栏「运行中」保持
+- [x] 对话页 banner（与 connect error 分离）
+- [x] composer 权限芯片 + 模型芯片（跳对应设置 pane）
 
 ### M4 — 设置 IA 重构
 
-- [ ] Hub 分组钻取（`ui/settings-hub.js` 驱动）+ pane 返回键；移除平铺 tabs 与 `settings.describe` 只读行（S9 决策）
-- [ ] 连接详情（主机 / 通道 label 复用 Android `channelLabel` 逻辑）+ 「断开这台设备」→ `/__remote__/logout` + 清态回连接页
-- [ ] 手机外观：浅/深/跟随系统（`matchMedia('(prefers-color-scheme: dark)')`）+ 玻璃 + 字体，`localStorage` 持久化
-- [ ] 权限 pane（accessMode 芯片，会话内存态，同 Android）
-- [ ] 电脑外观（`openGallery`/`openSettings(appearance)`）、界面设置（gitTitle 开关本地持久化 + `openSettings`）、MCP/技能/插件/市场/模型 =「在电脑上打开」请求，不画假清单
+- [x] Hub 分组钻取（`ui/settings-hub.js` 驱动）+ pane 返回键；移除平铺 tabs 与 `settings.describe` 只读行（S9 决策）
+- [x] 连接详情（主机 / 通道 label 复用 Android `channelLabel` 逻辑）+ 「断开这台设备」→ `/__remote__/logout` + 清态回连接页
+- [x] 手机外观：浅/深/跟随系统（`matchMedia('(prefers-color-scheme: dark)')`）+ 玻璃 + 字体，`localStorage` 持久化
+- [x] 权限 pane（accessMode 芯片，会话内存态，同 Android）
+- [x] 电脑外观（`openGallery`/`openSettings(appearance)`）、界面设置（gitTitle 开关本地持久化 + `openSettings`）、MCP/技能/插件/市场/模型 =「在电脑上打开」请求，不画假清单
 
 ### M5 — 工作区 + Git + 文件
 
-- [ ] 抽屉底栏「工作区」入口；顶栏 Git 胶囊（gitTitle 开）
-- [ ] 工作区 pane：32px 分段 Git 胶囊（分支 sheet / GitQuick 主操作 / 菜单 sheet）+ 更改/文件 tabs + 状态行（`gitStatusLine` 移植）
-- [ ] Git menu sheet（Fetch/Pull/Commit/Push/PR，禁用条件与 hint 照抄 Android）
-- [ ] 分支 sheet（搜索/远程标记/创建并检出）
-- [ ] commit / create-branch / 默认分支 confirm 三个对话框（含默认分支警告与「在新建分支上提交」）
-- [ ] Git busy + toast（✓/!、2.4s 自动消隐）
-- [ ] 文件 pane（`listDir` + 搜索 + `@path` 插入 composer 并关 overlay）
+- [x] 抽屉底栏「工作区」入口；顶栏 Git 胶囊（gitTitle 开）
+- [x] 工作区 pane：32px 分段 Git 胶囊（分支 sheet / GitQuick 主操作 / 菜单 sheet）+ 更改/文件 tabs + 状态行（`gitStatusLine` 移植）
+- [x] Git menu sheet（Fetch/Pull/Commit/Push/PR，禁用条件与 hint 照抄 Android）
+- [x] 分支 sheet（搜索/远程标记/创建并检出）
+- [x] commit / create-branch / 默认分支 confirm 三个对话框（含默认分支警告与「在新建分支上提交」）
+- [x] Git busy + toast（✓/!、2.4s 自动消隐）
+- [x] 文件 pane（`listDir` + 搜索 + `@path` 插入 composer 并关 overlay）
 
 ### M6 — 收尾与门禁
 
-- [ ] `npm test` 全绿（`src/**` + `mobile/web/**`）；`node --test src/main/remote.test.js src/main/remote-shell.test.js` 回归
-- [ ] `mobile/README.md` Web 段补扫码路径与降级说明；`docs/design-language.md` 手机例外段无需扩（仍是抄 token）
-- [ ] Feature 卡 `last verified` + Gates 更新；`docs/qa/production-acceptance-test-cases.md` TC-REM-002 步骤扩写（扫码/附件/Git），**保持 N/A 停放标记**
+- [x] `npm test` 全绿（`src/**` + `mobile/web/**`，922/922）；`node --test src/main/remote.test.js src/main/remote-shell.test.js` 回归 29/29
+- [x] `mobile/README.md` Web 段补扫码路径与降级说明；`docs/design-language.md` 手机例外段无需扩（仍是抄 token）
+- [x] Feature 卡 `last verified` + Gates 更新；`docs/qa/production-acceptance-test-cases.md` TC-REM-002 步骤扩写（扫码/附件/Git），**保持 N/A 停放标记**
 - [ ] 手工冒烟（本地 `RemoteGateway` 直连，不翻产品开关）：扫码→登录→列会话→发文本+图→审批→停止→Git commit 对话框→文件插入
+  - 2026-08-25 已完成服务器契约冒烟（直接构造 `RemoteGateway` + 真 git/listDir：匿名 401 → 表单登录 cookie → 认证后返回含扫码/权限/附件/工作区节点的 SPA → `/api/*` 反代 → `gitStatus`/`listDir` → `writeFile` 404 → logout 后 401，8/8 通过）；浏览器内扫码→发图→审批→Git 对话框的真机走查留到解禁轮，按 TC-REM-002 扩写步骤执行
 
 ## 7. 与 Feature Spine / 开关停放的关系
 

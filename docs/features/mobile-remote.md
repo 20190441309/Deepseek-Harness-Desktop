@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `parked` |
-| **last verified** | 2026-08-23 — `node --test src/main/remote.test.js src/main/remote-shell.test.js` 29/29；`mobile/android` `gradlew :protocol:test` 24/24，`:app:assembleDebug`；USB 真机 `23124RN87C` 重装 debug APK：对话页汉堡/发丝顶栏/胶囊作曲器（只读·模型芯片、info 发送），抽屉搜索+新会话+底栏工作区/设置，设置分组钻取+断开危险行，工作区 32px Git 胶囊英文 `Commit & push` + 底部 Git 操作 sheet。未点 Commit/Push；无挂起审批 |
+| **last verified** | 2026-08-25 — Web ≈ Android 对齐（扫码/附件/停止/设置 Hub/工作区 Git/文件插入，[计划](../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md)）：`npm test` 922/922（含 `mobile/web` 新增 shell/vcs-parse/quick/prompt/scan/settings-hub/fold-images 测试）；`node --test src/main/remote.test.js src/main/remote-shell.test.js` 29/29。真机扫码走查待解禁轮（步骤已扩写进 TC-REM-002，保持 N/A）。上轮 2026-08-23：Android `:protocol:test` 24/24、USB 真机 `23124RN87C` 走查 |
 
 ## User paths
 
