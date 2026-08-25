@@ -45,6 +45,9 @@ import { GitProgressToast, type GitProgressState } from './GitProgressToast.tsx'
 import { PublishDialog } from './PublishDialog.tsx'
 import css from './GitActionsControl.module.css'
 
+/** Must match ui-surfaces; client packages cannot share a value export. */
+const GIT_INIT_EVENT = 'dshd-git-init'
+
 /** Desktop git IPC the plugin injects from `window.shell`. */
 export interface GitActionsInjected {
   gitStatus: (cwd: string) => Promise<VcsStatus | null>
@@ -402,7 +405,11 @@ export function GitActionsControl({
     void gitInit(cwd).then((result) => {
       const failed = failureMessage(result, t('error.fallback'))
       if (failed !== undefined) failProgress(failed)
-      else succeedProgress(t('action.init'))
+      else {
+        succeedProgress(t('action.init'))
+        // Reopens the surfaces Diff gate without a session switch.
+        window.dispatchEvent(new CustomEvent(GIT_INIT_EVENT))
+      }
     }).finally(() => {
       setBusy(false)
       void refresh(cwd)

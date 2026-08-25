@@ -15,6 +15,9 @@ import css from './SurfacesRoot.module.css'
 /** Must match ui-user-terminal; client packages cannot share a value export. */
 const OPEN_SURFACE_EVENT = 'dshd-open-surface'
 
+/** Must match ui-git; client packages cannot share a value export. */
+const GIT_INIT_EVENT = 'dshd-git-init'
+
 /** Layout write and probes injected so cards can open the column and disable Browser. */
 export interface SurfacesRootInjected {
   openSurfaces: () => void
@@ -92,6 +95,14 @@ function currentCwd(useSessions: SurfacesRootProps['useSessions']): string | und
 export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
   const cwd = currentCwd(props.useSessions)
   const [gitRepo, setGitRepo] = useState(false)
+  // ui-git broadcasts after a successful `git init`, so the Diff gate opens
+  // without switching sessions; the bump re-runs the probe effect below.
+  const [gitProbe, setGitProbe] = useState(0)
+  useEffect(() => {
+    const reprobe = (): void => { setGitProbe(probe => probe + 1) }
+    window.addEventListener(GIT_INIT_EVENT, reprobe)
+    return () => { window.removeEventListener(GIT_INIT_EVENT, reprobe) }
+  }, [])
   useEffect(() => {
     if (cwd === undefined) {
       setGitRepo(false)
@@ -104,7 +115,7 @@ export function SurfacesRoot(props: SurfacesRootProps): ReactNode {
       if (!cancelled) setGitRepo(false)
     })
     return () => { cancelled = true }
-  }, [cwd, props.gitStatus])
+  }, [cwd, props.gitStatus, gitProbe])
   return (
     <SurfacesBody
       {...props}

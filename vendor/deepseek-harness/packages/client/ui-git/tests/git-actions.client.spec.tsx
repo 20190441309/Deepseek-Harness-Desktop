@@ -416,15 +416,20 @@ describe('GitActionsControl', () => {
     expect(init.textContent).not.toContain('Initialize Git')
   })
 
-  it('runs gitInit when Initialize Git is clicked', async () => {
+  it('runs gitInit when Initialize Git is clicked and broadcasts dshd-git-init', async () => {
     const gitInit = vi.fn(async () => ({ ok: true }))
     const gitStatus = vi.fn()
       .mockResolvedValueOnce(status({ isRepo: false, refName: null, hasPrimaryRemote: false }))
       .mockResolvedValue(status({ isRepo: true, hasWorkingTreeChanges: true }))
+    const onInitBroadcast = vi.fn()
+    window.addEventListener('dshd-git-init', onInitBroadcast)
     mount({ cwd: '/work', gitStatus, gitInit })
     fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
     await waitFor(() => { expect(gitInit).toHaveBeenCalledWith('/work') })
     await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(2) })
+    // ui-surfaces listens for this to reopen the Diff gate without a session switch.
+    expect(onInitBroadcast).toHaveBeenCalledOnce()
+    window.removeEventListener('dshd-git-init', onInitBroadcast)
   })
 
   it('shows Initializing and the IPC failure when gitInit fails', async () => {
@@ -437,12 +442,16 @@ describe('GitActionsControl', () => {
       git: status({ isRepo: false, refName: null, hasPrimaryRemote: false }),
       gitInit,
     })
+    const onInitBroadcast = vi.fn()
+    window.addEventListener('dshd-git-init', onInitBroadcast)
     fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
     expect(await screen.findByRole('status', { name: 'Initializing...' })).toBeTruthy()
     finish({ ok: false, message: 'cannot init' })
     expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
     expect(screen.getByText('cannot init')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
+    expect(onInitBroadcast).not.toHaveBeenCalled()
+    window.removeEventListener('dshd-git-init', onInitBroadcast)
   })
 
   it('labels the main button Pull when the ref is behind', async () => {
