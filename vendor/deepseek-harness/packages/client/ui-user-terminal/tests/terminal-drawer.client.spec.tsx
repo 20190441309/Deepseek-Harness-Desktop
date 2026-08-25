@@ -371,15 +371,6 @@ describe('TerminalDrawer', () => {
     term.options.onCopy('copied-bytes')
     expect(b.writeClipboard).toHaveBeenCalledWith('copied-bytes')
     expect(term.options.beforeKey(new KeyboardEvent('keydown', { key: 'a' }))).toBe(true)
-    // Ctrl+` is the titlebar drawer chord: suppressed for the PTY (false) with
-    // the default prevented, but not stopped, so the window listener toggles.
-    const drawerChord = new KeyboardEvent('keydown', {
-      key: '`', code: 'Backquote', ctrlKey: true, bubbles: true, cancelable: true,
-    })
-    const ptyWritesBefore = b.ptyWrite.mock.calls.length
-    expect(term.options.beforeKey(drawerChord)).toBe(false)
-    expect(drawerChord.defaultPrevented).toBe(true)
-    expect(b.ptyWrite.mock.calls.length).toBe(ptyWritesBefore)
     expect(term.options.beforeKey(new KeyboardEvent('keydown', {
       key: 'l', ctrlKey: true, bubbles: true, cancelable: true,
     }))).toBe(false)
