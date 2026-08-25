@@ -57,7 +57,7 @@ function emitExit(child, code, signal = null) {
  * 构造注入全部依赖的 manager。返回：
  *  - manager: DshManager 实例
  *  - spawned: 每次 spawnHarness 产生的 fake child
- *  - calls:   { writePid, clearPid, killTree, killOwned, readPid } 调用记录
+ *  - calls:   { writePid, clearPid, killTree, readPid } 调用记录
  *  - setReachable(v): 控制 isReachable 结果
  *  - lastChild(): 最近 spawn 的 child
  */
@@ -67,7 +67,6 @@ function makeHarness(overrides = {}) {
     writePid: [],
     clearPid: 0,
     killTree: [],
-    killOwned: 0,
     readPid: 0,
     spawn: null,
   };
@@ -111,10 +110,6 @@ function makeHarness(overrides = {}) {
     },
     killTree: (pid) => {
       calls.killTree.push(pid);
-    },
-    killOwnedListeners: () => {
-      calls.killOwned += 1;
-      return 0;
     },
     ...overrides.deps,
   };
@@ -340,7 +335,6 @@ test('stop 取消 in-flight start：最后 idle，绝不被旧 catch 改 error�
   assert.equal(h.manager.child, null);
   assert.equal(h.manager.failure, null);
   assert.deepEqual(h.calls.killTree, [CHILD_PID]);
-  assert.equal(h.calls.killOwned, 1);
   assert.ok(h.calls.clearPid >= 1);
 
   // 旧 catch 不得在 stop 之后把状态翻回 error
@@ -408,7 +402,7 @@ test('start 与 stop 重叠不死锁：start 等待 stop 完成后新起一代',
   assert.equal(rStop.status, 'fulfilled');
 });
 
-test('正常 stop：stopping→idle、killTree/clearPid/killOwnedListeners 被调用、幂等', async (t) => {
+test('正常 stop：stopping→idle、killTree/clearPid 被调用、幂等', async (t) => {
   const h = makeHarness();
   t.after(h.cleanup);
   h.setReachable(true);
@@ -421,7 +415,6 @@ test('正常 stop：stopping→idle、killTree/clearPid/killOwnedListeners 被�
   assert.equal(h.manager.state, 'idle');
   assert.equal(h.manager.child, null);
   assert.deepEqual(h.calls.killTree, [CHILD_PID]);
-  assert.equal(h.calls.killOwned, 1);
   assert.ok(h.calls.clearPid >= 1);
   assert.ok(states.includes('stopping'));
   assert.ok(states.includes('idle'));
@@ -676,4 +669,38 @@ test('spawnEnv overwrites inherited DSH_HOME with the desktop home', () => {
     else process.env.DSH_HOME = previous;
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('ensureOwnedPort 不击杀未经 pid 文件确认的占用者，改跳端口', async (t) => {
+  const http = require('node:http');
+  const { ensureOwnedPort } = require('./dsh');
+  // 冒充一个「像 dsh 一样 HTTP 就绪」的第三方服务：即便 httpReady 也不得击杀。
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { connection: 'close' });
+    res.end('ok');
+  });
+  const sockets = new Set();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    for (const socket of sockets) socket.destroy();
+    server.close();
+  });
+  const wanted = server.address().port;
+  const logs = [];
+  const port = await ensureOwnedPort('127.0.0.1', wanted, (line) => logs.push(line));
+  assert.notEqual(port, wanted, '被占端口应改跳，不得抢占');
+  assert.equal(server.listening, true, '未确认归属的占用者绝不能被击杀');
+  assert.ok(logs.some((line) => line.includes('改用')), '应记录跳端口');
+});
+
+test('dsh.js 不再包含按进程名扫描端口的兜底击杀', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'dsh.js'), 'utf8');
+  assert.doesNotMatch(source, /killOwnedListeners/);
+  assert.doesNotMatch(source, /listeningPids/);
+  assert.doesNotMatch(source, /netstat/);
+  assert.doesNotMatch(source, /lsof/);
 });

@@ -249,56 +249,6 @@ function processImageName(pid) {
   }
 }
 
-function listeningPids(port) {
-  const wanted = Number(port);
-  if (!wanted) {
-    return [];
-  }
-  try {
-    const out = process.platform === 'win32'
-      ? execTimed('netstat', ['-ano'], 2500)
-      : execTimed('lsof', ['-nP', `-iTCP:${wanted}`, '-sTCP:LISTEN', '-t'], 2500);
-    if (process.platform !== 'win32') {
-      return [...new Set(out.split(/\s+/).map(Number).filter((pid) => pid > 0))];
-    }
-    const pids = new Set();
-    for (const raw of out.split(/\r?\n/)) {
-      const line = raw.trim();
-      if (!/LISTENING/i.test(line)) {
-        continue;
-      }
-      const parts = line.split(/\s+/);
-      const pid = Number(parts[parts.length - 1]);
-      const local = parts[1] || '';
-      const localPort = local.startsWith('[')
-        ? local.slice(local.lastIndexOf(']:') + 2)
-        : local.split(':').pop();
-      if (pid > 0 && Number(localPort) === wanted) {
-        pids.add(pid);
-      }
-    }
-    return [...pids];
-  } catch {
-    return [];
-  }
-}
-
-function killOwnedListeners(port) {
-  const self = process.pid;
-  let killed = 0;
-  for (const pid of listeningPids(port)) {
-    if (isSelfPid(pid) || pid === self) {
-      continue;
-    }
-    if (!isSafeToKill(pid)) {
-      continue;
-    }
-    killTree(pid);
-    killed += 1;
-  }
-  return killed;
-}
-
 function quoteWindowsCommand(command) {
   const value = String(command).trim();
   if (!value) {
@@ -371,8 +321,10 @@ async function probePort(host, port) {
 }
 
 /**
- * Make `port` ours for this GUI process: stop a leftover dsh/node listener,
- * or hop to the next free port if something else is bound there.
+ * Make `port` ours for this GUI process. Only a leftover confirmed by our own
+ * pid file (and passing the node/dsh image-name guard) may be stopped; any
+ * other listener — even one that looks like a dsh server — belongs to someone
+ * else, so we hop to the next free port instead of killing by process name.
  */
 async function ensureOwnedPort(host, wantedPort, log = () => {}) {
   const wanted = Number(wantedPort) || 3080;
@@ -396,20 +348,8 @@ async function ensureOwnedPort(host, wantedPort, log = () => {}) {
   }
   clearPidFile();
 
-  if (probe.httpReady) {
-    const killed = killOwnedListeners(wanted);
-    if (killed) {
-      log(`已结束占用 ${wanted} 的残留服务（${killed} 个进程）`);
-      await sleep(400);
-      probe = await probePort(host, wanted);
-      if (!probe.inUse) {
-        return wanted;
-      }
-    }
-  }
-
   const next = await findFreePort(host, wanted + 1);
-  log(`端口 ${wanted} 仍被其他程序占用，改用 ${next}`);
+  log(`端口 ${wanted} 被其他程序占用，改用 ${next}`);
   return next;
 }
 
@@ -462,7 +402,7 @@ class DshManager extends EventEmitter {
   /**
    * @param {object} [options] 窄依赖注入；不传任何选项时全部使用生产默认实现。
    *   可注入：loadConfig、ensurePackagedHarness、spawnHarness、isReachable、
-   *   sleep、readPidFile、writePidFile、clearPidFile、killTree、killOwnedListeners、
+   *   sleep、readPidFile、writePidFile、clearPidFile、killTree、
    *   buildLaunch（测试需要绕过 electron 依赖时按需注入）、ensureGhosttyAssetsInHarness。
    */
   constructor(options = {}) {
@@ -490,7 +430,6 @@ class DshManager extends EventEmitter {
       writePidFile: options.writePidFile || writePidFile,
       clearPidFile: options.clearPidFile || clearPidFile,
       killTree: options.killTree || killTree,
-      killOwnedListeners: options.killOwnedListeners || killOwnedListeners,
       buildLaunch: options.buildLaunch || ((config) => this.buildLaunch(config)),
       sourceHarnessStatus: options.sourceHarnessStatus || sourceHarnessStatus,
       resolveDshBin: options.resolveDshBin || resolveDshBin,
@@ -915,11 +854,6 @@ class DshManager extends EventEmitter {
       this._killTree(pid);
     }
     this._clearPidFile();
-    const leftover = this._killOwnedListeners(this.port);
-    if (leftover) {
-      this.log(`已清理端口 ${this.port} 上的残留进程`);
-      await this._sleep(300);
-    }
     if (this.state !== 'idle') {
       this.setState('idle');
     }
@@ -966,10 +900,6 @@ class DshManager extends EventEmitter {
 
   _killTree(pid) {
     return this._deps.killTree(pid);
-  }
-
-  _killOwnedListeners(port) {
-    return this._deps.killOwnedListeners(port);
   }
 
   _buildLaunch(config) {
