@@ -1,26 +1,20 @@
 /**
  * Host registration for send_to_agent (Grok-style A2A).
  * Priority only reorders the queue (no runner interrupt on desktop).
- * Inbox drain does NOT clear inside systemPrompt assemble — client/open path acks.
+ * Inbox drain does NOT clear inside systemPrompt assemble — client/open path
+ * acks. Drain semantics live in the dependency-free ./inbox-drain.js.
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import {
   buildAgentInboundWakePrompt,
   clampAgentMessage,
   enqueueAgentInbound,
-  prioritizeAgentInbound,
   resolveSendToAgentTarget,
 } from './agent-messaging.js';
 import { upsertItem } from './catalog.js';
+import { ackInboxMessages } from './inbox-drain.js';
 
-const NS = settingsNamespace('dshbot');
-
-/**
- * Pending drain snapshot keyed by bot id (acked after successful wake or explicit drain).
- * @type {Map<string, object[]>}
- */
-const pendingDrain = new Map();
+export { ackPendingInboxDrain, registerInboxDrain } from './inbox-drain.js';
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -178,59 +172,3 @@ export function registerSendToAgent(ctx, deps) {
   }));
 }
 
-/**
- * @param {{ get: () => any, set: (v: any) => void }} scope
- * @param {string} botId
- * @param {readonly object[]} messages
- */
-function ackInboxMessages(scope, botId, messages) {
-  const catalog = scope.get() ?? { items: [] };
-  const keys = new Set(
-    messages.map((msg) => `${msg.timestampMs}\0${msg.fromId}\0${msg.text}`),
-  );
-  const nextItems = (catalog.items ?? []).map((entry) => {
-    if (entry.id !== botId) return entry;
-    const remaining = (entry.inbox ?? []).filter(
-      (msg) => !keys.has(`${msg.timestampMs}\0${msg.fromId}\0${msg.text}`),
-    );
-    return { ...entry, inbox: remaining };
-  });
-  scope.set({ ...catalog, items: nextItems });
-}
-
-/**
- * Peek inbox into a wake prompt without clearing (assemble-safe).
- * Cleared only via ackInboxForSession after a successful open/wake.
- * @param {import('@deepseek-ai/cordis').Context} ctx
- * @param {{ getScope: () => { get: () => any, set: (v: any) => void } }} deps
- */
-export function registerInboxDrain(ctx, deps) {
-  ctx.systemPrompt.section({
-    name: 'dshbot:inbox',
-    order: 21,
-    text: (assembleCtx) => {
-      const sessionId = assembleCtx.agent?.session?.id ?? assembleCtx.agent?.id;
-      if (!sessionId) return '';
-      const scope = deps.getScope();
-      const catalog = scope.get() ?? { items: [] };
-      const items = catalog.items ?? [];
-      const bot = items.find((entry) => entry.sessionId === sessionId && entry.kind !== 'room');
-      if (!bot || !Array.isArray(bot.inbox) || bot.inbox.length === 0) return '';
-      const batch = prioritizeAgentInbound(bot.inbox);
-      pendingDrain.set(bot.id, batch);
-      return batch.map((msg) => buildAgentInboundWakePrompt(msg)).join('\n\n');
-    },
-  });
-}
-
-/**
- * Ack peeked inbox after the turn that consumed it (call from host after followup or client open).
- * @param {{ get: () => any, set: (v: any) => void }} scope
- * @param {string} botId
- */
-export function ackPendingInboxDrain(scope, botId) {
-  const batch = pendingDrain.get(botId);
-  if (!batch?.length) return;
-  pendingDrain.delete(botId);
-  ackInboxMessages(scope, botId, batch);
-}

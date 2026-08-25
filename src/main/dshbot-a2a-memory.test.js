@@ -68,13 +68,18 @@ test('buildAgentInboundWakePrompt includes cue segments', async () => {
 
 test('inbox drain host does not clear catalog inside systemPrompt assemble', () => {
   const src = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'send-to-agent.js'),
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'inbox-drain.js'),
     'utf8',
   );
   assert.match(src, /name: 'dshbot:inbox'/);
   assert.match(src, /pendingDrain\.set/);
   assert.match(src, /export function ackPendingInboxDrain/);
   assert.equal(/text:\s*\([^)]*\)\s*=>\s*\{[\s\S]*?scope\.set\(/.test(src), false);
+  const sendSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'send-to-agent.js'),
+    'utf8',
+  );
+  assert.match(sendSrc, /export \{ ackPendingInboxDrain, registerInboxDrain \} from '\.\/inbox-drain\.js'/);
   const indexSrc = fs.readFileSync(
     path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'index.js'),
     'utf8',
