@@ -8,6 +8,11 @@ const PROFILE = 'web';
 const DROPPED = [
   '@dsh-external/dsh-genui',
   '@huanlin/dsh-plugin-yet-another-subagent',
+  // The marketplace is desktop-owned (settings section `market` +
+  // main-process curated engine). Mounting the third-party plugin again
+  // would register a second `market` section, so it stays out of the
+  // composition; its files are never deleted by this list.
+  'dshmarket',
 ];
 const PATCH_BEGIN = '# --- dshd-gui-plugin-toggles ---';
 const PATCH_END = '# --- end dshd-gui-plugin-toggles ---';

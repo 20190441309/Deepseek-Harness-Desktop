@@ -72,10 +72,6 @@ if (!harnessHasGhosttyAssets(vendor)) {
 console.log(`Ghostty assets: ${ghostty.detail}`);
 
 const { installPluginRuntimeDeps } = require('./after-pack');
-const dshmarket = path.join(root, 'vendor', 'dshmarket');
-if (fs.existsSync(path.join(dshmarket, 'package.json'))) {
-  installPluginRuntimeDeps(dshmarket, { skipIfComplete: true });
-}
 const usagePanel = path.join(root, 'vendor', 'dsh-usage-panel');
 if (fs.existsSync(path.join(usagePanel, 'package.json'))) {
   installPluginRuntimeDeps(usagePanel, { skipIfComplete: true });

@@ -1,6 +1,6 @@
 # Agent Note: Desktop presets dshmarket
 
-Status: implemented
+Status: implemented — **reversed by [Desktop-owned marketplace section](2026-08-25-desktop-owned-market-section.md)**; the desktop no longer preset-installs dshmarket.
 
 English | [中文](2026-08-19-desktop-dshmarket-preset.zh.md)
 
@@ -37,4 +37,5 @@ Settings → 插件市场 is the bundled plugin, as its own nav row, not a tab u
 
 ## Related
 
+- Reversed by: [Desktop-owned marketplace section](2026-08-25-desktop-owned-market-section.md)
 - [Desktop marketplace curated catalog](2026-08-18-desktop-marketplace-curated-catalog.md)

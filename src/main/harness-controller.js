@@ -45,8 +45,8 @@ class HarnessController extends EventEmitter {
     this.resolveLaunchTarget = options.resolveLaunchTarget;
     this.stripDroppedPlugins = options.stripDroppedPlugins;
     this.ensureDesktopInstallPlugin = options.ensureDesktopInstallPlugin || (() => {});
-    this.ensureDshMarketPlugin = options.ensureDshMarketPlugin
-      || (async () => ({ ok: true, added: false }));
+    this.removeDshMarketPreset = options.removeDshMarketPreset
+      || (async () => ({ ok: true, changed: false }));
     this.ensureUsagePanelPlugin = options.ensureUsagePanelPlugin
       || (async () => ({ ok: true, added: false }));
     this.ensureDshbotPlugin = options.ensureDshbotPlugin
@@ -425,16 +425,21 @@ class HarnessController extends EventEmitter {
     if (desktopInstall && desktopInstall.ok === false) {
       throw new Error(`桌面安装插件写入失败：${desktopInstall.reason || 'unknown'}`);
     }
-    if (!skipUserPlugins) {
-      try {
-        const market = await this.ensureDshMarketPlugin();
-        this.assertOperationCurrent(generation);
-        if (market && market.ok === false) {
-          this.dsh.log(`预置 dshmarket 失败：${market.error || 'unknown'}`, 'app');
-        }
-      } catch (error) {
-        this.dsh.log(`预置 dshmarket 失败：${errorMessage(error)}`, 'app');
+    // The marketplace is desktop-owned (settings section `market` +
+    // main-process curated engine); every start only clears legacy
+    // dshmarket preset residue, log-only on failure.
+    try {
+      const market = await this.removeDshMarketPreset();
+      this.assertOperationCurrent(generation);
+      if (market && market.ok === false) {
+        this.dsh.log(`清理 dshmarket 预置残留失败：${market.error || 'unknown'}`, 'app');
+      } else if (market && market.changed) {
+        this.dsh.log('已清理 dshmarket 桌面预置残留（市场已内置到桌面设置）', 'app');
       }
+    } catch (error) {
+      this.dsh.log(`清理 dshmarket 预置残留失败：${errorMessage(error)}`, 'app');
+    }
+    if (!skipUserPlugins) {
       try {
         const usage = await this.ensureUsagePanelPlugin();
         this.assertOperationCurrent(generation);
@@ -445,7 +450,7 @@ class HarnessController extends EventEmitter {
         this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
       }
     } else {
-      this.dsh.log('跳过用户插件：不预置市场与用量统计插件', 'app');
+      this.dsh.log('跳过用户插件：不预置用量统计插件', 'app');
     }
     // dshbot is a standalone plugin: never force-ensured, never blocks start.
     // Default starts only clean legacy desktop-preset residue (user installs

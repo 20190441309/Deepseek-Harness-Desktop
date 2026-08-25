@@ -209,16 +209,16 @@ test('writes the desktop install plugin before launching Harness', async () => {
   assert.deepEqual(calls, ['ensure']);
 });
 
-test('awaits the dshmarket preset after the desktop install plugin and before Harness start', async () => {
+test('cleans dshmarket preset residue after the desktop install plugin and before Harness start', async () => {
   const order = [];
   const f = fixture({
     ensureDesktopInstallPlugin: () => {
       order.push('desktop-install');
       return { ok: true };
     },
-    ensureDshMarketPlugin: async () => {
-      order.push('dshmarket');
-      return { ok: true, added: true };
+    removeDshMarketPreset: async () => {
+      order.push('dshmarket-cleanup');
+      return { ok: true, changed: true, stripped: true };
     },
   });
   const origStart = f.dsh.start.bind(f.dsh);
@@ -227,16 +227,31 @@ test('awaits the dshmarket preset after the desktop install plugin and before Ha
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'start']);
+  assert.deepEqual(order, ['desktop-install', 'dshmarket-cleanup', 'start']);
+  assert.ok(f.dsh.logs.some((line) => /已清理 dshmarket 桌面预置残留/.test(line)));
 });
 
-test('logs and continues when the dshmarket preset fails', async () => {
+test('logs and continues when the dshmarket residue cleanup fails', async () => {
   const f = fixture({
-    ensureDshMarketPlugin: async () => ({ ok: false, error: 'offline' }),
+    removeDshMarketPreset: async () => ({ ok: false, error: 'stuck-link' }),
   });
   await f.controller.start();
   assert.equal(f.dsh.startCalls, 1);
-  assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
+  assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /stuck-link/.test(line)));
+});
+
+test('skip-user-plugins start still cleans dshmarket preset residue', async () => {
+  const order = [];
+  const f = fixture({
+    removeDshMarketPreset: async () => {
+      order.push('dshmarket-cleanup');
+      return { ok: true, changed: false };
+    },
+  });
+  f.controller.writePluginSkip(new Error('recovery'));
+  await f.controller.start();
+  assert.deepEqual(order, ['dshmarket-cleanup']);
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
 });
 
 test('default start cleans dshbot preset residue instead of ensuring it', async () => {
@@ -265,9 +280,9 @@ test('config dshbotPreset opts into the dev preset without blocking start', asyn
       order.push('desktop-install');
       return { ok: true };
     },
-    ensureDshMarketPlugin: async () => {
-      order.push('dshmarket');
-      return { ok: true, added: true };
+    removeDshMarketPreset: async () => {
+      order.push('dshmarket-cleanup');
+      return { ok: true, changed: false };
     },
     ensureUsagePanelPlugin: async () => {
       order.push('usage-panel');
@@ -292,7 +307,7 @@ test('config dshbotPreset opts into the dev preset without blocking start', asyn
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket', 'usage-panel', 'dshbot-ensure', 'disabled-bundles', 'start']);
+  assert.deepEqual(order, ['desktop-install', 'dshmarket-cleanup', 'usage-panel', 'dshbot-ensure', 'disabled-bundles', 'start']);
   assert.ok(f.dsh.logs.some((line) => /已预置 dshbot（开发模式）/.test(line)));
 });
 

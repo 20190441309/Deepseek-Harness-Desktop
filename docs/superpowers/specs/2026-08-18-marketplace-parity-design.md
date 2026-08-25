@@ -1,5 +1,10 @@
 # 插件市场对齐 dsh-market
 
+> **2026-08-25 更新**：市场的**所有权与渲染模型**已由
+> [2026-08-25-marketplace-desktop-integration.md](2026-08-25-marketplace-desktop-integration.md)
+> 取代——UI 是桌面自有包 `ui-settings-market`（settings section `market`），
+> `dshmarket` 进 `DROPPED`。本文的目录、白名单、失败可见性等产品约定继续有效。
+
 Deepseek-Harness-Desktop 把现有插件市场升级到 [dsh-market](https://github.com/dsh-market/dsh-market)（`dshmarket` 1.12.1）的产品行为，但不预装该插件，也不复制它的 `MarketSection.tsx` 或 HTTP 路由。
 
 视觉语言仍是官方 `dsh web`：只用 `ui-primitives` 和 `--dsw-alias-*`。见 [design-language.md](../../design-language.md)。

@@ -1,6 +1,6 @@
 # Agent Note: 桌面预置 dshmarket
 
-Status: implemented
+Status: implemented — **已被 [桌面自有市场分区](2026-08-25-desktop-owned-market-section.zh.md) 反转**；桌面不再预置安装 dshmarket。
 
 [English](2026-08-19-desktop-dshmarket-preset.md) | 中文
 

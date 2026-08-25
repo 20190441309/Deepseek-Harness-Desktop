@@ -52,7 +52,7 @@ If the terminal still shows `Unable to load libghostty-vt (404)`, or you install
 - **Files and terminal** — `Ctrl+\` opens the right column (Files / Diff / Browser / Agents); `` Ctrl+` `` opens the bottom terminal. A selection can join chat.
 - **Models** — thinking intensity for third-party models, vision fallback; the latest user message can be edited and resent.
 - **Appearance** — light / dark themes. Pick a wallpaper or Browse the gallery (categories, search, favorites; confirm crops to the window). Frost and pixelate stay on Appearance.
-- **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is the bundled [dsh-market](https://github.com/dsh-market/dsh-market) plugin (`dshmarket`). There is no standalone marketplace window.
+- **Extensions** — MCP, Skills, and plugins in Settings. The marketplace is a desktop-owned settings section (built-in curated catalog and install engine, product shape derived from [dsh-market](https://github.com/dsh-market/dsh-market) but detached from that upstream). There is no standalone marketplace window.
 - **Desktop shell** — minimize to tray, auto-update; if Harness dies, the window returns to a failure page and restarts. If a user plugin blocks startup, the launcher can disable that package or skip user plugins.
 
 `Ctrl+,` opens Settings.
