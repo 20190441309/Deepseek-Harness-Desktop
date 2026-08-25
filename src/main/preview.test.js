@@ -765,14 +765,6 @@ test('registerPreviewIpc authorizes guest control channels', async () => {
     saveRecording(id, payload) { calls.push(['saveRecording', id, payload]); return { ok: true }; },
     revealArtifact(artifactPath) { calls.push(['revealArtifact', artifactPath]); return { ok: true }; },
     copyArtifactToClipboard(artifactPath) { calls.push(['copyArtifactToClipboard', artifactPath]); return { ok: true }; },
-    automationStatus(id) { calls.push(['automationStatus', id]); return { ok: true, available: true }; },
-    automationSnapshot(id) { calls.push(['automationSnapshot', id]); return { ok: true }; },
-    automationClick(id, input) { calls.push(['automationClick', id, input]); return { ok: true }; },
-    automationType(id, input) { calls.push(['automationType', id, input]); return { ok: true }; },
-    automationPress(id, input) { calls.push(['automationPress', id, input]); return { ok: true }; },
-    automationScroll(id, input) { calls.push(['automationScroll', id, input]); return { ok: true }; },
-    automationEvaluate(id, input) { calls.push(['automationEvaluate', id, input]); return { ok: true }; },
-    automationWaitFor(id, input) { calls.push(['automationWaitFor', id, input]); return { ok: true }; },
   };
   registerPreviewIpc(ipcMain, controller, {
     authorize() { authorized += 1; },
@@ -797,14 +789,6 @@ test('registerPreviewIpc authorizes guest control channels', async () => {
   assert.equal(typeof handlers.get('shell:preview-save-recording'), 'function');
   assert.equal(typeof handlers.get('shell:preview-reveal-artifact'), 'function');
   assert.equal(typeof handlers.get('shell:preview-copy-artifact'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-status'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-snapshot'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-click'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-type'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-press'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-scroll'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-evaluate'), 'function');
-  assert.equal(typeof handlers.get('shell:preview-automation-wait-for'), 'function');
   await handlers.get('shell:preview-hard-reload')(event, 'pv-1');
   await handlers.get('shell:preview-stop')(event, 'pv-1');
   await handlers.get('shell:preview-zoom-in')(event, 'pv-1');
@@ -825,15 +809,7 @@ test('registerPreviewIpc authorizes guest control channels', async () => {
   await handlers.get('shell:preview-save-recording')(event, 'pv-1', savePayload);
   await handlers.get('shell:preview-reveal-artifact')(event, '/abs/rec.webm');
   await handlers.get('shell:preview-copy-artifact')(event, '/abs/shot.png');
-  await handlers.get('shell:preview-automation-status')(event, 'pv-1');
-  await handlers.get('shell:preview-automation-snapshot')(event, 'pv-1');
-  await handlers.get('shell:preview-automation-click')(event, 'pv-1', { x: 120, y: 80 });
-  await handlers.get('shell:preview-automation-type')(event, 'pv-1', { text: 'hi' });
-  await handlers.get('shell:preview-automation-press')(event, 'pv-1', { key: 'Enter' });
-  await handlers.get('shell:preview-automation-scroll')(event, 'pv-1', { x: 10, y: 20, deltaX: 0, deltaY: 80 });
-  await handlers.get('shell:preview-automation-evaluate')(event, 'pv-1', { expression: '1+1' });
-  await handlers.get('shell:preview-automation-wait-for')(event, 'pv-1', { urlIncludes: 'docs' });
-  assert.equal(authorized, 27);
+  assert.equal(authorized, 19);
   assert.deepEqual(calls, [
     ['hardReload', 'pv-1'],
     ['stop', 'pv-1'],
@@ -854,14 +830,6 @@ test('registerPreviewIpc authorizes guest control channels', async () => {
     ['saveRecording', 'pv-1', savePayload],
     ['revealArtifact', '/abs/rec.webm'],
     ['copyArtifactToClipboard', '/abs/shot.png'],
-    ['automationStatus', 'pv-1'],
-    ['automationSnapshot', 'pv-1'],
-    ['automationClick', 'pv-1', { x: 120, y: 80 }],
-    ['automationType', 'pv-1', { text: 'hi' }],
-    ['automationPress', 'pv-1', { key: 'Enter' }],
-    ['automationScroll', 'pv-1', { x: 10, y: 20, deltaX: 0, deltaY: 80 }],
-    ['automationEvaluate', 'pv-1', { expression: '1+1' }],
-    ['automationWaitFor', 'pv-1', { urlIncludes: 'docs' }],
   ]);
 });
 
@@ -1254,6 +1222,21 @@ test('saveRecording writes under preview-recordings', async () => {
   assert.equal(after.filter((name) => name.endsWith('.mp4')).length, 1);
 });
 
+test('saveRecording rejects a payload over the 512 MiB cap without writing', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-rec-cap-'));
+  const fake = fakeAttach();
+  const preview = createPreviewController({ attach: fake.attach, userDataPath: dir });
+  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
+  const result = await preview.saveRecording(opened.id, {
+    mimeType: 'video/webm',
+    data: Buffer.alloc(512 * 1024 * 1024 + 1),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /512 MiB/);
+  const entries = await fs.readdir(dir);
+  assert.ok(!entries.includes('preview-recordings'));
+});
+
 test('revealArtifact only opens files under preview-recordings', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-reveal-'));
   const recDir = path.join(dir, 'preview-recordings');
@@ -1313,92 +1296,11 @@ test('copyArtifactToClipboard only reads images under preview-recordings', async
   assert.equal(written.length, 1);
 });
 
-test('automationClick at 120,80 sends mousePressed then mouseReleased', async () => {
-  const fake = fakeAttach();
-  const preview = createPreviewController({ attach: fake.attach });
-  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
-  const result = await preview.automationClick(opened.id, { x: 120, y: 80 });
-  assert.equal(result.ok, true);
-  const dbg = fake.views[0].webContents.debugger;
-  assert.deepEqual(dbg.attachCalls, ['1.3']);
-  assert.deepEqual(dbg.commands, [
-    {
-      method: 'Input.dispatchMouseEvent',
-      params: { type: 'mousePressed', x: 120, y: 80, button: 'left', clickCount: 1 },
-    },
-    {
-      method: 'Input.dispatchMouseEvent',
-      params: { type: 'mouseReleased', x: 120, y: 80, button: 'left', clickCount: 1 },
-    },
-  ]);
-});
-
-test('automationEvaluate runs executeJavaScript', async () => {
-  const fake = fakeAttach();
-  const preview = createPreviewController({ attach: fake.attach });
-  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
-  fake.views[0].webContents.executeJavaScriptImpl = (code) => code === '1+1' ? 2 : undefined;
-  const result = await preview.automationEvaluate(opened.id, { expression: '1+1' });
-  assert.equal(result.ok, true);
-  assert.equal(result.value, 2);
-  assert.deepEqual(fake.views[0].webContents.executed, ['1+1']);
-});
-
-test('automationWaitFor urlIncludes succeeds and times out', async () => {
-  const fake = fakeAttach();
-  const preview = createPreviewController({ attach: fake.attach });
-  const opened = await preview.open({ url: 'http://127.0.0.1:3000/docs' });
-  const matched = await preview.automationWaitFor(opened.id, { urlIncludes: 'docs' });
-  assert.equal(matched.ok, true);
-  const timedOut = await preview.automationWaitFor(opened.id, { urlIncludes: 'missing', timeoutMs: 30 });
-  assert.equal(timedOut.ok, false);
-  assert.ok(timedOut.message);
-});
-
-test('unknown preview id fails startRecording and automationClick without throwing', async () => {
+test('unknown preview id fails startRecording without throwing', async () => {
   const fake = fakeAttach();
   const preview = createPreviewController({ attach: fake.attach });
   const start = await preview.startRecording('missing');
   assert.equal(start.ok, false);
   assert.equal(start.message, 'unknown preview id');
-  const click = await preview.automationClick('missing', { x: 120, y: 80 });
-  assert.equal(click.ok, false);
-  assert.equal(click.message, 'unknown preview id');
-});
-
-test('automation status snapshot type press and scroll succeed', async () => {
-  const fake = fakeAttach();
-  const preview = createPreviewController({ attach: fake.attach });
-  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
-  fake.views[0].webContents.title = 'Docs';
-  fake.views[0].webContents.executeJavaScriptImpl = () => ({
-    title: 'Docs',
-    url: 'http://127.0.0.1:3000/',
-    html: '<html></html>',
-  });
-  const status = await preview.automationStatus(opened.id);
-  assert.equal(status.ok, true);
-  assert.equal(status.available, true);
-  assert.match(status.url, /127\.0\.0\.1:3000/);
-  assert.equal(status.title, 'Docs');
-  const snapshot = await preview.automationSnapshot(opened.id);
-  assert.equal(snapshot.ok, true);
-  assert.equal(snapshot.title, 'Docs');
-  assert.ok(snapshot.screenshot);
-  const typed = await preview.automationType(opened.id, { text: 'hi' });
-  assert.equal(typed.ok, true);
-  const pressed = await preview.automationPress(opened.id, { key: 'Enter' });
-  assert.equal(pressed.ok, true);
-  const scrolled = await preview.automationScroll(opened.id, {
-    x: 10, y: 20, deltaX: 0, deltaY: 80,
-  });
-  assert.equal(scrolled.ok, true);
-  const commands = fake.views[0].webContents.debugger.commands;
-  assert.ok(commands.some((entry) => entry.method === 'Input.insertText' && entry.params.text === 'hi'));
-  assert.ok(commands.some((entry) => entry.method === 'Input.dispatchKeyEvent' && entry.params.type === 'keyDown'));
-  assert.ok(commands.some((entry) => entry.method === 'Input.dispatchKeyEvent' && entry.params.type === 'keyUp'));
-  assert.ok(commands.some((entry) => (
-    entry.method === 'Input.dispatchMouseEvent' && entry.params.type === 'mouseWheel'
-  )));
 });
 

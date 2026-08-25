@@ -73,7 +73,7 @@
 
 ### Preview（Browser surface）
 
-`previewOpen` … `previewClose`、自动化系列 `previewAutomation*`、订阅 `onPreviewStateChange` / `onOpenPreviewUrl` / `onPreviewRecordingFrame` — 详见 preload 同文件列表。
+`previewOpen` … `previewClose`、订阅 `onPreviewStateChange` / `onOpenPreviewUrl` / `onPreviewRecordingFrame` — 详见 preload 同文件列表。曾有的 `previewAutomation*`（含 evaluate / CDP 输入注入）因零消费者、暴露面过大已整链删除。
 
 ## 维护
 
