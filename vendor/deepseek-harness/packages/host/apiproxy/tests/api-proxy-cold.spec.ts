@@ -43,6 +43,7 @@ describe('sessions.list cold merge', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(UserQuestionService)
+    await ctx.plugin(AgentRegistry)
     const root = mkdtempSync(join(tmpdir(), 'dsh-cold-'))
     const smallPath = join(root, 'small.log')
     const largePath = join(root, 'large.log')
@@ -136,6 +137,7 @@ describe('sessions.list cold merge', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(UserQuestionService)
+    await ctx.plugin(AgentRegistry)
     const meta = header('probe-disabled', 100)
     const readFrom = vi.fn()
     ctx.provide('sessionPersistence', {
@@ -325,6 +327,7 @@ describe('cold history recovery view', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(UserQuestionService)
+    await ctx.plugin(AgentRegistry)
     const sessionId = sid('session-interrupted')
     const meta = header(sessionId, 1000)
     const stored: StoredPrefix<never> = {
