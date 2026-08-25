@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub；全量单测 + vendor 市场 specs 通过 |
+| **last verified** | 2026-08-25（合并树 `ea659884`）— consolidation #39 落地后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS。此前同日：Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `message-edit` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — `pnpm vitest run packages/client/ui-message-edit packages/client/ui-conversation`（编辑会话 facade/InputBar/插件规格全部通过）+ `pnpm run test:gui` + `DSH_SNAPSHOT=replay` 下 `apps/web/tests/message-edit.e2e.ts`（7 通过） |
+| **last verified** | 2026-08-25（合并树 `ea659884`）— consolidation #39 落地后 `pnpm run test:gui` 全绿（5338，含 ui-message-edit / ui-conversation 编辑会话全部规格）。此前同日：`pnpm vitest run packages/client/ui-message-edit packages/client/ui-conversation` + `DSH_SNAPSHOT=replay` 下 `apps/web/tests/message-edit.e2e.ts`（7 通过） |
 
 ## User paths
 
