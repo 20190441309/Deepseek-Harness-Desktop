@@ -182,6 +182,80 @@ test('checkUpdate passes an abort signal and degrades to status error on timeout
   }
 });
 
+test('checkUpdate and listReleases send Authorization only when a githubToken is configured, and never log it', async () => {
+  const { setGithubTokenProvider } = require('./update');
+  const previousFetch = global.fetch;
+  const seenHeaders = [];
+  global.fetch = async (_url, options) => {
+    seenHeaders.push(options?.headers || {});
+    return {
+      ok: true,
+      status: 200,
+      json: async () => null,
+    };
+  };
+  try {
+    await checkUpdate();
+    assert.equal(seenHeaders[0].Authorization, undefined, 'no token configured, no header');
+
+    setGithubTokenProvider(() => ' ghp_test_token_value ');
+    await checkUpdate();
+    assert.equal(seenHeaders[1].Authorization, 'Bearer ghp_test_token_value');
+    const listed = await listReleases();
+    assert.equal(seenHeaders[2].Authorization, 'Bearer ghp_test_token_value');
+    assert.equal(JSON.stringify(listed).includes('ghp_test_token_value'), false, 'token never surfaces in results');
+
+    setGithubTokenProvider(() => { throw new Error('config unreadable'); });
+    const degraded = await checkUpdate();
+    assert.equal(seenHeaders[3].Authorization, undefined, 'provider failure degrades to anonymous');
+    assert.equal(JSON.stringify(degraded).includes('ghp_test_token_value'), false);
+  } finally {
+    setGithubTokenProvider(null);
+    global.fetch = previousFetch;
+  }
+});
+
+test('download headers carry the token only on the first hop toward GitHub hosts', async () => {
+  const { setGithubTokenProvider } = require('./update');
+  const previousGet = https.get;
+  const seen = [];
+  setGithubTokenProvider(() => 'ghp_dl_token');
+  https.get = (target, options, onResponse) => {
+    seen.push({ target: String(target), headers: options.headers });
+    const response = new EventEmitter();
+    if (seen.length === 1) {
+      response.statusCode = 302;
+      response.headers = { location: 'https://objects.githubusercontent.com/signed/asset' };
+    } else {
+      response.statusCode = 200;
+      response.headers = {};
+    }
+    response.resume = () => {};
+    response.pipe = (file) => {
+      setImmediate(() => {
+        response.emit('end');
+        file.end();
+      });
+      return file;
+    };
+    setImmediate(() => onResponse(response));
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-dl-auth-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await downloadFile('https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/download/v1/setup.exe', dest, null, { timeoutMs: 2000 });
+    assert.equal(seen[0].headers.Authorization, 'Bearer ghp_dl_token', 'first hop to github.com carries the token');
+    assert.equal(seen[1].headers.Authorization, undefined, 'signed CDN redirect hop must not carry the token');
+  } finally {
+    setGithubTokenProvider(null);
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('listReleases degrades to an empty list with a message on timeout', async () => {
   const previousFetch = global.fetch;
   global.fetch = async () => {

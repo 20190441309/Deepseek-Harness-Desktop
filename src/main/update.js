@@ -32,12 +32,51 @@ function currentVersion() {
   }
 }
 
+/**
+ * Lazy shell `config.githubToken` source, injected by src/main/index.js so
+ * this module stays loadable outside Electron (unit tests). The token is only
+ * ever placed in an Authorization header toward GitHub hosts; it must never
+ * be logged or embedded in error messages.
+ */
+let githubTokenProvider = null;
+
+function setGithubTokenProvider(provider) {
+  githubTokenProvider = typeof provider === 'function' ? provider : null;
+}
+
+function githubToken() {
+  if (!githubTokenProvider) {
+    return '';
+  }
+  try {
+    const token = githubTokenProvider();
+    return typeof token === 'string' ? token.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Hosts allowed to receive the Authorization header (never signed CDN redirects). */
+function isGithubHost(url) {
+  try {
+    const host = new URL(String(url || '')).hostname.toLowerCase();
+    return host === 'api.github.com' || host === 'github.com' || host === 'www.github.com';
+  } catch {
+    return false;
+  }
+}
+
 function githubHeaders(accept = 'application/vnd.github+json') {
-  return {
+  const headers = {
     Accept: accept,
     'User-Agent': `Deepseek-Harness-Desktop/${currentVersion()}`,
     'X-GitHub-Api-Version': '2022-11-28',
   };
+  const token = githubToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 function normalizeVersion(value) {
@@ -118,7 +157,7 @@ async function verifyAssetChecksum(dest, assetName, checksumUrl) {
   let response;
   try {
     response = await fetch(checksumUrl, {
-      headers: downloadHeaders(true),
+      headers: downloadHeaders(true, checksumUrl),
       signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
     });
   } catch (error) {
@@ -216,13 +255,19 @@ async function checkUpdate() {
   }
 }
 
-function downloadHeaders(firstHop) {
+function downloadHeaders(firstHop, url) {
   const headers = {
     'User-Agent': `Deepseek-Harness-Desktop/${currentVersion()}`,
   };
   if (firstHop) {
     headers.Accept = 'application/octet-stream';
     headers['X-GitHub-Api-Version'] = '2022-11-28';
+    // First hop only, GitHub hosts only: redirect targets are signed CDN
+    // URLs that reject requests carrying both a signature and an auth header.
+    const token = githubToken();
+    if (token && isGithubHost(url)) {
+      headers.Authorization = `Bearer ${token}`;
+    }
   }
   return headers;
 }
@@ -265,7 +310,7 @@ function downloadFile(url, dest, onProgress, { timeoutMs = DOWNLOAD_TIMEOUT_MS }
         return;
       }
       const request = https.get(target, {
-        headers: downloadHeaders(hops === 0),
+        headers: downloadHeaders(hops === 0, target),
       }, (response) => {
         const location = response.headers.location;
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && location) {
@@ -825,6 +870,7 @@ async function installUpdate(onProgress) {
 }
 
 module.exports = {
+  setGithubTokenProvider,
   GITHUB_OWNER,
   GITHUB_REPO,
   APP_ID,
