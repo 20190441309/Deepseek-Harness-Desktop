@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `windows-installer` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — `node --test src/main/installer-branding.test.js` 全绿；stub 工程经 electron-builder 26.15.3 完整编译 NSIS 目标并在 wine+Xvfb 下逐页截图（欢迎/许可/模式/目录页 Pass，见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)）；完成页/卸载页/真实 `/S` 待 CI windows artifact 实机走查（TC-INST-001/009/010） |
+| **last verified** | 2026-08-25 — 浅色对齐重制后 `node --test src/main/installer-branding.test.js` 8/8、`npm test` 1010 pass；stub 工程经 electron-builder 26.15.3 完整编译 NSIS 目标并在 wine+Xvfb 下逐页截图（欢迎/许可/模式/目录/卸载欢迎页 Pass，见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)）；完成页/真实 `/S` 待 CI windows artifact 实机走查（TC-INST-001/009/010） |
 
 ## User paths
 
