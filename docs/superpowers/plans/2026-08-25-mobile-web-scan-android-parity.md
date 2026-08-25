@@ -230,6 +230,7 @@
 - [x] Feature 卡 `last verified` + Gates 更新；`docs/qa/production-acceptance-test-cases.md` TC-REM-002 步骤扩写（扫码/附件/Git），**保持 N/A 停放标记**
 - [ ] 手工冒烟（本地 `RemoteGateway` 直连，不翻产品开关）：扫码→登录→列会话→发文本+图→审批→停止→Git commit 对话框→文件插入
   - 2026-08-25 已完成服务器契约冒烟（直接构造 `RemoteGateway` + 真 git/listDir：匿名 401 → 表单登录 cookie → 认证后返回含扫码/权限/附件/工作区节点的 SPA → `/api/*` 反代 → `gitStatus`/`listDir` → `writeFile` 404 → logout 后 401，8/8 通过）；浏览器内扫码→发图→审批→Git 对话框的真机走查留到解禁轮，按 TC-REM-002 扩写步骤执行
+  - 2026-08-25 第二轮云端复盘：上一轮「`#offer=` 停在等待配对」定性为**测试侧错误**（网关 serve 的是 main 的 v1 SPA 而非本分支树；`#offer=` 编码未按 `src/shared/offer.js` base64url `v/token/mode/relay` 合谱时被静默吞）。本分支真链路在 `remote.test.js` 新增 e2e 钉死（encodeOffer → 登录页内联脚本解码 → 表单登录 → parity SPA 标记 `pair/scan.js`/settings-hub → SPA `offer.js`/`login.js` 模块 → `/api` 反代）；产品侧加固三处静默失败（登录页 `login-error` 文案、SPA `hashHasOffer` 区分「无效 offer」并报错、Cookie 试探仅 401 静默）
 
 ## 7. 与 Feature Spine / 开关停放的关系
 

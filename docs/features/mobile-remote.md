@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `parked` |
-| **last verified** | 2026-08-25 — Web ≈ Android 对齐（扫码/附件/停止/设置 Hub/工作区 Git/文件插入，[计划](../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md)）：`npm test` 922/922（含 `mobile/web` 新增 shell/vcs-parse/quick/prompt/scan/settings-hub/fold-images 测试）；`node --test src/main/remote.test.js src/main/remote-shell.test.js` 29/29。真机扫码走查待解禁轮（步骤已扩写进 TC-REM-002，保持 N/A）。上轮 2026-08-23：Android `:protocol:test` 24/24、USB 真机 `23124RN87C` 走查 |
+| **last verified** | 2026-08-25（第二轮）— `#offer=` 自动登录链路在**真 `RemoteGateway` + 真 `mobile/web` 树**上 e2e 钉死（`remote.test.js` 新增两条回归：encodeOffer→登录页内联脚本→表单登录→parity SPA→SPA offer/login 模块→`/api` 反代；31/31）。上一轮「停在等待配对」根因为测试侧 serve 错分支 SPA + offer 编码不合谱被静默吞掉；产品侧已修三处吞错（登录页自动登录失败落 `login-error` 文案、SPA 无效 `#offer=` 报「配对链接无效」、Cookie 试探仅对 401 静默）。`npm test` 925/925。同日第一轮：Web ≈ Android 对齐（[计划](../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md)）。真机扫码走查待解禁轮（TC-REM-002 保持 N/A）。上轮 2026-08-23：Android `:protocol:test` 24/24、USB 真机 `23124RN87C` 走查 |
 
 ## User paths
 
