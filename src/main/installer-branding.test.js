@@ -102,7 +102,16 @@ test('bitmap renderer pins the MUI2 geometry and stays regenerable', () => {
   assert.match(source, /SIDEBAR_HEIGHT = 314/);
   assert.match(source, /HEADER_WIDTH = 150/);
   assert.match(source, /HEADER_HEIGHT = 57/);
-  // Brand literals mirror the icon tile and --dsw-static-deepseek-500.
-  assert.match(source, /rgb\(65, 118, 230\)/);
+  // Bitmap literals mirror the official light table in dsh-webui-tokens.css
+  // (launcher-aligned): sidebar fill, label primary, brand-blue accent.
+  assert.match(source, /rgb\(249, 250, 251\)/); // --dsw-specific-sidebar-fill
+  assert.match(source, /rgb\(15, 17, 21\)/); // --dsw-alias-label-primary
+  assert.match(source, /rgb\(65, 118, 230\)/); // --dsw-static-deepseek-500
+  // Sidebar carries the product name, not a parallel marketing wordmark.
+  assert.match(source, /Deepseek-Harness-/);
+  // The near-black icon-tile marketing panel (a second skin) must not return,
+  // and boot instrument-canvas tokens never reach the installer.
+  assert.doesNotMatch(source, /#0b0d12/i);
+  assert.doesNotMatch(source, /--boot-/);
   assert.equal(pkg.scripts['installer:assets'], 'node scripts/run-render-installer-assets.js');
 });

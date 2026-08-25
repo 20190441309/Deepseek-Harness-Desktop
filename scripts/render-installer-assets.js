@@ -14,14 +14,24 @@ const HEADER_HEIGHT = 57;
 // Render at 2x then downscale for crisp antialiasing in the final bitmap.
 const SCALE = 2;
 
-// Build-time bitmaps cannot consume runtime CSS tokens; these literals mirror
-// the product palette: INK/PAPER are the app icon tile (assets/icon.svg) and
-// BLUE is the brand --dsw-static-deepseek-500 (design-language.md).
-const INK = '#0b0d12';
-const PAPER = '#e8eef9';
+// Build-time bitmaps cannot consume runtime CSS tokens; these literals MIRROR
+// the official light table in src/shared/dsh-webui-tokens.css (the same table
+// the launcher uses — installer chrome follows the launcher, not boot.html):
+//   SIDEBAR_FILL  --dsw-specific-sidebar-fill   rgb(249, 250, 251)
+//   CANVAS        --dsw-alias-bg-base           rgb(255, 255, 255)
+//   LABEL_1       --dsw-alias-label-primary     rgb(15, 17, 21)
+//   LABEL_2       --dsw-alias-label-secondary   rgb(97, 102, 107)
+//   LABEL_3       --dsw-alias-label-tertiary    rgb(129, 133, 140)
+//   BLUE          --dsw-static-deepseek-500     rgb(65, 118, 230)  (accent only)
+//   HAIRLINE      --dsw-alias-border-l2 style   rgba(0, 0, 0, 0.10)
+// Keep this table in sync with dsh-webui-tokens.css when the light theme moves.
+const SIDEBAR_FILL = 'rgb(249, 250, 251)';
+const CANVAS = 'rgb(255, 255, 255)';
+const LABEL_1 = 'rgb(15, 17, 21)';
+const LABEL_2 = 'rgb(97, 102, 107)';
+const LABEL_3 = 'rgb(129, 133, 140)';
 const BLUE = 'rgb(65, 118, 230)';
-const MUTED = '#8a93a6';
-const DISABLED = '#5a6170';
+const HAIRLINE = 'rgba(0, 0, 0, 0.10)';
 
 const FONT_STACK = "-apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif";
 
@@ -32,24 +42,25 @@ function whaleMark(size, color) {
 }
 
 /**
- * Welcome/finish sidebar: near-black brand canvas (same ink as the app icon
- * tile), whale mark, Latin wordmark and a DeepSeek-blue accent bar. Chinese
- * copy stays in the localized MUI strings, not baked into bitmaps.
+ * Welcome/finish sidebar: official light sidebar fill (same as the launcher
+ * rail), outline whale in label ink, the product name
+ * `Deepseek-Harness-Desktop` wrapped for the 164px column, and a thin
+ * DeepSeek-blue accent rule. A right hairline separates it from the white
+ * dialog canvas. Chinese copy stays in the localized MUI strings, not baked
+ * into bitmaps.
  */
-function sidebarHtml(k, { markColor, titleColor, subColor, accentColor }) {
+function sidebarHtml(k, { markColor, titleColor, accentColor }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;width:${SIDEBAR_WIDTH * k}px;height:${SIDEBAR_HEIGHT * k}px;overflow:hidden}
-    body{background:${INK};font-family:${FONT_STACK};position:relative}
-    .stack{position:absolute;top:${64 * k}px;left:0;right:${1 * k}px;display:flex;flex-direction:column;align-items:center}
-    .word{margin-top:${22 * k}px;font-size:${17 * k}px;line-height:${24 * k}px;font-weight:600;color:${titleColor};letter-spacing:${0.4 * k}px}
-    .sub{margin-top:${2 * k}px;font-size:${9.5 * k}px;line-height:${16 * k}px;font-weight:500;color:${subColor};letter-spacing:${1.6 * k}px;text-transform:uppercase}
-    .rule{margin-top:${18 * k}px;width:${24 * k}px;height:${3 * k}px;background:${accentColor}}
-    .hairline{position:absolute;top:0;right:0;width:${1 * k}px;height:100%;background:rgba(255,255,255,0.08)}
+    body{background:${SIDEBAR_FILL};font-family:${FONT_STACK};position:relative}
+    .stack{position:absolute;top:${72 * k}px;left:0;right:${1 * k}px;display:flex;flex-direction:column;align-items:center}
+    .word{margin-top:${20 * k}px;padding:0 ${14 * k}px;font-size:${14 * k}px;line-height:${22 * k}px;font-weight:600;color:${titleColor};text-align:center;overflow-wrap:break-word;max-width:100%;box-sizing:border-box}
+    .rule{margin-top:${16 * k}px;width:${24 * k}px;height:${2 * k}px;background:${accentColor}}
+    .hairline{position:absolute;top:0;right:0;width:${1 * k}px;height:100%;background:${HAIRLINE}}
   </style></head><body>
     <div class="stack">
-      ${whaleMark(88 * k, markColor)}
-      <div class="word">DeepSeek</div>
-      <div class="sub">Harness Desktop</div>
+      ${whaleMark(72 * k, markColor)}
+      <div class="word">Deepseek-Harness-<br>Desktop</div>
       <div class="rule"></div>
     </div>
     <div class="hairline"></div>
@@ -58,15 +69,16 @@ function sidebarHtml(k, { markColor, titleColor, subColor, accentColor }) {
 
 /**
  * Page header strip (shown at the right of the white MUI header): whale mark
- * on white so it blends with the NSIS-drawn title area.
+ * in label ink on the bg-base white so it reads as part of the light header
+ * chrome, not a sticker.
  */
 function headerHtml(k) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;width:${HEADER_WIDTH * k}px;height:${HEADER_HEIGHT * k}px;overflow:hidden}
-    body{background:#ffffff;position:relative}
-    .mark{position:absolute;top:${((HEADER_HEIGHT - 30) / 2) * k}px;right:${16 * k}px}
+    body{background:${CANVAS};position:relative}
+    .mark{position:absolute;top:${((HEADER_HEIGHT - 28) / 2) * k}px;right:${16 * k}px}
   </style></head><body>
-    <div class="mark">${whaleMark(30 * k, INK)}</div>
+    <div class="mark">${whaleMark(28 * k, LABEL_1)}</div>
   </body></html>`;
 }
 
@@ -149,15 +161,16 @@ app.whenReady().then(async () => {
   });
   await renderBmp(
     win,
-    sidebarHtml(SCALE, { markColor: PAPER, titleColor: PAPER, subColor: MUTED, accentColor: BLUE }),
+    sidebarHtml(SCALE, { markColor: LABEL_1, titleColor: LABEL_1, accentColor: BLUE }),
     SIDEBAR_WIDTH,
     SIDEBAR_HEIGHT,
     path.join(buildDir, 'installerSidebar.bmp'),
   );
-  // Uninstaller variant: muted mark, no brand accent (removal context).
+  // Uninstaller variant: same light composition, muted grayscale labels and
+  // no brand accent (removal context) — never a dark marketing panel.
   await renderBmp(
     win,
-    sidebarHtml(SCALE, { markColor: DISABLED, titleColor: MUTED, subColor: DISABLED, accentColor: DISABLED }),
+    sidebarHtml(SCALE, { markColor: LABEL_3, titleColor: LABEL_2, accentColor: LABEL_3 }),
     SIDEBAR_WIDTH,
     SIDEBAR_HEIGHT,
     path.join(buildDir, 'uninstallerSidebar.bmp'),
