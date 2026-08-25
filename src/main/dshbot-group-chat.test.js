@@ -88,37 +88,25 @@ test('isPassContent and isPotentialPassPrefix', async () => {
   assert.equal(isPotentialPassPrefix('Hello'), false);
 });
 
-test('GroupChatOrchestrator stops on all-pass round and caps messages', async () => {
-  const { GroupChatOrchestrator } = await load('group-chat-orchestrator.js');
-  const posted = [];
-  let epoch = 1;
-  const members = [
-    { id: 'a', name: 'A', description: '' },
-    { id: 'b', name: 'B', description: '' },
-  ];
-  const history = [{ speaker: { kind: 'user' }, content: 'hi' }];
-  const orch = new GroupChatOrchestrator({
-    resolveMembers: async () => members,
-    readHistory: () => history,
-    isCurrent: () => epoch === 1,
-    runMemberTurn: async () => ['(pass)'],
-    postMemberMessage: (member, content) => posted.push({ id: member.id, content }),
-  });
-  await orch.run({ group: { name: 'G' }, memberIds: ['a', 'b'] });
-  assert.deepEqual(posted, []);
+test('member system prompt matches the talking-circle toolFilter', async () => {
+  const { buildGroupMemberSystemPrompt } = await load('group-chat.js');
+  const member = { id: 'a', name: 'Bot1', description: 'analyst' };
+  const group = { name: 'Room', description: '' };
+  const system = buildGroupMemberSystemPrompt(member, group, [
+    { id: 'b', name: 'Bot2', description: '' },
+  ]);
+  // ask-participant spawns members with toolFilter allow: ['send_room_message'];
+  // the prompt must not promise a full toolkit the member does not have.
+  assert.doesNotMatch(system, /full toolkit/i);
+  assert.match(system, /send_room_message is the only tool/);
+  assert.match(system, /\(pass\)/);
+});
 
-  const spoken = [];
-  const orch2 = new GroupChatOrchestrator({
-    resolveMembers: async () => members,
-    readHistory: () => history,
-    isCurrent: () => true,
-    runMemberTurn: async ({ member }) => [`hi from ${member.name}`, 'second', 'third'],
-    postMemberMessage: (member, content) => spoken.push(content),
-  });
-  await orch2.run({ group: { name: 'G' }, memberIds: ['a', 'b'] });
-  // 2 members × 2 max messages per turn, then another round until caps / all-pass
-  assert.ok(spoken.length >= 2);
-  assert.ok(spoken.every((text) => !/third/.test(text)));
+test('the unwired GroupChatOrchestrator parallel implementation stays deleted', async () => {
+  await assert.rejects(() => load('group-chat-orchestrator.js'));
+  const chat = await load('group-chat.js');
+  // Redrive is not a desktop capability; its prompt builder is gone too.
+  assert.equal(chat.buildGroupRedriveNote, undefined);
 });
 
 test('planCreateGroup requires one member and opens duplicate set', async () => {

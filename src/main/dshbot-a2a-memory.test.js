@@ -95,3 +95,33 @@ test('memory read/write round-trips under a temp home', async () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('buildAgentDirectoryPrompt lists teammates and rooms, hides hidden bots', async () => {
+  const { buildAgentDirectoryPrompt, AGENT_DIRECTORY_PROMPT_LIMIT } = await import(messagingUrl);
+  const items = [
+    { id: 'a', kind: 'bot', name: 'Alice', description: 'planner' },
+    { id: 'b', kind: 'bot', name: 'Bob', description: '' },
+    { id: 'c', kind: 'bot', name: 'Carol', description: 'secret', hidden: true },
+    { id: 'r1', kind: 'room', name: 'Ship room', memberBotIds: ['a', 'b'] },
+    { id: 'r2', kind: 'room', name: 'Other room', memberBotIds: ['b'] },
+  ];
+  const text = buildAgentDirectoryPrompt(items, 'a');
+  assert.match(text, /Bob \(id: b\)/);
+  assert.match(text, /Ship room \(id: r1\)/);
+  assert.match(text, /send_to_agent/);
+  assert.doesNotMatch(text, /Carol/);
+  assert.doesNotMatch(text, /Alice \(id: a\)/);
+  assert.doesNotMatch(text, /Other room/);
+  assert.equal(typeof AGENT_DIRECTORY_PROMPT_LIMIT, 'number');
+  // Alone with no rooms: no section at all.
+  assert.equal(buildAgentDirectoryPrompt([items[0]], 'a'), '');
+});
+
+test('index.js wires the teammates directory into the 1:1 system prompt', () => {
+  const indexSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'index.js'),
+    'utf8',
+  );
+  assert.match(indexSrc, /name: 'dshbot:teammates'/);
+  assert.match(indexSrc, /buildAgentDirectoryPrompt\(items, bot\.id\)/);
+});

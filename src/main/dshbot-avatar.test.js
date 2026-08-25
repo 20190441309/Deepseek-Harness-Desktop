@@ -123,3 +123,24 @@ test('blobPath lean shears the top sideways', async () => {
   const [top] = pathAnchors(blobPath('circle', 0, 1));
   assert.ok(Math.abs(top.x - 32) >= 5, `lean should move the top, x=${top.x}`);
 });
+
+test('client.js avatar copy stays in lockstep with lib/avatar.js', async () => {
+  const fs = require('fs');
+  const { BLOB_SHAPES, BLOB_COLORS, BLOB_SHAPE_RADII } = await loadAvatar();
+  const clientSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'client', 'client.js'),
+    'utf8',
+  );
+  const shapesMatch = clientSrc.match(/const BLOB_SHAPES = (\[[^\]]*\])/);
+  const colorsMatch = clientSrc.match(/const BLOB_COLORS = (\[[^\]]*\])/);
+  assert.ok(shapesMatch, 'client.js must declare BLOB_SHAPES');
+  assert.ok(colorsMatch, 'client.js must declare BLOB_COLORS');
+  assert.deepEqual(JSON.parse(shapesMatch[1]), [...BLOB_SHAPES]);
+  assert.deepEqual(JSON.parse(colorsMatch[1]), [...BLOB_COLORS]);
+  for (const [shape, radii] of Object.entries(BLOB_SHAPE_RADII)) {
+    assert.ok(
+      clientSrc.includes(`${shape}: [${radii.join(', ')}]`),
+      `client.js BLOB_SHAPE_RADII.${shape} must match lib/avatar.js`,
+    );
+  }
+});
