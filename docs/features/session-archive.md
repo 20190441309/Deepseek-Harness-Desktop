@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — C2d docs + QA TC-CHAT-013 |
+| **last verified** | 2026-08-25 — C2 gates re-run: persistence/apiproxy/ui-workspace/workspace + test:gui + workspace-management e2e replay (13/13) |
 
 ## User paths
 

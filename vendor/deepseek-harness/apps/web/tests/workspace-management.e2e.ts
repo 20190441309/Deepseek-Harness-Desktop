@@ -50,11 +50,12 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
    * root (POSIX), so the crumb labels between the Home crumb and that root
    * are host-shaped (user name, drive letter, tmp location). With HOME rooted
    * at the scaffold cwd, that run is exactly the cwd's own ancestor chain,
-   * derived here from the filesystem and folded to a stable token so the
-   * golden stays portable.
+   * derived here from the filesystem and folded to a single stable token so
+   * the golden stays portable across hosts whose tmp directories sit at
+   * different depths.
    * @param snapshot - normalized aria snapshot of the directory dialog.
    * @param workspaceCwd - the scaffold cwd (HOME root; its ancestry is scrubbed).
-   * @returns the snapshot with the ancestry crumb labels tokenized.
+   * @returns the snapshot with the ancestry crumb run folded to one token.
    */
   function scrubAncestry(snapshot: string, workspaceCwd: string): string {
     const labels: string[] = []
@@ -73,6 +74,15 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       const rendered = label.replace(/\\/g, '\\\\')
       scrubbed = scrubbed.split(`button "${rendered}"`).join('button "{{ancestry}}"')
     }
+    // The POSIX filesystem-root crumb renders as a plain YAML scalar
+    // (`- button /`), which the quoted scrub above cannot match.
+    scrubbed = scrubbed.replace(/- button \/$/gm, '- button "{{ancestry}}"')
+    // Fold consecutive tokenized crumb pairs to one so the golden does not
+    // encode how deep the host's tmp directory happens to sit.
+    scrubbed = scrubbed.replace(
+      /(([ ]*)- button "\{\{ancestry\}\}"\n[ ]*- img\n)(?:[ ]*- button "\{\{ancestry\}\}"\n[ ]*- img\n)+/g,
+      '$1',
+    )
     return scrubbed
   }
 
