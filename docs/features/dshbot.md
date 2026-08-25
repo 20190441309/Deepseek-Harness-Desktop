@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-25 — standalone 拆除 + 市场第一方行 + inbox/epoch 韧性；未完成项见下方 Open follow-ups（已落地文档，不挡合并） |
+| **last verified** | 2026-08-25 — npm 发布链路落地（publishConfig+LICENSE、`publish-dshbot.yml` tag 触发、`check-dshbot-publish.mjs` 预检、`dshbot-publish-manifest.test.js` 门禁）；TC-EXT-007 执行手册 `docs/qa/tc-ext-007-dshbot-install-smoke.md` 就绪，实机仍阻塞（见 Open follow-ups）。此前：standalone 拆除 + 市场第一方行 + inbox/epoch 韧性 |
 
 ## User paths
 
@@ -44,8 +44,8 @@
 
 | Pri | 项 | 验收 |
 | --- | --- | --- |
-| P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」 | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
-| P1 | **npm 独立发布** `dshbot@<semver>`（或镜像独立 GitHub 仓），打通 `dsh plugin add dshbot@x.y.z`；可选提交外部 awesome registry（本地第一方行已可装，不依赖收录） | README / 发布说明写清安装规格；registry 收录后第一方行可删或让位 |
+| P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」。**阻塞原因（2026-08-25）：** 云端 Linux 环境跑不了 Windows NSIS 安装包/GUI；执行手册已脚本化到「拿到下一 CI artifact 一键执行」：[docs/qa/tc-ext-007-dshbot-install-smoke.md](../qa/tc-ext-007-dshbot-install-smoke.md)（A/C 两相走 `run-packaged-smoke.mjs` 的 `plugin.dshbot.*` 探针，建群冒烟为唯一手工步骤） | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
+| P1 | **npm 独立发布** `dshbot@<semver>`：发布链路已落地——`publishConfig.access=public` + LICENSE、tag `dshbot-v<semver>` 触发 `.github/workflows/publish-dshbot.yml`（预检 `scripts/check-dshbot-publish.mjs` + `npm publish --provenance`）、桌面套件 `dshbot-publish-manifest.test.js` 锁 manifest。**剩余缺口：** 仓库未配 `NPM_TOKEN` secret（无 registry 凭证），workflow 会明确报错而非半发；配好 token 后推 tag 即发 | 首个 `dshbot-v0.2.0` tag 发布成功；README / 发布说明写清 `dsh plugin add dshbot@x.y.z` 规格；registry 收录后第一方行可删或让位 |
 | P1 | ~~**设计 spec 废弃段**~~ | **已落地（2026-08-25）：** spec 文首与决定 2 标 Deprecated；以 Grok-aligned 段与本卡为准 |
 | P2 | **成员全工具房间**：解 `toolFilter` 限制时同步改 `buildGroupMemberSystemPrompt`；另开 feature 卡，本史诗不做 | 新卡 + 单测锁 prompt/toolFilter 同口径 |
 | P2 | **Grok 未搬能力**（明确不做直至新卡）：exclusive room job / runner interrupt / Shared Room / Routines / 云电脑 / 富 SendMessage / 真 multi-lane interrupt | 新史诗卡批准前禁止静默实现 |
@@ -57,13 +57,14 @@
 - `src/main/release-ui-walk.js` 与 `dshbot-*.test.js`
 - `vendor/dshbot/**`
 - 根 `package.json` 的 dshbot extraResources 项（已移除）
-- 本卡、`docs/handbook/modules/dshbot.md`、`docs/qa` 的 `TC-EXT-007`
+- 发布链路：`scripts/check-dshbot-publish.mjs`、`.github/workflows/publish-dshbot.yml`（2026-08-25 扩围：npm 发布交付件）
+- 本卡、`docs/handbook/modules/dshbot.md`、`docs/qa` 的 `TC-EXT-007`（含执行手册 `tc-ext-007-dshbot-install-smoke.md`）
 
 ## Gates
 
 | Kind | What |
 | --- | --- |
-| Automated | `dshbot-preset`（ensure/remove 语义）、`dshbot-room-preset`（自装）、`dshbot-market-row`（第一方目录行 + curated `#path:` 安装 + Host 通道拒绝）、`dshbot-runtime-resilience`（epoch 重启 / inbox at-least-once / ack 幂等）、`harness-controller`（清理/开发预置/skip）、`release-ui-walk` `plugin.dshbot.tabAbsent`（未装则缺席、已装则允许）；catalog/group 单测锁协议与诚实 prompt |
+| Automated | `dshbot-preset`（ensure/remove 语义）、`dshbot-room-preset`（自装）、`dshbot-market-row`（第一方目录行 + curated `#path:` 安装 + Host 通道拒绝）、`dshbot-runtime-resilience`（epoch 重启 / inbox at-least-once / ack 幂等）、`dshbot-publish-manifest`（发布 manifest 完整性 + 预检脚本 tag 校验）、`harness-controller`（清理/开发预置/skip）、`release-ui-walk` `plugin.dshbot.tabAbsent`（未装则缺席、已装则允许）；catalog/group 单测锁协议与诚实 prompt |
 | Manual | 未装：无 Bots 页签、启动正常；市场一键或 `dsh plugin add` 安装后：页签出现、可建群；卸载后重启：页签消失、无残留 |
 
 ## Sources

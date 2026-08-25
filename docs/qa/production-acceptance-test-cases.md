@@ -1051,7 +1051,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-EXT-004 | P1 |  |  | 未安装市场插件 | Trent | 2026-08-23 |
 | TC-EXT-005 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-EXT-006 | P1 | Pass | CI SHA + 已装 exe | 设置有 MCP/技能 | Trent | 2026-08-23 |
-| TC-EXT-007 | P1 | 待测 | 待绑 CI SHA + 已装 exe | 独立插件：默认无页签；可选市场一键装/卸（不得用 2026-08-23 停放 Pass） |  |  |
+| TC-EXT-007 | P1 | 待测 | 待绑 CI SHA + 已装 exe | 独立插件：默认无页签；可选市场一键装/卸（不得用 2026-08-23 停放 Pass）。执行手册就绪：[tc-ext-007-dshbot-install-smoke.md](tc-ext-007-dshbot-install-smoke.md)；阻塞：云端 Linux 无法跑 Windows 安装包 |  |  |
 | TC-EXT-008 | P0 |  | 源码实机 53709（非 CI 包） | 设置有「用量统计」；零用量 KPI；安装包未测 | Trent | 2026-08-23 |
 | TC-DESK-001 | P0 | Pass | CI SHA + 已装 exe | 关窗无标题；进程与 3080 仍在 | Trent | 2026-08-23 |
 | TC-DESK-002 | P0 | Pass | CI SHA `47ad187` + 已装 exe | `run-installed-shell-p0.mjs` invokeTrayAction 五项 | Trent | 2026-08-24 |
