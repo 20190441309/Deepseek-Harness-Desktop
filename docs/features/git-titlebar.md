@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `git-titlebar` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 生产审查批次：远端行 `checkout --track` 建跟踪分支；`shell:git-*` handler 异常兜底为失败载荷（`git-ipc-guard.js`）；ui-git 侧 reject→失败 toast、分支列表失败画错误行、默认分支确认接线 `confirm.*` 字典、删除死代码 GitErrorDialog |
+| **last verified** | 2026-08-25 — 生产审查批次 2：renderer 侧 `refresh()`/`settleStatus()` 后台 status/fetch/PR 刷新补 catch（拒绝→保留快照）；白名单外分支名标 `switchable:false` 由 picker 禁用并提示（白名单未放宽）；Windows 超时/超量走 `taskkill /T /F` 杀进程树（注入式单测，实机 Windows 未覆盖）；实机 Electron（CDP 驱动）验证 `_wip` 禁用行与 `origin/feature-x` `--track` 切换 |
 
 ## User paths
 
@@ -20,7 +20,10 @@
 - 高危祖先也不得成为登记信任根：用户主目录、`%APPDATA%` / `Application Support` / `~/.config` / `~/.ssh`、desktop `userData` 与 `dsh-home` 根（等于这些目录、或包含它们的目录一律拒绝）。普通项目目录（含 Documents 下兄弟仓）不受影响。
 - 非仓库降级（初始化 Git），不把授权失败画成「没有匹配的分支」；分支列表 IPC 失败在菜单内画「分支列表加载失败。」加详情行，不落空态。
 - 分支菜单选无本地同名的远端行（`origin/feature-x`）时 `checkout --track` 建本地跟踪分支，不允许 detached HEAD。
-- `shell:git-*` handler 异常必须 resolve 为该通道的失败载荷（状态/diff 类 → `null`，其余 → `{ok:false,message}`），不得让 renderer 的 invoke reject；授权检查仍在兜底之外照常 reject。进度 toast 不允许永久 loading。
+- `shell:git-*` handler 异常必须 resolve 为该通道的失败载荷（状态/diff 类 → `null`，其余 → `{ok:false,message}`），不得让 renderer 的 invoke reject；授权检查仍在兜底之外照常 reject。进度 toast 不允许永久 loading。`shell:open-workspace-path` 同样走该兜底。
+- renderer 侧 `refresh()`/`settleStatus()` 的后台 status/fetch/PR 刷新 promise 拒绝时按 `null`/`ok:false` 降级、保留上一份快照，绝不产生 unhandled rejection，也不把已成功的动作重画成失败。
+- `safeRefName` 注入白名单**不放宽**；git 合法但白名单外的分支名由 `gitBranchList` 标 `switchable:false`，picker 列出但禁用该行并给 hint（`branch.unsupportedName`），切换/创建被拒绝时的文案说明是名字含不可安全传递的字符。
+- Windows 上 git 子进程超时/输出超量必须 `taskkill /PID /T /F` 杀整棵进程树（hooks/ssh 不残留），POSIX 保持 `child.kill()`；实机 Windows 验证仍缺。
 - 已知权衡（信任粒度）：通过过滤的登记根对 Git/FS/PTY 全量生效，不做逐操作确认；边界是「登记只来自用户主动打开的工作区」加上盘符根与高危祖先过滤。
 - 官方 `dsh web` 标题栏 Git 视觉；不另做皮肤。
 
