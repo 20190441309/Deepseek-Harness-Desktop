@@ -192,7 +192,8 @@ export const inject = ['slots', 'layout', 'locale', 'workspaces', 'sessions']
 
 /**
  * Register dictionaries, occupy the layout `surfaces` column, and intercept
- * `workspaces.openPath` into Files (and Browser for html/svg/pdf) on desktop.
+ * `workspaces.openPath` into Files (and Browser for html/htm/xhtml/svg/pdf)
+ * on desktop.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {

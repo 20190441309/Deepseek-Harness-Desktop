@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-surfaces-terminal-work-loops.md
-2026-08-16-surfaces-terminal-work-loops.md: 655901b45d9f4562dbdf06bf0a1b0768e09a8b8a
-2026-08-16-surfaces-terminal-work-loops.zh.md: d315cc3866eff8589c4e6cca9d21188536c97cbb
+2026-08-16-surfaces-terminal-work-loops.md: a5f5f30a8fb9cb74aebff9b80fac82bfad183d30
+2026-08-16-surfaces-terminal-work-loops.zh.md: fdd576e3d2882db837a00ee2d553fb0aaa557478
