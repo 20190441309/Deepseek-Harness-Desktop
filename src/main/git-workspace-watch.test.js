@@ -114,6 +114,45 @@ test('retries until the storages directory exists, then signals', async () => {
   }
 });
 
+test('a single registry write inside the unwatched retry gap still signals after arming', async () => {
+  const parent = makeStoragesDir();
+  const dir = path.join(parent, 'storages');
+  let fired = 0;
+  const stop = watchWorkspaceRegistrations(() => { fired += 1; }, {
+    storagesDir: dir,
+    retryMs: 80,
+    debounceMs: 10,
+  });
+  try {
+    // Directory and the ONLY registry write both land while the watcher is
+    // still in its retry loop; the arm itself must recover the signal.
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, WORKSPACE_REGISTRY_FILE), '{"a":1}');
+    await waitFor(() => fired >= 1);
+  } finally {
+    stop();
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('arming with an already-existing registry fires the initial signal once', async () => {
+  const dir = makeStoragesDir();
+  fs.writeFileSync(path.join(dir, WORKSPACE_REGISTRY_FILE), '{"a":1}');
+  let fired = 0;
+  const stop = watchWorkspaceRegistrations(() => { fired += 1; }, {
+    storagesDir: dir,
+    debounceMs: 10,
+  });
+  try {
+    await waitFor(() => fired >= 1);
+    await delay(80);
+    assert.equal(fired, 1);
+  } finally {
+    stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a null storages dir (no desktop home) never arms and stop() is safe', async () => {
   let fired = 0;
   const stop = watchWorkspaceRegistrations(() => { fired += 1; }, {

@@ -14,7 +14,7 @@
 
 - `git.js` 门面 + `git-exec.js`、`git-diff.js`、`git-remotes.js`、`git-pullrequest.js` 等。  
 - 进度事件 `shell:git-progress`。
-- 登记刷新事件 `shell:git-workspaces-changed`：`git-workspace-watch.js` 在主进程 watch `dsh-home/storages/`（目录级、防抖、缺失重试），`workspace.json` 变更后推给 harness 窗口；ui-git 订阅（注入 `onWorkspacesChanged`）并即刻 `refresh`，消除首载「登记未落盘 → 状态不可用直到重新聚焦」的空窗。
+- 登记刷新事件 `shell:git-workspaces-changed`：`git-workspace-watch.js` 在主进程 watch `dsh-home/storages/`（目录级、防抖、缺失重试；武装成功且注册文件已存在时补发一次，覆盖重试间隙的单次写入），`workspace.json` 变更后推给 harness 窗口；ui-git 订阅（注入 `onWorkspacesChanged`）并即刻 `refresh`，消除首载「登记未落盘 → 状态不可用直到重新聚焦」的空窗。
 
 ## 实现入口
 

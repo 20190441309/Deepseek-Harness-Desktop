@@ -78,6 +78,15 @@ function watchWorkspaceRegistrations(onChange, options = {}) {
       scheduleRetry();
       return;
     }
+    // A registry write can land inside the unwatched retry gap (storages/
+    // created and workspace.json written between two arm attempts). If the
+    // file already exists when the watch comes up, signal once: a spurious
+    // refresh is a cheap status re-read, a missed registration is the flake.
+    try {
+      if (fs.statSync(path.join(storagesDir, WORKSPACE_REGISTRY_FILE)).isFile()) fire();
+    } catch {
+      // No registry yet; the watch reports its creation.
+    }
     watcher.on('error', () => {
       // Watch handle died (directory removed, EPERM); drop it and re-arm.
       try {
