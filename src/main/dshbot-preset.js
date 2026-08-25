@@ -65,7 +65,8 @@ function isDshbotPresetEnabled(config) {
 /**
  * Dev opt-in (config `dshbotPreset: true`): copy the workspace dshbot package
  * into the web profile and register it through a managed cordis.patch.yml
- * insert, like dshmarket. The room preset is NOT copied here — the plugin
+ * insert (the same BEGIN/END managed-block mechanism the removed dshmarket
+ * preset used). The room preset is NOT copied here — the plugin
  * provisions `$DSH_HOME/.agent-presets/dshbot-room` itself at apply time.
  * Callers log failures and continue; ensure never blocks start.
  * @param {{ sourceDir?: string, profileDir?: string }} [options]
