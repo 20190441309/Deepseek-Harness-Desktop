@@ -105,6 +105,116 @@
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
+.groupSection {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.groupSection + .groupSection {
+  margin-top: 16px;
+}
+
+.groupHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 4px;
+}
+
+.groupDisclosure {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.groupDisclosure:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.groupName {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupCount {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.groupOff .groupName,
+.groupOff .groupCount {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.treeRows {
+  padding-left: 16px;
+}
+
+.groupFieldRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.groupInputBox {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.groupInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.groupOptionsButton {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.groupOptionsButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.groupOptionsButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.groupOptionsButton:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

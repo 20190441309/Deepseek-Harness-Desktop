@@ -72,10 +72,12 @@ export class SkillInventoryGateway extends TypertRemoteService {
   async get(request: SkillInventoryGetRequest): Promise<SkillInventoryDetail> {
     const view = this.resolveView(request)
     const definition = await this.requireSkill(request.name, view)
+    const group = metadataGroup(definition)
     return {
       name: definition.name,
       description: definition.description,
       ...definition.whenToUse === undefined ? {} : { whenToUse: definition.whenToUse },
+      ...group === undefined ? {} : { group },
       source: definition.source,
       ...definition.path === undefined ? {} : { path: definition.path },
       writable: isWritable(definition.source, view.options.cwd, definition.path),
@@ -105,6 +107,7 @@ export class SkillInventoryGateway extends TypertRemoteService {
       name: request.name,
       description: request.description,
       ...optionalWhenToUse(request.whenToUse),
+      group: request.group ?? '',
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
       content: request.content,
@@ -125,6 +128,7 @@ export class SkillInventoryGateway extends TypertRemoteService {
       name: definition.name,
       description: request.description,
       ...optionalWhenToUse(request.whenToUse),
+      ...request.group === undefined ? {} : { group: request.group },
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
       content: request.content,
@@ -212,17 +216,27 @@ export default SkillInventoryGateway
 
 function toEntry(summary: SkillSummary, detail: SkillDefinition | undefined, cwd: string | undefined): SkillInventoryEntry {
   const path = detail?.path
+  const group = metadataGroup(detail)
   return {
     name: summary.name,
     description: summary.description,
     ...summary.whenToUse === undefined ? {} : { whenToUse: summary.whenToUse },
+    ...group === undefined ? {} : { group },
     source: summary.source,
     provider: summary.provider,
-    ...path === undefined ? {} : { path },
+    ...path === undefined ? {} : { path, directory: dirname(path) },
     writable: isWritable(summary.source, cwd, path),
     modelInvocable: summary.invocation.modelInvocable,
     userInvocable: summary.invocation.userInvocable,
   }
+}
+
+/** Read the Settings-owned grouping label from provider metadata. */
+function metadataGroup(definition: SkillDefinition | undefined): string | undefined {
+  const metadata = definition?.metadata
+  if (metadata === undefined) return undefined
+  const value = metadata.group
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
 }
 
 function isWritable(source: string, cwd: string | undefined, path: string | undefined): boolean {
