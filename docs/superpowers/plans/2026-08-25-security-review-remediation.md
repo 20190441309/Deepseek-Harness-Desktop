@@ -68,7 +68,7 @@
 
 ### L-5 spawnEnv / pluginEnv 双实现
 
-- **改法**：新增 `src/shared/harness-spawn-env.js`：`baseHarnessSpawnEnv(config)` 承担 dsh-home 覆盖、`ELECTRON_RUN_AS_NODE`/`ELECTRON_NO_ASAR` 清理、官方 DeepSeek env、`npm_config_update_notifier` 四件套；`dsh.js.spawnEnv` 与 `marketplace-install.pluginEnv` 改为在其上叠各自 extras。配单测。
+- **改法**：新增 `src/shared/child-spawn-env.js`：`childSpawnEnv(config, { extras, baseEnv })` 承担 dsh-home 覆盖、`ELECTRON_RUN_AS_NODE`/`ELECTRON_NO_ASAR` 清理、官方 DeepSeek env 门禁、`npm_config_update_notifier` 与 PATH extras 前置；`dsh.js.spawnEnv` 与 `marketplace-install.pluginEnv` 改为在其上叠各自 extras（PATH 顺序由调用方给定，保持原有优先级）。配单测。
 - **触碰**：均在 dsh-home 卡 Allowed touch 内（`src/shared/*`、`dsh.js`、`marketplace-install.js`）。
 - **产品契约**：dsh-home invariant 不变，实现收敛为单份；卡 last verified 更新。
 
@@ -94,3 +94,12 @@
 
 - 每个改动模块跑对应 `node --test src/main/<module>.test.js`；收尾跑全量 `npm test`（node:test：src + mobile/web）。
 - 无显示器 / 非 Windows 环境局限：H-1 快捷键、M-3 确认框、M-4 UI 警示、卸载 spawn 均静态 + 单测验证，无法动态点按验证；在 PR 与报告中声明。
+
+## 执行结果（步骤 3 收尾）
+
+全部 9 项（H-1、M-1…M-5、L-1、L-3、L-5）已按上述修订后的计划落地，无推迟的 H/M 项；M-4 的绑定地址可配置与自签 TLS 按修订记录 4 明确列为后续。
+
+- 全量 `npm test`：**1029 tests，1026 pass，0 fail，3 skipped**（skip 为仓内既有的平台条件跳过）。
+- vendor `ui-settings-remote` 客户端 spec（M-4 警示行）：`vitest run` **18 passed**。
+- `src/main/index.js` 由 1308 行降至 492 行（M-5）；`shell:pick-workspace` 通道删除（L-3）；preload 不再手抄远程开关（L-1）。
+- 新增回归护栏：`src/main/smoke/smoke-extraction.test.js`（生产入口不得回灌 QA 编排）、`src/shared/child-spawn-env.test.js`（dsh-home 不变量单实现）、`src/main/devtools-shortcut.test.js`、`src/main/config-credentials.test.js`。
