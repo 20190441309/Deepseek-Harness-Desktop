@@ -1093,6 +1093,9 @@ function bind() {
     api.onLauncherHint((payload) => {
       if (payload?.importResume) {
         setHint('上次导入中断，未完成的临时文件已清理。可重新导入；已存在的内容将按规则跳过。');
+      } else if (payload?.check?.hint) {
+        // Cold-start gate outcome (failed/incomplete update flow): show verbatim.
+        setHint(payload.check.hint);
       } else if (payload?.check?.status === 'error') {
         setHint(`更新检查失败：${payload.check.message || '网络或 GitHub 不可用'}。仍可启动桌面端。`);
       } else if (payload?.check?.status === 'available') {
