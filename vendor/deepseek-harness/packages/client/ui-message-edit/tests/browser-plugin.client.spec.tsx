@@ -252,6 +252,31 @@ describe('ui-message-edit browser plugin', () => {
     expect(b.submits).toHaveLength(0)
   })
 
+  it('confirms without the transcript guards when the source binding is gone', async () => {
+    const b = await bench()
+    await b.fiber.await()
+
+    const face = b.editor()!.inject!(sid('s1'))
+    face.beginEdit(7, 'original prompt')
+    // A dropped binding (source closing mid-confirm) cannot prove staleness
+    // either way; the fork itself stays the authoritative cut.
+    b.sessions.binding.mockReturnValue(undefined as never)
+    const outcome = await b.edits.get('s1')!.submit('revised', [], SIGNAL)
+
+    expect(outcome).toEqual({ kind: 'success' })
+    expect(b.sessions.fork).toHaveBeenCalledTimes(1)
+  })
+
+  it('beginEdit fails loud when the source session scope cannot be resolved', async () => {
+    const b = await bench()
+    await b.fiber.await()
+    b.sessions.scope.mockReturnValue(undefined as never)
+
+    const face = b.editor()!.inject!(sid('s1'))
+    expect(() => face.beginEdit(7, 'original prompt')).toThrow(/scope unavailable/)
+    expect(b.sessions.fork).not.toHaveBeenCalled()
+  })
+
   it('a beginEdit refusal notifies on the source composer and returns false', async () => {
     const b = await bench({ refuse: true })
     await b.fiber.await()
