@@ -19,6 +19,9 @@ const SNAP: RemoteSnapshot = {
   listening: true,
   port: 3180,
   mode: 'lan',
+  bindAddress: '0.0.0.0',
+  lanTls: false,
+  addresses: ['10.0.0.4'],
   relayUrl: 'http://125.124.85.212:8411',
   relayConnected: false,
   urls: [
@@ -165,6 +168,64 @@ describe('RemoteSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
     expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
+  })
+
+  it('offers bind-scope options in LAN mode and saves the narrowed bind address', async () => {
+    const props = renderRemote({
+      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ bindAddress: patch.remoteBindAddress })),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    const all = screen.getByRole('radio', { name: en.bindAll })
+    expect(all.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: '10.0.0.4' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: en.bindLoopback }))
+    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteBindAddress: '127.0.0.1' }) })
+    cleanup()
+
+    // Relay mode has no LAN listener rows.
+    renderRemote({ getRemote: vi.fn(async () => snap({ mode: 'relay' })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByRole('radio', { name: en.bindAll })).toBeNull()
+    expect(screen.queryByRole('radio', { name: en.transportTls })).toBeNull()
+  })
+
+  it('keeps a vanished configured NIC selectable instead of widening the scope', async () => {
+    renderRemote({
+      getRemote: vi.fn(async () => snap({ bindAddress: '172.16.0.9', addresses: ['10.0.0.4'] })),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    const gone = screen.getByRole('radio', { name: '172.16.0.9' })
+    expect(gone.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('switches LAN transport to self-signed HTTPS and swaps the warning for the TLS hint', async () => {
+    const props = renderRemote({
+      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ lanTls: patch.remoteLanTls })),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.getByRole('radio', { name: en.transportPlain }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(screen.getByRole('radio', { name: en.transportTls }))
+    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteLanTls: true }) })
+    cleanup()
+
+    const fp = 'ab'.repeat(32)
+    renderRemote({ getRemote: vi.fn(async () => snap({ lanTls: true, tlsFingerprint: fp })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
+    expect(screen.getByText(en.lanTlsHint.replace('{fp}', fp.slice(0, 16)))).toBeTruthy()
+  })
+
+  it('replaces the subnet warning with the loopback hint when bound to this machine only', async () => {
+    renderRemote({ getRemote: vi.fn(async () => snap({ bindAddress: '127.0.0.1' })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
+    expect(screen.getByText(en.bindLoopbackHint)).toBeTruthy()
   })
 
   it('shows loading while the first read is in flight', async () => {

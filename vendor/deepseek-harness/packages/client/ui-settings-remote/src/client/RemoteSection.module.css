@@ -106,6 +106,19 @@
   min-width: 0;
 }
 
+/* Bind-scope options: two fixed choices plus one button per NIC, wrapping. */
+.scopeGroup {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 8px;
+}
+
+.scopeButton {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+}
+
 .status,
 .hint {
   margin: 0;

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 远程弹窗在「已开启 + 局域网」下常驻明文 HTTP 警示（`lanPlaintextWarning`，仅限可信局域网）；此前：桌面门禁 `run-remote-gate-qa.mjs`（NEG/REM-001）Pass；真机见 [remote-phone-real.md](../qa/results/2026-08-25/remote-phone-real.md)：已装 APK + 浏览器 SPA / Android 粘贴 `#offer=` 配对 + 发 `phone-native-qa-ping`（`adb reverse`；本 AP 无纯 Wi‑Fi LAN） |
+| **last verified** | 2026-08-25 — LAN 绑定地址可配置（全部网卡 / 仅本机 / 指定网卡 IP）+ LAN 自签 TLS 可选开启（配对 URL 携带 `https` 与证书指纹 `fp`）；单测 `remote.test.js` / `remote-tls.test.js` / `config.test.js` 与 `ui-settings-remote` vitest 全绿。此前：明文警示 `lanPlaintextWarning`；桌面门禁 `run-remote-gate-qa.mjs`（NEG/REM-001）Pass；真机见 [remote-phone-real.md](../qa/results/2026-08-25/remote-phone-real.md)：已装 APK + 浏览器 SPA / Android 粘贴 `#offer=` 配对 + 发 `phone-native-qa-ping`（`adb reverse`；本 AP 无纯 Wi‑Fi LAN） |
 
 ## User paths
 
@@ -21,13 +21,16 @@
 - 已登录 `POST /__remote__/shell/<name>` 只映射白名单 git / `listDir` / `openSettings` / `openGallery` / `getConfig` / `saveConfig`。无 PTY、`writeFile`、Browser preview。
 - 侧栏 `ui-settings-remote` 已加载；preload 暴露 `getRemote` / `saveRemote` / `rotateRemoteToken` / `unbindRemoteDevice`。
 - 主进程构造 `RemoteGateway`，不走 `createDisabledRemote`。未开启时 `listening !== true`。
-- LAN 模式是明文 HTTP 且监听 `0.0.0.0`（整个网段可达）：远程弹窗在「已开启 + 局域网」状态必须常驻可信局域网警示（`lanPlaintextWarning`）；handbook「安全边界」段与本卡为该限制的文档来源。绑定地址可配置 / LAN TLS 为后续工作。
+- LAN 监听范围可配置（`remoteBindAddress`：默认 `0.0.0.0` 全部网卡，可收窄为 `127.0.0.1` 或指定网卡 IPv4）：远程弹窗 LAN 模式渲染「监听范围」选择器；快照 `urls` 只列绑定可达地址；中继本地回连用 `localConnectHost`（通配归一回环）。
+- LAN 传输可选自签 TLS（`remoteLanTls`，默认关闭=明文 HTTP）：开启后网关走 HTTPS（ECDSA P-256 自签证书持久于 `userData/remote-tls`，零依赖 `remote-tls.js` 生成），配对 URL 换 `https` 且 offer 携带证书指纹 `fp`（供 Android 后续证书固定）。中继模式绝不套 LAN TLS（中继 origin 本身已是 HTTPS）。浏览器首访自签证书会出警示页；Android 客户端在证书固定落地前不支持 LAN TLS——UI 提示（`lanTlsHint`）必须写明这两点。
+- 明文警示矩阵：「已开启 + LAN + 明文 + 非仅本机绑定」必须常驻 `lanPlaintextWarning`（仅限可信局域网）；开 TLS 换成 `lanTlsHint`（短指纹）；绑 `127.0.0.1` 换成 `bindLoopbackHint`（本机/`adb reverse` 可用）。handbook「安全边界」段与本卡为该限制的文档来源。
 - 手机 SPA 与 Android Compose 抄 `--dsw-alias-*`，不挂官方插件树，不用启动页 `--boot-*`。Android 不套 WebView。
 - Android 外观只改本机；电脑项走 shell / Host 请求。Git 胶囊 action 标签英文。
 
 ## Allowed touch
 
-- `src/main/remote.js`、`remote-shell.js`、`mobile-web.js`、`index.js`（网关构造）、`ipc.js`、`config.js`（远程字段）
+- `src/main/remote.js`、`remote-shell.js`、`remote-patch.js`、`remote-tls.js`、`relay-client.js`、`mobile-web.js`、`index.js`（网关构造）、`ipc.js`、`config.js`（远程字段）
+- `src/shared/lan.js`、`src/shared/offer.js` — 配对 URL / offer 编解码
 - `src/preload/index.js` — 仅 Remote IPC
 - `mobile/web/` — SPA
 - `mobile/android/` — Kotlin Compose 客户端

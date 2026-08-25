@@ -157,6 +157,20 @@ export function RemoteSection({
   const enabled = Boolean(snap?.enabled)
   const mode = snap?.mode === 'relay' ? 'relay' : 'lan'
   const devices = snap?.devices ?? []
+  const bindAddress = snap?.bindAddress || '0.0.0.0'
+  const lanTls = Boolean(snap?.lanTls)
+  const bindOptions = useMemo(() => {
+    const nics = (snap?.addresses ?? []).filter(address => address !== '127.0.0.1')
+    const options = ['0.0.0.0', '127.0.0.1', ...nics]
+    // A configured NIC that just went away stays selectable so the user can
+    // see and change what the gateway is still bound to.
+    return options.includes(bindAddress) ? options : [...options, bindAddress]
+  }, [snap?.addresses, bindAddress])
+  const bindLabel = (option: string): string => {
+    if (option === '0.0.0.0') return t('bindAll')
+    if (option === '127.0.0.1') return t('bindLoopback')
+    return option
+  }
 
   return (
     <div className={wide ? css.layer : `${css.layer} ${css.rail}`}>
@@ -233,8 +247,60 @@ export function RemoteSection({
                     {t('modeRelay')}
                   </Button>
                 </div>
-                {enabled && mode === 'lan' ? (
+                {mode === 'lan' ? (
+                  <>
+                    <div className={css.scopeGroup} role="radiogroup" aria-label={t('bindScope')}>
+                      {bindOptions.map(option => (
+                        <Button
+                          key={option}
+                          size="sm"
+                          variant={bindAddress === option ? 'primary' : 'ghost'}
+                          className={css.scopeButton}
+                          role="radio"
+                          aria-checked={bindAddress === option}
+                          disabled={busy}
+                          onClick={() => { if (bindAddress !== option) void save({ remoteBindAddress: option }) }}
+                        >
+                          {bindLabel(option)}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className={css.modes} role="radiogroup" aria-label={t('lanTransport')}>
+                      <Button
+                        size="sm"
+                        variant={lanTls ? 'ghost' : 'primary'}
+                        className={css.modeButton}
+                        role="radio"
+                        aria-checked={!lanTls}
+                        disabled={busy}
+                        onClick={() => { if (lanTls) void save({ remoteLanTls: false }) }}
+                      >
+                        {t('transportPlain')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={lanTls ? 'primary' : 'ghost'}
+                        className={css.modeButton}
+                        role="radio"
+                        aria-checked={lanTls}
+                        disabled={busy}
+                        onClick={() => { if (!lanTls) void save({ remoteLanTls: true }) }}
+                      >
+                        {t('transportTls')}
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+                {enabled && mode === 'lan' && lanTls ? (
+                  <p className={css.hint} role="note" data-dsh-remote-tls-hint="">
+                    {t('lanTlsHint', { fp: (snap?.tlsFingerprint || '').slice(0, 16) })}
+                  </p>
+                ) : null}
+                {enabled && mode === 'lan' && !lanTls && bindAddress !== '127.0.0.1' ? (
                   <p className={css.hint} role="note" data-dsh-remote-lan-warning="">{t('lanPlaintextWarning')}</p>
+                ) : null}
+                {enabled && mode === 'lan' && bindAddress === '127.0.0.1' ? (
+                  <p className={css.hint} role="note" data-dsh-remote-loopback-hint="">{t('bindLoopbackHint')}</p>
                 ) : null}
                 <button
                   type="button"

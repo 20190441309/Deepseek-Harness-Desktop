@@ -104,6 +104,14 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     remoteRelayUrl: 'https://relay.example/path',
   });
   assert.deepEqual(normalizeRemotePatch({ remoteEnabled: false }), { remoteEnabled: false });
+  assert.deepEqual(
+    normalizeRemotePatch({ remoteBindAddress: '127.0.0.1', remoteLanTls: true }),
+    { remoteBindAddress: '127.0.0.1', remoteLanTls: true },
+  );
+  assert.deepEqual(
+    normalizeRemotePatch({ remoteBindAddress: ' 192.168.1.20 ' }),
+    { remoteBindAddress: '192.168.1.20' },
+  );
   for (const patch of [
     { apiKey: 'sk-stolen' },
     { workspace: 'C:\\' },
@@ -117,9 +125,38 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     { remoteEnabled: 'yes' },
     { remoteMode: 'https' },
     { remotePort: 80 },
+    { remoteBindAddress: 'evil; rm -rf /' },
+    { remoteBindAddress: '999.0.0.1' },
+    { remoteBindAddress: '::' },
+    { remoteBindAddress: 42 },
+    { remoteLanTls: 'yes' },
   ]) {
     assert.throws(() => normalizeRemotePatch(patch));
   }
+});
+
+test('remote bind address and LAN TLS normalize with safe fallbacks', () => {
+  const { normalizeRemoteBindAddress, normalizeRemoteConfig } = require('./config');
+  assert.equal(DEFAULTS.remoteBindAddress, '0.0.0.0');
+  assert.equal(DEFAULTS.remoteLanTls, false);
+  assert.equal(normalizeRemoteBindAddress('127.0.0.1'), '127.0.0.1');
+  assert.equal(normalizeRemoteBindAddress('192.168.1.20'), '192.168.1.20');
+  assert.equal(normalizeRemoteBindAddress('300.0.0.1'), '0.0.0.0');
+  assert.equal(normalizeRemoteBindAddress('garbage'), '0.0.0.0');
+  assert.equal(normalizeRemoteBindAddress(undefined), '0.0.0.0');
+  const normalized = normalizeRemoteConfig({
+    remoteBindAddress: 'not-an-ip',
+    remoteLanTls: 'yes',
+  });
+  assert.equal(normalized.remoteBindAddress, '0.0.0.0');
+  assert.equal(normalized.remoteLanTls, false);
+  const saved = saveConfig({ remoteBindAddress: '127.0.0.1', remoteLanTls: true });
+  assert.equal(saved.remoteBindAddress, '127.0.0.1');
+  assert.equal(saved.remoteLanTls, true);
+  const pub = publicConfig(saved);
+  assert.equal(pub.remoteBindAddress, '127.0.0.1');
+  assert.equal(pub.remoteLanTls, true);
+  saveConfig({ remoteBindAddress: '0.0.0.0', remoteLanTls: false });
 });
 
 test('remote feature is enabled and strips HTTP relay origins', () => {

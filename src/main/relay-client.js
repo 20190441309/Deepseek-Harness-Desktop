@@ -332,7 +332,9 @@ class RelayClient extends EventEmitter {
       return;
     }
     const request = http.request({
-      hostname: '127.0.0.1',
+      // The gateway may be bound to one specific NIC; loopback is only the
+      // default when getLocal does not name a reachable host.
+      hostname: local.host || '127.0.0.1',
       port: local.port,
       path: header.path || '/',
       method: header.method || 'GET',
@@ -379,7 +381,7 @@ class RelayClient extends EventEmitter {
       return values.map((item) => `${key}: ${item}`).join('\r\n');
     }).join('\r\n');
     const prelude = `${header.method || 'GET'} ${header.path || '/'} HTTP/1.1\r\n${lines}\r\n\r\n`;
-    const tunnel = net.connect(local.port, '127.0.0.1', () => {
+    const tunnel = net.connect(local.port, local.host || '127.0.0.1', () => {
       tunnel.write(prelude);
       if (head && head.length) {
         tunnel.write(head);

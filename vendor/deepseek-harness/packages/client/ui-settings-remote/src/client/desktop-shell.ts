@@ -30,6 +30,14 @@ export type RemoteSnapshot = {
   port?: number
   token?: string
   mode?: 'lan' | 'relay'
+  /** Gateway listen address: `0.0.0.0`, `127.0.0.1`, or one NIC IPv4. */
+  bindAddress?: string
+  /** Whether the LAN listener serves self-signed HTTPS. */
+  lanTls?: boolean
+  /** SHA-256 of the self-signed certificate (lower-case hex), when lanTls. */
+  tlsFingerprint?: string
+  /** Every LAN IPv4 the desktop currently has (bind-scope options). */
+  addresses?: string[]
   relayUrl?: string
   relayConnected?: boolean
   relayError?: string
@@ -43,6 +51,8 @@ export type RemotePatch = {
   remoteEnabled?: boolean
   remotePort?: number
   remoteMode?: 'lan' | 'relay'
+  remoteBindAddress?: string
+  remoteLanTls?: boolean
   remoteRelayUrl?: string
 }
 

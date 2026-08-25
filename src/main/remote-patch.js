@@ -4,6 +4,17 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Dotted-quad IPv4 with every octet in range, or the all-interfaces wildcard. */
+function isBindableIpv4(value) {
+  if (value === '0.0.0.0') {
+    return true;
+  }
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) {
+    return false;
+  }
+  return value.split('.').every((part) => Number(part) >= 0 && Number(part) <= 255);
+}
+
 /**
  * Accept only RemotePatch fields from the harness renderer.
  * Unknown keys fail closed so credentials and workspace cannot ride along.
@@ -12,6 +23,8 @@ function isPlainObject(value) {
  *   remoteEnabled?: boolean,
  *   remotePort?: number,
  *   remoteMode?: 'lan' | 'relay',
+ *   remoteBindAddress?: string,
+ *   remoteLanTls?: boolean,
  *   remoteRelayUrl?: string,
  * }}
  */
@@ -26,6 +39,20 @@ function normalizeRemotePatch(patch) {
         throw new TypeError('remoteEnabled must be a boolean');
       }
       next.remoteEnabled = value;
+      continue;
+    }
+    if (key === 'remoteLanTls') {
+      if (typeof value !== 'boolean') {
+        throw new TypeError('remoteLanTls must be a boolean');
+      }
+      next.remoteLanTls = value;
+      continue;
+    }
+    if (key === 'remoteBindAddress') {
+      if (typeof value !== 'string' || !isBindableIpv4(value.trim())) {
+        throw new TypeError('remoteBindAddress must be 0.0.0.0 or an IPv4 address');
+      }
+      next.remoteBindAddress = value.trim();
       continue;
     }
     if (key === 'remoteMode') {

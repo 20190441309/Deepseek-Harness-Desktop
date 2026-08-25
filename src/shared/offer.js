@@ -16,6 +16,8 @@ function decodeOffer(raw) {
       token: value.token,
       mode: value.mode === 'relay' ? 'relay' : 'lan',
       relay: typeof value.relay === 'string' ? value.relay : '',
+      // Optional self-signed LAN TLS certificate SHA-256 for native pinning.
+      fp: typeof value.fp === 'string' ? value.fp : '',
     };
   } catch {
     return null;

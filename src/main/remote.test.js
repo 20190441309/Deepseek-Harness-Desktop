@@ -6,9 +6,16 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { generateToken } = require('../shared/remote-auth');
-const { pairingUrl, normalizeRelayOrigin } = require('../shared/lan');
+const { pairingUrl, normalizeRelayOrigin, reachableAddresses } = require('../shared/lan');
 const { encodeOffer, decodeOffer, offerFromHash } = require('../shared/offer');
-const { RemoteGateway, createDisabledRemote, rewriteProxyHeaders, shouldGzipProxy } = require('./remote');
+const {
+  RemoteGateway,
+  createDisabledRemote,
+  rewriteProxyHeaders,
+  shouldGzipProxy,
+  normalizeBindAddress,
+  localConnectHost,
+} = require('./remote');
 const { RelayClient } = require('./relay-client');
 const { RelayServer } = require('../relay/server');
 
@@ -869,6 +876,227 @@ test('#offer= first visit: login page auto-login decodes pairingUrl and lands on
 
   await gateway.stop();
   await close(upstream);
+});
+
+// —— M-4 深化：绑定地址可配置 + LAN 自签 TLS ——
+
+test('normalizeBindAddress accepts wildcard and IPv4 only; localConnectHost maps to a reachable host', () => {
+  assert.equal(normalizeBindAddress('0.0.0.0'), '0.0.0.0');
+  assert.equal(normalizeBindAddress('127.0.0.1'), '127.0.0.1');
+  assert.equal(normalizeBindAddress('192.168.1.20'), '192.168.1.20');
+  assert.equal(normalizeBindAddress(''), '0.0.0.0');
+  assert.equal(normalizeBindAddress('::'), '0.0.0.0');
+  assert.equal(normalizeBindAddress('999.1.1.1'), '0.0.0.0');
+  assert.equal(normalizeBindAddress('evil; rm -rf'), '0.0.0.0');
+  assert.equal(localConnectHost('0.0.0.0'), '127.0.0.1');
+  assert.equal(localConnectHost('127.0.0.1'), '127.0.0.1');
+  assert.equal(localConnectHost('192.168.1.20'), '192.168.1.20');
+});
+
+test('reachableAddresses narrows advertised addresses to the bind scope', () => {
+  const lanAddresses = ['192.168.1.20', '10.0.0.4'];
+  assert.deepEqual(reachableAddresses('0.0.0.0', lanAddresses), lanAddresses);
+  assert.deepEqual(reachableAddresses('127.0.0.1', lanAddresses), ['127.0.0.1']);
+  assert.deepEqual(reachableAddresses('10.0.0.4', lanAddresses), ['10.0.0.4']);
+  // A configured NIC that disappeared still advertises itself (URL is honest
+  // about what the listener is bound to) instead of widening to everything.
+  assert.deepEqual(reachableAddresses('172.16.0.9', lanAddresses), ['172.16.0.9']);
+});
+
+test('a loopback bind listens on 127.0.0.1 only and narrows the advertised urls', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const gateway = new RemoteGateway({
+    getConfig: () => ({
+      remoteEnabled: true,
+      remoteToken: token,
+      remoteMode: 'lan',
+      remoteBindAddress: '127.0.0.1',
+    }),
+  });
+  try {
+    await gateway.start({
+      port: 0,
+      token,
+      target: { port: upstreamPort },
+      bindAddress: '127.0.0.1',
+    });
+    assert.equal(gateway.server.address().address, '127.0.0.1');
+    const snap = gateway.snapshot();
+    assert.equal(snap.bindAddress, '127.0.0.1');
+    assert.deepEqual(snap.urls.map((row) => row.address), ['127.0.0.1']);
+    assert.equal(snap.urls[0].url.startsWith('http://127.0.0.1:'), true);
+    const allowed = await request(gateway.port, '/api/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(allowed.status, 200);
+  } finally {
+    await gateway.stop();
+    await close(upstream);
+  }
+});
+
+test('sync restarts the listener when the bind address or TLS switch changes', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const stored = {
+    remoteEnabled: true,
+    remoteToken: token,
+    remoteMode: 'lan',
+    remoteBindAddress: '0.0.0.0',
+    remoteLanTls: false,
+  };
+  const gateway = new RemoteGateway({
+    getTarget: () => ({ port: upstreamPort }),
+    getConfig: () => ({ ...stored }),
+    saveConfig: (patch) => Object.assign(stored, patch),
+  });
+  try {
+    await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+    stored.remotePort = gateway.port;
+    await gateway.sync();
+    const firstServer = gateway.server;
+    assert.equal(gateway.bindAddress, '0.0.0.0');
+
+    stored.remoteBindAddress = '127.0.0.1';
+    await gateway.sync();
+    assert.notEqual(gateway.server, firstServer);
+    assert.equal(gateway.server.address().address, '127.0.0.1');
+    assert.equal(gateway.tlsActive, false);
+
+    const narrowed = gateway.server;
+    stored.remoteLanTls = true;
+    await gateway.sync();
+    assert.notEqual(gateway.server, narrowed);
+    assert.equal(gateway.tlsActive, true);
+    assert.match(gateway.tlsFingerprint, /^[0-9a-f]{64}$/);
+  } finally {
+    await gateway.stop();
+    await close(upstream);
+  }
+});
+
+function httpsRequest(port, path, options = {}) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: '127.0.0.1',
+      port,
+      path,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      rejectUnauthorized: false,
+    }, (response) => {
+      const peer = response.socket.getPeerCertificate();
+      let body = '';
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        body,
+        fingerprint: require('crypto').createHash('sha256').update(peer.raw).digest('hex'),
+      }));
+    });
+    request.on('error', reject);
+    if (options.body) {
+      request.write(options.body);
+    }
+    request.end();
+  });
+}
+
+test('LAN TLS serves https, pins the advertised fingerprint, and puts fp into the offer', async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('tls-proxied');
+  });
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const config = memoryConfig({
+    remoteEnabled: true,
+    remoteToken: token,
+    remoteMode: 'lan',
+    remoteLanTls: true,
+    remoteDevices: [],
+  });
+  const gateway = new RemoteGateway(config);
+  try {
+    await gateway.start({ port: 0, token, target: { port: upstreamPort }, tls: true });
+    const snap = gateway.snapshot();
+    assert.equal(snap.lanTls, true);
+    assert.match(snap.tlsFingerprint, /^[0-9a-f]{64}$/);
+    assert.equal(snap.urls.every((row) => row.url.startsWith('https://')), true);
+    assert.equal(snap.urls.every((row) => row.pairingUrl.startsWith('https://')), true);
+    const offer = offerFromHash(new URL(snap.urls[0].pairingUrl).hash);
+    assert.equal(offer.token, token);
+    assert.equal(offer.fp, snap.tlsFingerprint);
+
+    const denied = await httpsRequest(gateway.port, '/api/ping');
+    assert.equal(denied.status, 401);
+    const allowed = await httpsRequest(gateway.port, '/api/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.body, 'tls-proxied');
+    assert.equal(allowed.fingerprint, snap.tlsFingerprint);
+  } finally {
+    await gateway.stop();
+    await close(upstream);
+  }
+});
+
+test('relay mode never wraps the local server in TLS even when remoteLanTls is on', async () => {
+  const upstream = http.createServer((_req, res) => res.end('ok'));
+  const upstreamPort = await listen(upstream);
+  const token = generateToken();
+  const hostToken = generateToken();
+  const relay = insecureRelay(hostToken);
+  const relayPort = await relay.listen(0, '127.0.0.1');
+  const stored = {
+    remoteEnabled: true,
+    remoteToken: token,
+    remoteMode: 'relay',
+    remoteLanTls: true,
+    remoteRelayUrl: `http://127.0.0.1:${relayPort}`,
+    remoteRelayToken: hostToken,
+  };
+  const gateway = new RemoteGateway({
+    getTarget: () => ({ port: upstreamPort }),
+    getConfig: () => ({ ...stored }),
+    saveConfig: (patch) => Object.assign(stored, patch),
+    relayOptions: { allowInsecureHttp: true },
+  });
+  try {
+    await gateway.start({ port: 0, token, target: { port: upstreamPort } });
+    stored.remotePort = gateway.port;
+    await gateway.sync();
+    assert.equal(gateway.tlsActive, false);
+    assert.equal(gateway.snapshot().lanTls, false);
+    assert.equal(gateway.relay.connected, true);
+    const viaRelay = await request(relayPort, '/api/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(viaRelay.status, 200);
+  } finally {
+    await gateway.stop();
+    await relay.close();
+    await close(upstream);
+  }
+});
+
+test('offer with a TLS fingerprint round-trips and stays optional', () => {
+  const withFp = decodeOffer(encodeOffer({ v: 1, token: 'secret', mode: 'lan', fp: 'ab'.repeat(32) }));
+  assert.equal(withFp.fp, 'ab'.repeat(32));
+  const withoutFp = decodeOffer(encodeOffer({ v: 1, token: 'secret', mode: 'lan' }));
+  assert.equal(withoutFp.fp, '');
+  const url = pairingUrl('10.0.0.4', 3180, 'abc', { tls: true, fp: 'cd'.repeat(32) });
+  assert.equal(url.startsWith('https://10.0.0.4:3180/#offer='), true);
+  assert.equal(offerFromHash(new URL(url).hash).fp, 'cd'.repeat(32));
+  // Plaintext pairing URLs never carry a fingerprint.
+  const plain = pairingUrl('10.0.0.4', 3180, 'abc', { fp: 'cd'.repeat(32) });
+  assert.equal(plain.startsWith('http://'), true);
+  assert.equal(offerFromHash(new URL(plain).hash).fp, '');
 });
 
 test('login page auto-login rejection re-serves the form with the error line intact', async () => {

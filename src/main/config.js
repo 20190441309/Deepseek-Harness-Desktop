@@ -26,6 +26,8 @@ const DEFAULTS = {
   remotePort: 3180,
   remoteToken: '',
   remoteMode: 'lan',
+  remoteBindAddress: '0.0.0.0',
+  remoteLanTls: false,
   remoteRelayUrl: '',
   remoteRelayToken: '',
   harnessAutoRestart: true,
@@ -113,6 +115,24 @@ function normalizeRelayOrigin(value) {
   }
 }
 
+/**
+ * Bind addresses the remote gateway may listen on: the all-interfaces
+ * wildcard (current default) or one dotted-quad IPv4 (loopback or a specific
+ * NIC). Anything else falls back to the default so a corrupt config can
+ * never widen or break the listener.
+ */
+function normalizeRemoteBindAddress(value) {
+  const raw = String(value || '').trim();
+  if (raw === '0.0.0.0') {
+    return raw;
+  }
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(raw)) {
+    return DEFAULTS.remoteBindAddress;
+  }
+  const octets = raw.split('.').map((part) => Number(part));
+  return octets.every((part) => part >= 0 && part <= 255) ? raw : DEFAULTS.remoteBindAddress;
+}
+
 function normalizeRemoteConfig(config) {
   const next = { ...config };
   next.remoteEnabled = REMOTE_FEATURE_ENABLED && next.remoteEnabled === true;
@@ -128,6 +148,8 @@ function normalizeRemoteConfig(config) {
   next.remotePort = Number.isInteger(remotePort) && remotePort >= 1024 && remotePort <= 65535
     ? remotePort
     : DEFAULTS.remotePort;
+  next.remoteBindAddress = normalizeRemoteBindAddress(next.remoteBindAddress);
+  next.remoteLanTls = next.remoteLanTls === true;
   return next;
 }
 
@@ -378,6 +400,8 @@ function publicConfig(config) {
     remoteAvailable: REMOTE_FEATURE_ENABLED,
     remotePort: Number(config.remotePort) || DEFAULTS.remotePort,
     remoteMode: config.remoteMode === 'relay' ? 'relay' : 'lan',
+    remoteBindAddress: normalizeRemoteBindAddress(config.remoteBindAddress),
+    remoteLanTls: config.remoteLanTls === true,
     remoteRelayUrl: config.remoteRelayUrl || '',
     remoteToken: '',
     remoteRelayToken: '',
@@ -429,5 +453,6 @@ module.exports = {
   normalizeLauncherConfigPatch,
   normalizeRemotePatch,
   normalizeRelayOrigin,
+  normalizeRemoteBindAddress,
   normalizeRemoteConfig,
 };

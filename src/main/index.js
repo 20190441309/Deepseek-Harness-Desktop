@@ -11,6 +11,7 @@ const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { RemoteGateway } = require('./remote');
+const { ensureTlsMaterial } = require('./remote-tls');
 const { invokeDesktopShell } = require('./remote-shell');
 const git = require('./git');
 const { listDir } = require('./workspace-fs');
@@ -62,6 +63,11 @@ const dsh = new DshManager();
 const remote = new RemoteGateway({
   getConfig: loadConfig,
   saveConfig,
+  // Persistent self-signed material: the fingerprint phones pin must survive
+  // restarts, so it lives under userData instead of the in-memory fallback.
+  getTlsMaterial: () => ensureTlsMaterial(
+    require('path').join(app.getPath('userData'), 'remote-tls'),
+  ),
   getTarget: () => {
     if (dsh.state !== 'ready') {
       return null;

@@ -50,15 +50,39 @@ function pairingUrl(address, port, token, options = {}) {
   if (mode === 'relay' && relay) {
     payload.relay = relay;
   }
+  const tls = mode === 'lan' && options.tls === true;
+  if (tls && typeof options.fp === 'string' && options.fp) {
+    // Certificate SHA-256 so native clients can pin the self-signed LAN cert.
+    payload.fp = options.fp;
+  }
   const encoded = encodeOffer(payload);
   if (mode === 'relay' && relay) {
     return `${relay}/#offer=${encoded}`;
   }
-  return `http://${address}:${Number(port) || 3180}/#offer=${encoded}`;
+  return `${tls ? 'https' : 'http'}://${address}:${Number(port) || 3180}/#offer=${encoded}`;
 }
 
-function publicUrl(address, port) {
-  return `http://${address}:${Number(port) || 3180}/`;
+function publicUrl(address, port, options = {}) {
+  return `${options.tls === true ? 'https' : 'http'}://${address}:${Number(port) || 3180}/`;
+}
+
+/**
+ * Addresses the pairing UI may advertise for one bind address:
+ * the wildcard exposes every LAN address, loopback only itself, and a
+ * specific NIC only that NIC (when it is still present).
+ * @param {string} bindAddress - normalized bind address from config.
+ * @param {string[]} [addresses] - detected LAN addresses (defaults to a live scan).
+ * @returns {string[]} addresses reachable through the current listener.
+ */
+function reachableAddresses(bindAddress, addresses = listLanAddresses()) {
+  const bind = String(bindAddress || '0.0.0.0');
+  if (bind === '0.0.0.0') {
+    return addresses;
+  }
+  if (bind === '127.0.0.1') {
+    return ['127.0.0.1'];
+  }
+  return addresses.includes(bind) ? [bind] : [bind];
 }
 
 module.exports = {
@@ -66,4 +90,5 @@ module.exports = {
   normalizeRelayOrigin,
   pairingUrl,
   publicUrl,
+  reachableAddresses,
 };

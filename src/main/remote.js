@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const net = require('net');
 const zlib = require('zlib');
 const fs = require('fs');
@@ -14,11 +15,35 @@ const {
   tokensEqual,
   matchingToken,
 } = require('../shared/remote-auth');
-const { listLanAddresses, pairingUrl, publicUrl } = require('../shared/lan');
+const { listLanAddresses, pairingUrl, publicUrl, reachableAddresses } = require('../shared/lan');
 const { createDevice, normalizeDevices, publicDevices } = require('../shared/remote-devices');
+const { generateTlsMaterial } = require('./remote-tls');
 const { RelayClient } = require('./relay-client');
 
 const DEFAULT_PORT = 3180;
+const DEFAULT_BIND_ADDRESS = '0.0.0.0';
+
+/** Bind addresses the gateway accepts; anything else falls back to default. */
+function normalizeBindAddress(value) {
+  const raw = String(value || '').trim();
+  if (raw === DEFAULT_BIND_ADDRESS) {
+    return raw;
+  }
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(raw)) {
+    return DEFAULT_BIND_ADDRESS;
+  }
+  return raw.split('.').every((part) => Number(part) <= 255) ? raw : DEFAULT_BIND_ADDRESS;
+}
+
+/**
+ * Address the desktop itself (relay client) uses to reach the local gateway:
+ * a wildcard or loopback bind is reachable via loopback; a specific NIC bind
+ * is only reachable at that NIC address.
+ */
+function localConnectHost(bindAddress) {
+  const bind = normalizeBindAddress(bindAddress);
+  return bind === DEFAULT_BIND_ADDRESS || bind === '127.0.0.1' ? '127.0.0.1' : bind;
+}
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -266,13 +291,30 @@ class RemoteGateway extends EventEmitter {
     this.port = 0;
     this.token = '';
     this.target = null;
+    this.bindAddress = DEFAULT_BIND_ADDRESS;
+    this.tlsActive = false;
+    this.tlsFingerprint = '';
     this.sockets = new Map();
     this.relayOp = 0;
     this.mobileWebRoot = options.mobileWebRoot || resolveMobileWebRoot();
     this.invokeShell = typeof options.invokeShell === 'function' ? options.invokeShell : null;
+    // Persistent material comes from index.js (userData/remote-tls). Without
+    // a provider (tests, bare gateway) an ephemeral in-memory certificate
+    // still encrypts the LAN hop; only fingerprint stability is lost.
+    this.getTlsMaterial = typeof options.getTlsMaterial === 'function'
+      ? options.getTlsMaterial
+      : () => {
+        if (!this._ephemeralTls) {
+          this._ephemeralTls = generateTlsMaterial({ addresses: listLanAddresses() });
+        }
+        return this._ephemeralTls;
+      };
+    this._ephemeralTls = null;
     this.relay = options.relay || new RelayClient({
       ...options.relayOptions,
-      getLocal: () => (this.port ? { port: this.port } : null),
+      getLocal: () => (this.port
+        ? { port: this.port, host: localConnectHost(this.bindAddress) }
+        : null),
       getHostToken: () => (this.getConfig() || {}).remoteRelayToken || '',
     });
     this.relay.on('connected', () => {
@@ -287,6 +329,16 @@ class RemoteGateway extends EventEmitter {
     const port = this.port || Number(config.remotePort) || DEFAULT_PORT;
     const mode = config.remoteMode === 'relay' ? 'relay' : 'lan';
     const relayUrl = config.remoteRelayUrl || '';
+    const bindAddress = normalizeBindAddress(config.remoteBindAddress);
+    const lanTls = mode === 'lan' && config.remoteLanTls === true;
+    let fingerprint = '';
+    if (lanTls) {
+      try {
+        fingerprint = (this.getTlsMaterial() || {}).fingerprint256 || '';
+      } catch {
+        fingerprint = '';
+      }
+    }
     const addresses = listLanAddresses();
     const relay = this.relay ? this.relay.snapshot() : { connected: false, url: '', error: '' };
     const relayDown = mode === 'relay' && Boolean(config.remoteEnabled) && !relay.connected;
@@ -297,6 +349,10 @@ class RemoteGateway extends EventEmitter {
       port,
       token,
       mode,
+      bindAddress,
+      lanTls,
+      tlsFingerprint: fingerprint,
+      addresses,
       relayUrl,
       relayConnected: Boolean(relay.connected),
       relayError: mode === 'relay' ? (relay.error || '') : '',
@@ -307,10 +363,15 @@ class RemoteGateway extends EventEmitter {
           : (this.error || ''),
       target: this.target,
       devices: publicDevices(this.storedDevices(), this.onlineDeviceIds()),
-      urls: addresses.map((address) => ({
+      urls: reachableAddresses(bindAddress, addresses).map((address) => ({
         address,
-        url: publicUrl(address, port),
-        pairingUrl: pairingUrl(address, port, token, { mode, relay: relayUrl }),
+        url: publicUrl(address, port, { tls: lanTls }),
+        pairingUrl: pairingUrl(address, port, token, {
+          mode,
+          relay: relayUrl,
+          tls: lanTls,
+          fp: fingerprint,
+        }),
       })),
     };
   }
@@ -458,9 +519,16 @@ class RemoteGateway extends EventEmitter {
     }
     const token = this.ensureToken();
     const port = Number(config.remotePort) || DEFAULT_PORT;
+    const bindAddress = normalizeBindAddress(config.remoteBindAddress);
+    // TLS covers only the LAN-facing listener. Relay mode keeps a plain local
+    // server: the phone-to-relay hop is already HTTPS end-to-end and the
+    // relay client reconnects to the local port without certificate trust.
+    const tls = config.remoteLanTls === true && config.remoteMode !== 'relay';
     const same = this.server
       && this.port === port
       && this.token === token
+      && this.bindAddress === bindAddress
+      && this.tlsActive === tls
       && this.target
       && this.target.port === target.port;
     if (same) {
@@ -470,7 +538,7 @@ class RemoteGateway extends EventEmitter {
       return this.snapshot();
     }
     await this.stop();
-    await this.start({ port, token, target });
+    await this.start({ port, token, target, bindAddress, tls });
     await this.syncRelay(config);
     return this.snapshot();
   }
@@ -502,7 +570,7 @@ class RemoteGateway extends EventEmitter {
     }
   }
 
-  async start({ port, token, target }) {
+  async start({ port, token, target, bindAddress, tls } = {}) {
     if (!token) {
       throw new Error('没有访问令牌时不能开放局域网');
     }
@@ -511,11 +579,25 @@ class RemoteGateway extends EventEmitter {
     }
     this.token = token;
     this.target = { host: '127.0.0.1', port: Number(target.port) };
+    this.bindAddress = normalizeBindAddress(bindAddress);
+    this.tlsActive = tls === true;
+    this.tlsFingerprint = '';
     this.error = '';
+    let tlsMaterial = null;
+    if (this.tlsActive) {
+      tlsMaterial = this.getTlsMaterial();
+      if (!tlsMaterial || !tlsMaterial.key || !tlsMaterial.cert) {
+        throw new Error('自签 TLS 证书不可用');
+      }
+      this.tlsFingerprint = tlsMaterial.fingerprint256 || '';
+    }
     await new Promise((resolve, reject) => {
-      const server = http.createServer((req, res) => {
+      const handler = (req, res) => {
         this.handleHttp(req, res);
-      });
+      };
+      const server = this.tlsActive
+        ? https.createServer({ key: tlsMaterial.key, cert: tlsMaterial.cert }, handler)
+        : http.createServer(handler);
       server.on('upgrade', (req, socket, head) => {
         this.handleUpgrade(req, socket, head);
       });
@@ -526,7 +608,7 @@ class RemoteGateway extends EventEmitter {
           reject(error);
         }
       });
-      server.listen(port, '0.0.0.0', () => {
+      server.listen(port, this.bindAddress, () => {
         this.server = server;
         this.port = server.address().port;
         this.emit('listening', this.snapshot());
@@ -546,6 +628,8 @@ class RemoteGateway extends EventEmitter {
     this.server = null;
     this.port = 0;
     this.target = null;
+    this.tlsActive = false;
+    this.tlsFingerprint = '';
     if (!server) {
       return;
     }
@@ -796,5 +880,8 @@ module.exports = {
   createDisabledRemote,
   rewriteProxyHeaders,
   shouldGzipProxy,
+  normalizeBindAddress,
+  localConnectHost,
   DEFAULT_PORT,
+  DEFAULT_BIND_ADDRESS,
 };
