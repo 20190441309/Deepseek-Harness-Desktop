@@ -52,3 +52,4 @@ Gate: <卡上 gates>
 | [session-archive](session-archive.md) | 归档隐藏；已归档里恢复/删除 | ui-workspace / workspace RPC | TC-CHAT-010、013 |
 | [git-titlebar](git-titlebar.md) | 标题栏分支/提交/推拉；登记工作区即授权 | `git.js` / workspace-authority | TC-WS-006、TC-GIT-001…007 |
 | [usage-stats](usage-stats.md) | 设置内跨会话 Token 用量；预置改版 dsh-usage-panel | `usage-panel-preset` / vendor 插件 | TC-EXT-008 |
+| [message-edit](message-edit.md) | 最新用户消息就地编辑并重发；fork-beforeSeq 子会话 | vendor `ui-message-edit` | vendor client spec + test:gui |
