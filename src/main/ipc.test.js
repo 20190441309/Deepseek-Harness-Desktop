@@ -149,6 +149,7 @@ function loadIpc(options = {}) {
     }),
     normalizeRendererConfigPatch: (patch) => patch || {},
     normalizeLauncherConfigPatch: (patch) => patch || {},
+    credentialStorageMode: options.credentialStorageMode || (() => 'encrypted'),
   });
   stub('./window', {
     getMainWindow: options.getMainWindow || (() => null),
@@ -789,6 +790,26 @@ test('shell:get-config includes the bound desktop DSH home', async () => {
     assert.equal(config.dshHome, path.resolve(home));
   } finally {
     ipc.restore();
+    clearDesktopDshHome();
+  }
+});
+
+test('shell:get-config exposes the credential storage mode for About diagnostics', async () => {
+  const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
+  setDesktopDshHome(path.join(os.tmpdir(), 'dsh-home-cred-view'));
+  const encrypted = loadIpc();
+  try {
+    const config = await encrypted.invoke('shell:get-config', harnessEvent());
+    assert.equal(config.credentialStorage, 'encrypted');
+  } finally {
+    encrypted.restore();
+  }
+  const plaintext = loadIpc({ credentialStorageMode: () => 'plaintext' });
+  try {
+    const config = await plaintext.invoke('shell:get-config', harnessEvent());
+    assert.equal(config.credentialStorage, 'plaintext');
+  } finally {
+    plaintext.restore();
     clearDesktopDshHome();
   }
 });

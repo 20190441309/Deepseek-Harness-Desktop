@@ -81,6 +81,11 @@ export type DesktopConfig = {
   closeToTray?: boolean
   autoStartDesktop?: boolean
   dshHome?: string
+  /**
+   * How the desktop persists credentials.json: `encrypted` via the OS
+   * keychain (safeStorage), or `plaintext` on platforms without one.
+   */
+  credentialStorage?: 'encrypted' | 'plaintext'
 } & Partial<HarnessRestartConfig>
 
 /** The preload-exposed desktop API surface used by the settings UI. */

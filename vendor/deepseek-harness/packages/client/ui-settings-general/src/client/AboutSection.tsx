@@ -38,6 +38,7 @@ export function AboutSection({ t }: AboutSectionProps): ReactNode {
   const [version, setVersion] = useState('')
   const [homePath, setHomePath] = useState('')
   const [homeError, setHomeError] = useState('')
+  const [credentialStorage, setCredentialStorage] = useState<'encrypted' | 'plaintext' | ''>('')
   const [busy, setBusy] = useState(false)
   const [percent, setPercent] = useState(0)
   const [status, setStatus] = useState<UpdateStatus>('idle')
@@ -99,6 +100,9 @@ export function AboutSection({ t }: AboutSectionProps): ReactNode {
     void shell.getConfig?.().then((config) => {
       if (!cancelled && config?.appVersion) setVersion(config.appVersion)
       if (!cancelled && typeof config?.dshHome === 'string') setHomePath(config.dshHome)
+      if (!cancelled && (config?.credentialStorage === 'encrypted' || config?.credentialStorage === 'plaintext')) {
+        setCredentialStorage(config.credentialStorage)
+      }
     }).catch(() => {})
     void check()
     const stop = shell.onUpdateProgress?.((payload) => {
@@ -146,6 +150,15 @@ export function AboutSection({ t }: AboutSectionProps): ReactNode {
           ) : (
             <p className={css.meta}>{t('about.desktopOnly')}</p>
           )}
+          {credentialStorage ? (
+            <p
+              className={credentialStorage === 'plaintext' ? css.status : css.meta}
+              role={credentialStorage === 'plaintext' ? 'status' : undefined}
+              data-dsh-credential-storage={credentialStorage}
+            >
+              {credentialStorage === 'encrypted' ? t('about.credEncrypted') : t('about.credPlaintext')}
+            </p>
+          ) : null}
           {shell?.openDshHome ? (
             <>
               {homePath ? <p className={css.meta}>{t('about.homePath', { path: homePath })}</p> : null}

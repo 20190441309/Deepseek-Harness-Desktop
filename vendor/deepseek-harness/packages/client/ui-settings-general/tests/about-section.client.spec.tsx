@@ -48,3 +48,41 @@ describe('AboutSection data folder', () => {
     expect(openDshHome.mock.calls[0]).toEqual([])
   })
 })
+
+describe('AboutSection credential storage', () => {
+  it('reports encrypted keychain storage as plain metadata', async () => {
+    ;(window as Window & { shell?: unknown }).shell = {
+      getConfig: async () => ({ appVersion: '0.2.7', credentialStorage: 'encrypted' }),
+    }
+    mount()
+    await waitFor(() => {
+      expect(screen.getByText(en['about.credEncrypted'])).toBeTruthy()
+    })
+    expect(screen.getByText(en['about.credEncrypted']).getAttribute('data-dsh-credential-storage')).toBe('encrypted')
+  })
+
+  it('surfaces the plaintext fallback as a visible status line', async () => {
+    ;(window as Window & { shell?: unknown }).shell = {
+      getConfig: async () => ({ appVersion: '0.2.7', credentialStorage: 'plaintext' }),
+    }
+    mount()
+    await waitFor(() => {
+      expect(screen.getByText(en['about.credPlaintext'])).toBeTruthy()
+    })
+    const line = screen.getByText(en['about.credPlaintext'])
+    expect(line.getAttribute('data-dsh-credential-storage')).toBe('plaintext')
+    expect(line.getAttribute('role')).toBe('status')
+  })
+
+  it('renders no credential line when the shell does not report a mode', async () => {
+    ;(window as Window & { shell?: unknown }).shell = {
+      getConfig: async () => ({ appVersion: '0.2.7', credentialStorage: 'weird' }),
+    }
+    mount()
+    await waitFor(() => {
+      expect(screen.getByText('Version 0.2.7')).toBeTruthy()
+    })
+    expect(screen.queryByText(en['about.credEncrypted'])).toBeNull()
+    expect(screen.queryByText(en['about.credPlaintext'])).toBeNull()
+  })
+})

@@ -7,6 +7,7 @@ const {
   saveConfig,
   publicConfig,
   parkRemoteSnapshot,
+  credentialStorageMode,
   normalizeRendererConfigPatch,
   normalizeLauncherConfigPatch,
 } = require('./config');
@@ -72,6 +73,9 @@ function configPayload(config) {
     repoUrl: REPO_URL,
     releasesUrl: RELEASES_PAGE,
     dshHome: tryGetDesktopDshHome(),
+    // About/diagnostics: whether credentials.json is protected by the OS
+    // keychain (safeStorage) or sits in the documented plaintext fallback.
+    credentialStorage: credentialStorageMode(),
   };
 }
 

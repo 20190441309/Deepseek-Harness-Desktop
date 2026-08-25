@@ -308,6 +308,16 @@ function readCredentials() {
   return plain;
 }
 
+/**
+ * User-visible credential storage mode for About / diagnostics:
+ * `encrypted` when safeStorage (OS keychain) protects credentials.json,
+ * `plaintext` on platforms where it falls back to a clear-text file
+ * (e.g. Linux without an unlocked keyring).
+ */
+function credentialStorageMode() {
+  return canEncryptCredentials() ? 'encrypted' : 'plaintext';
+}
+
 /** Persist credentials, encrypted via safeStorage whenever the OS allows. */
 function writeCredentials(data) {
   const file = credentialsPath();
@@ -445,6 +455,7 @@ module.exports = {
   defaultWorkspace,
   configPath,
   credentialsPath,
+  credentialStorageMode,
   setSafeStorageForTests,
   readDisabledPlugins,
   normalizeHarnessRecovery,
