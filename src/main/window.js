@@ -1,5 +1,6 @@
 const { BrowserView, BrowserWindow, shell, nativeImage } = require('electron');
 const { rendererFile, assetFile, preloadFile } = require('./paths');
+const { REMOTE_FEATURE_ENABLED } = require('./config');
 const { windowChrome, attachIntegratedChrome, hideNativeMenu, prepareHarnessChrome, syncHarnessChrome, currentTheme, officialShellBackground } = require('./chrome');
 const { normalizeSettingsSection, buildSettingsSectionScript } = require('./settings-jump');
 const {
@@ -311,7 +312,12 @@ function ensureHarnessView(win) {
   harnessView = new BrowserView({
     webPreferences: {
       preload: preloadFile(),
-      additionalArguments: ['--dshd-shell-role=harness'],
+      // The remote flag travels to the sandboxed preload via argv; the
+      // preload must not (and cannot) require src/main/config.js itself.
+      additionalArguments: [
+        '--dshd-shell-role=harness',
+        `--dshd-remote-feature=${REMOTE_FEATURE_ENABLED ? '1' : '0'}`,
+      ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

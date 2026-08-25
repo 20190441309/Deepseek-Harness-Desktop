@@ -47,7 +47,7 @@ function loadPreload(argv = ['electron']) {
   }
 }
 
-const { buildShellApi, shellRole } = loadPreload().exports;
+const { buildShellApi, shellRole, remoteFeatureEnabled } = loadPreload().exports;
 
 test('shellRole accepts only explicit desktop roles', () => {
   assert.equal(shellRole(['electron', '--dshd-shell-role=boot']), 'boot');
@@ -87,7 +87,7 @@ test('marketplace preload role is not exposed', () => {
 });
 
 test('harness preload keeps work loops and remote controls', () => {
-  const api = buildShellApi('harness', fakeRenderer());
+  const api = buildShellApi('harness', fakeRenderer(), true);
   assert.equal(typeof api.writeFile, 'function');
   assert.equal(typeof api.listEditors, 'function');
   assert.equal(typeof api.openInEditor, 'function');
@@ -163,13 +163,35 @@ test('boot preload omits guest preview IPC', () => {
   assert.equal(api.previewAutomationStatus, undefined);
 });
 
-test('preload remote flag stays in sync with config.js', () => {
-  const configSrc = fs.readFileSync(path.join(__dirname, '../main/config.js'), 'utf8');
+test('remote flag reaches the preload via additionalArguments, not a copy', () => {
+  // No hardcoded copy of REMOTE_FEATURE_ENABLED in the preload anymore.
   const preloadSrc = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  const configFlag = configSrc.match(/const REMOTE_FEATURE_ENABLED = (true|false);/);
-  const preloadFlag = preloadSrc.match(/const REMOTE_FEATURE_ENABLED = (true|false);/);
-  assert.ok(configFlag && preloadFlag);
-  assert.equal(preloadFlag[1], configFlag[1]);
+  assert.doesNotMatch(preloadSrc, /const REMOTE_FEATURE_ENABLED = (true|false);/);
+
+  // Main passes the config.js flag into the harness view argv.
+  const windowSrc = fs.readFileSync(path.join(__dirname, '../main/window.js'), 'utf8');
+  assert.match(windowSrc, /--dshd-remote-feature=\$\{REMOTE_FEATURE_ENABLED \? '1' : '0'\}/);
+
+  assert.equal(remoteFeatureEnabled(['electron', '--dshd-remote-feature=1']), true);
+  assert.equal(remoteFeatureEnabled(['electron', '--dshd-remote-feature=0']), false);
+  // Missing argument fails closed: remote methods stay hidden.
+  assert.equal(remoteFeatureEnabled(['electron']), false);
+});
+
+test('harness preload omits remote controls when the feature flag is off', () => {
+  for (const api of [
+    buildShellApi('harness', fakeRenderer(), false),
+    loadPreload(['electron', '--dshd-shell-role=harness']).exposed?.api,
+  ]) {
+    assert.ok(api);
+    assert.equal(api.getRemote, undefined);
+    assert.equal(api.saveRemote, undefined);
+    assert.equal(api.rotateRemoteToken, undefined);
+    assert.equal(api.unbindRemoteDevice, undefined);
+    assert.equal(typeof api.writeFile, 'function');
+  }
+  const enabled = loadPreload(['electron', '--dshd-shell-role=harness', '--dshd-remote-feature=1']).exposed?.api;
+  assert.equal(typeof enabled?.getRemote, 'function');
 });
 
 test('harness preload exposes installMarketplacePlugin and omits seed install draft', () => {

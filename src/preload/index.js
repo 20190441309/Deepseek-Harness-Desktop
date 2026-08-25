@@ -2,16 +2,22 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const SHELL_ROLES = new Set(['boot', 'harness', 'launcher']);
 
-// Keep in sync with REMOTE_FEATURE_ENABLED in src/main/config.js.
-// Preload cannot import that module. When false, omit the four
-// methods so ui-settings-remote does not register the sidebar icon.
-const REMOTE_FEATURE_ENABLED = true;
-
 function shellRole(argv = process.argv) {
   const prefix = '--dshd-shell-role=';
   const value = argv.find((item) => typeof item === 'string' && item.startsWith(prefix));
   const role = value ? value.slice(prefix.length) : '';
   return SHELL_ROLES.has(role) ? role : null;
+}
+
+// The remote feature switch lives in src/main/config.js
+// (REMOTE_FEATURE_ENABLED) and reaches this sandboxed preload through the
+// `additionalArguments` of the owning window/view. When off (or when the
+// argument is missing) the four remote methods are omitted so
+// ui-settings-remote does not register the sidebar icon.
+function remoteFeatureEnabled(argv = process.argv) {
+  const prefix = '--dshd-remote-feature=';
+  const value = argv.find((item) => typeof item === 'string' && item.startsWith(prefix));
+  return value ? value.slice(prefix.length) === '1' : false;
 }
 
 function invoke(renderer, channel) {
@@ -60,7 +66,7 @@ function bootApi(renderer) {
   };
 }
 
-function harnessApi(renderer) {
+function harnessApi(renderer, remoteFeature) {
   return {
     ...windowApi(renderer),
     ...configApi(renderer),
@@ -153,7 +159,7 @@ function harnessApi(renderer) {
     previewClose: invoke(renderer, 'shell:preview-close'),
     onPreviewStateChange: subscribe(renderer, 'shell:preview-state-change'),
     onOpenPreviewUrl: subscribe(renderer, 'shell:open-preview-url'),
-    ...(REMOTE_FEATURE_ENABLED ? {
+    ...(remoteFeature ? {
       getRemote: invoke(renderer, 'shell:get-remote'),
       saveRemote: invoke(renderer, 'shell:save-remote'),
       rotateRemoteToken: invoke(renderer, 'shell:rotate-remote-token'),
@@ -195,9 +201,9 @@ function launcherApi(renderer) {
   };
 }
 
-function buildShellApi(role, renderer) {
+function buildShellApi(role, renderer, remoteFeature = remoteFeatureEnabled()) {
   if (role === 'boot') return bootApi(renderer);
-  if (role === 'harness') return harnessApi(renderer);
+  if (role === 'harness') return harnessApi(renderer, remoteFeature);
   if (role === 'launcher') return launcherApi(renderer);
   return null;
 }
@@ -211,5 +217,5 @@ if (api) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildShellApi, shellRole };
+  module.exports = { buildShellApi, shellRole, remoteFeatureEnabled };
 }
