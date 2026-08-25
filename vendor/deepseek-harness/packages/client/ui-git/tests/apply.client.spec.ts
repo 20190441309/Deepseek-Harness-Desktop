@@ -111,6 +111,8 @@ describe('ui-git apply', () => {
     await expect(injected.openExternal('https://example.com')).resolves.toBe(false)
     expect(typeof injected.onGitProgress(() => {})).toBe('function')
     injected.onGitProgress(() => {})()
+    expect(typeof injected.onWorkspacesChanged(() => {})).toBe('function')
+    injected.onWorkspacesChanged(() => {})()
     await b.fiber.dispose()
   })
 })

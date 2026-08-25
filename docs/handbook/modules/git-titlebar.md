@@ -14,6 +14,7 @@
 
 - `git.js` 门面 + `git-exec.js`、`git-diff.js`、`git-remotes.js`、`git-pullrequest.js` 等。  
 - 进度事件 `shell:git-progress`。
+- 登记刷新事件 `shell:git-workspaces-changed`：`git-workspace-watch.js` 在主进程 watch `dsh-home/storages/`（目录级、防抖、缺失重试；武装成功且注册文件已存在时补发一次，覆盖重试间隙的单次写入），`workspace.json` 变更后推给 harness 窗口；ui-git 订阅（注入 `onWorkspacesChanged`）并即刻 `refresh`，消除首载「登记未落盘 → 状态不可用直到重新聚焦」的空窗。
 
 ## 实现入口
 
@@ -23,9 +24,12 @@
 ## 不变量
 
 - 行为对齐桌面已定 T3/标题栏契约；非仓库时降级而非假成功。
-- `shell:git-*` handler 抛错经 `git-ipc-guard.js` 兜底为该通道失败载荷（状态/diff → `null`，其余 → `{ok:false,message}`），renderer invoke 不 reject；进度 toast 不卡 loading。
+- `shell:git-*` handler 抛错经 `git-ipc-guard.js` 兜底为该通道失败载荷（状态/diff → `null`，其余 → `{ok:false,message}`），renderer invoke 不 reject；进度 toast 不卡 loading。`shell:open-workspace-path` 也在兜底内。
+- renderer 侧 `refresh()`/`settleStatus()` 后台 status/fetch/PR 刷新拒绝时按 `null`/`ok:false` 降级、保留上一份快照，不产生 unhandled rejection。
 - 切换到无本地同名的远端行走 `checkout --track --ignore-other-worktrees`，建本地跟踪分支而非 detached HEAD。
 - 分支列表 IPC 失败在菜单内区分错误与空列表（vendor ui-git `branch.listFailed`）。
+- `safeRefName` 白名单不放宽：白名单外的名字 `gitBranchList` 标 `switchable:false`，picker 禁用该行并提示；拒绝文案说明字符不可安全传递。
+- Windows 超时/输出超量用 `taskkill /PID /T /F` 杀 git 子进程树（`git-exec.js killProcessTree`），POSIX 用默认 `child.kill()`；taskkill 缺失/spawn 失败/非零退出一律回退 `child.kill()`。
 - Android 工作区胶囊走同一套 git IPC：已登录 `POST /__remote__/shell/git*`，不把 PTY / `writeFile` 暴露给手机。
 - Git cwd 授权读桌面 `dsh-home` 的工作区登记，允许启动目录的兄弟项目；拒绝把盘符根（`C:\`、`/`）写入白名单。
 

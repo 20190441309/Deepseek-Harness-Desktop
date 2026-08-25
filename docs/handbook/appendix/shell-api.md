@@ -61,7 +61,7 @@
 
 ### Git
 
-`gitStatus`、`gitFetchForStatus`、`gitReadPullRequest`、`gitInit`、`gitDiff`、`gitCommit`、`gitPush`、`gitPull`、`gitCreateChangeRequest`、`gitPublishRepository`、`gitStage`、`gitUnstage`、`gitDiscard`、`gitStatusEntries`、`gitBranchList`、`gitSwitchBranch`、`gitCreateBranch`、`onGitProgress` — channel 前缀 `shell:git-*` / `shell:git-progress`。
+`gitStatus`、`gitFetchForStatus`、`gitReadPullRequest`、`gitInit`、`gitDiff`、`gitCommit`、`gitPush`、`gitPull`、`gitCreateChangeRequest`、`gitPublishRepository`、`gitStage`、`gitUnstage`、`gitDiscard`、`gitStatusEntries`、`gitBranchList`、`gitSwitchBranch`、`gitCreateBranch`、`onGitProgress`、`onGitWorkspacesChanged` — channel 前缀 `shell:git-*` / `shell:git-progress` / `shell:git-workspaces-changed`（主进程监视 `dsh-home/storages/workspace.json`，登记变更后推送，标题栏据此立即刷新状态）。
 
 ### 工作区 FS
 

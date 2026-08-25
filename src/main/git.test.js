@@ -530,6 +530,57 @@ test('gitStatus accepts a second authorized git root and ignores an outsider rep
   }
 });
 
+// Automated stand-in for the packaged QA pair TC-WS-006 + TC-GIT-001's key
+// assertion (`qa:packaged` step `packaged.git.branchList`): a repository
+// registered in the harness `workspace.json` — a *sibling* of the boot
+// workspace, not its subdirectory — must resolve through the full
+// registration chain (readHarnessRegisteredWorkspacePaths →
+// filterRegisteredWorkspaceRoots → authority) and list its real branches.
+// This is a rehearsal, not the installed-package QA table itself.
+test('gitBranchList lists branches of a workspace.json-registered sibling repository', async () => {
+  const { readHarnessRegisteredWorkspacePaths, filterRegisteredWorkspaceRoots } = require('./workspace-authority');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-home-'));
+  const boot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-boot-'));
+  const sibling = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-sibling-'));
+  fs.mkdirSync(path.join(home, 'storages'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), JSON.stringify({
+    unit: { name: 'workspace' },
+    tables: { workspaces: { w1: { path: sibling } } },
+  }));
+  setWorkspaceAuthority(createWorkspaceAuthority({
+    workspace: boot,
+    listRegisteredWorkspaces: () => filterRegisteredWorkspaceRoots(
+      readHarnessRegisteredWorkspacePaths(home),
+    ),
+  }));
+  try {
+    git(sibling, ['init']);
+    git(sibling, ['config', 'user.email', 'git-test@example.com']);
+    git(sibling, ['config', 'user.name', 'Git Test']);
+    git(sibling, ['checkout', '-b', 'master']);
+    fs.writeFileSync(path.join(sibling, 'README.md'), 'sibling\n');
+    git(sibling, ['add', 'README.md']);
+    git(sibling, ['commit', '-m', 'init']);
+    git(sibling, ['branch', 'feature/qa']);
+    const listed = await gitBranchList(sibling);
+    assert.equal(listed.ok, true);
+    const current = listed.branches.find((row) => row.isCurrent);
+    assert.ok(current, 'the registered sibling must expose its current branch');
+    assert.equal(current.name, 'master');
+    assert.ok(listed.branches.some((row) => row.name === 'feature/qa'));
+    // The registration is the only trust root that admits the sibling: the
+    // same list without it is the authorization failure, not an empty repo.
+    setWorkspaceAuthority(createWorkspaceAuthority({ workspace: boot }));
+    const unauthorized = await gitBranchList(sibling);
+    assert.equal(unauthorized.ok, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
 test('gitStage rejects a path outside the workspace', async () => {
   const cwd = makeTempDir();
   try {

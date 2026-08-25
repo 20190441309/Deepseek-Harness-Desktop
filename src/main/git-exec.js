@@ -92,6 +92,12 @@ function killProcessTree(child, { platform = process.platform, spawnKiller = spa
       });
       // taskkill missing or unrunnable → at least kill the direct child.
       killer.on('error', () => { child.kill(); });
+      // taskkill ran but failed (access denied, and 128 = tree already gone):
+      // SIGTERM the direct child so the git process itself never survives a
+      // timeout. Killing an already-dead child is a no-op.
+      killer.on('exit', (code) => {
+        if (code !== 0) child.kill();
+      });
       killer.unref();
       return;
     } catch {

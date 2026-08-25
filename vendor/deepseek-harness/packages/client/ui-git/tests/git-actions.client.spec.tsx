@@ -94,6 +94,7 @@ function mount(opts: {
   gitCreateBranch?: GitActionsProps['gitCreateBranch']
   openWorkspacePath?: GitActionsProps['openWorkspacePath']
   onGitProgress?: GitActionsProps['onGitProgress']
+  onWorkspacesChanged?: GitActionsProps['onWorkspacesChanged']
   density?: GitActionsProps['density']
   titlebarGit?: boolean
   useTitlebarGit?: GitActionsProps['useTitlebarGit']
@@ -115,6 +116,7 @@ function mount(opts: {
   const gitCreateBranch = opts.gitCreateBranch ?? vi.fn(async () => ({ ok: true }))
   const openWorkspacePath = opts.openWorkspacePath ?? vi.fn(async () => ({ ok: true }))
   const onGitProgress = opts.onGitProgress ?? vi.fn(() => () => {})
+  const onWorkspacesChanged = opts.onWorkspacesChanged ?? vi.fn(() => () => {})
   const openExternal = vi.fn(async () => true)
   const view = render(
     <GitActionsControl
@@ -136,6 +138,7 @@ function mount(opts: {
       gitSwitchBranch={gitSwitchBranch}
       gitCreateBranch={gitCreateBranch}
       onGitProgress={onGitProgress}
+      onWorkspacesChanged={onWorkspacesChanged}
       openExternal={openExternal}
       openWorkspacePath={openWorkspacePath}
       useTitlebarGit={opts.useTitlebarGit ?? (sel => sel(opts.titlebarGit !== false))}
@@ -145,7 +148,7 @@ function mount(opts: {
   return {
     gitStatus, gitFetchForStatus, gitReadPullRequest, gitInit, gitCommit, gitPush, gitPull, gitCreateChangeRequest,
     gitPublishRepository, gitBranchList, gitSwitchBranch, gitCreateBranch, openWorkspacePath,
-    onGitProgress, openExternal, rerender: view.rerender,
+    onGitProgress, onWorkspacesChanged, openExternal, rerender: view.rerender,
   }
 }
 
@@ -293,6 +296,7 @@ describe('GitActionsControl', () => {
       gitSwitchBranch: vi.fn(async () => ({ ok: true })),
       gitCreateBranch: vi.fn(async () => ({ ok: true })),
       onGitProgress: vi.fn(() => () => {}),
+      onWorkspacesChanged: vi.fn(() => () => {}),
       openExternal: vi.fn(async () => true),
       openWorkspacePath: vi.fn(async () => ({ ok: true })),
       useTitlebarGit: sel => sel(true),
@@ -375,6 +379,63 @@ describe('GitActionsControl', () => {
     expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
     expect(screen.getByText('publish ipc dropped')).toBeTruthy()
     expect(await screen.findByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
+  })
+
+  it('recovers from an unauthorized first status read when the workspace registry signals', async () => {
+    let notify: (() => void) | undefined
+    const onWorkspacesChanged = vi.fn((handler: () => void) => {
+      notify = handler
+      return () => { notify = undefined }
+    })
+    // First read races the harness registry write and comes back null; after
+    // the registration lands, the same cwd resolves.
+    let registered = false
+    const gitStatus = vi.fn(async () => (registered ? status({ refName: 'feature/late' }) : null))
+    const gitFetchForStatus = vi.fn(async () => (registered ? status({ refName: 'feature/late' }) : null))
+    mount({ cwd: '/work', gitStatus, gitFetchForStatus, onWorkspacesChanged })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Commit' })
+    expect(main.disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Switch branch' })?.textContent ?? '').not.toContain('feature/late')
+    registered = true
+    act(() => { notify?.() })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Switch branch' }).textContent).toContain('feature/late')
+    })
+  })
+
+  it('unsubscribes from the registry signal when the session cwd goes away', async () => {
+    const unsubscribe = vi.fn()
+    const onWorkspacesChanged = vi.fn(() => unsubscribe)
+    const b = mount({ cwd: '/work', git: status(), onWorkspacesChanged })
+    await screen.findByRole('button', { name: 'Switch branch' })
+    expect(onWorkspacesChanged).toHaveBeenCalledTimes(1)
+    b.rerender(
+      <GitActionsControl
+        surfaces={0}
+        terminalDrawer={0}
+        useSessions={useSessionsStub(sessionList(undefined))}
+        useWorkspaces={neverWorkspaces}
+        gitStatus={b.gitStatus}
+        gitFetchForStatus={b.gitFetchForStatus}
+        gitReadPullRequest={b.gitReadPullRequest}
+        gitInit={b.gitInit}
+        gitCommit={b.gitCommit}
+        gitPush={b.gitPush}
+        gitPull={b.gitPull}
+        gitCreateChangeRequest={b.gitCreateChangeRequest}
+        gitPublishRepository={b.gitPublishRepository}
+        gitBranchList={b.gitBranchList}
+        gitSwitchBranch={b.gitSwitchBranch}
+        gitCreateBranch={b.gitCreateBranch}
+        onGitProgress={b.onGitProgress}
+        onWorkspacesChanged={onWorkspacesChanged}
+        openExternal={b.openExternal}
+        openWorkspacePath={b.openWorkspacePath}
+        useTitlebarGit={sel => sel(true)}
+        t={t}
+      />,
+    )
+    expect(unsubscribe).toHaveBeenCalled()
   })
 
   it('refreshes git status on window focus', async () => {

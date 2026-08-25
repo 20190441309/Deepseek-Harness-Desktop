@@ -55,6 +55,13 @@ export interface GitActionsInjected {
   gitPush: (cwd: string, actionId?: number) => Promise<GitResult>
   gitPull: (cwd: string, actionId?: number) => Promise<GitResult>
   onGitProgress: (handler: (event: GitProgressEvent) => void) => () => void
+  /**
+   * Desktop signal that the harness workspace registry changed (a workspace
+   * was registered or removed); returns the unsubscribe. The first status
+   * read after opening a workspace can race the registry write and come back
+   * unauthorized, and this signal is what recovers it without a window focus.
+   */
+  onWorkspacesChanged: (handler: () => void) => () => void
   gitCreateChangeRequest: (cwd: string, input?: { title?: string; body?: string }, actionId?: number) => Promise<GitResult>
   gitPublishRepository: (cwd: string, input: { name: string; visibility: 'public' | 'private'; remoteUrl?: string }, actionId?: number) => Promise<GitResult>
   gitBranchList: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: BranchRef[] }>
@@ -177,6 +184,7 @@ export function GitActionsControl({
   gitPush,
   gitPull,
   onGitProgress,
+  onWorkspacesChanged,
   gitCreateChangeRequest,
   gitPublishRepository,
   gitBranchList,
@@ -321,6 +329,16 @@ export function GitActionsControl({
     void refresh(cwd)
     return () => { refreshSeq.current += 1 }
   }, [cwd, gitStatus, gitFetchForStatus, gitReadPullRequest])
+
+  // A newly opened workspace is registered by the harness asynchronously, so
+  // the first status read can race that write and come back unauthorized
+  // (a null snapshot). The desktop pushes this signal when the registry file
+  // changes; re-read status immediately instead of leaving the titlebar
+  // unavailable until the next window focus.
+  useEffect(() => {
+    if (cwd === undefined) return
+    return onWorkspacesChanged(() => { void refresh(cwd) })
+  }, [cwd, onWorkspacesChanged, gitStatus, gitFetchForStatus, gitReadPullRequest])
 
   useEffect(() => {
     return onGitProgress((event) => {

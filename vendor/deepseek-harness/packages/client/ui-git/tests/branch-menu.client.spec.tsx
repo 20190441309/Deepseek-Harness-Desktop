@@ -256,6 +256,26 @@ describe('BranchMenu', () => {
     expect(b.gitSwitchBranch).not.toHaveBeenCalled()
   })
 
+  it('shows the unsupported-name hint tooltip on a disabled row', async () => {
+    mountMenu({
+      gitBranchList: vi.fn(async () => ({
+        ok: true,
+        branches: [
+          { name: 'main', isRemote: false, isCurrent: true },
+          { name: '_wip', isRemote: false, isCurrent: false, switchable: false },
+        ] satisfies BranchRef[],
+      })),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    const row = await screen.findByRole<HTMLButtonElement>('menuitem', { name: /_wip/ })
+    // The Menu wraps disabled hinted rows in a Tooltip anchor span; a disabled
+    // button swallows pointer events, so the hover target is that wrapper.
+    fireEvent.mouseEnter(row.parentElement!)
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'Name contains characters the desktop cannot pass to git safely.',
+    )
+  })
+
   it('disables the trigger while a stacked Git action holds the titlebar', () => {
     mountMenu({ disabled: true })
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(true)
