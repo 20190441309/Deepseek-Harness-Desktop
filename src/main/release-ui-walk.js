@@ -929,7 +929,7 @@ async function runReleaseUiWalk(wc, helpers) {
     return dshAssignFile(input, dshQaPngFile());
   });
   const cropOpened = localPicked
-    ? await waitUntil(() => pageEval(wc, () => Boolean(dshDialogNamed('调整背景图|crop wallpaper|crop'))), 8_000)
+    ? await waitUntil(() => pageEval(wc, () => Boolean(dshDialogNamed('调整背景图|adjust wallpaper|crop wallpaper|crop'))), 8_000)
     : false;
   if (cropOpened) {
     await clickNamed(wc, '使用此图片|use this image|^use$');
@@ -1015,7 +1015,7 @@ async function runReleaseUiWalk(wc, helpers) {
       await clickNamed(wc, '设为壁纸|set wallpaper');
     }
     const cropAfterGallery = await waitUntil(() => pageEval(wc, () =>
-      Boolean(dshDialogNamed('调整背景图|crop wallpaper|crop'))), 20_000);
+      Boolean(dshDialogNamed('调整背景图|adjust wallpaper|crop wallpaper|crop'))), 20_000);
     if (cropAfterGallery) {
       await clickNamed(wc, '使用此图片|use this image|^use$');
     }
