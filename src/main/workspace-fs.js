@@ -201,6 +201,19 @@ async function readFileMedia(cwd, relativePath) {
   return { ok: true, mime, base64: buf.toString('base64'), truncated };
 }
 
+/**
+ * True when any path segment is `.git` (case-insensitive: Windows/macOS
+ * filesystems resolve `.GIT` to the same node). listDir already hides `.git`;
+ * writes must not reach it either (L-4) — a save into `.git/hooks/…` or
+ * `.git/config` escalates to code execution on the next git invocation, and
+ * overwriting a `.git` gitlink file corrupts worktrees/submodules.
+ */
+function touchesGitDir(relativePath) {
+  return String(relativePath)
+    .split(/[\\/]+/)
+    .some((segment) => segment.toLowerCase() === '.git');
+}
+
 async function writeFile(cwd, relativePath, text) {
   if (typeof relativePath !== 'string' || relativePath.trim() === '') {
     return fail('File path is required.');
@@ -208,6 +221,9 @@ async function writeFile(cwd, relativePath, text) {
   if (typeof text !== 'string') return fail('File text is required.');
   if (Buffer.byteLength(text, 'utf8') > MAX_WRITE_BYTES) {
     return fail('File is too large to save from this panel.');
+  }
+  if (touchesGitDir(relativePath)) {
+    return fail('Saving inside .git is not allowed.');
   }
   const target = resolveInside(cwd, relativePath);
   if (!target) return fail('Path is outside the workspace.');

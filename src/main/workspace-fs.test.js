@@ -104,6 +104,40 @@ test('writeFile creates missing parent directories', async () => {
   }
 });
 
+test('L-4: writeFile rejects every path with a .git segment, keeps .gitignore/.github writable', async () => {
+  const cwd = makeTempDir();
+  try {
+    fs.mkdirSync(path.join(cwd, '.git'));
+    fs.writeFileSync(path.join(cwd, '.git', 'config'), '[core]\n');
+    const blocked = [
+      '.git/config',
+      '.git/hooks/pre-commit',
+      'sub/.git/config', // nested repo
+      '.GIT/config', // case-insensitive filesystems
+      '.git\\hooks\\post-checkout', // windows separators
+      'docs/../.git/config', // traversal into .git
+      '.git', // gitlink file overwrite (worktrees/submodules)
+    ];
+    for (const rel of blocked) {
+      const result = await writeFile(cwd, rel, 'pwned\n');
+      assert.equal(result.ok, false, `${rel} 必须被拒绝`);
+      assert.equal(result.message, 'Saving inside .git is not allowed.');
+    }
+    assert.equal(fs.readFileSync(path.join(cwd, '.git', 'config'), 'utf8'), '[core]\n', '.git/config 不得被改写');
+
+    // 名称仅前缀相似的路径仍可保存（产品契约：普通 dotfile 正常编辑）。
+    const gitignore = await writeFile(cwd, '.gitignore', 'dist/\n');
+    assert.equal(gitignore.ok, true);
+    const workflow = await writeFile(cwd, '.github/workflows/ci.yml', 'on: push\n');
+    assert.equal(workflow.ok, true);
+    const gitLikeName = await writeFile(cwd, 'src/git.txt', 'ok\n');
+    assert.equal(gitLikeName.ok, true);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('listDir hides gitignored names when git is available', async () => {
   const cwd = makeTempDir();
   try {
