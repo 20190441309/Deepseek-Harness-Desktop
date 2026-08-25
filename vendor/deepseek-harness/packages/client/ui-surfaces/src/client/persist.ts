@@ -6,8 +6,21 @@ import type { SessionSurfaces, Surface, SurfacesState } from './stores.ts'
 export const SURFACES_PERSIST_PREFIX = 'dsh-surfaces:v1:'
 
 const WRITE_DELAY_MS = 80
-/** Dirty draft bytes per field; matches workspace-fs utf8 write cap. */
-const DRAFT_MAX_CHARS = 512 * 1024
+/**
+ * Per-field cap for persisted dirty buffers, in UTF-8 bytes; aligned with the
+ * desktop workspace-fs 1 MiB write cap (`MAX_WRITE_BYTES`) so every draft that
+ * `writeFile` would accept also survives a reload.
+ */
+const DRAFT_MAX_BYTES = 1024 * 1024
+
+const utf8Encoder = new TextEncoder()
+
+function withinDraftCap(value: string): boolean {
+  // A JS string of N UTF-16 units encodes to at most 3N UTF-8 bytes, so most
+  // drafts skip the encode entirely.
+  if (value.length * 3 <= DRAFT_MAX_BYTES) return true
+  return utf8Encoder.encode(value).length <= DRAFT_MAX_BYTES
+}
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -188,7 +201,7 @@ function sanitizeDraft(raw: unknown): FileDraftBuffer | undefined {
   const entry = raw as { text?: unknown; draft?: unknown }
   if (typeof entry.text !== 'string' || typeof entry.draft !== 'string') return undefined
   if (entry.draft === entry.text) return undefined
-  if (entry.text.length > DRAFT_MAX_CHARS || entry.draft.length > DRAFT_MAX_CHARS) return undefined
+  if (!withinDraftCap(entry.text) || !withinDraftCap(entry.draft)) return undefined
   return { text: entry.text, draft: entry.draft }
 }
 

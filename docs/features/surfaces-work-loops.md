@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — FilesPanel `listDir` pending 不画 empty.dir |
+| **last verified** | 2026-08-25 — P3 显式保存竞态修复（coordinator `flush`，写盘中键入保持 dirty）；P2 `preview-automation-*` 全链删除（main/preload/ui-preview，测试钉缺席）；surfaces persist 草稿上限改按 UTF-8 字节对齐 1MiB 写上限 |
 
 ## User paths
 
@@ -21,8 +21,9 @@
 
 ## Allowed touch
 
-- Harness surfaces 相关 client 包（如 `ui-files`、browser/preview 接线）
+- Harness surfaces 相关 client 包（如 `ui-files`、`ui-surfaces`、browser/preview 接线）
 - `src/main/preview*.js`、`workspace-fs.js`（Files 供数）
+- `src/preload/index.js` 的 preview/surfaces 注入面（2026-08-25 硬化计划扩围，用于 automation 链删除）
 - 本卡与 handbook surfaces 章
 
 ## Do not touch
