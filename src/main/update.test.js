@@ -11,6 +11,7 @@ const crypto = require('node:crypto');
 const {
   summarizeRelease,
   installRelease,
+  installUpdate,
   checkUpdate,
   listReleases,
   getInstalledAppInfo,
@@ -568,4 +569,135 @@ test('launchUninstaller spawns the extracted exe without a shell', async () => {
 test('update.js no longer spawns through a shell', () => {
   const source = fs.readFileSync(path.join(__dirname, 'update.js'), 'utf8');
   assert.doesNotMatch(source, /shell:\s*true/);
+});
+
+// ---------------------------------------------------------------------------
+// M-3 回归护栏：两条安装入口的确认接线 + 非 Windows 分支
+// ---------------------------------------------------------------------------
+
+test('M-3: installUpdate 无 SHA512SUMS.txt 且未接确认时同样 fail-closed', async () => {
+  const previousFetch = global.fetch;
+  const fetched = [];
+  global.fetch = async (url) => {
+    fetched.push(String(url));
+    return { ok: true, status: 200, json: async () => releaseWithoutChecksum() };
+  };
+  try {
+    const result = await installUpdate();
+    assert.equal(result.launched, false);
+    assert.equal(result.declined, true);
+    assert.equal(result.unverified, true);
+    assert.equal(fetched.some((url) => url.includes('setup.exe')), false, '拒绝后不得开始下载');
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('M-3: ipc.js 两条安装通道都接 confirmUnverified，确认框默认与 Esc 均为取消', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ipc.js'), 'utf8');
+  assert.match(source, /handle\('shell:install-update'/);
+  assert.match(source, /handle\('shell:install-release'/);
+  const wired = source.match(/confirmUnverified:\s*confirmUnverifiedInstall/g) || [];
+  assert.ok(wired.length >= 2, `install-update 与 install-release 都必须显式接确认回调（发现 ${wired.length} 处）`);
+
+  const fn = source.match(/async function confirmUnverifiedInstall[\s\S]*?\n {2}\}/);
+  assert.ok(fn, 'ipc.js 必须保留 confirmUnverifiedInstall 确认函数');
+  assert.match(fn[0], /type:\s*'warning'/);
+  assert.match(fn[0], /defaultId:\s*1/, '回车默认必须是「取消」（fail-safe）');
+  assert.match(fn[0], /cancelId:\s*1/, 'Esc/关闭必须等同「取消」');
+  assert.match(fn[0], /response\s*===\s*0/, '只有明确点「仍要安装」才返回 true');
+});
+
+test('M-3: index.js 冷启动闸门的 installUpdate 同样接确认，且对话框 fail-safe', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  assert.match(
+    source,
+    /installUpdate:\s*\(onProgress\)\s*=>\s*installUpdate\(onProgress,\s*\{\s*\n?\s*confirmUnverified:\s*confirmUnverifiedColdStart/,
+    '冷启动闸门必须把 confirmUnverifiedColdStart 传给 installUpdate',
+  );
+  const fn = source.match(/async function confirmUnverifiedColdStart[\s\S]*?\n\}/);
+  assert.ok(fn, 'index.js 必须保留 confirmUnverifiedColdStart 确认函数');
+  assert.match(fn[0], /type:\s*'warning'/);
+  assert.match(fn[0], /defaultId:\s*1/, '回车默认必须是「取消」（fail-safe）');
+  assert.match(fn[0], /cancelId:\s*1/, 'Esc/关闭必须等同「取消」');
+  assert.match(fn[0], /response\s*===\s*0/);
+});
+
+test('M-3: 非 Windows 下 discoverWindowsInstall 不查注册表、分支正确', () => {
+  const regCalls = [];
+  const execSpy = (...args) => {
+    regCalls.push(args);
+    throw new Error('should not be called');
+  };
+
+  const unpackaged = discoverWindowsInstall({
+    platform: 'linux',
+    isPackaged: false,
+    existsSync: () => true,
+    execFileSync: execSpy,
+  });
+  assert.equal(unpackaged.registered, false);
+  assert.equal(unpackaged.uninstallMode, 'none');
+  assert.equal(unpackaged.installPath, '');
+  assert.equal(unpackaged.uninstallCommand, '');
+
+  const packaged = discoverWindowsInstall({
+    platform: 'darwin',
+    isPackaged: true,
+    existsSync: () => true,
+    execFileSync: execSpy,
+  });
+  assert.equal(packaged.registered, true);
+  assert.equal(packaged.uninstallMode, 'none');
+  assert.equal(typeof packaged.installPath, 'string');
+  assert.ok(packaged.installPath.length > 0, 'packaged 下应给出运行目录');
+
+  assert.equal(regCalls.length, 0, '非 win32 平台绝不能执行 reg query');
+});
+
+test('M-3: 非 Windows 打包运行时 launchUninstaller 返回 uninstaller-not-found 且不 spawn', async () => {
+  const spawns = [];
+  const result = await launchUninstaller({
+    platform: 'linux',
+    isPackaged: true,
+    existsSync: () => true,
+    execFileSync: () => { throw new Error('should not be called'); },
+    spawn: (...args) => {
+      spawns.push(args);
+      return { unref() {} };
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'uninstaller-not-found');
+  assert.match(result.message, /设置 → 应用/);
+  assert.equal(spawns.length, 0, '非 Windows 下不得拉起任何卸载进程');
+});
+
+test('M-3: 非 Windows 源码运行时 launchUninstaller 返回 source-run-no-install 且不 spawn', async () => {
+  const spawns = [];
+  const result = await launchUninstaller({
+    platform: 'linux',
+    isPackaged: false,
+    existsSync: () => true,
+    execFileSync: () => { throw new Error('should not be called'); },
+    spawn: (...args) => {
+      spawns.push(args);
+      return { unref() {} };
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'source-run-no-install');
+  assert.equal(spawns.length, 0);
+});
+
+test('M-3: 非 Windows getInstalledAppInfo 不暴露可用卸载入口', () => {
+  const info = getInstalledAppInfo({
+    platform: 'linux',
+    isPackaged: true,
+    existsSync: () => true,
+    execFileSync: () => { throw new Error('should not be called'); },
+  });
+  assert.equal(info.packaged, true);
+  assert.equal(info.uninstallAvailable, false);
+  assert.equal(info.uninstallUsesSettings, false);
 });

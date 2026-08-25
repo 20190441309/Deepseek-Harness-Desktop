@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
+| **last verified** | 2026-08-25 — H-1/M-3 回归护栏落地：静态断言钉死「index.js 无 `globalShortcut`、DevTools 走 `web-contents-created` 窗口级门禁」与「两条安装通道 + 冷启动闸门都接 `confirmUnverified`，确认框 `defaultId/cancelId=1` fail-safe」；非 Windows 分支单测（`launchUninstaller` linux/darwin 源码运行 → `source-run-no-install`、packaged → `uninstaller-not-found`，绝不 spawn、不查注册表）。同日早些：无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
 
 ## User paths
 
