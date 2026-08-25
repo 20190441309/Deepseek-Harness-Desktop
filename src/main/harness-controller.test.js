@@ -239,23 +239,28 @@ test('logs and continues when the dshmarket preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /dshmarket/.test(line) && /offline/.test(line)));
 });
 
-test('ensures dshbot after dshmarket and before Harness start', async () => {
-  const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
-  if (!DSHBOT_FEATURE_ENABLED) {
-    const order = [];
-    const f = fixture({
-      hideDshbotPlugin: async () => {
-        order.push('dshbot-hide');
-        return { ok: true, stripped: true };
-      },
-    });
-    await f.controller.start();
-    assert.ok(order.includes('dshbot-hide'));
-    assert.ok(f.dsh.logs.some((line) => /Bots 功能已隐藏|dshbot 未加载/.test(line)));
-    return;
-  }
+test('default start cleans dshbot preset residue instead of ensuring it', async () => {
   const order = [];
   const f = fixture({
+    ensureDshbotPlugin: async () => {
+      order.push('dshbot-ensure');
+      return { ok: true, added: true };
+    },
+    removeDshbotPreset: async () => {
+      order.push('dshbot-cleanup');
+      return { ok: true, changed: true, stripped: true };
+    },
+  });
+  await f.controller.start();
+  assert.deepEqual(order, ['dshbot-cleanup']);
+  assert.equal(f.dsh.startCalls, 1);
+  assert.ok(f.dsh.logs.some((line) => /已清理 dshbot 桌面预置残留/.test(line)));
+});
+
+test('config dshbotPreset opts into the dev preset without blocking start', async () => {
+  const order = [];
+  const f = fixture({
+    initialConfig: { dshbotPreset: true },
     ensureDesktopInstallPlugin: () => {
       order.push('desktop-install');
       return { ok: true };
@@ -272,9 +277,9 @@ test('ensures dshbot after dshmarket and before Harness start', async () => {
       order.push('dshbot-ensure');
       return { ok: true, added: true };
     },
-    hideDshbotPlugin: async () => {
-      order.push('dshbot-hide');
-      return { ok: true, stripped: true };
+    removeDshbotPreset: async () => {
+      order.push('dshbot-cleanup');
+      return { ok: true, changed: false };
     },
     applyDisabledBundles: () => {
       order.push('disabled-bundles');
@@ -288,26 +293,26 @@ test('ensures dshbot after dshmarket and before Harness start', async () => {
   };
   await f.controller.start();
   assert.deepEqual(order, ['desktop-install', 'dshmarket', 'usage-panel', 'dshbot-ensure', 'disabled-bundles', 'start']);
-  assert.ok(f.dsh.logs.some((line) => /已预置 dshbot/.test(line)));
+  assert.ok(f.dsh.logs.some((line) => /已预置 dshbot（开发模式）/.test(line)));
 });
 
-test('skip-user-plugins hides dshbot instead of ensuring it', async () => {
+test('skip-user-plugins never ensures dshbot even when the dev preset is on', async () => {
   const order = [];
   const f = fixture({
+    initialConfig: { dshbotPreset: true },
     ensureDshbotPlugin: async () => {
       order.push('dshbot-ensure');
       return { ok: true, added: true };
     },
-    hideDshbotPlugin: async () => {
-      order.push('dshbot-hide');
-      return { ok: true, stripped: true };
+    removeDshbotPreset: async () => {
+      order.push('dshbot-cleanup');
+      return { ok: true, changed: false };
     },
   });
   f.controller.writePluginSkip(new Error('recovery'));
   await f.controller.start();
-  assert.deepEqual(order, ['dshbot-hide']);
+  assert.deepEqual(order, ['dshbot-cleanup']);
   assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
-  assert.ok(f.dsh.logs.some((line) => /暂隐 dshbot/.test(line)));
 });
 
 test('logs and continues when the usage-panel preset fails', async () => {
@@ -319,21 +324,14 @@ test('logs and continues when the usage-panel preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /用量统计/.test(line) && /missing-zod/.test(line)));
 });
 
-test('refuses to start Harness when ensuring dshbot fails', async () => {
-  const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
-  if (!DSHBOT_FEATURE_ENABLED) {
-    const f = fixture({
-      ensureDshbotPlugin: async () => ({ ok: false, error: 'missing-source:package.json' }),
-    });
-    await f.controller.start();
-    assert.equal(f.dsh.startCalls, 1);
-    return;
-  }
+test('logs and continues when the dshbot dev preset fails', async () => {
   const f = fixture({
+    initialConfig: { dshbotPreset: true },
     ensureDshbotPlugin: async () => ({ ok: false, error: 'missing-source:package.json' }),
   });
-  await assert.rejects(() => f.controller.start(), /dshbot|missing-source/);
-  assert.equal(f.dsh.startCalls, 0);
+  await f.controller.start();
+  assert.equal(f.dsh.startCalls, 1);
+  assert.ok(f.dsh.logs.some((line) => /dshbot（开发模式）失败/.test(line) && /missing-source/.test(line)));
 });
 
 test('plugin-tree startup failure retries once with the official template overlay', async () => {

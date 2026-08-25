@@ -1,6 +1,6 @@
 const EventEmitter = require('events');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
-const { DSHBOT_FEATURE_ENABLED } = require('./dshbot-preset');
+const { isDshbotPresetEnabled } = require('./dshbot-preset');
 
 const DEFAULT_STABLE_MS = 60_000;
 const MAX_RESTART_DELAY_MS = 30_000;
@@ -50,8 +50,8 @@ class HarnessController extends EventEmitter {
       || (async () => ({ ok: true, added: false }));
     this.ensureDshbotPlugin = options.ensureDshbotPlugin
       || (async () => ({ ok: true, added: false }));
-    this.hideDshbotPlugin = options.hideDshbotPlugin
-      || (async () => ({ ok: true, stripped: false }));
+    this.removeDshbotPreset = options.removeDshbotPreset
+      || (async () => ({ ok: true, changed: false }));
     this.applyDisabledBundles = options.applyDisabledBundles
       || (() => ({ ok: true, changed: false }));
     this.ensureWorkspace = options.ensureWorkspace;
@@ -446,29 +446,33 @@ class HarnessController extends EventEmitter {
     } else {
       this.dsh.log('跳过用户插件：不预置市场与用量统计插件', 'app');
     }
-    // Skip-user-plugins and parked dshbot both hide the Bots tab without failing start.
-    if (skipUserPlugins || !DSHBOT_FEATURE_ENABLED) {
+    // dshbot is a standalone plugin: never force-ensured, never blocks start.
+    // Default starts only clean legacy desktop-preset residue (user installs
+    // via `dsh plugin add` stay untouched); config `dshbotPreset: true` keeps
+    // a dev copy of the workspace package refreshed, log-only on failure.
+    if (!skipUserPlugins && isDshbotPresetEnabled(this.loadConfig() || {})) {
       try {
-        const hidden = await this.hideDshbotPlugin();
+        const dshbot = await this.ensureDshbotPlugin();
         this.assertOperationCurrent(generation);
-        if (hidden && hidden.ok === false) {
-          this.dsh.log(`隐藏 dshbot 失败：${hidden.error || 'unknown'}`, 'app');
-        } else if (skipUserPlugins) {
-          this.dsh.log('跳过用户插件：已暂隐 dshbot，恢复完整插件后再加载', 'app');
-        } else {
-          this.dsh.log('Bots 功能已隐藏（dshbot 未加载）', 'app');
+        if (dshbot && dshbot.ok === false) {
+          this.dsh.log(`预置 dshbot（开发模式）失败：${dshbot.error || 'unknown'}`, 'app');
+        } else if (dshbot) {
+          this.dsh.log(dshbot.added ? '已预置 dshbot（开发模式）' : 'dshbot 开发预置已就绪', 'app');
         }
       } catch (error) {
-        this.dsh.log(`隐藏 dshbot 失败：${errorMessage(error)}`, 'app');
+        this.dsh.log(`预置 dshbot（开发模式）失败：${errorMessage(error)}`, 'app');
       }
     } else {
-      const dshbot = await this.ensureDshbotPlugin();
-      this.assertOperationCurrent(generation);
-      if (dshbot && dshbot.ok === false) {
-        throw new Error(`预置 dshbot 失败：${dshbot.error || 'unknown'}`);
-      }
-      if (dshbot && dshbot.ok !== false) {
-        this.dsh.log(dshbot.added ? '已预置 dshbot 侧栏入口' : 'dshbot 预置已就绪', 'app');
+      try {
+        const removed = await this.removeDshbotPreset();
+        this.assertOperationCurrent(generation);
+        if (removed && removed.ok === false) {
+          this.dsh.log(`清理 dshbot 预置残留失败：${removed.error || 'unknown'}`, 'app');
+        } else if (removed && removed.changed) {
+          this.dsh.log('已清理 dshbot 桌面预置残留（独立安装的 dshbot 不受影响）', 'app');
+        }
+      } catch (error) {
+        this.dsh.log(`清理 dshbot 预置残留失败：${errorMessage(error)}`, 'app');
       }
     }
     try {

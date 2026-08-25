@@ -66,10 +66,6 @@
           "dshmarket/**",
           "dsh-usage-panel/**"
         ]
-      },
-      {
-        "from": "vendor/dshbot",
-        "to": "vendor/dshbot"
       }
     ],
     "extraMetadata": {
