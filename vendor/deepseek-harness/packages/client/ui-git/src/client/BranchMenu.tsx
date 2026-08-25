@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import {
+  FlipText,
   IconBranchOutline16,
   IconChevronDownOutline14,
   IconPlusOutline16,
@@ -60,6 +61,8 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [refs, setRefs] = useState<BranchRef[] | null>(null)
+  /** Last list failure detail; `null` means the list loaded (or is loading). */
+  const [listError, setListError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
@@ -71,6 +74,13 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
     }
   }, [disabled])
 
+  // A workspace change invalidates the cached rows; the next open must not
+  // flash the previous repository's branches.
+  useEffect(() => {
+    setRefs(null)
+    setListError(null)
+  }, [cwd])
+
   useEffect(() => {
     if (!open) {
       setQuery('')
@@ -78,11 +88,22 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
     }
     let cancelled = false
     if (cwd === undefined) return
+    setListError(null)
     void gitBranchList(cwd).then((result) => {
       if (cancelled) return
-      // List failure keeps an empty open menu. Reporting it through onError
-      // mounts the Git toast over the titlebar trigger and covers the picker.
-      setRefs(result.ok ? result.branches ?? [] : [])
+      // List failure stays inside the open menu as an error row. Reporting it
+      // through onError would mount the Git toast over the titlebar trigger
+      // and cover the picker.
+      if (result.ok) {
+        setRefs(result.branches ?? [])
+        return
+      }
+      setRefs(null)
+      setListError(result.message?.trim() ?? '')
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      setRefs(null)
+      setListError(error instanceof Error ? error.message.trim() : '')
     })
     return () => { cancelled = true }
   }, [open, cwd, gitBranchList])
@@ -100,10 +121,14 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
       createBranchItemValue: createValue,
     }))
 
-  const runAction = (action: () => Promise<void>): void => {
+  const runAction = (failTitle: string, action: () => Promise<void>): void => {
     if (disabled || busy || cwd === undefined) return
     setBusy(true)
-    void action().finally(() => {
+    void action().catch((error: unknown) => {
+      // A rejected switch/create IPC promise surfaces on the Git toast like
+      // an ok:false result instead of dying as an unhandled rejection.
+      onError(error instanceof Error && error.message.trim() !== '' ? error.message : t('branch.error'), failTitle)
+    }).finally(() => {
       setBusy(false)
       onChanged()
     })
@@ -111,7 +136,7 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
 
   const onSwitch = (name: string): void => {
     if (cwd === undefined) return
-    runAction(async () => {
+    runAction(t('branch.switchFailed'), async () => {
       const result = await gitSwitchBranch(cwd, name)
       if (!result.ok) onError(result.message ?? t('branch.error'), t('branch.switchFailed'))
     })
@@ -122,20 +147,30 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
     if (cwd === undefined || trimmed.length === 0 || localNames.has(trimmed)) return
     setCreateOpen(false)
     setCreateName('')
-    runAction(async () => {
+    runAction(t('branch.createFailed'), async () => {
       const result = await gitCreateBranch(cwd, trimmed)
       if (!result.ok) onError(result.message ?? t('branch.error'), t('branch.createFailed'))
     })
   }
 
   const label = currentRef ?? t('branch.select')
-  const items = rows.length === 0 && refs !== null
-    ? [{ type: 'label' as const, id: 'empty', text: t('branch.empty') }]
-    : rows.map(ref => ({
-      id: ref.name,
-      label: ref.name,
-      disabled: disabled || busy || ref.isCurrent,
-    }))
+  // A failed list is an error row, never the "no matching branches" empty
+  // state: an IPC/authorization failure is not an empty repository.
+  const items = listError !== null
+    ? [
+      { type: 'label' as const, id: 'list-failed', text: t('branch.listFailed') },
+      ...(listError === '' ? [] : [{ type: 'label' as const, id: 'list-failed-detail', text: listError }]),
+    ]
+    : rows.length === 0 && refs !== null
+      ? [{ type: 'label' as const, id: 'empty', text: t('branch.empty') }]
+      : rows.map(ref => ({
+        id: ref.name,
+        label: ref.name,
+        disabled: disabled || busy || ref.isCurrent || ref.switchable === false,
+        // Desktop-unsupported name: the row stays listed (the branch exists)
+        // but cannot be switched to, and the hint says why.
+        ...(ref.switchable === false ? { hint: t('branch.unsupportedName') } : {}),
+      }))
 
   return (
     <>
@@ -178,7 +213,7 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
             onClick={() => { setOpen(next => !next) }}
           >
             <IconBranchOutline16 size={14} />
-            {compact ? null : <span className={css.name}>{label}</span>}
+            {compact ? null : <FlipText text={label} className={css.name} />}
             <IconChevronDownOutline14 size={14} />
           </button>
         )}

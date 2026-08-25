@@ -26,7 +26,7 @@
 - 跳过与重试路径必须可测、可导出日志。  
 - 造障类 QA 不得静默标 Pass。
 - 官方 `~/.dsh` 隔离（[dsh-home.md](dsh-home.md)）不能代替跳过**桌面** `dsh-home` 里的用户插件。
-- 预置包 `dshmarket` / `dsh-usage-panel` 不允许删除；官方模板 bundle 不允许禁用。
+- 预置包 `dsh-usage-panel` 不允许删除；官方模板 bundle 不允许禁用。市场已内置为桌面自有代码，`dshmarket` 不再是预置包。
 
 ## 门槛
 

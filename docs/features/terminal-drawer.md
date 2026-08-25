@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — B1 pin `copy-ghostty-assets.mjs`（d55468de11）；0.2.7 `%APPDATA%\Deepseek-Harness-Desktop\runtime\0.2.7\…\lib\assets\` 含 ghostty wasm + Nerd Font；`127.0.0.1:3080`（0.2.7 `dsh web`）三 URL 均 200；验收合同 CI 安装包全表 |
+| **last verified** | 2026-08-25 — 硬化：`` Ctrl+` `` 在 Ghostty 焦点内切抽屉（`[data-terminal-pane]` 取代 `.xterm`）；reload/`render-process-gone` 收割 sender 名下 PTY；keep-alive 语义写入本卡与 handbook；`pty.test.js` 17 绿 + ui-titlebar/ui-user-terminal spec 绿 + `qa:source` terminal 步骤 PASS。（前次 2026-08-23：B1 pin `copy-ghostty-assets.mjs`；0.2.7 安装包 ghostty wasm + Nerd Font 三 URL 200） |
 
 ## User paths
 
@@ -17,6 +17,8 @@
 - 终端是工作环，不是空态说明卡片。
 - PTY 由桌面 `pty.js` 提供；UI 为官方终端组件语言（等宽网格 / Ghostty）。
 - `libghostty-vt` wasm 必须能从 `/plugins/<id>/assets/` 读到；源码启动会校验并把 wasm 拷到 `lib/assets`，缺则拒绝启动。
+- PTY 生命周期：关抽屉 / 关 surface tab / 切会话都**不** kill（进程保活，回来还在）；kill 只发生在终端 UI 的垃圾桶按钮与 app 退出；renderer reload / 崩溃（`render-process-gone` / 跨文档导航）时 main 收割该 renderer 名下全部 PTY，不留孤儿。
+- `` Ctrl+` `` 在 Ghostty 终端焦点内也切换抽屉（beforeKey 放行给 titlebar window 监听）。
 - 不做未承诺的 GPU 终端嵌入。
 
 ## Allowed touch
@@ -24,6 +26,7 @@
 - `src/main/pty.js` 及 PTY 相关测试
 - `src/main/dsh.js`、`src/shared/ghostty-assets.js` 及对应测试（源码启动 Ghostty 校验/拷贝）
 - Harness `ui-user-terminal`（及桌面接线）
+- Harness `ui-titlebar` 的 keybindings / PanelToggles（面板快捷键判定，2026-08-25 硬化计划扩围）
 - 本卡与 handbook terminal 章
 
 ## Do not touch

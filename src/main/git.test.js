@@ -530,6 +530,57 @@ test('gitStatus accepts a second authorized git root and ignores an outsider rep
   }
 });
 
+// Automated stand-in for the packaged QA pair TC-WS-006 + TC-GIT-001's key
+// assertion (`qa:packaged` step `packaged.git.branchList`): a repository
+// registered in the harness `workspace.json` — a *sibling* of the boot
+// workspace, not its subdirectory — must resolve through the full
+// registration chain (readHarnessRegisteredWorkspacePaths →
+// filterRegisteredWorkspaceRoots → authority) and list its real branches.
+// This is a rehearsal, not the installed-package QA table itself.
+test('gitBranchList lists branches of a workspace.json-registered sibling repository', async () => {
+  const { readHarnessRegisteredWorkspacePaths, filterRegisteredWorkspaceRoots } = require('./workspace-authority');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-home-'));
+  const boot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-boot-'));
+  const sibling = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-git-sibling-'));
+  fs.mkdirSync(path.join(home, 'storages'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), JSON.stringify({
+    unit: { name: 'workspace' },
+    tables: { workspaces: { w1: { path: sibling } } },
+  }));
+  setWorkspaceAuthority(createWorkspaceAuthority({
+    workspace: boot,
+    listRegisteredWorkspaces: () => filterRegisteredWorkspaceRoots(
+      readHarnessRegisteredWorkspacePaths(home),
+    ),
+  }));
+  try {
+    git(sibling, ['init']);
+    git(sibling, ['config', 'user.email', 'git-test@example.com']);
+    git(sibling, ['config', 'user.name', 'Git Test']);
+    git(sibling, ['checkout', '-b', 'master']);
+    fs.writeFileSync(path.join(sibling, 'README.md'), 'sibling\n');
+    git(sibling, ['add', 'README.md']);
+    git(sibling, ['commit', '-m', 'init']);
+    git(sibling, ['branch', 'feature/qa']);
+    const listed = await gitBranchList(sibling);
+    assert.equal(listed.ok, true);
+    const current = listed.branches.find((row) => row.isCurrent);
+    assert.ok(current, 'the registered sibling must expose its current branch');
+    assert.equal(current.name, 'master');
+    assert.ok(listed.branches.some((row) => row.name === 'feature/qa'));
+    // The registration is the only trust root that admits the sibling: the
+    // same list without it is the authorization failure, not an empty repo.
+    setWorkspaceAuthority(createWorkspaceAuthority({ workspace: boot }));
+    const unauthorized = await gitBranchList(sibling);
+    assert.equal(unauthorized.ok, false);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(boot, { recursive: true, force: true });
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
 test('gitStage rejects a path outside the workspace', async () => {
   const cwd = makeTempDir();
   try {
@@ -610,6 +661,35 @@ test('gitBranchList marks the current branch and gitSwitchBranch/gitCreateBranch
   }
 });
 
+test('gitBranchList flags names outside the switch whitelist instead of hiding them', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'x\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    // Git accepts a leading underscore; safeRefName does not.
+    git(cwd, ['branch', '_wip']);
+
+    const listed = await gitBranchList(cwd);
+    assert.equal(listed.ok, true, listed.message);
+    const flagged = listed.branches.find((item) => item.name === '_wip');
+    assert.ok(flagged, 'the unsupported branch stays listed');
+    assert.equal(flagged.switchable, false);
+    const main = listed.branches.find((item) => item.name === 'main');
+    assert.equal('switchable' in main, false, 'supported names carry no switchable key');
+
+    const switched = await gitSwitchBranch(cwd, '_wip');
+    assert.equal(switched.ok, false);
+    assert.match(switched.message, /characters the desktop cannot pass to git safely/);
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitSwitchBranch checks out a branch already used by another worktree', async () => {
   const cwd = makeTempDir();
   const linked = path.join(cwd, 'linked');
@@ -638,6 +718,35 @@ test('gitSwitchBranch checks out a branch already used by another worktree', asy
   }
 });
 
+test('gitSwitchBranch on a remote-tracking ref creates the local branch instead of detaching HEAD', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'x\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['init', '--bare', 'remote.git']);
+    git(cwd, ['remote', 'add', 'origin', path.join(cwd, 'remote.git')]);
+    git(cwd, ['checkout', '-b', 'feature-x']);
+    git(cwd, ['push', 'origin', 'feature-x']);
+    git(cwd, ['checkout', 'main']);
+    git(cwd, ['branch', '-D', 'feature-x']);
+
+    const switched = await gitSwitchBranch(cwd, 'origin/feature-x');
+    assert.equal(switched.ok, true, switched.message);
+    assert.equal(switched.refName, 'feature-x');
+    const head = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf8', windowsHide: true });
+    assert.equal(head.stdout.trim(), 'feature-x');
+    const upstream = spawnSync('git', ['rev-parse', '--abbrev-ref', 'feature-x@{upstream}'], { cwd, encoding: 'utf8', windowsHide: true });
+    assert.equal(upstream.stdout.trim(), 'origin/feature-x');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => {
   const cwd = makeTempDir();
   try {
@@ -645,8 +754,10 @@ test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => 
     for (const bad of ['../evil', '-b', 'x..y', 'a/.lock', '']) {
       const switched = await gitSwitchBranch(cwd, bad);
       assert.equal(switched.ok, false, bad);
+      assert.match(switched.message, /characters the desktop cannot pass to git safely/, bad);
       const created = await gitCreateBranch(cwd, bad);
       assert.equal(created.ok, false, bad);
+      assert.match(created.message, /characters the desktop cannot pass to git safely/, bad);
     }
   } finally {
     setWorkspaceAuthority(null);

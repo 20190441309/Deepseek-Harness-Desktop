@@ -190,29 +190,49 @@ describe('requiresDefaultBranchConfirmation', () => {
 })
 
 describe('resolveDefaultBranchActionDialogCopy', () => {
-  it('uses push-only copy when pushing without a commit', () => {
+  it('uses push-only keys when pushing without a commit', () => {
     expect(resolveDefaultBranchActionDialogCopy({
       action: 'commit_push',
       branchName: 'main',
       includesCommit: false,
     })).toEqual({
-      title: 'Push to default ref?',
-      description:
-        'This action will push local commits on "main". You can continue on this ref or create a feature ref and run the same action there.',
-      continueLabel: 'Push to main',
+      title: { key: 'confirm.push.title' },
+      description: { key: 'confirm.push.description', params: { branch: 'main' } },
+      continueLabel: { key: 'confirm.push.continue', params: { branch: 'main' } },
     })
   })
 
-  it('keeps commit copy when the action includes a commit', () => {
+  it('keeps commit keys when the action includes a commit', () => {
     expect(resolveDefaultBranchActionDialogCopy({
       action: 'commit_push',
       branchName: 'main',
       includesCommit: true,
     })).toEqual({
-      title: 'Commit & push to default ref?',
-      description:
-        'This action will commit and push changes on "main". You can continue on this ref or create a feature ref and run the same action there.',
-      continueLabel: 'Commit & push to main',
+      title: { key: 'confirm.commitPush.title' },
+      description: { key: 'confirm.commitPush.description', params: { branch: 'main' } },
+      continueLabel: { key: 'confirm.commitPush.continue', params: { branch: 'main' } },
+    })
+  })
+
+  it('uses PR keys with short and singular wording seats', () => {
+    expect(resolveDefaultBranchActionDialogCopy({
+      action: 'create_pr',
+      branchName: 'main',
+      includesCommit: false,
+      terminology: { shortLabel: 'MR', singular: 'merge request' },
+    })).toEqual({
+      title: { key: 'confirm.pr.title', params: { kind: 'MR' } },
+      description: { key: 'confirm.pr.description', params: { branch: 'main', kind: 'merge request' } },
+      continueLabel: { key: 'confirm.pr.continue', params: { kind: 'MR' } },
+    })
+    expect(resolveDefaultBranchActionDialogCopy({
+      action: 'commit_push_pr',
+      branchName: 'main',
+      includesCommit: true,
+    })).toEqual({
+      title: { key: 'confirm.commitPr.title', params: { kind: 'PR' } },
+      description: { key: 'confirm.commitPr.description', params: { branch: 'main', kind: 'pull request' } },
+      continueLabel: { key: 'confirm.commitPr.continue', params: { kind: 'PR' } },
     })
   })
 })

@@ -47,13 +47,48 @@ function entryRelativePath(relativePath, name) {
   return base ? `${base}/${name}` : name;
 }
 
-function isGitIgnored(cwd, relPath) {
+/**
+ * Classify a directory's entries with one `git check-ignore --stdin -z` batch
+ * (one spawn per listed directory instead of one per entry).
+ * @param {string} cwd - workspace root git runs in.
+ * @param {string[]} relPaths - entry paths relative to cwd.
+ * @returns {Promise<{ ignored: Set<string>, gitMissing: boolean }>} ignored
+ * paths, or an empty set with `gitMissing` when git is absent or fails
+ * (every entry is then listed, matching the previous per-entry fallback).
+ */
+function gitIgnoredSet(cwd, relPaths) {
   return new Promise((resolve) => {
-    const child = spawn('git', ['-C', cwd, 'check-ignore', '--no-index', '-q', relPath], {
+    if (relPaths.length === 0) {
+      resolve({ ignored: new Set(), gitMissing: false });
+      return;
+    }
+    const child = spawn('git', ['-C', cwd, 'check-ignore', '--no-index', '--stdin', '-z'], {
       windowsHide: true,
     });
-    child.on('error', () => resolve({ ignored: false, gitMissing: true }));
-    child.on('close', (code) => resolve({ ignored: code === 0, gitMissing: false }));
+    const chunks = [];
+    let settled = false;
+    child.on('error', () => {
+      settled = true;
+      resolve({ ignored: new Set(), gitMissing: true });
+    });
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.on('close', (code) => {
+      if (settled) return;
+      // check-ignore exits 0 when some paths are ignored and 1 when none are;
+      // anything else (128: not a repo error, bad input) falls back to unfiltered.
+      if (code !== 0 && code !== 1) {
+        resolve({ ignored: new Set(), gitMissing: true });
+        return;
+      }
+      const out = Buffer.concat(chunks).toString('utf8');
+      resolve({
+        ignored: new Set(out.split('\0').filter((part) => part.length > 0)),
+        gitMissing: false,
+      });
+    });
+    // EPIPE when git exits before consuming stdin; close settles the promise.
+    child.stdin.on('error', () => {});
+    child.stdin.end(`${relPaths.join('\0')}\0`);
   });
 }
 
@@ -66,22 +101,15 @@ async function listDir(cwd, relativePath) {
   } catch (error) {
     return fail(error.message || 'Could not list directory.');
   }
+  const candidates = names.filter((entry) => entry.name !== '.git');
+  const relPaths = candidates.map((entry) => entryRelativePath(relativePath, entry.name));
+  const { ignored, gitMissing } = await gitIgnoredSet(cwd, relPaths);
   const entries = [];
-  let gitMissing = false;
-  for (const entry of names) {
-    if (entry.name === '.git') continue;
-    if (!gitMissing) {
-      const rel = entryRelativePath(relativePath, entry.name);
-      const { ignored, gitMissing: missing } = await isGitIgnored(cwd, rel);
-      if (missing) {
-        gitMissing = true;
-      } else if (ignored) {
-        continue;
-      }
-    }
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (!gitMissing && ignored.has(relPaths[index])) continue;
     entries.push({
-      name: entry.name,
-      kind: entry.isDirectory() ? 'directory' : 'file',
+      name: candidates[index].name,
+      kind: candidates[index].isDirectory() ? 'directory' : 'file',
     });
   }
   entries.sort((left, right) => {

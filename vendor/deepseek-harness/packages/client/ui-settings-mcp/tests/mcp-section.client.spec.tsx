@@ -255,6 +255,23 @@ describe('McpSection', () => {
     expect(await screen.findByText(en.healthConnected)).toBeTruthy()
   })
 
+  it('shows the tool count for a server connected while the page is open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const list = vi.fn()
+      .mockResolvedValueOnce({ servers: [managedStdio] })
+      .mockResolvedValue({
+        servers: [{
+          ...managedStdio,
+          connection: { health: 'connected' as const, tools: ['mcp__github__create_issue'] },
+        }],
+      })
+    render(<McpSection {...props({ list })} />)
+    expect(await screen.findByText('github')).toBeTruthy()
+    expect(screen.queryByText('1 tools')).toBeNull()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await screen.findByText('1 tools')).toBeTruthy()
+  })
+
   it('shows the tool count and opens a closable tool dialog on a connected row', async () => {
     render(<McpSection {...props({
       list: async () => ({

@@ -4,7 +4,7 @@
 
 标题栏尾簇插件：两个 ghost 开关，分别写入 `ctx.layout.toggleTerminalDrawer` 与 `ctx.layout.toggleSurfaces`。条目挂在 `shell.titlebar.trailing`，`id: 'panel-toggles'`，`order: 40`，因此空白首页也能看到，并落在 Session log（`order: 10`）右侧，中间留给 Git（`order: 20`）。界面设置 `ui-titlebar.terminalToggle` 与 `surfacesToggle`（默认 true）隐藏对应按钮；`Ctrl+\`` 与 `Ctrl+\\` 仍可切换面板。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
-按下态跟随布局 owner 宽度（`surfaces` / `terminalDrawer`；0 表示关闭）。`useWorkspaces` 报告没有工作区时，终端开关为 disabled。右侧栏开关在空白首页仍可用。Ctrl/Cmd+` 切换终端抽屉，Ctrl/Cmd+\\ 切换右侧栏；焦点在 input、textarea、contenteditable 或 `.xterm` 内时不抢键。
+按下态跟随布局 owner 宽度（`surfaces` / `terminalDrawer`；0 表示关闭）。`useWorkspaces` 报告没有工作区时，终端开关为 disabled。右侧栏开关在空白首页仍可用。Ctrl/Cmd+` 切换终端抽屉，Ctrl/Cmd+\\ 切换右侧栏。右侧栏快捷键在 input、textarea、contenteditable 或 Ghostty 终端窗格（`[data-terminal-pane]`）内不抢键；终端抽屉快捷键只对终端之外的文本输入让位，因此焦点在终端窗格内（含 Ghostty 的隐藏 input textarea）时仍可切换——`ui-user-terminal` 在 `beforeKey` 中拒收该组合键并让其冒泡到这里。
 
 `PanelTogglesProps` 组合标题栏尾簇 owner share、全局 `useWorkspaces` 钩子、注入的切换回调，以及 `titlebar` 文案 seat。这里没有插件 store。
 

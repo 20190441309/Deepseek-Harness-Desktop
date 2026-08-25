@@ -249,6 +249,63 @@ test('resolveShellCandidates copies Windows and Unix lists', () => {
   assert.deepEqual(unix[0].args, ['-o', 'nopromptsp']);
 });
 
+test('a renderer reload or crash reaps the PTYs that sender created', async () => {
+  const handlers = new Map();
+  const ipcMain = { handle(channel, fn) { handlers.set(channel, fn); } };
+  const pty = createPtyController({ spawn: fakeSpawn(), emit() {} });
+  registerPtyIpc(ipcMain, pty);
+  function makeSender(id) {
+    const listeners = new Map();
+    return {
+      sender: {
+        id,
+        isDestroyed: () => false,
+        send() {},
+        on(eventName, fn) { listeners.set(eventName, fn); },
+        once(eventName, fn) { listeners.set(eventName, fn); },
+      },
+      fire(eventName) { listeners.get(eventName)(); },
+    };
+  }
+  const harness = makeSender(1);
+  const other = makeSender(2);
+  const a = await handlers.get('shell:pty-create')({ sender: harness.sender }, { cwd: ws });
+  const b = await handlers.get('shell:pty-create')({ sender: harness.sender }, { cwd: ws });
+  const keep = await handlers.get('shell:pty-create')({ sender: other.sender }, { cwd: ws });
+  harness.fire('did-navigate');
+  await assert.rejects(() => pty.write(a.id, 'x'), /unknown pty id/);
+  await assert.rejects(() => pty.write(b.id, 'x'), /unknown pty id/);
+  // Another sender's sessions survive the reload.
+  await pty.write(keep.id, 'still-alive');
+  const c = await handlers.get('shell:pty-create')({ sender: other.sender }, { cwd: ws });
+  other.fire('render-process-gone');
+  await assert.rejects(() => pty.write(c.id, 'x'), /unknown pty id/);
+  await assert.rejects(() => pty.write(keep.id, 'x'), /unknown pty id/);
+});
+
+test('a normally exited PTY does not linger in the reap table', async () => {
+  const handlers = new Map();
+  const ipcMain = { handle(channel, fn) { handlers.set(channel, fn); } };
+  const killed = [];
+  const controller = createPtyController({ spawn: fakeSpawn(), emit() {} });
+  const originalKill = controller.kill.bind(controller);
+  controller.kill = (id) => { killed.push(id); return originalKill(id); };
+  registerPtyIpc(ipcMain, controller);
+  const listeners = new Map();
+  const sender = {
+    id: 3,
+    isDestroyed: () => false,
+    send() {},
+    on(eventName, fn) { listeners.set(eventName, fn); },
+    once(eventName, fn) { listeners.set(eventName, fn); },
+  };
+  const created = await handlers.get('shell:pty-create')({ sender }, { cwd: ws });
+  await controller.kill(created.id);
+  killed.length = 0;
+  listeners.get('did-navigate')();
+  assert.deepEqual(killed, []);
+});
+
 test('registerPtyIpc authorizes every renderer request before dispatch', async () => {
   const handlers = new Map();
   const ipcMain = { handle(channel, fn) { handlers.set(channel, fn); } };

@@ -73,6 +73,40 @@ function gitChildEnv() {
   return env;
 }
 
+/**
+ * Kill a spawned git/gh child and, on Windows, its whole process tree.
+ * `child.kill()` on win32 terminates only the direct process; git routinely
+ * has live descendants (hooks, ssh, credential helpers) that would otherwise
+ * survive a timeout or output-overflow kill and keep holding index locks.
+ * `taskkill /T` walks the tree; `/F` is required because a killed git child
+ * does not pump messages. POSIX stays on the default SIGTERM.
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {{ platform?: NodeJS.Platform, spawnKiller?: typeof spawn }} [options] test seams.
+ */
+function killProcessTree(child, { platform = process.platform, spawnKiller = spawn } = {}) {
+  if (platform === 'win32' && typeof child.pid === 'number') {
+    try {
+      const killer = spawnKiller('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      // taskkill missing or unrunnable → at least kill the direct child.
+      killer.on('error', () => { child.kill(); });
+      // taskkill ran but failed (access denied, and 128 = tree already gone):
+      // SIGTERM the direct child so the git process itself never survives a
+      // timeout. Killing an already-dead child is a no-op.
+      killer.on('exit', (code) => {
+        if (code !== 0) child.kill();
+      });
+      killer.unref();
+      return;
+    } catch {
+      // Synchronous spawn failure (EPERM and kin); fall through to plain kill.
+    }
+  }
+  child.kill();
+}
+
 function run(command, args, cwd, limits = {}) {
   const timeoutMs = limits.timeoutMs ?? GIT_TIMEOUT_MS;
   const maxBytes = limits.maxBytes ?? GIT_MAX_OUTPUT_BYTES;
@@ -102,7 +136,7 @@ function run(command, args, cwd, limits = {}) {
       stderr: Buffer.concat(stderrChunks).toString('utf8'),
     });
     const timer = setTimeout(() => {
-      child.kill();
+      killProcessTree(child);
       finish({
         code: -1,
         stdout: decode().stdout,
@@ -131,7 +165,7 @@ function run(command, args, cwd, limits = {}) {
         if (remain > 0) stdoutChunks.push(chunk.subarray(0, remain));
         stdoutBytes = maxBytes;
         truncated = true;
-        child.kill();
+        killProcessTree(child);
         return;
       }
       stdoutBytes = next;
@@ -146,7 +180,7 @@ function run(command, args, cwd, limits = {}) {
         if (remain > 0) stderrChunks.push(chunk.subarray(0, remain));
         stderrBytes = maxBytes;
         truncated = true;
-        child.kill();
+        killProcessTree(child);
         return;
       }
       stderrBytes = next;
@@ -243,6 +277,7 @@ function safeRefName(ref) {
 }
 
 module.exports = {
+  killProcessTree,
   setWorkspaceAuthority,
   resolveAuthorizedCwd,
   asCwd,

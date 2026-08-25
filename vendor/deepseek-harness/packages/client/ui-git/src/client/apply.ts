@@ -34,6 +34,7 @@ interface GitShell {
   gitPush?: (cwd: string, actionId?: number) => Promise<GitResult>
   gitPull?: (cwd: string, actionId?: number) => Promise<GitResult>
   onGitProgress?: (handler: (event: GitProgressEvent) => void) => () => void
+  onGitWorkspacesChanged?: (handler: () => void) => () => void
   gitCreateChangeRequest?: (cwd: string, input?: { title?: string; body?: string }, actionId?: number) => Promise<GitResult>
   gitPublishRepository?: (cwd: string, input: { name: string; visibility: 'public' | 'private'; remoteUrl?: string }, actionId?: number) => Promise<GitResult>
   gitBranchList?: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: import('./branches.ts').BranchRef[] }>
@@ -69,6 +70,7 @@ function readGitShell(): Omit<GitActionsInjected, 'hooks'> {
     gitPush: (cwd, actionId) => shell?.gitPush?.(cwd, actionId) ?? Promise.resolve(unavailable()),
     gitPull: (cwd, actionId) => shell?.gitPull?.(cwd, actionId) ?? Promise.resolve(unavailable()),
     onGitProgress: handler => shell?.onGitProgress?.(handler) ?? (() => {}),
+    onWorkspacesChanged: handler => shell?.onGitWorkspacesChanged?.(handler) ?? (() => {}),
     gitCreateChangeRequest: (cwd, input, actionId) =>
       shell?.gitCreateChangeRequest?.(cwd, input, actionId) ?? Promise.resolve(unavailable()),
     gitPublishRepository: (cwd, input, actionId) =>

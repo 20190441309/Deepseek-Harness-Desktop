@@ -100,18 +100,18 @@ describe('PanelToggles', () => {
     input.remove()
   })
 
-  it('toggles the terminal drawer from an xterm target but not the surfaces column', () => {
+  it('toggles the terminal drawer from the Ghostty pane textarea but not the surfaces column', () => {
     const b = mount()
-    const term = document.createElement('div')
-    term.className = 'xterm'
-    const inner = document.createElement('div')
-    term.append(inner)
-    document.body.append(term)
-    fireEvent.keyDown(inner, { key: '`', ctrlKey: true })
+    const pane = document.createElement('div')
+    pane.setAttribute('data-terminal-pane', 'pty-1')
+    const input = document.createElement('textarea')
+    pane.append(input)
+    document.body.append(pane)
+    fireEvent.keyDown(input, { key: '`', ctrlKey: true })
     expect(b.toggleTerminalDrawer).toHaveBeenCalledOnce()
-    fireEvent.keyDown(inner, { key: '\\', ctrlKey: true })
+    fireEvent.keyDown(input, { key: '\\', ctrlKey: true })
     expect(b.toggleSurfaces).not.toHaveBeenCalled()
-    term.remove()
+    pane.remove()
   })
 
   it('disables the terminal toggle when no workspace is available', () => {

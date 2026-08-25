@@ -127,6 +127,32 @@ test('listDir hides gitignored names when git is available', async () => {
   }
 });
 
+test('listDir batch-classifies many entries, including names with spaces, in one pass', async () => {
+  const cwd = makeTempDir();
+  try {
+    fs.writeFileSync(path.join(cwd, '.gitignore'), '*.log\nbuild dir/\n');
+    fs.mkdirSync(path.join(cwd, 'build dir'));
+    for (let index = 0; index < 30; index += 1) {
+      fs.writeFileSync(path.join(cwd, `trace-${index}.log`), 'x');
+      fs.writeFileSync(path.join(cwd, `src-${index}.ts`), 'x');
+    }
+    fs.writeFileSync(path.join(cwd, 'with space.ts'), 'x');
+    const listed = await listDir(cwd, '');
+    assert.equal(listed.ok, true);
+    const names = listed.entries.map((e) => e.name);
+    assert.equal(names.includes('with space.ts'), true);
+    assert.equal(names.filter((name) => name.endsWith('.ts')).length, 31);
+    if (!names.includes('trace-0.log')) {
+      // git present: every ignored name is filtered by the single batch call.
+      assert.equal(names.some((name) => name.endsWith('.log')), false);
+      assert.equal(names.includes('build dir'), false);
+    }
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('writeFile replaces utf8 text and rejects traversal, directories, and oversized payloads', async () => {
   const cwd = makeTempDir();
   try {

@@ -4,7 +4,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { pipeline } = require('node:stream');
 const { loadWorkspaceAuthority } = require('./workspace-authority');
+
+/** Byte cap for text-like documents (HTML/CSS/JS/JSON/SVG). */
+const TEXT_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
+/** Byte cap for binary documents (images, fonts, wasm, pdf, fallback). */
+const BINARY_DOCUMENT_MAX_BYTES = 64 * 1024 * 1024;
 
 const MIME = {
   html: 'text/html; charset=utf-8',
@@ -35,6 +41,14 @@ const MIME = {
 function mimeFor(filePath) {
   const ext = path.extname(filePath).slice(1).toLowerCase();
   return MIME[ext] || 'application/octet-stream';
+}
+
+function maxBytesFor(mime) {
+  const textLike = mime.startsWith('text/')
+    || mime === 'application/xhtml+xml'
+    || mime === 'application/json'
+    || mime === 'image/svg+xml';
+  return textLike ? TEXT_DOCUMENT_MAX_BYTES : BINARY_DOCUMENT_MAX_BYTES;
 }
 
 function hostIsLoopback(host) {
@@ -111,9 +125,20 @@ function createWorkspacePreviewController(options = {}) {
       send(res, 404, 'Not Found');
       return;
     }
+    void serveFile(res, target);
+  }
+
+  /**
+   * Stream one resolved workspace file. Async stat + `pipeline` keep large
+   * reads off the main-process event loop; per-MIME byte caps reject
+   * oversized documents with 413 before any bytes are read.
+   * @param {import('node:http').ServerResponse} res
+   * @param {string} target - absolute path already confined to the cwd.
+   */
+  async function serveFile(res, target) {
     let stat;
     try {
-      stat = fs.statSync(target);
+      stat = await fs.promises.stat(target);
     } catch {
       send(res, 404, 'Not Found');
       return;
@@ -122,14 +147,21 @@ function createWorkspacePreviewController(options = {}) {
       send(res, 403, 'Forbidden');
       return;
     }
-    let body;
-    try {
-      body = fs.readFileSync(target);
-    } catch {
-      send(res, 404, 'Not Found');
+    const mime = mimeFor(target);
+    if (stat.size > maxBytesFor(mime)) {
+      send(res, 413, 'Payload Too Large');
       return;
     }
-    send(res, 200, body, { 'Content-Type': mimeFor(target) });
+    res.writeHead(200, {
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Type': mime,
+      'Content-Length': String(stat.size),
+    });
+    pipeline(fs.createReadStream(target), res, (error) => {
+      // A mid-stream read error cannot switch to an error status after the
+      // 200 header; dropping the socket signals the truncated transfer.
+      if (error) res.destroy();
+    });
   }
 
   async function fileUrl(input = {}) {

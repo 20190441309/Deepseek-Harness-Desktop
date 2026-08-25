@@ -97,8 +97,8 @@ describe('SurfaceTabs', () => {
   it('labels preview, terminal, and agents tabs', () => {
     mount({
       surfaces: [
-        { id: 'browser:new', kind: 'preview', resourceId: null },
-        { id: 'terminal:new', kind: 'terminal', terminalIds: [], activeTerminalId: '' },
+        { id: 'browser:new', kind: 'preview' },
+        { id: 'terminal:new', kind: 'terminal' },
         { id: 'agents', kind: 'agents' },
         { id: 'file:nested/a.ts', kind: 'file', relativePath: 'nested/a.ts' },
       ],

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** User-terminal plugin injects the drawer now and surfaces.terminal when Task 6 declares it. */
+/** User-terminal plugin injects the drawer and the ui-surfaces-declared surfaces.terminal slot. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'

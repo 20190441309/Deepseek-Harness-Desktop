@@ -77,7 +77,7 @@
 
 ## 现有偏差（不要再扩散）
 
-产品页使用官方 token 与 `ui-primitives`。手机远程 Web（`mobile/web`）是文档化例外：抄 `--dsw-alias-*`，不嵌入官方插件树，不用启动页仪器画布。设置里的插件市场是预置 `dshmarket` 插件的 `settings.section`（id `market`），沿用该插件自己的界面。用量统计是预置改版 `dsh-usage-panel`（id `usage-stats`），必须跟官方设置页同一套 token / primitives，不沿用上游插件色板。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。冷启动启动器走官方 token，见 [桌面启动器](#桌面启动器)，不是第二套例外。
+产品页使用官方 token 与 `ui-primitives`。手机远程 Web（`mobile/web`）是文档化例外：抄 `--dsw-alias-*`，不嵌入官方插件树，不用启动页仪器画布。设置里的插件市场是桌面自有包 `ui-settings-market` 的 `settings.section`（id `market`），必须跟官方设置页同一套 token / primitives。用量统计是预置改版 `dsh-usage-panel`（id `usage-stats`），必须跟官方设置页同一套 token / primitives，不沿用上游插件色板。不要再开 `--bg` / `--accent` 平行色板。桌面启动页是文档化的仪器画布例外，见 [桌面启动页](#桌面启动页)，不得扩散。冷启动启动器走官方 token，见 [桌面启动器](#桌面启动器)，不是第二套例外。
 
 ## 自检
 

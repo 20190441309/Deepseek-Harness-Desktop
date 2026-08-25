@@ -335,8 +335,13 @@ describe('FilesPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Copy relative path' }))
     await act(async () => {
       await Promise.resolve()
+    })
+    // Copy feedback is its own status marker; the Refresh tooltip is untouched.
+    expect(screen.getByRole('status').textContent).toBe('Copied')
+    await act(async () => {
       vi.advanceTimersByTime(1200)
     })
+    expect(screen.queryByRole('status')).toBeNull()
     vi.useRealTimers()
   })
 
@@ -712,6 +717,45 @@ describe('FilesPanel', () => {
     expect(screen.getByText('index.ts')).toBeTruthy()
   })
 
+  it('walks once per search session and filters further keystrokes in memory', async () => {
+    const listDir = vi.fn(listDirFake)
+    render(
+      <FilesPanel
+        sessionId={SID}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={() => {}}
+        listDir={listDir}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeTruthy()
+    })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'i' } })
+    expect(await screen.findByText('src/index.ts')).toBeTruthy()
+    const callsAfterWalk = listDir.mock.calls.length
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'in' } })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'index' } })
+    expect(await screen.findByText('src/index.ts')).toBeTruthy()
+    // Keystrokes inside one search session must not re-walk the tree.
+    expect(listDir.mock.calls.length).toBe(callsAfterWalk)
+    // Clearing and retyping starts a new session and re-walks once.
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'read' } })
+    await waitFor(() => {
+      expect(listDir.mock.calls.length).toBeGreaterThan(callsAfterWalk)
+    })
+  })
+
   it('walks nested directories with no depth cap during search', async () => {
     const deepList: FilesPanelProps['listDir'] = async (_cwd, relativePath) => {
       const depth = relativePath === '' ? 0 : relativePath.split('/').length
@@ -1048,6 +1092,8 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('File is too large; showing the beginning.')).toBeTruthy()
+    // A truncated image payload never renders a broken <img>.
+    expect(screen.queryByRole('img')).toBeNull()
     rerender(
       <FilePreview
         sessionId={SID}
@@ -1295,6 +1341,57 @@ describe('FilePreview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rendered' }))
   })
 
+  it('keeps keystrokes typed during an explicit save dirty instead of marking them saved', async () => {
+    let finishWrite!: (result: { ok: boolean }) => void
+    const writePending = new Promise<{ ok: boolean }>((resolve) => { finishWrite = resolve })
+    // The debounced follow-up save (for the mid-flight keystrokes) stays
+    // in flight so the assertions below observe the still-dirty state.
+    const writeFile = vi.fn<(cwd: string, path: string, contents: string) => Promise<{ ok: boolean }>>()
+      .mockReturnValueOnce(writePending)
+      .mockReturnValue(new Promise<{ ok: boolean }>(() => {}))
+    const writeBuffer = vi.fn()
+    const onDirtyChange = vi.fn()
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={onDirtyChange}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={writeBuffer}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'x', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    fireEvent.change(editor, { target: { value: 'saved snapshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(writeFile).toHaveBeenCalledWith('/tmp/proj', 'a.ts', 'saved snapshot')
+    })
+    // Keystrokes injected while the write is still in flight.
+    fireEvent.change(screen.getByLabelText('a.ts'), { target: { value: 'saved snapshot plus' } })
+    await act(async () => { finishWrite({ ok: true }) })
+    // Only the written snapshot is confirmed; the newer draft stays dirty.
+    await waitFor(() => {
+      expect(writeBuffer).toHaveBeenCalledWith({ text: 'saved snapshot', draft: 'saved snapshot plus' })
+    })
+    expect((screen.getByLabelText('a.ts') as HTMLTextAreaElement).value).toBe('saved snapshot plus')
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    expect((screen.getByRole('button', { name: /Save/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('shows the write error when save fails', async () => {
     render(
       <FilePreview
@@ -1326,6 +1423,57 @@ describe('FilePreview', () => {
     expect((screen.getByLabelText('a.ts') as HTMLTextAreaElement).value).toBe('y')
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
   })
+
+  it('keeps characters typed during an explicit save dirty instead of marking them saved', async () => {
+    let disk = 'base'
+    const writes: string[] = []
+    let releaseWrite!: () => void
+    const gate = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const writeFile = vi.fn(async (_cwd: string, _path: string, contents: string) => {
+      writes.push(contents)
+      if (writes.length === 1) await gate
+      disk = contents
+      return { ok: true }
+    })
+    const writeBuffer = vi.fn()
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="race.txt"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={writeBuffer}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: disk, binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('race.txt')
+    fireEvent.change(editor, { target: { value: 'first' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => { expect(writeFile).toHaveBeenCalledTimes(1) })
+    // Inject characters while the explicit save's write is still in flight.
+    fireEvent.change(editor, { target: { value: 'first+typed' } })
+    releaseWrite()
+    await waitFor(() => {
+      // The written snapshot becomes the baseline; the newer draft stays dirty.
+      expect(writeBuffer).toHaveBeenCalledWith({ text: 'first', draft: 'first+typed' })
+    })
+    expect((screen.getByLabelText('race.txt') as HTMLTextAreaElement).value).toBe('first+typed')
+    // The debounced follow-up write persists the newer draft; nothing is lost.
+    await waitFor(() => { expect(writes).toContain('first+typed') }, { timeout: 3000 })
+  }, 10_000)
 
   it('keeps an unsaved draft when the parent stays mounted but hidden', async () => {
     const { rerender } = render(

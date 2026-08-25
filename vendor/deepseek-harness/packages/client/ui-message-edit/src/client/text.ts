@@ -18,3 +18,13 @@ export function joinedText(content: readonly UserActionContentBlock[]): string |
   }
   return parts.join('')
 }
+
+/**
+ * This plugin's edit-session key for one addressed message: the editor
+ * bubble and the inject face agree through it on which edit is theirs.
+ * @param seq - durable `user/message` event seq.
+ * @returns the composer edit-session key.
+ */
+export function editKey(seq: number): string {
+  return `message-edit:${seq}`
+}

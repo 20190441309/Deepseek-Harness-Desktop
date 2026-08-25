@@ -44,18 +44,20 @@ test('inspectPlugins flags suspects and presets without deleting the latter', ()
   const inspected = inspectPlugins({
     logs: 'cannot resolve profile bundle "evil-pack"',
     plugins: [
-      { name: 'dshmarket', spec: 'file:vendor' },
+      { name: 'dsh-usage-panel', spec: 'file:vendor' },
       { name: 'evil-pack', spec: '1.0.0' },
     ],
-    bundles: ['dshmarket', 'evil-pack'],
+    bundles: ['dsh-usage-panel', 'evil-pack'],
     disabledPlugins: ['evil-pack'],
   });
-  assert.equal(inspected.plugins.find((row) => row.name === 'dshmarket').preset, true);
+  assert.equal(inspected.plugins.find((row) => row.name === 'dsh-usage-panel').preset, true);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').suspect, true);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').disabled, true);
   assert.equal(isPresetPlugin('dsh-usage-panel'), true);
   // dshbot is a standalone user plugin now, so forensics may suspect/disable it.
   assert.equal(isPresetPlugin('dshbot'), false);
+  // The marketplace is desktop-owned code, not a mounted preset plugin.
+  assert.equal(isPresetPlugin('dshmarket'), false);
   assert.equal(isPresetPlugin('evil-pack'), false);
 });
 

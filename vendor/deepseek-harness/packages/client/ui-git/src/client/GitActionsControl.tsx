@@ -45,6 +45,9 @@ import { GitProgressToast, type GitProgressState } from './GitProgressToast.tsx'
 import { PublishDialog } from './PublishDialog.tsx'
 import css from './GitActionsControl.module.css'
 
+/** Must match ui-surfaces; client packages cannot share a value export. */
+const GIT_INIT_EVENT = 'dshd-git-init'
+
 /** Desktop git IPC the plugin injects from `window.shell`. */
 export interface GitActionsInjected {
   gitStatus: (cwd: string) => Promise<VcsStatus | null>
@@ -55,6 +58,13 @@ export interface GitActionsInjected {
   gitPush: (cwd: string, actionId?: number) => Promise<GitResult>
   gitPull: (cwd: string, actionId?: number) => Promise<GitResult>
   onGitProgress: (handler: (event: GitProgressEvent) => void) => () => void
+  /**
+   * Desktop signal that the harness workspace registry changed (a workspace
+   * was registered or removed); returns the unsubscribe. The first status
+   * read after opening a workspace can race the registry write and come back
+   * unauthorized, and this signal is what recovers it without a window focus.
+   */
+  onWorkspacesChanged: (handler: () => void) => () => void
   gitCreateChangeRequest: (cwd: string, input?: { title?: string; body?: string }, actionId?: number) => Promise<GitResult>
   gitPublishRepository: (cwd: string, input: { name: string; visibility: 'public' | 'private'; remoteUrl?: string }, actionId?: number) => Promise<GitResult>
   gitBranchList: (cwd: string) => Promise<{ ok: boolean; message?: string; branches?: BranchRef[] }>
@@ -120,6 +130,13 @@ function failureMessage(result: GitResult, fallback: string): string | undefined
   return message !== undefined && message !== '' ? message : fallback
 }
 
+/** Message for a rejected git IPC promise, so the progress toast never hangs in loading. */
+function thrownMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim() !== '') return error.message
+  const text = String(error).trim()
+  return text !== '' && text !== 'undefined' && text !== 'null' ? text : fallback
+}
+
 function foldCommit(result: GitResult): NonNullable<StackedActionResult['commit']> {
   return {
     status: result.skipped ? 'skipped' : 'created',
@@ -170,6 +187,7 @@ export function GitActionsControl({
   gitPush,
   gitPull,
   onGitProgress,
+  onWorkspacesChanged,
   gitCreateChangeRequest,
   gitPublishRepository,
   gitBranchList,
@@ -245,10 +263,20 @@ export function GitActionsControl({
     })
   }
 
+  // Rejected refresh IPC promises degrade like the desktop guard's fallback
+  // payloads (`null` snapshot / `ok:false` result): the local snapshot stays,
+  // and nothing becomes an unhandled rejection. `refresh` is fired with
+  // `void` from effects and `finally` blocks, so it must never reject.
+  const statusOrNull = (target: string): Promise<VcsStatus | null> => gitStatus(target).catch(() => null)
+  const fetchStatusOrNull = (target: string): Promise<VcsStatus | null> => gitFetchForStatus(target).catch(() => null)
+  const readPullRequestOrFailure = (target: string): ReturnType<typeof gitReadPullRequest> => (
+    gitReadPullRequest(target).catch(() => ({ ok: false }))
+  )
+
   const refresh = async (target: string): Promise<VcsStatus | null> => {
     const token = refreshSeq.current + 1
     refreshSeq.current = token
-    const next = await gitStatus(target)
+    const next = await statusOrNull(target)
     if (token !== refreshSeq.current) return next
     // Only keep a prior PR badge when still on the same ref.
     setStatus(prev => (
@@ -257,7 +285,7 @@ export function GitActionsControl({
         : next
     ))
     setLoaded(true)
-    void gitFetchForStatus(target).then((fresh) => {
+    void fetchStatusOrNull(target).then((fresh) => {
       if (token !== refreshSeq.current || !fresh) return
       setStatus(prev => (
         prev?.refName && fresh.refName === prev.refName
@@ -265,7 +293,7 @@ export function GitActionsControl({
           : fresh
       ))
     })
-    void gitReadPullRequest(target).then((result) => {
+    void readPullRequestOrFailure(target).then((result) => {
       if (token !== refreshSeq.current || !result.ok) return
       setStatus(prev => (prev ? { ...prev, pr: result.pr ?? null } : prev))
     })
@@ -275,7 +303,7 @@ export function GitActionsControl({
   const settleStatus = async (target: string): Promise<VcsStatus | null> => {
     const token = refreshSeq.current + 1
     refreshSeq.current = token
-    const local = await gitStatus(target)
+    const local = await statusOrNull(target)
     if (token !== refreshSeq.current) return local
     setStatus(prev => (
       local && prev?.refName && local.refName === prev.refName
@@ -284,8 +312,8 @@ export function GitActionsControl({
     ))
     setLoaded(true)
     const [fresh, prResult] = await Promise.all([
-      gitFetchForStatus(target),
-      gitReadPullRequest(target),
+      fetchStatusOrNull(target),
+      readPullRequestOrFailure(target),
     ])
     if (token !== refreshSeq.current) return local
     const pr = prResult.ok ? (prResult.pr ?? null) : (fresh?.pr ?? local?.pr ?? null)
@@ -304,6 +332,16 @@ export function GitActionsControl({
     void refresh(cwd)
     return () => { refreshSeq.current += 1 }
   }, [cwd, gitStatus, gitFetchForStatus, gitReadPullRequest])
+
+  // A newly opened workspace is registered by the harness asynchronously, so
+  // the first status read can race that write and come back unauthorized
+  // (a null snapshot). The desktop pushes this signal when the registry file
+  // changes; re-read status immediately instead of leaving the titlebar
+  // unavailable until the next window focus.
+  useEffect(() => {
+    if (cwd === undefined) return
+    return onWorkspacesChanged(() => { void refresh(cwd) })
+  }, [cwd, onWorkspacesChanged, gitStatus, gitFetchForStatus, gitReadPullRequest])
 
   useEffect(() => {
     return onGitProgress((event) => {
@@ -386,13 +424,20 @@ export function GitActionsControl({
     () => buildMenuItems(status, busy, hasPrimaryRemote),
     [busy, hasPrimaryRemote, status],
   )
-  const pendingCopy = pending
+  const pendingKeys = pending
     ? resolveDefaultBranchActionDialogCopy({
         action: pending.action,
         branchName: pending.branchName,
         includesCommit: pending.includesCommit,
         terminology: getChangeRequestTerminology(status?.sourceControlProvider),
       })
+    : null
+  const pendingCopy = pendingKeys
+    ? {
+        title: t(pendingKeys.title.key, pendingKeys.title.params),
+        description: t(pendingKeys.description.key, pendingKeys.description.params),
+        continueLabel: t(pendingKeys.continueLabel.key, pendingKeys.continueLabel.params),
+      }
     : null
 
   const runInit = (): void => {
@@ -402,7 +447,13 @@ export function GitActionsControl({
     void gitInit(cwd).then((result) => {
       const failed = failureMessage(result, t('error.fallback'))
       if (failed !== undefined) failProgress(failed)
-      else succeedProgress(t('action.init'))
+      else {
+        succeedProgress(t('action.init'))
+        // Reopens the surfaces Diff gate without a session switch.
+        window.dispatchEvent(new CustomEvent(GIT_INIT_EVENT))
+      }
+    }).catch((error: unknown) => {
+      failProgress(thrownMessage(error, t('error.fallback')))
     }).finally(() => {
       setBusy(false)
       void refresh(cwd)
@@ -545,8 +596,10 @@ export function GitActionsControl({
         folded.pr = foldPr(created)
       }
       const terms = getChangeRequestTerminology(actionStatus?.sourceControlProvider)
+      // The action already succeeded; a rejected post-action status read must
+      // not repaint it as a failure.
       const nextStatus = action === 'commit'
-        ? await gitStatus(cwd)
+        ? await statusOrNull(cwd)
         : await settleStatus(cwd)
       if (action === 'commit') {
         if (nextStatus) {
@@ -574,6 +627,9 @@ export function GitActionsControl({
             ? { label: cta.label, onAction: () => { void runStacked(cta.action) } }
             : undefined,
       )
+    } catch (error) {
+      // A rejected git IPC promise must land on the toast, not strand it loading.
+      failProgress(thrownMessage(error, fallback))
     } finally {
       setBusy(false)
       if (!settled) await refresh(cwd)
@@ -631,6 +687,8 @@ export function GitActionsControl({
             upstream: result.upstreamRef || 'upstream',
           }),
         )
+      }).catch((error: unknown) => {
+        failProgress(thrownMessage(error, t('error.fallback')))
       }).finally(() => {
         setBusy(false)
         void refresh(cwd)
@@ -827,6 +885,10 @@ export function GitActionsControl({
           void openWorkspacePath(cwd, filePath).then((result) => {
             const failed = failureMessage(result, t('error.fallback'))
             if (failed !== undefined) failProgress(failed, t('commit.openFailed'))
+          }).catch((error: unknown) => {
+            // shell:open-workspace-path sits outside the desktop git-ipc
+            // guard, so a rejected invoke lands here instead of the console.
+            failProgress(thrownMessage(error, t('error.fallback')), t('commit.openFailed'))
           })
         }}
       />
@@ -865,6 +927,10 @@ export function GitActionsControl({
                 ? { label: t('progress.openRepo'), onAction: () => { void openExternal(url) } }
                 : undefined,
             )
+          }).catch((error: unknown) => {
+            // Same recovery as an ok:false publish: fail the toast, reopen the dialog.
+            failProgress(thrownMessage(error, t('error.fallback')))
+            setPublishOpen(true)
           }).finally(() => {
             setBusy(false)
             void refresh(cwd)

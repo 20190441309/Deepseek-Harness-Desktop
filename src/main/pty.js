@@ -431,6 +431,8 @@ function createPtyController(options = {}) {
 function registerPtyIpc(ipcMain, controller, options = {}) {
   const authorize = typeof options.authorize === 'function' ? options.authorize : () => {};
   const senders = new Set();
+  /** PTY id -> owning webContents, so a dead renderer's PTYs can be reaped. */
+  const owners = new Map();
   const live = controller ?? createPtyController({
     emit(channel, payload) {
       for (const sender of senders) {
@@ -439,19 +441,48 @@ function registerPtyIpc(ipcMain, controller, options = {}) {
     },
   });
 
+  if (typeof live.onEvent === 'function') {
+    live.onEvent((channel, payload) => {
+      if (channel === 'shell:pty-exit' && payload) owners.delete(payload.id);
+    });
+  }
+
+  function reapSender(sender) {
+    for (const [id, owner] of [...owners]) {
+      if (owner !== sender) continue;
+      owners.delete(id);
+      void Promise.resolve(live.kill(id)).catch(() => {});
+    }
+  }
+
   function track(event) {
     authorize(event);
     const sender = event.sender;
     if (sender && !senders.has(sender)) {
       senders.add(sender);
+      if (typeof sender.on === 'function') {
+        // A cross-document navigation (reload included) or a crashed renderer
+        // destroys the JS context that owned these PTYs; reap them so main
+        // keeps no orphan shells. Same-document navigation fires
+        // did-navigate-in-page instead and leaves the sessions alone.
+        sender.on('render-process-gone', () => reapSender(sender));
+        sender.on('did-navigate', () => reapSender(sender));
+      }
       sender.once('destroyed', () => {
         senders.delete(sender);
+        reapSender(sender);
       });
     }
     return live;
   }
 
-  ipcMain.handle('shell:pty-create', (event, input) => track(event).create(input));
+  ipcMain.handle('shell:pty-create', async (event, input) => {
+    const created = await track(event).create(input);
+    if (created && typeof created.id === 'string' && event.sender) {
+      owners.set(created.id, event.sender);
+    }
+    return created;
+  });
   ipcMain.handle('shell:pty-write', (event, id, data) => track(event).write(id, data));
   ipcMain.handle('shell:pty-resize', (event, id, cols, rows) => track(event).resize(id, cols, rows));
   ipcMain.handle('shell:pty-kill', (event, id) => track(event).kill(id));

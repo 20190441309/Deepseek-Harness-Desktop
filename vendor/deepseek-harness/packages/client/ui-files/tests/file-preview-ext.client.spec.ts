@@ -6,7 +6,7 @@ import {
 } from '../src/client/workspacePreview.ts'
 
 describe('workspace file previews', () => {
-  it.each(['report.html', 'report.HTM', 'document.pdf?download=1'])(
+  it.each(['report.html', 'report.HTM', 'document.pdf?download=1', 'page.xhtml', 'vector.svg'])(
     'recognizes browser preview path %s',
     (path) => {
       expect(isWorkspaceBrowserPreviewPath(path)).toBe(true)

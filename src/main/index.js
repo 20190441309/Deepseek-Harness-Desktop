@@ -6,7 +6,7 @@ const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome, san
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
-const { ensureDshMarketPlugin } = require('./dshmarket-preset');
+const { removeDshMarketPreset } = require('./dshmarket-preset');
 const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
 const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
@@ -251,7 +251,7 @@ const harness = new HarnessController({
   resolveLaunchTarget,
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
-  ensureDshMarketPlugin,
+  removeDshMarketPreset,
   ensureUsagePanelPlugin,
   ensureDshbotPlugin,
   removeDshbotPreset,
@@ -582,19 +582,15 @@ async function probeThemeBackgrounds(wc) {
           return null;
         }
       };
+      // Ghostty renders straight into a canvas inside [data-terminal-pane];
+      // there is no xterm DOM to probe.
       const readOwner = (owner) => {
         const root = document.querySelector('[data-terminal-owner="' + owner + '"]');
         const pane = root?.querySelector('[data-terminal-pane]');
-        const xterm = pane?.querySelector('.xterm');
-        const viewport = pane?.querySelector('.xterm-viewport');
-        const screen = pane?.querySelector('.xterm-screen');
         return {
           root: stylesFor(root),
           pane: stylesFor(pane),
-          xterm: stylesFor(xterm),
-          viewport: stylesFor(viewport),
-          screen: stylesFor(screen),
-          canvasPixel: canvasPixel(xterm),
+          canvasPixel: canvasPixel(pane),
         };
       };
       const tokenStyles = getComputedStyle(document.body);
@@ -617,10 +613,8 @@ async function probeThemeBackgrounds(wc) {
       const backgrounds = [
         owners.surface?.root?.backgroundColor,
         owners.surface?.pane?.backgroundColor,
-        owners.surface?.viewport?.backgroundColor,
         owners.drawer?.root?.backgroundColor,
         owners.drawer?.pane?.backgroundColor,
-        owners.drawer?.viewport?.backgroundColor,
       ];
       return {
         ok: Boolean(

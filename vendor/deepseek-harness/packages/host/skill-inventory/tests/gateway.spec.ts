@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { bindScopeParent, createScope, scopeOf } from '@deepseek-ai/dsh-scope'
@@ -221,6 +221,94 @@ describe('SkillInventoryGateway', () => {
     })
     expect(written.data).not.toHaveProperty('disable-model-invocation')
     await gateway.delete({ name: 'demo-skill' })
+    if (previous === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previous
+  })
+
+  it('round-trips a group label and the skill directory through the catalog', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-skill-group-'))
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    const ctx = new Context()
+    contexts.push(ctx)
+    provideAgents(ctx)
+    const catalog: SkillDefinition[] = []
+    ctx.provide('skills', {
+      list: async () => catalog.map(item => summary(item)),
+      get: async (name: string) => catalog.find(item => item.name === name),
+      invalidate: () => {},
+    } as never)
+    await ctx.plugin(SkillInventoryGateway)
+    const gateway = ctx.get('skillInventory') as SkillInventoryGateway
+    await gateway.create({
+      name: 'grouped-skill',
+      description: 'Grouped',
+      group: 'review',
+      content: 'Do it',
+      root: 'user-dsh',
+      modelInvocable: true,
+      userInvocable: true,
+    })
+    const path = join(home, 'skills', 'grouped-skill', 'SKILL.md')
+    expect(parseSkillMarkdown(await readFile(path, 'utf8')).data).toMatchObject({
+      metadata: { group: 'review' },
+    })
+    catalog.push({
+      name: 'grouped-skill',
+      description: 'Grouped',
+      invocation: { modelInvocable: true, userInvocable: true },
+      source: 'user-dsh',
+      provider: 'filesystem',
+      path,
+      metadata: { group: 'review' },
+      content: 'Do it',
+    })
+    expect((await gateway.list({})).skills[0]).toMatchObject({
+      name: 'grouped-skill',
+      group: 'review',
+      directory: dirname(path),
+    })
+    expect(await gateway.get({ name: 'grouped-skill' })).toMatchObject({ group: 'review' })
+
+    await gateway.update({
+      name: 'grouped-skill',
+      description: 'Grouped',
+      group: 'workflows',
+      content: 'Do it',
+      modelInvocable: true,
+      userInvocable: true,
+    })
+    expect(parseSkillMarkdown(await readFile(path, 'utf8')).data).toMatchObject({
+      metadata: { group: 'workflows' },
+    })
+
+    await gateway.setInvocation({ name: 'grouped-skill', modelInvocable: false, userInvocable: true })
+    expect(parseSkillMarkdown(await readFile(path, 'utf8')).data).toMatchObject({
+      metadata: { group: 'workflows' },
+    })
+
+    await gateway.update({
+      name: 'grouped-skill',
+      description: 'Grouped',
+      group: '',
+      content: 'Do it',
+      modelInvocable: false,
+      userInvocable: true,
+    })
+    const cleared = parseSkillMarkdown(await readFile(path, 'utf8')).data
+    expect(cleared.metadata).toBeUndefined()
+
+    const current = catalog[0]!
+    catalog[0] = {
+      name: current.name,
+      description: current.description,
+      invocation: current.invocation,
+      source: current.source,
+      provider: current.provider,
+      ...current.path === undefined ? {} : { path: current.path },
+      content: current.content,
+    }
+    expect((await gateway.list({})).skills[0]).not.toHaveProperty('group')
     if (previous === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previous
   })

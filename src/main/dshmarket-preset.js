@@ -2,101 +2,70 @@
 
 const fs = require('fs');
 const path = require('path');
-const { missingRuntimeFiles } = require('./plugin-runtime-files');
-const { webProfileDir, upsertManagedBlock, stripBlockFromFile } = require('./plugins');
+const { webProfileDir, stripBlockFromFile } = require('./plugins');
 
 const DSHMARKET_PACKAGE = 'dshmarket';
 const DSHMARKET_BEGIN = '# --- dshd-gui-dshmarket ---';
 const DSHMARKET_END = '# --- end dshd-gui-dshmarket ---';
 
-function defaultSourceDir() {
+/**
+ * Whether `node_modules/dshmarket` is the desktop preset symlink (ours) rather
+ * than a real install. pnpm installs also use symlinks, so only a link that
+ * resolves to the desktop-plugins copy counts.
+ * @param {string} linked
+ * @param {string} destDir
+ * @returns {boolean}
+ */
+function isDesktopPresetLink(linked, destDir) {
   try {
-    const { projectRoot } = require('./paths');
-    return path.join(projectRoot(), 'vendor', 'dshmarket');
-  } catch {
-    return path.join(__dirname, '..', '..', 'vendor', 'dshmarket');
-  }
-}
-
-function profileListsBundle(profileDir) {
-  const file = path.join(profileDir, 'package.json');
-  if (!fs.existsSync(file)) {
-    return false;
-  }
-  try {
-    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const bundles = manifest.dsh?.profile?.bundles;
-    return Array.isArray(bundles) && bundles.includes(DSHMARKET_PACKAGE);
+    if (!fs.lstatSync(linked).isSymbolicLink()) {
+      return false;
+    }
+    const target = path.resolve(path.dirname(linked), fs.readlinkSync(linked));
+    return target === path.resolve(destDir);
   } catch {
     return false;
   }
-}
-
-function missingRuntimeDependencies(sourceDir) {
-  return missingRuntimeFiles(sourceDir);
-}
-
-function linkIntoProfileModules(destDir, profileDir) {
-  const linked = path.join(profileDir, 'node_modules', DSHMARKET_PACKAGE);
-  if (fs.existsSync(linked) && !fs.lstatSync(linked).isSymbolicLink()) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(linked), { recursive: true });
-  if (fs.existsSync(linked)) {
-    fs.unlinkSync(linked);
-  }
-  fs.symlinkSync(destDir, linked, process.platform === 'win32' ? 'junction' : 'dir');
 }
 
 /**
- * Copy the bundled dshmarket package into the web profile and register it
- * through a managed cordis.patch.yml insert. Does not call `dsh plugin add`.
- * Missing `package.json`, a declared dependency, or a dependency export file
- * returns `{ ok: false }` and strips the managed insert so Loader does not
- * mount a broken copy. The caller logs that and continues Harness start.
- * @param {{ sourceDir?: string, profileDir?: string, disabledPlugins?: string[] }} [options]
+ * The marketplace is desktop-owned now (settings section `market` from
+ * `@deepseek-ai/dsh-client-ui-settings-market` + the main-process curated
+ * catalog/install engine). Older builds preset-installed the third-party
+ * `dshmarket` plugin; this removes that residue so the Loader never mounts
+ * a second market: the managed cordis.patch.yml insert, the
+ * `desktop-plugins/dshmarket` copy, and the preset symlink. A real
+ * `node_modules/dshmarket` directory, manifest dependencies, and profile
+ * bundles written by `dsh plugin add` are user data and stay on disk —
+ * `DROPPED` keeps them out of the mounted composition instead.
+ * @param {{ profileDir?: string }} [options]
  */
-function ensureDshMarketPlugin(options = {}) {
-  const sourceDir = options.sourceDir || defaultSourceDir();
-  if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
-    return { ok: false, added: false, error: 'missing-source:package.json' };
-  }
+function removeDshMarketPreset(options = {}) {
   const profileDir = options.profileDir || webProfileDir();
   const patchFile = path.join(profileDir, 'cordis.patch.yml');
-  const disabled = require('./config').readDisabledPlugins(options);
-  if (disabled.includes(DSHMARKET_PACKAGE)) {
-    stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
-    return { ok: true, added: false, destDir: null, disabled: true };
-  }
+  const stripped = stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
   const destDir = path.join(profileDir, 'desktop-plugins', DSHMARKET_PACKAGE);
-  const missing = missingRuntimeDependencies(sourceDir);
-  if (missing.length) {
-    stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
-    return {
-      ok: false,
-      added: false,
-      error: `missing-source:node_modules:${missing.join(',')}`,
-    };
+  const linked = path.join(profileDir, 'node_modules', DSHMARKET_PACKAGE);
+  let removedLink = false;
+  if (isDesktopPresetLink(linked, destDir)) {
+    try {
+      fs.unlinkSync(linked);
+      removedLink = true;
+    } catch {
+      // A stuck link is reported through `changed: false`; start continues.
+    }
   }
-  const existed = fs.existsSync(path.join(destDir, 'package.json'));
-  fs.mkdirSync(destDir, { recursive: true });
-  fs.cpSync(sourceDir, destDir, { recursive: true, force: true });
-  linkIntoProfileModules(destDir, profileDir);
-  if (profileListsBundle(profileDir)) {
-    stripBlockFromFile(patchFile, DSHMARKET_BEGIN, DSHMARKET_END);
-    return { ok: true, added: false, destDir };
+  let removedCopy = false;
+  if (fs.existsSync(destDir)) {
+    fs.rmSync(destDir, { recursive: true, force: true });
+    removedCopy = true;
   }
-  const body = [
-    '- insert:',
-    '    - id: dsh-market',
-    `      name: ${JSON.stringify(DSHMARKET_PACKAGE)}`,
-  ].join('\n');
-  upsertManagedBlock(patchFile, DSHMARKET_BEGIN, DSHMARKET_END, body);
   return {
     ok: true,
-    added: !existed,
-    destDir,
-    patchFile,
+    stripped,
+    removedCopy,
+    removedLink,
+    changed: stripped || removedCopy || removedLink,
   };
 }
 
@@ -104,5 +73,5 @@ module.exports = {
   DSHMARKET_PACKAGE,
   DSHMARKET_BEGIN,
   DSHMARKET_END,
-  ensureDshMarketPlugin,
+  removeDshMarketPreset,
 };

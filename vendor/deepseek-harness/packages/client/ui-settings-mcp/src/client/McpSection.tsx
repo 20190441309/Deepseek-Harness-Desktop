@@ -75,11 +75,6 @@ const PHASE_DOT: Record<Exclude<McpServerEntry['fiberPhase'], null>, StateDotSta
 
 const HEALTH_POLL_MS = 2000
 
-function inFlightHealth(snapshot: McpServerSnapshot): boolean {
-  return snapshot.servers.some(entry =>
-    entry.connection?.health === 'connecting' || entry.connection?.health === 'reconnecting')
-}
-
 type ConnectionHealth = NonNullable<McpServerEntry['connection']>['health']
 
 const HEALTH: Record<ConnectionHealth, McpSettingsKey> = {
@@ -171,7 +166,10 @@ export function McpSection(props: McpSectionProps) {
   }
 
   useEffect(() => {
-    if (view.status !== 'ready' || !inFlightHealth(view.snapshot)) return
+    if (view.status !== 'ready') return
+    // Poll unconditionally so a server connected outside this page (direct
+    // composition rows, a child that finished its initial tool sync between
+    // polls) still shows its health and tool count without an app restart.
     const id = window.setInterval(() => {
       if (togglePendingRef.current.size > 0 || signInPendingRef.current.size > 0) return
       void reloadReady().catch(() => {
@@ -179,7 +177,7 @@ export function McpSection(props: McpSectionProps) {
       })
     }, HEALTH_POLL_MS)
     return () => { window.clearInterval(id) }
-  }, [props.list, view])
+  }, [props.list, view.status])
 
   const refresh = (): void => {
     void (async () => {

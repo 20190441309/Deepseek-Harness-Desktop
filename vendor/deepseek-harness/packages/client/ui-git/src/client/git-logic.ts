@@ -1,5 +1,7 @@
 /** Git action state machine over this desktop's VcsStatus JSON. */
 
+import type { GitKey } from './locales.ts'
+
 /** Provider that owns change-request wording. */
 export interface SourceControlProvider {
   kind: 'github' | 'gitlab' | 'azure-devops' | 'bitbucket' | 'unknown'
@@ -88,11 +90,17 @@ export interface GitQuickAction {
   hint?: string
 }
 
-/** Default-ref confirm copy. */
+/** One default-ref confirm seat: a `git` dictionary key plus its params. */
+export interface DefaultBranchDialogText {
+  key: GitKey
+  params?: Record<string, string>
+}
+
+/** Default-ref confirm copy, resolved through the `git` dictionary by the caller. */
 export interface DefaultBranchActionDialogCopy {
-  title: string
-  description: string
-  continueLabel: string
+  title: DefaultBranchDialogText
+  description: DefaultBranchDialogText
+  continueLabel: DefaultBranchDialogText
 }
 
 /** Actions that prompt before running on the default ref. */
@@ -684,7 +692,7 @@ export function resolveCompletionCta(
  * @param input.branchName - current default ref name.
  * @param input.includesCommit - whether the run will create a commit.
  * @param input.terminology - provider wording; GitHub default when omitted.
- * @returns dialog copy.
+ * @returns dialog copy as `git` dictionary keys plus interpolation params.
  */
 export function resolveDefaultBranchActionDialogCopy(input: {
   action: DefaultBranchConfirmableAction
@@ -692,35 +700,36 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   includesCommit: boolean
   terminology?: ChangeRequestTerminology
 }): DefaultBranchActionDialogCopy {
-  const branchLabel = input.branchName
-  const suffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`
+  const branch = input.branchName
   const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY
 
   if (input.action === 'push' || input.action === 'commit_push') {
     if (input.includesCommit) {
       return {
-        title: 'Commit & push to default ref?',
-        description: `This action will commit and push changes${suffix}`,
-        continueLabel: `Commit & push to ${branchLabel}`,
+        title: { key: 'confirm.commitPush.title' },
+        description: { key: 'confirm.commitPush.description', params: { branch } },
+        continueLabel: { key: 'confirm.commitPush.continue', params: { branch } },
       }
     }
     return {
-      title: 'Push to default ref?',
-      description: `This action will push local commits${suffix}`,
-      continueLabel: `Push to ${branchLabel}`,
+      title: { key: 'confirm.push.title' },
+      description: { key: 'confirm.push.description', params: { branch } },
+      continueLabel: { key: 'confirm.push.continue', params: { branch } },
     }
   }
 
+  // Titles and buttons carry the short label (PR/MR); descriptions spell the
+  // singular term (pull request / merge request).
   if (input.includesCommit) {
     return {
-      title: `Commit, push & create ${terminology.shortLabel} from default ref?`,
-      description: `This action will commit, push, and create a ${terminology.singular}${suffix}`,
-      continueLabel: `Commit, push & create ${terminology.shortLabel}`,
+      title: { key: 'confirm.commitPr.title', params: { kind: terminology.shortLabel } },
+      description: { key: 'confirm.commitPr.description', params: { branch, kind: terminology.singular } },
+      continueLabel: { key: 'confirm.commitPr.continue', params: { kind: terminology.shortLabel } },
     }
   }
   return {
-    title: `Push & create ${terminology.shortLabel} from default ref?`,
-    description: `This action will push local commits and create a ${terminology.singular}${suffix}`,
-    continueLabel: `Push & create ${terminology.shortLabel}`,
+    title: { key: 'confirm.pr.title', params: { kind: terminology.shortLabel } },
+    description: { key: 'confirm.pr.description', params: { branch, kind: terminology.singular } },
+    continueLabel: { key: 'confirm.pr.continue', params: { kind: terminology.shortLabel } },
   }
 }

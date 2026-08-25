@@ -94,6 +94,7 @@ function mount(opts: {
   gitCreateBranch?: GitActionsProps['gitCreateBranch']
   openWorkspacePath?: GitActionsProps['openWorkspacePath']
   onGitProgress?: GitActionsProps['onGitProgress']
+  onWorkspacesChanged?: GitActionsProps['onWorkspacesChanged']
   density?: GitActionsProps['density']
   titlebarGit?: boolean
   useTitlebarGit?: GitActionsProps['useTitlebarGit']
@@ -115,6 +116,7 @@ function mount(opts: {
   const gitCreateBranch = opts.gitCreateBranch ?? vi.fn(async () => ({ ok: true }))
   const openWorkspacePath = opts.openWorkspacePath ?? vi.fn(async () => ({ ok: true }))
   const onGitProgress = opts.onGitProgress ?? vi.fn(() => () => {})
+  const onWorkspacesChanged = opts.onWorkspacesChanged ?? vi.fn(() => () => {})
   const openExternal = vi.fn(async () => true)
   const view = render(
     <GitActionsControl
@@ -136,6 +138,7 @@ function mount(opts: {
       gitSwitchBranch={gitSwitchBranch}
       gitCreateBranch={gitCreateBranch}
       onGitProgress={onGitProgress}
+      onWorkspacesChanged={onWorkspacesChanged}
       openExternal={openExternal}
       openWorkspacePath={openWorkspacePath}
       useTitlebarGit={opts.useTitlebarGit ?? (sel => sel(opts.titlebarGit !== false))}
@@ -145,7 +148,7 @@ function mount(opts: {
   return {
     gitStatus, gitFetchForStatus, gitReadPullRequest, gitInit, gitCommit, gitPush, gitPull, gitCreateChangeRequest,
     gitPublishRepository, gitBranchList, gitSwitchBranch, gitCreateBranch, openWorkspacePath,
-    onGitProgress, openExternal, rerender: view.rerender,
+    onGitProgress, onWorkspacesChanged, openExternal, rerender: view.rerender,
   }
 }
 
@@ -167,6 +170,35 @@ describe('GitActionsControl', () => {
     expect(await screen.findByText('Git status is unavailable.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Git actions' }))
     expect(screen.queryByRole('menuitem', { name: 'Publish repository' })).toBeNull()
+  })
+
+  it('treats a rejected status read like a null snapshot instead of rejecting refresh', async () => {
+    mount({
+      cwd: '/work',
+      gitStatus: vi.fn(async () => { throw new Error('status ipc dropped') }),
+      gitFetchForStatus: vi.fn(async () => { throw new Error('fetch ipc dropped') }),
+      gitReadPullRequest: vi.fn(async () => { throw new Error('pr ipc dropped') }),
+    })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Commit' })
+    expect(main.disabled).toBe(true)
+    fireEvent.focus(main)
+    expect(await screen.findByText('Git status is unavailable.')).toBeTruthy()
+  })
+
+  it('keeps the local snapshot when the background fetch and PR refresh reject', async () => {
+    const gitFetchForStatus = vi.fn(async () => { throw new Error('fetch ipc dropped') })
+    const gitReadPullRequest = vi.fn(async () => { throw new Error('pr ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({ refName: 'feature/keep' }),
+      gitFetchForStatus,
+      gitReadPullRequest,
+    })
+    const trigger = await screen.findByRole('button', { name: 'Switch branch' })
+    await waitFor(() => { expect(gitFetchForStatus).toHaveBeenCalled() })
+    await waitFor(() => { expect(gitReadPullRequest).toHaveBeenCalled() })
+    expect(trigger.textContent).toContain('feature/keep')
+    expect(screen.queryByRole('status', { name: 'Action failed' })).toBeNull()
   })
 
   it('labels the main button Commit & push when the default ref has local changes', async () => {
@@ -264,6 +296,7 @@ describe('GitActionsControl', () => {
       gitSwitchBranch: vi.fn(async () => ({ ok: true })),
       gitCreateBranch: vi.fn(async () => ({ ok: true })),
       onGitProgress: vi.fn(() => () => {}),
+      onWorkspacesChanged: vi.fn(() => () => {}),
       openExternal: vi.fn(async () => true),
       openWorkspacePath: vi.fn(async () => ({ ok: true })),
       useTitlebarGit: sel => sel(true),
@@ -296,6 +329,113 @@ describe('GitActionsControl', () => {
     expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
     expect(screen.getByText('origin rejected the push.')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
+  })
+
+  it('lands a rejected stacked IPC promise on the toast instead of stranding it loading', async () => {
+    const gitPush = vi.fn(async () => { throw new Error('ipc channel dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        refName: 'main',
+        aheadCount: 2,
+        isDefaultRef: true,
+      }),
+      gitPush,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Push' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Push to main' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('ipc channel dropped')).toBeTruthy()
+  })
+
+  it('shows a rejected gitInit on the toast', async () => {
+    const gitInit = vi.fn(async () => { throw new Error('init ipc dropped') })
+    mount({ cwd: '/work', git: status({ isRepo: false }), gitInit })
+    fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('init ipc dropped')).toBeTruthy()
+  })
+
+  it('shows a rejected gitPull on the toast', async () => {
+    const gitPull = vi.fn(async () => { throw new Error('pull ipc dropped') })
+    mount({ cwd: '/work', git: status({ behindCount: 2 }), gitPull })
+    fireEvent.click(await screen.findByRole('button', { name: 'Pull' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('pull ipc dropped')).toBeTruthy()
+  })
+
+  it('reopens the publish dialog when the publish IPC rejects', async () => {
+    const gitPublishRepository = vi.fn(async () => { throw new Error('publish ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        hasUpstream: false,
+        hasPrimaryRemote: false,
+      }),
+      gitPublishRepository,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish repository' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('publish ipc dropped')).toBeTruthy()
+    expect(await screen.findByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
+  })
+
+  it('recovers from an unauthorized first status read when the workspace registry signals', async () => {
+    let notify: (() => void) | undefined
+    const onWorkspacesChanged = vi.fn((handler: () => void) => {
+      notify = handler
+      return () => { notify = undefined }
+    })
+    // First read races the harness registry write and comes back null; after
+    // the registration lands, the same cwd resolves.
+    let registered = false
+    const gitStatus = vi.fn(async () => (registered ? status({ refName: 'feature/late' }) : null))
+    const gitFetchForStatus = vi.fn(async () => (registered ? status({ refName: 'feature/late' }) : null))
+    mount({ cwd: '/work', gitStatus, gitFetchForStatus, onWorkspacesChanged })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Commit' })
+    expect(main.disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Switch branch' })?.textContent ?? '').not.toContain('feature/late')
+    registered = true
+    act(() => { notify?.() })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Switch branch' }).textContent).toContain('feature/late')
+    })
+  })
+
+  it('unsubscribes from the registry signal when the session cwd goes away', async () => {
+    const unsubscribe = vi.fn()
+    const onWorkspacesChanged = vi.fn(() => unsubscribe)
+    const b = mount({ cwd: '/work', git: status(), onWorkspacesChanged })
+    await screen.findByRole('button', { name: 'Switch branch' })
+    expect(onWorkspacesChanged).toHaveBeenCalledTimes(1)
+    b.rerender(
+      <GitActionsControl
+        surfaces={0}
+        terminalDrawer={0}
+        useSessions={useSessionsStub(sessionList(undefined))}
+        useWorkspaces={neverWorkspaces}
+        gitStatus={b.gitStatus}
+        gitFetchForStatus={b.gitFetchForStatus}
+        gitReadPullRequest={b.gitReadPullRequest}
+        gitInit={b.gitInit}
+        gitCommit={b.gitCommit}
+        gitPush={b.gitPush}
+        gitPull={b.gitPull}
+        gitCreateChangeRequest={b.gitCreateChangeRequest}
+        gitPublishRepository={b.gitPublishRepository}
+        gitBranchList={b.gitBranchList}
+        gitSwitchBranch={b.gitSwitchBranch}
+        gitCreateBranch={b.gitCreateBranch}
+        onGitProgress={b.onGitProgress}
+        onWorkspacesChanged={onWorkspacesChanged}
+        openExternal={b.openExternal}
+        openWorkspacePath={b.openWorkspacePath}
+        useTitlebarGit={sel => sel(true)}
+        t={t}
+      />,
+    )
+    expect(unsubscribe).toHaveBeenCalled()
   })
 
   it('refreshes git status on window focus', async () => {
@@ -416,15 +556,20 @@ describe('GitActionsControl', () => {
     expect(init.textContent).not.toContain('Initialize Git')
   })
 
-  it('runs gitInit when Initialize Git is clicked', async () => {
+  it('runs gitInit when Initialize Git is clicked and broadcasts dshd-git-init', async () => {
     const gitInit = vi.fn(async () => ({ ok: true }))
     const gitStatus = vi.fn()
       .mockResolvedValueOnce(status({ isRepo: false, refName: null, hasPrimaryRemote: false }))
       .mockResolvedValue(status({ isRepo: true, hasWorkingTreeChanges: true }))
+    const onInitBroadcast = vi.fn()
+    window.addEventListener('dshd-git-init', onInitBroadcast)
     mount({ cwd: '/work', gitStatus, gitInit })
     fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
     await waitFor(() => { expect(gitInit).toHaveBeenCalledWith('/work') })
     await waitFor(() => { expect(gitStatus).toHaveBeenCalledTimes(2) })
+    // ui-surfaces listens for this to reopen the Diff gate without a session switch.
+    expect(onInitBroadcast).toHaveBeenCalledOnce()
+    window.removeEventListener('dshd-git-init', onInitBroadcast)
   })
 
   it('shows Initializing and the IPC failure when gitInit fails', async () => {
@@ -437,12 +582,16 @@ describe('GitActionsControl', () => {
       git: status({ isRepo: false, refName: null, hasPrimaryRemote: false }),
       gitInit,
     })
+    const onInitBroadcast = vi.fn()
+    window.addEventListener('dshd-git-init', onInitBroadcast)
     fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
     expect(await screen.findByRole('status', { name: 'Initializing...' })).toBeTruthy()
     finish({ ok: false, message: 'cannot init' })
     expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
     expect(screen.getByText('cannot init')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
+    expect(onInitBroadcast).not.toHaveBeenCalled()
+    window.removeEventListener('dshd-git-init', onInitBroadcast)
   })
 
   it('labels the main button Pull when the ref is behind', async () => {
@@ -850,6 +999,23 @@ describe('GitActionsControl', () => {
     expect(await screen.findByRole('status', { name: 'Unable to open file' })).toBeTruthy()
     expect(screen.getByText('no handler')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
+  })
+
+  it('shows a rejected open-file IPC promise on the progress toast', async () => {
+    const openWorkspacePath = vi.fn(async () => { throw new Error('open ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        hasWorkingTreeChanges: true,
+        workingTree: filesTree([{ path: 'only.ts', insertions: 1, deletions: 0 }]),
+      }),
+      openWorkspacePath,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Commit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'only.ts' }))
+    expect(await screen.findByRole('status', { name: 'Unable to open file' })).toBeTruthy()
+    expect(screen.getByText('open ipc dropped')).toBeTruthy()
   })
 
   it('disables the branch picker while a stacked action is running', async () => {

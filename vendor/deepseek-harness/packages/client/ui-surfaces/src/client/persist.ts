@@ -6,8 +6,10 @@ import type { SessionSurfaces, Surface, SurfacesState } from './stores.ts'
 export const SURFACES_PERSIST_PREFIX = 'dsh-surfaces:v1:'
 
 const WRITE_DELAY_MS = 80
-/** Dirty draft bytes per field; matches workspace-fs utf8 write cap. */
-const DRAFT_MAX_CHARS = 512 * 1024
+/** Dirty draft utf8 bytes per field; matches workspace-fs MAX_WRITE_BYTES (1 MiB). */
+const DRAFT_MAX_BYTES = 1024 * 1024
+
+const draftEncoder = new TextEncoder()
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -188,7 +190,8 @@ function sanitizeDraft(raw: unknown): FileDraftBuffer | undefined {
   const entry = raw as { text?: unknown; draft?: unknown }
   if (typeof entry.text !== 'string' || typeof entry.draft !== 'string') return undefined
   if (entry.draft === entry.text) return undefined
-  if (entry.text.length > DRAFT_MAX_CHARS || entry.draft.length > DRAFT_MAX_CHARS) return undefined
+  if (draftEncoder.encode(entry.text).length > DRAFT_MAX_BYTES) return undefined
+  if (draftEncoder.encode(entry.draft).length > DRAFT_MAX_BYTES) return undefined
   return { text: entry.text, draft: entry.draft }
 }
 
@@ -230,20 +233,12 @@ function sanitizeSurface(raw: unknown): Surface | undefined {
       return entry.id === 'diff' ? { id: 'diff', kind: 'diff' } : undefined
     case 'agents':
       return entry.id === 'agents' ? { id: 'agents', kind: 'agents' } : undefined
-    case 'preview': {
-      const resourceId = 'resourceId' in entry && typeof (entry as { resourceId: unknown }).resourceId === 'string'
-        ? (entry as { resourceId: string }).resourceId
-        : null
-      return { id: entry.id, kind: 'preview', resourceId }
-    }
-    case 'terminal': {
-      const extra = entry as { terminalIds?: unknown; activeTerminalId?: unknown }
-      const terminalIds = Array.isArray(extra.terminalIds)
-        ? extra.terminalIds.filter((id): id is string => typeof id === 'string')
-        : []
-      const activeTerminalId = typeof extra.activeTerminalId === 'string' ? extra.activeTerminalId : ''
-      return { id: entry.id, kind: 'terminal', terminalIds, activeTerminalId }
-    }
+    // preview/terminal: older buckets carried resourceId / terminalIds /
+    // activeTerminalId; nothing ever read them, so loads drop the extras.
+    case 'preview':
+      return { id: entry.id, kind: 'preview' }
+    case 'terminal':
+      return { id: entry.id, kind: 'terminal' }
     case 'file': {
       const relativePath = (entry as { relativePath?: unknown }).relativePath
       if (typeof relativePath !== 'string' || relativePath.length === 0) return undefined

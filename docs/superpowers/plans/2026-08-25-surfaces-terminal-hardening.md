@@ -99,23 +99,23 @@
 **Files:** `vendor/.../ui-files/.../FilePreview.tsx`；`FileSaveCoordinator`（同包）；`ui-files` specs；work-loops note Testing 段。
 
 **Steps:**
-- [ ] `save()` 开头捕获 `const contents = draftRef.current`；成功后 `setText(contents)`，`writeBuffer` 用写入快照作 text、保留最新 draft。
-- [ ] 显式保存走 coordinator `flush`（或等价互斥），消灭与 debounce 落盘双写。
-- [ ] Spec：「await 期间注入字符 → dirty 仍 true、reread 不丢字」；「debounce 与显式保存串行」。
+- [x] `save()` 开头捕获 `const contents = draftRef.current`；成功后 `setText(contents)`，`writeBuffer` 用写入快照作 text、保留最新 draft。（经 coordinator `onConfirmed` 实现，2026-08-25）
+- [x] 显式保存走 coordinator `flush`（或等价互斥），消灭与 debounce 落盘双写。
+- [x] Spec：「await 期间注入字符 → dirty 仍 true、reread 不丢字」；「debounce 与显式保存串行」。
 
-**Done when:** 丢字路径从红到绿；disk-diverged `error.changed` 不回归。
+**Done when:** 丢字路径从红到绿；disk-diverged `error.changed` 不回归。✅ 2026-08-25
 
 #### Task 0.2 — P1 `` Ctrl+` `` Ghostty
 
 **Files:** `ui-user-terminal`（`TerminalPane` / `handleBeforeKey`）；`ui-titlebar/keybindings.ts`、`PanelToggles`；两处 `.xterm` fixtures。
 
 **Steps:**
-- [ ] **先确认** `ui-titlebar` Allowed touch 扩围。
-- [ ] `handleBeforeKey` 识别 Ctrl/Cmd+` → `toggleTerminalDrawer`，`preventDefault`，走 `suppressedKeyCodes`。
-- [ ] `keybindings.ts`：`.xterm` → `[data-terminal-pane]`；终端容器内 textarea 对面板快捷键不当纯文本拦截。
-- [ ] 重写 `keybindings` / `panel-toggles` fixtures 为 `data-terminal-pane` + textarea。
+- [x] **先确认** `ui-titlebar` Allowed touch 扩围。（已记入 terminal-drawer 卡，2026-08-25）
+- [x] `handleBeforeKey` 识别 Ctrl/Cmd+` → `preventDefault` 放行冒泡给标题栏 window 监听器（toggle 在 ui-titlebar，跨包禁 import），走 `suppressedKeyCodes`。
+- [x] `keybindings.ts`：`.xterm` → `[data-terminal-pane]`；终端容器内 textarea 对面板快捷键不当纯文本拦截。
+- [x] 重写 `keybindings` / `panel-toggles` fixtures 为 `data-terminal-pane` + textarea。
 
-**Done when:** 终端焦点内 `` Ctrl+` `` 开关抽屉；Ctrl+\ 仍送 PTY；composer 内不抢键；全仓产品路径无 `.xterm` 焦点假说。
+**Done when:** 终端焦点内 `` Ctrl+` `` 开关抽屉；Ctrl+\ 仍送 PTY；composer 内不抢键；全仓产品路径无 `.xterm` 焦点假说。✅ 2026-08-25
 
 ---
 
@@ -128,11 +128,11 @@
 **Files:** `src/main/preview.js`；`src/preload/index.js`；`ui-preview/shell.ts`；`preview.test.js` / `shell-api.test.js`（authorize 计数）。
 
 **Steps:**
-- [ ] **先确认** preload Allowed touch；产品确认删除（若保留：必须新卡 + 审批/限 loopback/禁 evaluate，否则不可交付）。
-- [ ] 删 8 个 `preview-automation-*` handler 及仅 automation 使用的 debugger 路径。
-- [ ] 删 preload 暴露与 client 类型绑定；下调 authorize 通道计数测试。
+- [x] **先确认** preload Allowed touch；产品确认删除（若保留：必须新卡 + 审批/限 loopback/禁 evaluate，否则不可交付）。（默认裁决=删除；扩围记入 surfaces-work-loops 卡）
+- [x] 删 8 个 `preview-automation-*` handler 及仅 automation 使用的 debugger 路径（`ensureDebugger` 因 `setColorScheme` 保留）。
+- [x] 删 preload 暴露与 client 类型绑定；下调 authorize 通道计数测试（27→19），并钉缺席断言。
 
-**Done when:** 全仓 `previewAutomation|preview-automation` 零匹配；`npm test` 绿。
+**Done when:** 全仓 `previewAutomation|preview-automation` 零匹配（除缺席断言与历史文档）；`npm test` 绿。✅ 2026-08-25
 
 #### Task 1.2 — P9 preview-workspace 阻塞主进程
 
@@ -195,9 +195,9 @@
 **Files:** `ui-surfaces/persist.ts`。
 
 **Steps:**
-- [ ] 按字节（`TextEncoder`/`Buffer.byteLength`）与 `MAX_WRITE_BYTES` 对齐语义；修正谎注释。
+- [x] 按字节（`TextEncoder`/`Buffer.byteLength`）与 `MAX_WRITE_BYTES` 对齐语义；修正谎注释。
 
-**Done when:** 1MiB 内 ASCII 大草稿跨重载可恢复。
+**Done when:** 1MiB 内 ASCII 大草稿跨重载可恢复。✅ 2026-08-25
 
 ---
 
@@ -212,7 +212,7 @@
 #### Task 4.2 — P6 workbench-depth
 
 **Steps:**
-- [ ] 就地改写为 Ghostty / `pwsh` 候选链 / `[data-terminal-pane]`，**或**按 archive 技能归档（建议归档，避免双写）。
+- [x] 就地改写为 Ghostty / `pwsh` 候选链 / `[data-terminal-pane]`（2026-08-25，选就地改写：note 其余决定仍在指导现状）。
 
 #### Task 4.3 — P8 appendToDraft
 

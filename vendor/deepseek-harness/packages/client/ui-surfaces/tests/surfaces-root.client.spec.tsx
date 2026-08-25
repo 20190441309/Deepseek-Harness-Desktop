@@ -217,6 +217,22 @@ describe('SurfacesRoot', () => {
     ])
   })
 
+  it('re-probes the Diff gate when ui-git broadcasts a successful init', async () => {
+    let repo: { refName: string } | null = null
+    const gitStatus = vi.fn(async () => repo)
+    mount({ cwd: '/tmp/plain', gitStatus })
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalled() })
+    expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', true)
+
+    repo = { refName: 'main' }
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('dshd-git-init'))
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', false)
+    })
+  })
+
   it('persists the open files tab for the session', async () => {
     vi.useFakeTimers()
     mount({ cwd: '/tmp/proj' })

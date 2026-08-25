@@ -122,14 +122,10 @@ test('harness preload keeps work loops and omits parked remote', () => {
   assert.equal(typeof api.previewSaveRecording, 'function');
   assert.equal(typeof api.previewRevealArtifact, 'function');
   assert.equal(typeof api.previewCopyArtifactToClipboard, 'function');
-  assert.equal(typeof api.previewAutomationStatus, 'function');
-  assert.equal(typeof api.previewAutomationSnapshot, 'function');
-  assert.equal(typeof api.previewAutomationClick, 'function');
-  assert.equal(typeof api.previewAutomationType, 'function');
-  assert.equal(typeof api.previewAutomationPress, 'function');
-  assert.equal(typeof api.previewAutomationScroll, 'function');
-  assert.equal(typeof api.previewAutomationEvaluate, 'function');
-  assert.equal(typeof api.previewAutomationWaitFor, 'function');
+  // The preview-automation chain was deleted; no role may expose it.
+  for (const key of Object.keys(api)) {
+    assert.ok(!key.startsWith('previewAutomation'), `${key} must not be exposed`);
+  }
   assert.equal(api.getRemote, undefined);
   assert.equal(api.saveRemote, undefined);
   assert.equal(api.rotateRemoteToken, undefined);
@@ -165,13 +161,6 @@ test('boot preload omits guest preview IPC', () => {
   assert.equal(api.previewRevealArtifact, undefined);
   assert.equal(api.previewCopyArtifactToClipboard, undefined);
   assert.equal(api.previewAutomationStatus, undefined);
-  assert.equal(api.previewAutomationSnapshot, undefined);
-  assert.equal(api.previewAutomationClick, undefined);
-  assert.equal(api.previewAutomationType, undefined);
-  assert.equal(api.previewAutomationPress, undefined);
-  assert.equal(api.previewAutomationScroll, undefined);
-  assert.equal(api.previewAutomationEvaluate, undefined);
-  assert.equal(api.previewAutomationWaitFor, undefined);
 });
 
 test('preload remote flag stays in sync with config.js', () => {

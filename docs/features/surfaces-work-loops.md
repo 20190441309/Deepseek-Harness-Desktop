@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — FilesPanel `listDir` pending 不画 empty.dir |
+| **last verified** | 2026-08-25 — 硬化计划 PR-A~D：保存竞态串行化、preview-automation 全链删除、preview-workspace 流式+上限、每搜索会话一次 walk + 批量 check-ignore、persist 死字段清除、gitInit 后 Diff 门重探、草稿上限按字节；desktop `npm test` 970 绿 + 触碰 harness 包 746 绿 + `qa:source` surfaces/terminal 步骤全 PASS（仅壁纸区 3 项环境失败） |
 
 ## User paths
 
@@ -18,11 +18,16 @@
 - 右栏是**工作环**（搜、导航、选区进对话），不是空态功能卡片网格。
 - 不做 note 标明的范围外能力：GPU 终端嵌入、worktree、turn-diff、review-comment pick（勿假装已有）。
 - Tab 关闭在标题右侧，未经用户明确要求不挪到左侧。
+- 显式保存与防抖落盘走同一 `FileSaveCoordinator` 队列，保存期间敲入的字符保持未保存；搜索会话只走一次树、键击内存过滤（Refresh 重走）。
+- `shell:preview-automation-*` 链已删除，不得在无新卡+权限模型的情况下复活。
+- browser-doc 扩展名单一事实：`{html, htm, xhtml, svg, pdf}`（openPath 双开与 FilePreview 工具栏同集合）。
+- `gitInit` 成功广播 `dshd-git-init`，Diff 门无需切会话即重探。
 
 ## Allowed touch
 
-- Harness surfaces 相关 client 包（如 `ui-files`、browser/preview 接线）
+- Harness surfaces 相关 client 包（如 `ui-files`、`ui-surfaces`、browser/preview 接线）
 - `src/main/preview*.js`、`workspace-fs.js`（Files 供数）
+- `src/preload/index.js` 的 preview/surfaces 注入面（2026-08-25 硬化计划扩围，用于 automation 链删除）
 - 本卡与 handbook surfaces 章
 
 ## Do not touch

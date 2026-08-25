@@ -11,6 +11,9 @@
     "directory": "vendor/dshbot"
   },
   "homepage": "https://github.com/ChisaAlter/Deepseek-Harness-Desktop/tree/main/vendor/dshbot",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
