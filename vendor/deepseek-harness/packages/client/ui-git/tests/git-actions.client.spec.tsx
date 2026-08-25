@@ -298,6 +298,56 @@ describe('GitActionsControl', () => {
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
   })
 
+  it('lands a rejected stacked IPC promise on the toast instead of stranding it loading', async () => {
+    const gitPush = vi.fn(async () => { throw new Error('ipc channel dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        refName: 'main',
+        aheadCount: 2,
+        isDefaultRef: true,
+      }),
+      gitPush,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Push' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Push to main' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('ipc channel dropped')).toBeTruthy()
+  })
+
+  it('shows a rejected gitInit on the toast', async () => {
+    const gitInit = vi.fn(async () => { throw new Error('init ipc dropped') })
+    mount({ cwd: '/work', git: status({ isRepo: false }), gitInit })
+    fireEvent.click(await screen.findByRole('button', { name: 'Initialize Git' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('init ipc dropped')).toBeTruthy()
+  })
+
+  it('shows a rejected gitPull on the toast', async () => {
+    const gitPull = vi.fn(async () => { throw new Error('pull ipc dropped') })
+    mount({ cwd: '/work', git: status({ behindCount: 2 }), gitPull })
+    fireEvent.click(await screen.findByRole('button', { name: 'Pull' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('pull ipc dropped')).toBeTruthy()
+  })
+
+  it('reopens the publish dialog when the publish IPC rejects', async () => {
+    const gitPublishRepository = vi.fn(async () => { throw new Error('publish ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        hasUpstream: false,
+        hasPrimaryRemote: false,
+      }),
+      gitPublishRepository,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish repository' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }))
+    expect(await screen.findByRole('status', { name: 'Action failed' })).toBeTruthy()
+    expect(screen.getByText('publish ipc dropped')).toBeTruthy()
+    expect(await screen.findByRole('dialog', { name: 'Publish repository' })).toBeTruthy()
+  })
+
   it('refreshes git status on window focus', async () => {
     const gitStatus = vi.fn(async () => status({ aheadCount: 2 }))
     mount({ cwd: '/work', gitStatus })

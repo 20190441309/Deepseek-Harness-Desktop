@@ -638,6 +638,35 @@ test('gitSwitchBranch checks out a branch already used by another worktree', asy
   }
 });
 
+test('gitSwitchBranch on a remote-tracking ref creates the local branch instead of detaching HEAD', async () => {
+  const cwd = makeTempDir();
+  try {
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.email', 't@local']);
+    git(cwd, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(cwd, 'README.md'), 'x\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'base']);
+    git(cwd, ['init', '--bare', 'remote.git']);
+    git(cwd, ['remote', 'add', 'origin', path.join(cwd, 'remote.git')]);
+    git(cwd, ['checkout', '-b', 'feature-x']);
+    git(cwd, ['push', 'origin', 'feature-x']);
+    git(cwd, ['checkout', 'main']);
+    git(cwd, ['branch', '-D', 'feature-x']);
+
+    const switched = await gitSwitchBranch(cwd, 'origin/feature-x');
+    assert.equal(switched.ok, true, switched.message);
+    assert.equal(switched.refName, 'feature-x');
+    const head = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf8', windowsHide: true });
+    assert.equal(head.stdout.trim(), 'feature-x');
+    const upstream = spawnSync('git', ['rev-parse', '--abbrev-ref', 'feature-x@{upstream}'], { cwd, encoding: 'utf8', windowsHide: true });
+    assert.equal(upstream.stdout.trim(), 'origin/feature-x');
+  } finally {
+    setWorkspaceAuthority(null);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('gitSwitchBranch and gitCreateBranch reject unsafe ref names', async () => {
   const cwd = makeTempDir();
   try {

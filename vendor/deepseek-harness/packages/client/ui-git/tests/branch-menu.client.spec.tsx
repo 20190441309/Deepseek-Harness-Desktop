@@ -177,16 +177,66 @@ describe('BranchMenu', () => {
     expect(b.gitSwitchBranch).toHaveBeenCalled()
   })
 
-  it('keeps the menu open when the branch list fails', async () => {
+  it('keeps the menu open and shows an error row when the branch list fails', async () => {
     const b = mountMenu({
       gitBranchList: vi.fn(async () => ({ ok: false, message: 'Git status is unavailable.' })),
     })
     fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
-    await waitFor(() => {
-      expect(screen.getByRole('menuitem', { name: 'Create and checkout new branch…' })).toBeTruthy()
-    })
+    expect(await screen.findByText('Failed to load branches.')).toBeTruthy()
+    expect(screen.getByText('Git status is unavailable.')).toBeTruthy()
+    expect(screen.queryByText('No matching branches')).toBeNull()
+    expect(screen.getByRole('menuitem', { name: 'Create and checkout new branch…' })).toBeTruthy()
     expect(b.onError).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Switch branch' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('shows the error row when the branch list IPC rejects', async () => {
+    const b = mountMenu({
+      gitBranchList: vi.fn(async () => { throw new Error('ipc dropped') }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    expect(await screen.findByText('Failed to load branches.')).toBeTruthy()
+    expect(screen.getByText('ipc dropped')).toBeTruthy()
+    expect(screen.queryByText('No matching branches')).toBeNull()
+    expect(b.onError).not.toHaveBeenCalled()
+  })
+
+  it('reports a rejected switch IPC promise on the parent error toast', async () => {
+    const b = mountMenu({
+      gitSwitchBranch: vi.fn(async () => { throw new Error('checkout process died') }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'feature/qa' }))
+    await waitFor(() => {
+      expect(b.onError).toHaveBeenCalledWith('checkout process died', 'Failed to switch branch.')
+    })
+    await waitFor(() => { expect(b.onChanged).toHaveBeenCalled() })
+  })
+
+  it('drops the cached rows when the workspace changes', async () => {
+    const listByCwd = vi.fn(async (cwd: string) => (
+      cwd === 'C:/proj'
+        ? { ok: true, branches: [{ name: 'only-in-proj', isRemote: false, isCurrent: false }] satisfies BranchRef[] }
+        : new Promise<never>(() => {})
+    ))
+    const props: BranchMenuProps = {
+      cwd: 'C:/proj',
+      currentRef: 'main',
+      t,
+      gitBranchList: listByCwd as BranchMenuProps['gitBranchList'],
+      gitSwitchBranch: vi.fn(async () => ({ ok: true })),
+      gitCreateBranch: vi.fn(async () => ({ ok: true })),
+      onChanged: vi.fn(),
+      onError: vi.fn(),
+    }
+    const view = render(<BranchMenu {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    expect(await screen.findByRole('menuitem', { name: 'only-in-proj' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    view.rerender(<BranchMenu {...props} cwd="D:/other" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    await waitFor(() => { expect(listByCwd).toHaveBeenCalledWith('D:/other') })
+    expect(screen.queryByRole('menuitem', { name: 'only-in-proj' })).toBeNull()
   })
 
   it('disables the trigger while a stacked Git action holds the titlebar', () => {
