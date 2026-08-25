@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-08-15-inline-user-message-edit.zh.md)
 
+> Partially superseded: the bubble-textarea edit surface described below was replaced by the composer edit session — see [2026-08-25-message-edit-composer-edit-session](2026-08-25-message-edit-composer-edit-session.md). The seat layout, the no-fork pencil, and the `beforeSeq` fork transaction still hold.
+
 ## Problem
 
 The edit pencil on the latest user message forked a child session and moved the original text into the bottom composer as soon as it was clicked. The operator never edited the bubble they pointed at; the sidebar grew a child session before any revision existed.

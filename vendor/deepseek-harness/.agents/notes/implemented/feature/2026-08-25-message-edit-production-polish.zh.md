@@ -4,9 +4,11 @@ Status: implemented
 
 [English](2026-08-25-message-edit-production-polish.md) | 中文
 
+> 部分被取代：本记录打磨的气泡 textarea 已被 composer 编辑会话取代——见 [2026-08-25-message-edit-composer-edit-session](2026-08-25-message-edit-composer-edit-session.zh.md)。失败保留草稿、确认时刻的「最新且空闲」守卫、IME 安全的 Escape 与焦点交还 store 全部延续；textarea 专属的底盘（高度重排、`editor.field`、气泡内发送）已移除。
+
 ## 问题
 
-[就地用户消息编辑器](2026-08-15-inline-user-message-edit.md)的事务本身正确，但边缘粗糙。fork 失败会取消编辑器，把操作者敲好的修订直接丢掉。「空闲且最新」的前置条件只在铅笔处检查：编辑期间会话开始运行（排队消息被接纳、另一客户端提交）或有更新的用户消息到达时，「发送」仍然可用，确认会以静默丢弃较新轮次的切点创建分支。输入法的 Escape——本来只是收起候选列表——却丢弃整次编辑。取消后键盘焦点落在 `<body>` 上。textarea 的自适应高度在窗口或面板调整后失效，不可用的铅笔仍然渲染 hover 回显（与共享 IconActions 底盘不一致），编辑态气泡与静态气泡无法区分。
+[就地用户消息编辑器](2026-08-15-inline-user-message-edit.zh.md)的事务本身正确，但边缘粗糙。fork 失败会取消编辑器，把操作者敲好的修订直接丢掉。「空闲且最新」的前置条件只在铅笔处检查：编辑期间会话开始运行（排队消息被接纳、另一客户端提交）或有更新的用户消息到达时，「发送」仍然可用，确认会以静默丢弃较新轮次的切点创建分支。输入法的 Escape——本来只是收起候选列表——却丢弃整次编辑。取消后键盘焦点落在 `<body>` 上。textarea 的自适应高度在窗口或面板调整后失效，不可用的铅笔仍然渲染 hover 回显（与共享 IconActions 底盘不一致），编辑态气泡与静态气泡无法区分。
 
 ## 决策
 

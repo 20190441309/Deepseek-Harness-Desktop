@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-08-15-inline-user-message-edit.md) | 中文
 
+> 部分被取代：下文描述的气泡内 textarea 编辑面已被 composer 编辑会话取代——见 [2026-08-25-message-edit-composer-edit-session](2026-08-25-message-edit-composer-edit-session.zh.md)。座位布局、不 fork 的铅笔与 `beforeSeq` fork 事务仍然成立。
+
 ## 问题
 
 最新一条用户消息上的编辑铅笔一点击就 fork 子会话，并把原文塞进底部输入框。操作者并没有在自己指向的那条气泡上改字；侧栏在任何修订出现之前就已经多出一个子会话。
@@ -14,9 +16,9 @@ Status: implemented
 
 `ui-conversation` 在已定稿 user 节点上，于 `conversation.chat.user-actions` 旁边声明 `conversation.chat.user-editor`（single，session）。`UserMessageNodeView` 保存本地 `editing` 标志：动作条 owner 上的 `startEdit` 用编辑器占位替换静态气泡和 IconActions；`cancelEdit` 将其恢复。核心会话包仍不带编辑文案，也不实现 textarea。
 
-`ui-message-edit` 占据这两个座位。铅笔只调用 `startEdit`，不 fork。编辑器是用户气泡几何里的 textarea，外加「取消／发送」（`Button` `sm` ghost / primary）。Escape 取消；Enter 发送；Shift+Enter 换行；三者均对 IME 安全。确认时执行 `sessions.fork({ beforeSeq, increaseTitle: true })`，解析子会话作用域，再 `sessions.open(childId)`，然后在子会话输入面上 `setDraft(text)` 和 `submit()`。fork 失败或子会话作用域缺失则留在源会话、在该 composer 上提示，并让编辑器带着草稿继续待命；编辑中途的状态守卫与焦点交还 store 由[生产打磨记录](2026-08-25-message-edit-production-polish.md)定案。
+`ui-message-edit` 占据这两个座位。铅笔只调用 `startEdit`，不 fork。编辑器是用户气泡几何里的 textarea，外加「取消／发送」（`Button` `sm` ghost / primary）。Escape 取消；Enter 发送；Shift+Enter 换行；三者均对 IME 安全。确认时执行 `sessions.fork({ beforeSeq, increaseTitle: true })`，解析子会话作用域，再 `sessions.open(childId)`，然后在子会话输入面上 `setDraft(text)` 和 `submit()`。fork 失败或子会话作用域缺失则留在源会话、在该 composer 上提示，并让编辑器带着草稿继续待命；编辑中途的状态守卫与焦点交还 store 由[生产打磨记录](2026-08-25-message-edit-production-polish.zh.md)定案。
 
-日志不变：子会话切在被编辑轮次之前，模型不会两次看到旧提示词。[去掉无效编辑存根](../simplification/2026-07-31-drop-user-message-edit-stub.md) 对 `MessageIconActions` 仍然有效；控件只存在于该插件中。
+日志不变：子会话切在被编辑轮次之前，模型不会两次看到旧提示词。[去掉无效编辑存根](../simplification/2026-07-31-drop-user-message-edit-stub.zh.md) 对 `MessageIconActions` 仍然有效；控件只存在于该插件中。
 
 ## 曾考虑的替代方案
 

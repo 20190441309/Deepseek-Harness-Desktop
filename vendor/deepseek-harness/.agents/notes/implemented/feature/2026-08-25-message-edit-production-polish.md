@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-08-25-message-edit-production-polish.zh.md)
 
+> Partially superseded: the bubble textarea this note polishes was replaced by the composer edit session — see [2026-08-25-message-edit-composer-edit-session](2026-08-25-message-edit-composer-edit-session.md). Failure-keeps-draft, confirm-time latest-and-idle guards, IME-safe Escape, and the focus-return store all carried over; the textarea-specific chrome (height refit, `editor.field`, in-bubble Send) is gone.
+
 ## Problem
 
 The [inline user-message editor](2026-08-15-inline-user-message-edit.md) shipped its transaction correctly but rough at the edges. A failed fork cancelled the editor and threw the operator's typed revision away. The idle-and-latest preconditions were checked only at the pencil: a session that started running mid-edit (a queued message admitting, another client submitting) or a newer user message arriving left Send armed, and confirming would fork a cut that silently drops the newer turns. An IME Escape — which only dismisses the candidate list — discarded the whole edit. Cancelling dropped keyboard focus on `<body>`. The fitted textarea height went stale on window or panel resize, the unavailable pencil still painted a hover echo (unlike the shared IconActions chrome), and the edit-mode bubble was indistinguishable from the static one.
