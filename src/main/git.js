@@ -1008,6 +1008,9 @@ async function gitBranchList(cwd) {
  * `--ignore-other-worktrees` is required: Git otherwise refuses a branch
  * already checked out in another worktree (ChisaCode, Cursor, etc.), and the
  * titlebar picker means "switch this folder", not "move the other tree".
+ * A remote-tracking row without a local branch (`origin/feature-x`) checks
+ * out through `--track`, which creates the local tracking branch instead of
+ * detaching HEAD at the remote ref.
  * @param {unknown} cwd
  * @param {unknown} ref
  */
@@ -1016,7 +1019,13 @@ async function gitSwitchBranch(cwd, ref) {
   const name = safeRefName(ref);
   if (!root) return fail('Git status is unavailable.');
   if (!name) return fail('Invalid branch name.');
-  const result = await runGit(root, ['checkout', '--ignore-other-worktrees', name]);
+  const args = ['checkout', '--ignore-other-worktrees'];
+  const localRef = await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`]);
+  if (localRef.code !== 0) {
+    const remoteRef = await runGit(root, ['show-ref', '--verify', '--quiet', `refs/remotes/${name}`]);
+    if (remoteRef.code === 0) args.push('--track');
+  }
+  const result = await runGit(root, [...args, name]);
   if (result.missing) return fail('Git is unavailable.');
   if (result.timedOut) return fail('Git command timed out.');
   if (result.code !== 0) return fail(result.stderr.trim() || result.stdout.trim() || 'git checkout failed.');

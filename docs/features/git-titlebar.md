@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `git-titlebar` |
 | **status** | `active` |
-| **last verified** | 2026-08-24 — 登记信任根新增高危祖先过滤（用户主目录 / APPDATA / userData / dsh-home）；兄弟项目场景不变 |
+| **last verified** | 2026-08-25 — 分支菜单选远端行（`origin/feature-x`）改为 `checkout --track` 建本地跟踪分支，不再 detached HEAD；本地分支与 worktree 场景不变 |
 
 ## User paths
 
