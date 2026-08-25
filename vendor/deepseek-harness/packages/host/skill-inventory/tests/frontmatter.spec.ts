@@ -64,4 +64,112 @@ describe('skill inventory frontmatter', () => {
       customFlag: 'retained',
     })
   })
+
+  it('writes the group under metadata', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: ' review ',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+    })
+    expect(parseSkillMarkdown(text).data).toEqual({
+      name: 'demo-skill',
+      description: 'A demo',
+      metadata: { group: 'review' },
+    })
+  })
+
+  it('merges the group into existing metadata fields', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: 'review',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: { owner: 'custom-provider' } },
+    })
+    expect(parseSkillMarkdown(text).data).toEqual({
+      name: 'demo-skill',
+      description: 'A demo',
+      metadata: { owner: 'custom-provider', group: 'review' },
+    })
+  })
+
+  it('clears the group while keeping sibling metadata fields', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: '  ',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: { owner: 'custom-provider', group: 'old' } },
+    })
+    expect(parseSkillMarkdown(text).data).toEqual({
+      name: 'demo-skill',
+      description: 'A demo',
+      metadata: { owner: 'custom-provider' },
+    })
+  })
+
+  it('drops the metadata key when clearing the last remaining field', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: '',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: { group: 'old' } },
+    })
+    const parsed = parseSkillMarkdown(text)
+    expect(parsed.data).toEqual({
+      name: 'demo-skill',
+      description: 'A demo',
+    })
+    expect(parsed.data).not.toHaveProperty('metadata')
+  })
+
+  it('leaves a non-object metadata value untouched when clearing the group', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: '',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: 'not-an-object' },
+    })
+    expect(parseSkillMarkdown(text).data).toMatchObject({ metadata: 'not-an-object' })
+  })
+
+  it('leaves the group untouched when the field is omitted from the write', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: { owner: 'custom-provider', group: 'review' } },
+    })
+    expect(parseSkillMarkdown(text).data).toMatchObject({
+      metadata: { owner: 'custom-provider', group: 'review' },
+    })
+  })
+
+  it('replaces a non-object metadata value when writing a group', () => {
+    const text = renderSkillMarkdown({
+      name: 'demo-skill',
+      description: 'A demo',
+      group: 'review',
+      modelInvocable: true,
+      userInvocable: true,
+      content: 'Body',
+      existingData: { metadata: 'not-an-object' },
+    })
+    expect(parseSkillMarkdown(text).data).toMatchObject({ metadata: { group: 'review' } })
+  })
 })

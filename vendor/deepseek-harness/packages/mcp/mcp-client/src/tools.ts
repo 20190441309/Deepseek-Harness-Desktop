@@ -175,10 +175,18 @@ export async function syncTools(
 
   // Phase 2: swap generations.
   for (const dispose of previous.values()) dispose()
+  // Strict `ctx.get` reads the global service store; the `ctx.tools` property
+  // proxy resolves through the caller's fiber chain and breaks for children
+  // mounted after startup (mcp-servers-file remounts), where the chain cannot
+  // cross the runtime's isolation topology.
+  const tools = ctx.get('tools')
+  if (tools === undefined) {
+    throw new Error(`mcp-client(${opts.serverName}): the tools service is unavailable — mount the ToolRuntime before connecting MCP servers`)
+  }
   const disposers: ToolDisposers = new Map()
   try {
     for (const [publicName, definition] of definitions) {
-      disposers.set(publicName, ctx.tools.register(definition))
+      disposers.set(publicName, tools.register(definition))
     }
   } catch (error) {
     // A conflict on an `mcp__<serverName>__`-qualified name means a foreign
