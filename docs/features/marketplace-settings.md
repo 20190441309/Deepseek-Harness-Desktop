@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 市场内置为桌面自有代码，与上游 dshmarket 分离 |
+| **last verified** | 2026-08-25 — Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub；全量单测 + vendor 市场 specs 通过 |
 
 ## User paths
 
@@ -19,7 +19,8 @@
 - **市场是桌面自有代码**：UI 是 `vendor/deepseek-harness/packages/client/ui-settings-market`
   （桌面 fork 包，登记于 `harness-desktop-forks.js`），引擎是主进程
   `marketplace-catalog.js` / `marketplace-install.js`。不再预置安装第三方 `dshmarket`
-  插件；`vendor/dshmarket` 仅为移植参考（见其 `DESKTOP-FORK.md`），不打包、不自动装。
+  插件；`vendor/dshmarket` 只剩 attribution stub（LICENSE + `DESKTOP-FORK.md` +
+  marker `package.json`，源码快照已删），不打包、不自动装。
 - `dshmarket` 在 `DROPPED` 名单：Loader 不挂载它（含用户旧装副本），保证只有一个
   `market` 分区；磁盘文件不删除。启动时 `removeDshMarketPreset` 只清理桌面预置残留
   （受管 patch 块、`desktop-plugins/dshmarket` 副本、预置 symlink）。
@@ -30,10 +31,13 @@
 - Harness 未就绪时不以空市场窗硬装。
 - 失败可见（`role="alert"` / 进度行），不静默；「已写入 profile 但 Harness 未起」也要提示。
 
-## Deferred（未移植的上游 dshmarket 能力）
+## Deferred（v1 明确不移植 — 产品裁剪）
 
-主题商店、备份 / Gist、诊断面板、插件热更新、多 registry 源管理、试用通道。
-需要时按 `ui-settings-market` 第一切片的模式继续移植，不回退到预置插件。
+主题商店、备份 / Gist、诊断面板、插件热更新、多 registry 源管理、试用通道：
+**won't port**，不是待办。桌面自有市场 v1 的范围就是精选目录浏览 / 搜索 / 安装 / 卸载。
+`vendor/dshmarket` 的源码快照已删除（只剩 attribution stub）；若未来某项能力重新立项，
+从上游仓库取参考、按 `ui-settings-market` 第一切片的模式新写 desktop fork 包 + 桌面 IPC，
+先开新 feature card，不回退到预置插件。
 
 ## Allowed touch
 
@@ -41,7 +45,7 @@
 - `src/host/install-dsh-plugin-client.js`
 - `vendor/deepseek-harness/packages/client/ui-settings-market/`（桌面自有市场 UI）
 - `src/shared/harness-desktop-forks.js`（登记行）与 web-app bundle 的注册三件套
-- `vendor/dshmarket/`（仅参考树标记，不得恢复自动安装）
+- `vendor/dshmarket/`（attribution stub：LICENSE + DESKTOP-FORK.md + marker package.json；不得恢复源码快照或自动安装）
 - 相关桌面测试与本卡 / handbook 市场章
 
 ## Do not touch

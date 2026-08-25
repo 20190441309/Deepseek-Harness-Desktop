@@ -102,12 +102,15 @@ test('packaging no longer ships vendor/dshmarket', () => {
   }
 });
 
-test('vendor/dshmarket stays as a marked reference tree, not a live preset source', () => {
+test('vendor/dshmarket is an attribution stub, not a live source tree', () => {
   const root = path.join(__dirname, '..', '..', 'vendor', 'dshmarket');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'dshmarket');
+  assert.equal(pkg.private, true);
   const marker = fs.readFileSync(path.join(root, 'DESKTOP-FORK.md'), 'utf8');
   assert.ok(marker.includes('ui-settings-market'));
   assert.equal(fs.existsSync(path.join(root, 'LICENSE')), true);
-  assert.equal(fs.existsSync(path.join(root, 'node_modules')), false);
+  for (const removed of ['node_modules', 'lib', 'client', 'cordis.patch.yml', 'package-lock.json']) {
+    assert.equal(fs.existsSync(path.join(root, removed)), false, `vendor/dshmarket/${removed} should stay deleted`);
+  }
 });

@@ -17,7 +17,8 @@
 - 目录 / 安装：`marketplace-catalog.js`、`marketplace-install.js`、`marketplace-spec.js`、`marketplace-allowbuilds.js`。
 - 与上游分离：`dshmarket` 在 `DROPPED`（不挂载、目录隐藏、拒绝安装）；
   `dshmarket-preset.js` 只剩 `removeDshMarketPreset` 清理旧预置残留；
-  `vendor/dshmarket` 是移植参考树（`DESKTOP-FORK.md`），不打包。
+  `vendor/dshmarket` 只剩 attribution stub（LICENSE + `DESKTOP-FORK.md`），源码快照已删。
+  上游主题商店 / 备份 / 诊断等能力是 v1 明确不移植的产品裁剪（见 feature card Deferred）。
 - Feature card：[../../features/marketplace-settings.md](../../features/marketplace-settings.md)
 
 ## 实现入口
