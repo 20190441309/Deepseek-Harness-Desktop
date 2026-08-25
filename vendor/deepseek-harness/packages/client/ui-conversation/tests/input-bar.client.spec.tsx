@@ -1718,3 +1718,77 @@ describe('command launcher chrome and control seats', () => {
   })
 
 })
+
+describe('edit session banner', () => {
+  const SPEC = {
+    key: 'message-edit:7',
+    label: '正在重新编辑此消息',
+    seed: 'original prompt',
+  }
+
+  it('shows the caller label, seeds the draft, and focuses with the caret at the end', () => {
+    const { view, textarea, shell } = bench({ draft: 'half-typed' })
+    textarea.blur()
+    act(() => { shell.beginEdit({ ...SPEC, submit: () => Promise.resolve({ kind: 'success' }) }) })
+    expect(view.getByRole('status').textContent).toBe('正在重新编辑此消息')
+    expect(textarea.value).toBe('original prompt')
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.selectionStart).toBe('original prompt'.length)
+  })
+
+  it('the banner button cancels the edit and restores the stashed draft', () => {
+    const { view, textarea, shell } = bench({ draft: 'half-typed' })
+    act(() => { shell.beginEdit({ ...SPEC, submit: () => Promise.resolve({ kind: 'success' }) }) })
+    fireEvent.click(view.getByRole('button', { name: '取消编辑' }))
+    expect(view.queryByRole('status')).toBeNull()
+    expect(textarea.value).toBe('half-typed')
+  })
+
+  it('Escape cancels the edit; a composition Escape does not', () => {
+    const { view, textarea, shell } = bench()
+    act(() => { shell.beginEdit({ ...SPEC, submit: () => Promise.resolve({ kind: 'success' }) }) })
+    fireEvent.compositionStart(textarea)
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(shell.snapshot.edit).toBeDefined()
+    fireEvent.compositionEnd(textarea)
+    fireEvent.keyDown(textarea, { key: 'Escape', isComposing: true })
+    expect(shell.snapshot.edit).toBeDefined()
+    // Give the deferred composition-close guard its tick, then really cancel.
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        fireEvent.keyDown(textarea, { key: 'Escape' })
+        expect(shell.snapshot.edit).toBeUndefined()
+        expect(view.queryByRole('status')).toBeNull()
+        resolve()
+      }, 20)
+    })
+  })
+
+  it('Enter submits through the edit sink, and the banner leaves on success', async () => {
+    const editSink = vi.fn(() => Promise.resolve({ kind: 'success' as const }))
+    const { view, textarea, sink, shell } = bench({ draft: 'stash' })
+    act(() => { shell.beginEdit({ ...SPEC, submit: editSink }) })
+    fireEvent.change(textarea, { target: { value: 'revised prompt' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(editSink).toHaveBeenCalledWith('revised prompt', [], expect.any(AbortSignal))
+    expect(sink).not.toHaveBeenCalled()
+    expect(view.queryByRole('status')).toBeNull()
+    expect(textarea.value).toBe('stash')
+  })
+
+  it('locks the banner cancel while the edit submit is in flight', async () => {
+    let release!: (outcome: SubmitOutcome) => void
+    const gate = new Promise<SubmitOutcome>((resolve) => { release = resolve })
+    const { view, textarea, shell } = bench()
+    act(() => { shell.beginEdit({ ...SPEC, submit: () => gate }) })
+    fireEvent.change(textarea, { target: { value: 'revised' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    const cancel = view.getByRole('button', { name: '取消编辑' }) as HTMLButtonElement
+    expect(cancel.disabled).toBe(true)
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(shell.snapshot.edit).toBeDefined()
+    act(() => { release({ kind: 'success' }) })
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+  })
+})

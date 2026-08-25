@@ -10,7 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconCloseOutline16, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: the `plan` projection key merge (the TodoDock posture — the
 // composer reads a host-computed value; the domain owns the key).
@@ -113,6 +113,10 @@ export function InputBar({
   // current; the bar renders the same DOM inert instead of a parallel tree.
   const live = input !== undefined && keyboard !== undefined && inputActions !== undefined
   const draft = input?.draft ?? ''
+  // Live edit session: the machine redirected submission (message-edit); the
+  // bar shows the caller's banner and offers cancel, everything else — draft
+  // machine, decorations, attachments, keyboard policy — stays the composer's.
+  const edit = input?.edit ?? null
   const attachments = useMemo(
     () => input === undefined || draftImages === undefined ? [] : draftImages(input.imageIds),
     [draftImages, input?.imageIds],
@@ -284,6 +288,19 @@ export function InputBar({
     revealSelectionFocus(el)
   }, [locked, sessionId])
 
+  // A beginning edit session seeds the draft with the addressed message text
+  // while the entry gesture (the pencil) sits elsewhere in the transcript:
+  // bring focus here with the caret at the seed's end, like the inline
+  // editor it replaces. Cancel keeps focus where it already is.
+  useEffect(() => {
+    const el = inputRef.current
+    if (edit === null || locked || el === null) return
+    el.focus({ preventScroll: true })
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+    revealCaret(end)
+  }, [edit?.key])
+
   // A persisted draft arrives AFTER the unlock effect: ConversationSession
   // adopts it in its own mount effect, and a parent's mount effect runs after
   // its children's. Reveal when the draft becomes non-empty so a restored long
@@ -411,7 +428,16 @@ export function InputBar({
       // Escape layering: an open overlay closes; claimed without an overlay
       // does NOT release (backspacing the token is the only exit gesture).
       keyboard.dismissPopup()
-      if (keyboard.arbitrate('escape', composing) === 'consumed') e.preventDefault()
+      if (keyboard.arbitrate('escape', composing) === 'consumed') {
+        e.preventDefault()
+        return
+      }
+      // The edit session's keyboard exit. A composition Escape only
+      // dismisses the IME candidate list; it must not discard the edit.
+      if (edit !== null && !composing && !machineBusy) {
+        e.preventDefault()
+        keyboard.cancelEdit()
+      }
       return
     }
     if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
@@ -777,6 +803,24 @@ export function InputBar({
           </div>
         )}
         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
+        {edit !== null && (
+          <div className={css.editRow} role="status" data-edit-session>
+            <span className={css.editLabel}>{edit.label}</span>
+            <Tooltip label={t('input.editCancel')} side="top" delayMs={500}>
+              <button
+                type="button"
+                className={css.editCancel}
+                aria-label={t('input.editCancel')}
+                aria-keyshortcuts="Escape"
+                disabled={machineBusy}
+                onMouseDown={keepFocus}
+                onClick={() => keyboard?.cancelEdit()}
+              >
+                <IconCloseOutline16 size={14} />
+              </button>
+            </Tooltip>
+          </div>
+        )}
         {renderSlot('conversation.input.attachments', {
           attachments,
           canAcceptDrop,

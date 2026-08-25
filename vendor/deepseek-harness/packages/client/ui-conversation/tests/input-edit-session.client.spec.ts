@@ -1,0 +1,244 @@
+/**
+ * Composer edit-session coverage on the SessionInputShell: beginEdit stashes
+ * the draft and images and seeds the message text; submission routes to the
+ * edit sink (occurrence serialization included) instead of the default sink;
+ * a success ends the edit and restores the stash while a failure keeps the
+ * edit armed; cancel restores the stash; slash adjudication and command
+ * claims stay off while the edit is live; the persistence mirror never
+ * observes the edit text.
+ */
+import { describe, expect, it, vi } from 'vitest'
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { InputTriggerController, SubmitOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import { SessionInputShell } from '../src/client/input/facade.ts'
+import type { DraftAttachmentId, InputEditSpec } from '../src/client/input/contract.ts'
+
+const commandImages = {
+  serialize: () => Promise.resolve([]),
+  release: () => {},
+  unsupportedNotice: (token: string) => `${token.trim()} images-unsupported`,
+}
+
+const id = (k: string): DraftAttachmentId => k as DraftAttachmentId
+
+type EditSink = InputEditSpec['submit']
+
+function bench(options: { editSink?: EditSink; inputTriggers?: () => InputTriggerController } = {}) {
+  const defaultSink = vi.fn<(
+    text: string,
+    imageIds: readonly DraftAttachmentId[],
+    mode: 'queue' | 'steer',
+    signal: AbortSignal,
+  ) => Promise<SubmitOutcome>>(() => Promise.resolve({ kind: 'success' }))
+  const shell = new SessionInputShell({
+    actx: {} as ClientContext,
+    defaultSink,
+    commandImages,
+    ...(options.inputTriggers !== undefined ? { inputTriggers: options.inputTriggers } : {}),
+  })
+  const editSink = vi.fn<EditSink>(options.editSink ?? (() => Promise.resolve({ kind: 'success' })))
+  const spec: InputEditSpec = {
+    key: 'message-edit:7',
+    label: '正在重新编辑此消息',
+    seed: 'original prompt',
+    submit: editSink,
+  }
+  return { shell, defaultSink, editSink, spec }
+}
+
+describe('composer edit session', () => {
+  it('stashes draft and images, seeds the message text, and publishes the edit state', () => {
+    const { shell, spec } = bench()
+    shell.setDraft('half-typed next prompt')
+    shell.addImages([id('img-1')])
+
+    expect(shell.beginEdit(spec)).toBe(true)
+    expect(shell.snapshot.draft).toBe('original prompt')
+    expect(shell.snapshot.imageIds).toEqual([])
+    expect(shell.snapshot.edit).toEqual({ key: 'message-edit:7', label: '正在重新编辑此消息' })
+  })
+
+  it('refuses a second edit and refuses while an admission transaction is in flight', async () => {
+    const { shell, spec } = bench()
+    expect(shell.beginEdit(spec)).toBe(true)
+    expect(shell.beginEdit({ ...spec, key: 'message-edit:9' })).toBe(false)
+    shell.cancelEdit()
+
+    // Hold the default sink open: submitting phase refuses a new edit.
+    let release!: (outcome: SubmitOutcome) => void
+    const gate = new Promise<SubmitOutcome>((resolve) => { release = resolve })
+    const busy = new SessionInputShell({
+      actx: {} as ClientContext,
+      defaultSink: () => gate,
+      commandImages,
+    })
+    busy.setDraft('plain message')
+    busy.submit()
+    expect(busy.snapshot.phase).toBe('submitting')
+    expect(busy.beginEdit(spec)).toBe(false)
+    release({ kind: 'success' })
+    await vi.waitFor(() => { expect(busy.snapshot.phase).toBe('plain') })
+  })
+
+  it('refuses after disposal', () => {
+    const { shell, spec } = bench()
+    shell.dispose()
+    expect(shell.beginEdit(spec)).toBe(false)
+  })
+
+  it('cancel restores the stashed draft and images; a bare cancel is a no-op', () => {
+    const { shell, spec } = bench()
+    shell.cancelEdit()
+    shell.setDraft('half-typed next prompt')
+    shell.addImages([id('img-1')])
+    shell.beginEdit(spec)
+    shell.setDraft('revised beyond saving')
+
+    shell.cancelEdit()
+    expect(shell.snapshot.edit).toBeUndefined()
+    expect(shell.snapshot.draft).toBe('half-typed next prompt')
+    expect(shell.snapshot.imageIds).toEqual([id('img-1')])
+  })
+
+  it('routes submit to the edit sink, ends the edit on success, and restores the stash', async () => {
+    const { shell, defaultSink, editSink, spec } = bench()
+    shell.setDraft('half-typed next prompt')
+    shell.beginEdit(spec)
+    shell.setDraft('revised prompt')
+    shell.addImages([id('edit-img')])
+
+    shell.submit('queue')
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(editSink).toHaveBeenCalledWith('revised prompt', [id('edit-img')], expect.any(AbortSignal))
+    expect(defaultSink).not.toHaveBeenCalled()
+    // The machine committed (edit draft gone), then the stash returned.
+    expect(shell.snapshot.draft).toBe('half-typed next prompt')
+    expect(shell.snapshot.imageIds).toEqual([])
+  })
+
+  it('keeps the edit armed with the draft when the edit sink reports an error', async () => {
+    const { shell, editSink, spec } = bench({
+      editSink: () => Promise.resolve({ kind: 'error', text: '会话已有更新的消息' }),
+    })
+    shell.beginEdit(spec)
+    shell.setDraft('revised prompt')
+
+    shell.submit('queue')
+    await vi.waitFor(() => { expect(shell.snapshot.phase).toBe('plain') })
+    expect(editSink).toHaveBeenCalledTimes(1)
+    expect(shell.snapshot.edit).toEqual({ key: 'message-edit:7', label: '正在重新编辑此消息' })
+    expect(shell.snapshot.draft).toBe('revised prompt')
+    expect(shell.notices.getSnapshot()).toMatchObject({ level: 'error', text: '会话已有更新的消息' })
+  })
+
+  it('refuses cancel while the edit submit is in flight; the settlement decides', async () => {
+    let release!: (outcome: SubmitOutcome) => void
+    const gate = new Promise<SubmitOutcome>((resolve) => { release = resolve })
+    const { shell, spec } = bench({ editSink: () => gate })
+    shell.setDraft('stash')
+    shell.beginEdit(spec)
+    shell.setDraft('revised prompt')
+    shell.submit('queue')
+    expect(shell.snapshot.phase).toBe('submitting')
+
+    shell.cancelEdit()
+    expect(shell.snapshot.edit).toBeDefined()
+    release({ kind: 'success' })
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(shell.snapshot.draft).toBe('stash')
+  })
+
+  it('skips slash adjudication while editing: a "/" revision reaches the edit sink verbatim', async () => {
+    const adjudicate = vi.fn()
+    const inputTriggers = { adjudicate, track: vi.fn() } as unknown as InputTriggerController
+    const { shell, editSink, spec } = bench({ inputTriggers: () => inputTriggers })
+    shell.beginEdit(spec)
+    shell.setDraft('/looks-like-a-command but is a revision')
+
+    shell.submit('queue')
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(adjudicate).not.toHaveBeenCalled()
+    expect(editSink).toHaveBeenCalledWith('/looks-like-a-command but is a revision', [], expect.any(AbortSignal))
+  })
+
+  it('refuses command claims while editing', () => {
+    const { shell, spec } = bench()
+    shell.beginEdit(spec)
+    shell.setDraft('/compact')
+    const accepted = shell.beginCommand(
+      { token: '/compact ', submit: vi.fn() },
+      { start: 0, end: 8, draftRev: shell.snapshot.draftRev },
+    )
+    expect(accepted).toBe(false)
+    expect(shell.snapshot.phase).toBe('plain')
+  })
+
+  it('serializes reference occurrences before the edit sink, like a real send', async () => {
+    const serializeReference = vi.fn(() => Promise.resolve('@[Research](dsh-session:x)'))
+    const inputTriggers = { serializeReference, track: vi.fn() } as unknown as InputTriggerController
+    const { shell, editSink, spec } = bench({ inputTriggers: () => inputTriggers })
+    shell.beginEdit(spec)
+    shell.setDraft('@res')
+    expect(shell.insertReference({
+      source: 'reference', ref: 'r1', label: 'Research', clipboardText: '@Research',
+    }, { start: 0, end: 4, draftRev: shell.snapshot.draftRev })).toBe(true)
+
+    shell.submit('queue')
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(editSink).toHaveBeenCalledWith('@[Research](dsh-session:x)', [], expect.any(AbortSignal))
+  })
+
+  it('routes an image-only edit submit to the edit sink and ends the edit on success', async () => {
+    const { shell, defaultSink, editSink, spec } = bench()
+    shell.setDraft('stash')
+    shell.beginEdit(spec)
+    shell.setDraft('')
+    shell.addImages([id('edit-img')])
+
+    shell.submit('queue')
+    await vi.waitFor(() => { expect(shell.snapshot.edit).toBeUndefined() })
+    expect(editSink).toHaveBeenCalledWith('', [id('edit-img')], expect.any(AbortSignal))
+    expect(defaultSink).not.toHaveBeenCalled()
+    expect(shell.snapshot.draft).toBe('stash')
+  })
+
+  it('keeps the edit when an image-only edit submit fails', async () => {
+    const { shell, spec } = bench({ editSink: () => Promise.resolve({ kind: 'error', text: 'no fork' }) })
+    shell.beginEdit(spec)
+    shell.setDraft('')
+    shell.addImages([id('edit-img')])
+
+    shell.submit('queue')
+    await vi.waitFor(() => {
+      expect(shell.notices.getSnapshot()).toMatchObject({ level: 'error', text: 'no fork' })
+    })
+    expect(shell.snapshot.edit).toBeDefined()
+    expect(shell.snapshot.imageIds).toEqual([id('edit-img')])
+  })
+
+  it('holds the persistence mirror through the edit and never mirrors edit text', () => {
+    const mirror = vi.fn()
+    const { shell, spec } = bench()
+    shell.bindMirror(mirror)
+    shell.setDraft('persisted draft')
+    expect(mirror).toHaveBeenLastCalledWith('persisted draft')
+    mirror.mockClear()
+
+    shell.beginEdit(spec)
+    shell.setDraft('revised prompt')
+    expect(mirror).not.toHaveBeenCalled()
+
+    // Restore equals the pre-edit mirror value: no redundant write either.
+    shell.cancelEdit()
+    expect(mirror).not.toHaveBeenCalled()
+    expect(shell.snapshot.draft).toBe('persisted draft')
+  })
+
+  it('drops the edit on disposal without restoring into a dead scope', () => {
+    const { shell, spec } = bench()
+    shell.setDraft('stash')
+    shell.beginEdit(spec)
+    shell.dispose()
+    expect(shell.snapshot.edit).toBeUndefined()
+  })
+})

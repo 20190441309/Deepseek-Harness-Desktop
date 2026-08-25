@@ -1,112 +1,79 @@
 /**
- * Inline editor that replaces one finalized user bubble: a textarea in the
- * bubble chrome plus cancel/send. Confirm forks a child session cut before
- * that message, opens it, and submits the edited text. Escape cancels;
- * Enter sends (Shift+Enter inserts a newline), matching the composer.
+ * Editing-state bubble for one finalized user message. The edit surface is
+ * the session's resident composer — the full input (draft machine,
+ * decorations, attachments, IME, keyboard policy) — promoted into the edit
+ * transaction through the composer edit session; this occupant only marks
+ * the addressed bubble, arms the session on mount, and offers the in-place
+ * cancel. Confirm rides the composer's own submit: the redirected sink forks
+ * a child session cut before this message, opens it, and hands the revision
+ * to the child's input. The composer's banner cancel / Escape and this
+ * bubble's cancel both end the session; only the bubble's cancel returns
+ * focus to the pencil (the composer paths keep focus in the composer).
  * @module @deepseek-ai/dsh-client-ui-message-edit/client/MessageEditEditor
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import { joinedText } from './text.ts'
+import { editKey, joinedText } from './text.ts'
 import type { MessageEditEditorProps } from './slots.ts'
 import css from './MessageEditEditor.module.css'
 
 /**
- * Grow the textarea to its scroll height without animating layout.
- * @param el - the live textarea.
- */
-function fitHeight(el: HTMLTextAreaElement): void {
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
-}
-
-/**
- * One message's inline editor.
- * @param props - the addressed user message, cancelEdit, and the resend/notify verbs.
- * @returns the editable bubble row.
+ * One message's editing-state bubble.
+ * @param props - the addressed user message, cancelEdit, the beginEdit /
+ * endEdit verbs, the input state hook, and the shared interaction store.
+ * @returns the editing-marked bubble row.
  */
 export function MessageEditEditor({
-  seq, content, cancelEdit, resend, notify, t,
+  seq, content, cancelEdit, beginEdit, endEdit, useInput, actions, t,
 }: MessageEditEditorProps) {
-  const initial = joinedText(content) ?? ''
-  const [draft, setDraft] = useState(initial)
-  const [pending, setPending] = useState(false)
-  const alive = useRef(true)
-  const composing = useRef(false)
-  const fieldRef = useRef<HTMLTextAreaElement | null>(null)
-  const empty = draft.trim() === ''
-  const blocked = pending || empty
+  const key = editKey(seq)
+  const live = useInput(state => state.edit?.key === key)
+  // Rising-edge latch: the arm effect publishes the edit AFTER the first
+  // render, so a bare `!live` would read the pre-arm snapshot and cancel a
+  // healthy mount.
+  const wasLive = useRef(false)
 
-  useEffect(() => () => { alive.current = false }, [])
-
+  // Arm on mount. A refusal (another edit live, admission in flight)
+  // restores the static bubble immediately — the refusal notice rides the
+  // composer's own channel.
   useEffect(() => {
-    const el = fieldRef.current
-    /* v8 ignore next -- the textarea renders unconditionally; the ref is set before this layout effect. */
-    if (el === null) return
-    el.focus()
-    const end = el.value.length
-    el.setSelectionRange(end, end)
-    fitHeight(el)
-  }, [])
-
-  const onChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft(event.target.value)
-    fitHeight(event.target)
-  }, [])
-
-  const onSend = useCallback(() => {
-    if (blocked) return
-    setPending(true)
-    void resend(seq, draft).catch(() => {
-      notify(t('error.generic'))
+    if (!beginEdit(seq, joinedText(content) ?? '')) {
       cancelEdit()
-    }).finally(() => {
-      if (alive.current) setPending(false)
-    })
-  }, [blocked, cancelEdit, draft, notify, resend, seq, t])
-
-  const onKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Escape') {
-      if (!pending) cancelEdit()
       return
     }
-    if (event.key === 'Enter' && event.shiftKey) return
-    // keyCode 229 is the legacy IME-composition signal engines emit without isComposing.
-    // oxlint-disable-next-line typescript/no-deprecated
-    const ime = composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
-    if (event.key !== 'Enter' || ime || event.repeat) return
-    event.preventDefault()
-    onSend()
-  }, [cancelEdit, onSend, pending])
+    // Unmounting with the edit still live (session switch, view teardown)
+    // cancels it, so the composer never keeps editing a bubble that is gone.
+    return () => { endEdit(seq) }
+  }, [])
+
+  // The composer side ended the edit — banner cancel, Escape, or a
+  // successful fork-resend: restore the static bubble without stealing the
+  // composer's focus.
+  useEffect(() => {
+    if (live) {
+      wasLive.current = true
+      return
+    }
+    if (wasLive.current) cancelEdit()
+  }, [cancelEdit, live])
+
+  const onCancel = useCallback(() => {
+    // Ask the remounted pencil to take focus before the bubble swap removes
+    // this row (the editor and the pencil never coexist in the DOM).
+    actions.requestReturnFocus(seq)
+    endEdit(seq)
+  }, [actions, endEdit, seq])
 
   return (
-    <div className={css.row}>
+    <div className={css.row} data-message-editing>
       <div className={css.stack}>
-        <div className={css.bubble}>
-          <textarea
-            ref={fieldRef}
-            className={css.field}
-            rows={1}
-            value={draft}
-            disabled={pending}
-            aria-label={t('action.edit')}
-            onChange={onChange}
-            onKeyDown={onKeyDown}
-            onCompositionStart={() => { composing.current = true }}
-            onCompositionEnd={() => {
-              window.setTimeout(() => { composing.current = false }, 10)
-            }}
-          />
-        </div>
+        <div className={css.bubble}>{joinedText(content) ?? ''}</div>
       </div>
       <div className={css.actions}>
-        <Button variant="ghost" size="sm" disabled={pending} onClick={cancelEdit}>
+        <span className={css.hint} role="status">{t('editor.editing')}</span>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           {t('action.cancel')}
-        </Button>
-        <Button variant="primary" size="sm" disabled={blocked} onClick={onSend}>
-          {pending ? t('action.pending') : t('action.send')}
         </Button>
       </div>
     </div>

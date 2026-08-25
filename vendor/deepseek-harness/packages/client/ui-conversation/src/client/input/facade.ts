@@ -1,10 +1,12 @@
 /**
  * SessionInput shell over the pure input machine: the sole machine caller
  * and effect executor. Owns the InputState store (machine state + the queue
- * overlay), the notice channel, and the submit transaction plumbing
+ * overlay), the notice channel, the submit transaction plumbing
  * (adjudicate via the session's InputTriggerController; claim.submit; default
- * sink). Package-private; the hub alone constructs it and wires the scoped
- * event listeners onto it.
+ * sink), and the edit-session redirect (beginEdit/cancelEdit: stash + seed +
+ * replacement sink, so the resident composer serves message-edit flows with
+ * full capability). Package-private; the hub alone constructs it and wires
+ * the scoped event listeners onto it.
  */
 import type { ClientContext, ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
@@ -13,8 +15,8 @@ import type {
   ReferenceInsert, InputTriggerController, SubmitImageAttachment, SubmitOutcome, TokenSpan,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type {
-  DraftAttachmentId, EditRange, EditSelection, InputActions, InputEffect, InputNotice, InputState,
-  PasteComponent, QueuedMessage, SessionInput, SubmitAttempt,
+  DraftAttachmentId, EditRange, EditSelection, InputActions, InputEditSpec, InputEffect,
+  InputNotice, InputState, PasteComponent, QueuedMessage, SessionInput, SubmitAttempt,
 } from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import { InputMachine, projectClipboard } from './machine.ts'
@@ -105,6 +107,14 @@ export class SessionInputShell implements SessionInput {
   private disposed = false
   /** Draft persistence mirror (chat store write; receives the clipboard projection, never display-only ranges). */
   private mirrorFn: ((text: string) => void) | undefined
+  /**
+   * Live edit session: the spec plus the stashed pre-edit draft and images.
+   * While present, submission routes to the spec's sink, enter-time
+   * adjudication and command claims are off (an edit submits a revision,
+   * never a source-session command), and the persistence mirror is held so
+   * a reload cannot adopt the edit text as the session draft.
+   */
+  private edit: { readonly spec: InputEditSpec; readonly stash: { draft: string; imageIds: readonly DraftAttachmentId[] } } | undefined
 
   constructor(private readonly deps: SessionInputDeps) {
     this.state = createSnapshotStore<InputState>(this.compose())
@@ -121,6 +131,43 @@ export class SessionInputShell implements SessionInput {
    */
   setDraft(text: string, editRange?: EditRange): void {
     this.run(this.core.dispatch({ type: 'draft-changed', draft: text, ...(editRange !== undefined ? { editRange } : {}) }))
+  }
+
+  /**
+   * Begin one edit session: stash draft and images, seed the draft, publish
+   * the edit state, and redirect submission to the spec's sink.
+   * @param spec - identity, banner label, draft seed, and the replacement sink.
+   * @returns false while another edit is live, an admission transaction is in
+   * flight, or the facade is disposed.
+   */
+  beginEdit(spec: InputEditSpec): boolean {
+    const phase = this.snapshot.phase
+    if (this.disposed || this.edit !== undefined || phase === 'adjudicating' || phase === 'submitting') return false
+    this.edit = { spec, stash: { draft: this.snapshot.draft, imageIds: this.imageIds } }
+    this.imageIds = []
+    // Ordinary transaction AFTER the edit is set, so the seed write is
+    // already covered by the mirror hold and publishes the edit state.
+    this.setDraft(spec.seed)
+    return true
+  }
+
+  /** End the live edit session and restore the stash (see the SessionInput contract). */
+  cancelEdit(): void {
+    const phase = this.snapshot.phase
+    if (this.edit === undefined || phase === 'adjudicating' || phase === 'submitting') return
+    this.finishEdit()
+  }
+
+  /** Drop the edit session and restore the stashed pre-edit draft and images. */
+  private finishEdit(): void {
+    const edit = this.edit
+    /* v8 ignore next -- both callers check edit liveness before entering. */
+    if (edit === undefined) return
+    this.edit = undefined
+    this.imageIds = edit.stash.imageIds
+    // The restore is an ordinary transaction: the mirror resumes with it, so
+    // persistence never observes the edit text.
+    this.setDraft(edit.stash.draft)
   }
 
   /** Append ordered image ids unless an admission transaction is locked. */
@@ -211,10 +258,13 @@ export class SessionInputShell implements SessionInput {
       if (this.snapshot.phase === 'plain' && !this.imageSendInFlight) {
         const imageIds = [...this.imageIds]
         this.imageSendInFlight = true
-        void this.deps.defaultSink('', imageIds, mode, new AbortController().signal).then((outcome) => {
+        void this.sink('', imageIds, mode, new AbortController().signal).then((outcome) => {
           this.imageSendInFlight = false
           if (this.disposed) return
-          if (outcome.kind === 'success') this.commitSend(imageIds)
+          if (outcome.kind === 'success') {
+            this.commitSend(imageIds)
+            if (this.edit !== undefined) this.finishEdit()
+          }
           else if (outcome.text !== undefined) this.notify('error', outcome.text)
         }, (error: unknown) => {
           this.imageSendInFlight = false
@@ -313,6 +363,9 @@ export class SessionInputShell implements SessionInput {
    * @returns whether the machine accepted (phase + span CAS passed and the draft mutated).
    */
   beginCommand(claim: CommandClaim, span: TokenSpan): boolean {
+    // No claims while an edit session is live: a claimed Enter would execute
+    // the command against the source session, which an edit must never do.
+    if (this.edit !== undefined) return false
     const before = this.core.state.draftRev
     this.run(this.core.dispatch({ type: 'begin-command', claim, span }))
     return this.core.state.phase === 'claimed' && this.core.state.draftRev !== before
@@ -392,6 +445,9 @@ export class SessionInputShell implements SessionInput {
   /** Teardown: abort any in-flight attempt and stop accepting async settlements. */
   dispose(): void {
     this.disposed = true
+    // The edit dies with the scope, no restore: the stash's session store is
+    // going away with it.
+    this.edit = undefined
     this.run(this.core.dispatch({ type: 'release' }))
   }
 
@@ -457,7 +513,7 @@ export class SessionInputShell implements SessionInput {
     const imageIds = [...this.imageIds]
     const occurrences = this.core.state.occurrences
     if (occurrences.length === 0) {
-      this.settleSubmit(attempt, this.deps.defaultSink(draft.trim(), imageIds, mode, attempt.signal), imageIds)
+      this.settleSubmit(attempt, this.sink(draft.trim(), imageIds, mode, attempt.signal), imageIds)
       return
     }
     const inputTriggers = this.deps.inputTriggers?.()
@@ -481,7 +537,7 @@ export class SessionInputShell implements SessionInput {
           cursor = part.offset + part.length
         }
         out += draft.slice(cursor)
-        this.settleSubmit(attempt, this.deps.defaultSink(out.trim(), imageIds, mode, attempt.signal), imageIds)
+        this.settleSubmit(attempt, this.sink(out.trim(), imageIds, mode, attempt.signal), imageIds)
       },
       (error: unknown) => {
         controller.abort()
@@ -490,6 +546,19 @@ export class SessionInputShell implements SessionInput {
         this.run(this.core.dispatch({ type: 'submit-settled', attempt, ok: false, message }))
       },
     )
+  }
+
+  /** Route one plain-message send: the live edit session's sink, else the default sink. */
+  private sink(
+    text: string,
+    imageIds: readonly DraftAttachmentId[],
+    mode: InputSubmitMode,
+    signal: AbortSignal,
+  ): Promise<SubmitOutcome> {
+    const edit = this.edit
+    return edit !== undefined
+      ? edit.spec.submit(text, imageIds, signal)
+      : this.deps.defaultSink(text, imageIds, mode, signal)
   }
 
   /** Settle one admission attempt; successful sends consume only their captured images. */
@@ -511,6 +580,10 @@ export class SessionInputShell implements SessionInput {
           ok: outcome.kind === 'success',
           outcome,
         }))
+        // A successful edit submit ends the session AFTER the machine's
+        // commit (draft cleared, undo cut): the stashed pre-edit draft
+        // returns. A failure keeps the edit armed with the draft.
+        if (outcome.kind === 'success' && this.edit !== undefined) this.finishEdit()
       },
       (error: unknown) => {
         if (this.dead(attempt)) return
@@ -527,8 +600,10 @@ export class SessionInputShell implements SessionInput {
   /** Enter adjudication: poll the session controller; failure = notice + draft retained (never a silent downgrade). */
   private adjudicate(attempt: SubmitAttempt, draft: string): void {
     const inputTriggers = this.deps.inputTriggers?.()
-    if (inputTriggers === undefined) {
-      // No pipeline mounted: the '/' line is an ordinary message.
+    if (inputTriggers === undefined || this.edit !== undefined) {
+      // No pipeline mounted: the '/' line is an ordinary message. An edit
+      // session takes the same route deliberately — the revision must reach
+      // the edit sink verbatim, never execute a source-session command.
       this.run(this.core.dispatch({ type: 'adjudicated', attempt, outcome: undefined }))
       return
     }
@@ -590,12 +665,20 @@ export class SessionInputShell implements SessionInput {
 
   private compose(): InputState {
     const core = this.core.state
-    return { ...core, imageIds: this.imageIds, queue: this.deps.queue?.getSnapshot() ?? EMPTY_QUEUE }
+    return {
+      ...core,
+      imageIds: this.imageIds,
+      queue: this.deps.queue?.getSnapshot() ?? EMPTY_QUEUE,
+      ...(this.edit === undefined ? {} : { edit: { key: this.edit.spec.key, label: this.edit.spec.label } }),
+    }
   }
 
   private publish(): void {
     const next = this.compose()
     this.state.set(next)
+    // The mirror holds through an edit session: a reload must adopt the
+    // stashed session draft, never the transient edit text.
+    if (this.edit !== undefined) return
     const mirroredDraft = projectClipboard(next)
     if (mirroredDraft !== this.lastMirroredDraft) {
       this.lastMirroredDraft = mirroredDraft

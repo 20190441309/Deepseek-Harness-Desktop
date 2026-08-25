@@ -26,6 +26,13 @@
   opacity: 0.4;
 }
 
+/* Same reset as the shared IconActions chrome: an unavailable control keeps
+   hover/focus events for its Tooltip but must not paint an interactive echo. */
+.action[data-unavailable]:hover {
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .visuallyHidden {
   position: absolute;
   width: 1px;

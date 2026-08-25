@@ -17,7 +17,9 @@ export type {} from './conversation-nodes/turn-tail.ts'
 export { apply, inject } from './apply.ts'
 export { ConversationController } from './service.ts'
 export type { IConversation } from './service.ts'
-export type { DraftAttachmentId } from './input/contract.ts'
+export type {
+  DraftAttachmentId, InputEditSpec, InputEditState, SessionInput,
+} from './input/contract.ts'
 
 export type {
   CallId, ChatStoreState, SelectionTarget, ViewTab,
@@ -34,7 +36,8 @@ export type {
   ConversationHeaderLineageOwnerProps, ConversationSessionHeaderInjected, ConversationSessionInjected,
   ConversationSlotProps, ConvViewOwnerProps,
   ConvViewProps, DetailsInjected, DetailsSlotProps, DetailsToolOwnerProps, EmptyWorkspaceOwnerProps, HeroBrandMarkOwnerProps,
-  MessageImagesOwnerProps, MessageImagesProps, RenderMessageImages, TurnTailOwnerProps, UserActionContentBlock, UserActionOwnerProps, UserEditorOwnerProps, UseChatNodeTurnData,
+  MessageImagesOwnerProps, MessageImagesProps, RenderMessageImages, TurnTailOwnerProps,
+  UserActionContentBlock, UserActionOwnerProps, UserEditorOwnerProps, UseChatNodeTurnData,
 } from './contract/slots.ts'
 // Export discipline: packages/client/AGENTS.md.
 
