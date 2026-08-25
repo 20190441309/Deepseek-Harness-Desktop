@@ -140,7 +140,7 @@ Phase 10 TC-REM-002 解禁前置        —— 低优先设计，不阻塞收口
 **合并后验证（云端 Linux，本轮已跑）：**
 
 - [x] desktop `npm test`（合并树 + Phase 8 修复）：**1000 tests / 997 pass / 0 fail / 3 skip**。
-- [x] harness `test:gui` + typecheck：不在本地重跑 —— CI `vendor-gui` 已对**同一棵树**（head == merge 树）全绿，即 main 上 node-half 修复已被验证。
+- [x] harness `test:gui` + typecheck：全量不在本地重跑 —— CI `vendor-gui` 已对**同一棵树**（head == merge 树）全绿；另在本地（`setup:harness` 后）单跑 `node-half.client.spec.ts` **27/27 绿**，直接钉死 main 上的修复。
 - 复核命令（任何人可重放）：`gh pr view 40 --json state,mergedAt`；`git log --oneline -3 main`；`npm test`。
 
 ## Phase 8 — macOS `git-workspace-watch` 测试抖动修复（第二轮已执行 ✅）
@@ -161,7 +161,7 @@ Phase 10 TC-REM-002 解禁前置        —— 低优先设计，不阻塞收口
 
 - [x] 修改 `src/main/git-workspace-watch.test.js`：改名「fires the initial signal and settles」，断言 `settled ≤ 2` + 150ms 静默复查。
 - [x] 本地验证：该文件 `node --test` 连跑 5 次 8/8 绿；全套 `npm test` 997 绿。
-- [ ] 观察本分支 CI 的 macos-latest 结果；合并后连续 2 次 main run macOS 绿即视为抖动闭合（Linux 无 FSEvents，本地无法复现双触发路径，只能以 CI 为准）。
+- [ ] 观察本分支 CI 的 macos-latest 结果；合并后连续 2 次 main run macOS 绿即视为抖动闭合（Linux 无 FSEvents，本地无法复现双触发路径，只能以 CI 为准）。注：#40 合并 commit `cecfbade` 的 main push run 32845265073 全绿（含 macOS）——抖动本就间歇，单次绿不构成闭合，修复仍需落 main。
 
 ## Phase 9 — 壁纸 `qa:source` 三步联网复验（第二轮设计 + 执行记录）
 
