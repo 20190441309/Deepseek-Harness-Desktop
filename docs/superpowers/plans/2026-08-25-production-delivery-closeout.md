@@ -62,7 +62,7 @@
 ### CI（GitHub，`gh` 只读核对）
 
 - [x] #33 checks 全绿（mac/win 单测 + vendor-gui，run 32824257966）
-- [x] #34 首批提交 run 32824786135 三 job 全 success（含 vendor-gui）；随后 #34 又推 3 个新提交（run 32826879818 发起时 pending），新提交已二次合入本分支并本地全套验证
+- [x] #34 首批提交 run 32824786135 三 job 全 success（含 vendor-gui）；追加 3 个提交后的 run 32826879818 亦三 job 全 success；新提交已二次合入本分支并本地全套验证
 - [ ] 收口分支自身 checks：`test.yml` 仅在 `pull_request` / push-main 触发，本分支尚无 PR 时不会跑；本 VM 已按 CI 三个 job 的完整步骤等价执行（desktop `npm test`、vendor `build:lib`+`test:gui`、`gen-client-catalog --check`+`gen-third-party-notices --check`）全绿；PR 开启后复核
 
 ### 诚实阻塞（本环境做不到）
