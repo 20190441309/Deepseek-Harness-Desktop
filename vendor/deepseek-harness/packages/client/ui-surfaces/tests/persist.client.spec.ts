@@ -120,15 +120,15 @@ describe('surfaces persist', () => {
     }))
     expect(bucket?.surfaces).toEqual([
       { id: 'agents', kind: 'agents' },
-      { id: 'browser:new', kind: 'preview', resourceId: 'r1' },
-      { id: 'terminal:new', kind: 'terminal', terminalIds: ['a'], activeTerminalId: 'a' },
+      { id: 'browser:new', kind: 'preview' },
+      { id: 'terminal:new', kind: 'terminal' },
     ])
     expect(readBucket(JSON.stringify({
       activeId: 'p',
       surfaces: [{ id: 'p', kind: 'preview' }, { id: 't', kind: 'terminal' }],
     }))?.surfaces).toEqual([
-      { id: 'p', kind: 'preview', resourceId: null },
-      { id: 't', kind: 'terminal', terminalIds: [], activeTerminalId: '' },
+      { id: 'p', kind: 'preview' },
+      { id: 't', kind: 'terminal' },
     ])
     expect(loadPersistedState().bySession).toEqual({})
     localStorage.setItem(`${SURFACES_PERSIST_PREFIX}bad`, '{')
@@ -175,9 +175,17 @@ describe('surfaces persist', () => {
     expect(readDrafts(JSON.stringify({ drafts: [] }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: 1 } }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'a', draft: 'a' } } }))).toEqual({})
-    const huge = 'x'.repeat(512 * 1024 + 1)
+    // The cap counts utf8 bytes (1 MiB, matching workspace-fs MAX_WRITE_BYTES):
+    // a large ASCII draft under the cap survives, one byte over is dropped, and
+    // multi-byte characters trip the cap at fewer code units.
+    const bigAscii = 'x'.repeat(1024 * 1024)
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: bigAscii } } })))
+      .toEqual({ x: { text: 'y', draft: bigAscii } })
+    const huge = 'x'.repeat(1024 * 1024 + 1)
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: huge, draft: 'y' } } }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: huge } } }))).toEqual({})
+    const multiByte = '€'.repeat(350 * 1024)
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: multiByte } } }))).toEqual({})
 
     const buffers = new Map([
       ['sess-1:file:a.ts', { text: 'disk', draft: 'edited' }],

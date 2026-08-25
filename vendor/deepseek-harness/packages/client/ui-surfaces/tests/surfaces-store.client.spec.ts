@@ -43,10 +43,10 @@ describe('createSurfacesStore', () => {
       'preview', 'terminal', 'diff', 'agents',
     ])
     expect(bucket.surfaces.find(surface => surface.kind === 'preview')).toEqual({
-      id: 'browser:new', kind: 'preview', resourceId: null,
+      id: 'browser:new', kind: 'preview',
     })
     expect(bucket.surfaces.find(surface => surface.kind === 'terminal')).toEqual({
-      id: 'terminal:new', kind: 'terminal', terminalIds: [], activeTerminalId: '',
+      id: 'terminal:new', kind: 'terminal',
     })
     expect(bucket.activeId).toBe('agents')
   })
