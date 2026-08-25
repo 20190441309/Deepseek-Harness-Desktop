@@ -14,6 +14,7 @@ import { readXtermFont, terminalFontOptions, terminalThemeFromApp } from './term
 import { GhosttyTerminalSurface } from './ghostty/surface.ts'
 import {
   isTerminalClearShortcut,
+  isTerminalDrawerShortcut,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
 } from './ghostty/terminalKeyShortcuts.ts'
@@ -83,6 +84,11 @@ export function TerminalPane({
     const font = readXtermFont(host)
     const setupFont = terminalFontOptions(font.fontFamily, font.fontSize)
     function handleBeforeKey(event: KeyboardEvent): boolean {
+      // Ctrl/Cmd+` toggles the terminal drawer even from terminal focus:
+      // refuse the key (the surface suppresses its keyup release) and let it
+      // bubble to the titlebar window listener, which toggles and calls
+      // preventDefault.
+      if (isTerminalDrawerShortcut(event)) return false
       const navigationData = terminalNavigationShortcutData(event)
       if (navigationData !== null) {
         event.preventDefault()

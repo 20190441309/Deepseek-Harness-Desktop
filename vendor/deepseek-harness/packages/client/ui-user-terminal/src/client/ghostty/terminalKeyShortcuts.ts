@@ -20,6 +20,22 @@ const TERMINAL_LINE_START = "\u0001";
 const TERMINAL_LINE_END = "\u0005";
 const TERMINAL_DELETE_TO_LINE_START = "\u0015";
 
+/**
+ * True for Ctrl/Cmd+` — the app-level terminal-drawer toggle. The terminal
+ * must not encode this chord; the pane lets it bubble so the titlebar window
+ * listener toggles the drawer even while the terminal is focused. Mirrors
+ * `isTerminalShortcut` in `ui-titlebar/keybindings.ts` (cross-package value
+ * imports are forbidden); keep the two in sync.
+ * @param event - keydown event.
+ * @returns true when the terminal drawer chord fired.
+ */
+export function isTerminalDrawerShortcut(
+  event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey">,
+): boolean {
+  if (!event.ctrlKey && !event.metaKey) return false;
+  return event.key === "`" || event.code === "Backquote";
+}
+
 function normalizeEventKey(key: string): string {
   const normalized = key.toLowerCase();
   if (normalized === "esc") return "escape";

@@ -387,6 +387,32 @@ describe('TerminalDrawer', () => {
     platform.mockRestore()
   })
 
+  it('refuses Ctrl+` so the drawer toggle bubbles instead of feeding the PTY', async () => {
+    const b = mount({ cwd: '/work' })
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await screen.findByRole('log', { name: 'pty-1' })
+    const term = await waitFor(() => {
+      const next = ghosttyState.instances.at(-1)
+      if (next === undefined) throw new Error('ghostty not ready')
+      return next
+    })
+    b.ptyWrite.mockClear()
+    const ctrlBackquote = new KeyboardEvent('keydown', {
+      key: '`', code: 'Backquote', ctrlKey: true, bubbles: true, cancelable: true,
+    })
+    expect(term.options.beforeKey(ctrlBackquote)).toBe(false)
+    // The pane must not consume the event: the titlebar window listener owns
+    // the toggle and the preventDefault.
+    expect(ctrlBackquote.defaultPrevented).toBe(false)
+    const metaBackquote = new KeyboardEvent('keydown', {
+      key: '`', code: 'Backquote', metaKey: true, bubbles: true, cancelable: true,
+    })
+    expect(term.options.beforeKey(metaBackquote)).toBe(false)
+    // A plain backtick still reaches the shell.
+    expect(term.options.beforeKey(new KeyboardEvent('keydown', { key: '`', code: 'Backquote' }))).toBe(true)
+    expect(b.ptyWrite).not.toHaveBeenCalled()
+  })
+
   it('opens a non-loopback URL from the selection bar in the system browser', async () => {
     const b = mount({ cwd: '/work' })
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }))
