@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
+const { app, safeStorage } = require('electron');
 const { projectRoot } = require('./paths');
 const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
@@ -217,6 +217,86 @@ function writeJson(file, data) {
   fs.renameSync(tmp, file);
 }
 
+/** Envelope marker for OS-keychain-encrypted credentials.json. */
+const CREDENTIALS_ENVELOPE_VERSION = 'safeStorage-v1';
+
+/**
+ * The injectable safeStorage face (tests replace it; plain Node has none).
+ * Encryption is used only when the OS keychain is actually available —
+ * otherwise reads and writes stay plaintext so no platform loses credentials.
+ */
+let safeStorageImpl = safeStorage;
+
+function setSafeStorageForTests(impl) {
+  safeStorageImpl = impl === undefined ? safeStorage : impl;
+}
+
+function canEncryptCredentials() {
+  try {
+    return Boolean(safeStorageImpl
+      && typeof safeStorageImpl.isEncryptionAvailable === 'function'
+      && safeStorageImpl.isEncryptionAvailable()
+      && typeof safeStorageImpl.encryptString === 'function'
+      && typeof safeStorageImpl.decryptString === 'function');
+  } catch {
+    return false;
+  }
+}
+
+function isEncryptedCredentialsFile(raw) {
+  return Boolean(raw)
+    && typeof raw === 'object'
+    && raw.version === CREDENTIALS_ENVELOPE_VERSION
+    && typeof raw.payload === 'string';
+}
+
+/**
+ * Read credentials.json, decrypting the safeStorage envelope when present.
+ * A legacy plaintext file that can now be encrypted is migrated in place
+ * (one-time rewrite) so secrets do not stay on disk in the clear.
+ */
+function readCredentials() {
+  const file = credentialsPath();
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return {};
+  }
+  if (isEncryptedCredentialsFile(raw)) {
+    if (!canEncryptCredentials()) {
+      return {};
+    }
+    try {
+      const json = safeStorageImpl.decryptString(Buffer.from(raw.payload, 'base64'));
+      const parsed = JSON.parse(json);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  const plain = raw && typeof raw === 'object' ? raw : {};
+  if (canEncryptCredentials()) {
+    try {
+      writeCredentials(plain);
+    } catch {
+      // Migration is best-effort; the plaintext copy stays readable.
+    }
+  }
+  return plain;
+}
+
+/** Persist credentials, encrypted via safeStorage whenever the OS allows. */
+function writeCredentials(data) {
+  const file = credentialsPath();
+  if (!canEncryptCredentials()) {
+    writeJson(file, data);
+    return;
+  }
+  const payload = safeStorageImpl.encryptString(JSON.stringify(data)).toString('base64');
+  writeJson(file, { version: CREDENTIALS_ENVELOPE_VERSION, payload });
+}
+
 function isUnsafeWorkspace(dir) {
   if (!app.isPackaged || !dir) {
     return false;
@@ -235,7 +315,7 @@ function defaultWorkspace() {
 
 function loadConfig() {
   const stored = readJson(configPath(), {});
-  const creds = readJson(credentialsPath(), {});
+  const creds = readCredentials();
   let config = {
     ...DEFAULTS,
     ...stored,
@@ -276,7 +356,7 @@ function saveConfig(next) {
   delete merged.pluginGenUi;
   const { apiKey, baseUrl, githubToken, remoteToken, remoteRelayToken, remoteDevices, ...publicLayer } = merged;
   writeJson(configPath(), publicLayer);
-  writeJson(credentialsPath(), {
+  writeCredentials({
     apiKey: apiKey || '',
     baseUrl: baseUrl || '',
     githubToken: githubToken || '',
@@ -340,6 +420,8 @@ module.exports = {
   parkRemoteSnapshot,
   defaultWorkspace,
   configPath,
+  credentialsPath,
+  setSafeStorageForTests,
   readDisabledPlugins,
   normalizeHarnessRecovery,
   normalizePluginRecovery,
