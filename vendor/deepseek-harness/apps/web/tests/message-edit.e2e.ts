@@ -1,11 +1,14 @@
-// Web e2e scenario: latest-user-message inline edit-and-resend. Cold-seeds a
-// deterministic two-turn completed transcript (zero model calls until the
-// confirm), then drives the real pencil → inline editor → cancel → edit →
-// send path in a real browser. The confirm's child-session turn replays one
-// hand-authored override script, so the whole flow stays keyless. Pins: the
-// pencil does not fork, the editor prefills and focuses, Escape cancels and
-// returns focus to the pencil, send forks a child cut before the edited turn
-// and submits the revised text, and the source transcript stays intact.
+// Web e2e scenario: latest-user-message edit-and-resend through the resident
+// composer. Cold-seeds a deterministic two-turn completed transcript (zero
+// model calls until the confirm), then drives the real pencil → composer edit
+// session → cancel paths → edit → composer send in a real browser. The
+// confirm's child-session turn replays one hand-authored override script, so
+// the whole flow stays keyless. Pins: the pencil does not fork; the edit
+// surface is the real bottom composer (seeded draft, focus, editing banner)
+// while the bubble shows the editing state; composer Escape cancels and keeps
+// focus in the composer; the bubble cancel restores and returns focus to the
+// pencil; composer send forks a child cut before the edited turn and submits
+// the revised text; and the source transcript stays intact.
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -89,11 +92,18 @@ function revisedReplyScript(): ReplayOverrideDoc {
   return [{ kind: 'chunks', chunks }]
 }
 
-describe('web e2e: latest-user-message inline edit and resend', () => {
+describe('web e2e: latest-user-message edit and resend through the composer', () => {
   let scaffold: WebScaffold
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
+
+  /** The one resident composer field (its placeholder is its accessible name). */
+  const composer = () => page.getByRole('textbox', { name: 'Message the agent' })
+  /** The composer's edit-session banner row. */
+  const banner = () => page.locator('[data-edit-session]')
+  /** The editing-state bubble replacing the addressed user message. */
+  const editingBubble = () => page.locator('[data-message-editing]')
 
   beforeAll(async () => {
     const replayDir = await mkdtemp(join(tmpdir(), 'dsh-message-edit-replay-'))
@@ -118,7 +128,7 @@ describe('web e2e: latest-user-message inline edit and resend', () => {
     await scaffold?.close()
   })
 
-  it.skipIf(MODE === 'record')('opens the inline editor from the pencil without forking', async () => {
+  it.skipIf(MODE === 'record')('the pencil promotes the bottom composer into the edit session without forking', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-edit-open'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
@@ -134,11 +144,15 @@ describe('web e2e: latest-user-message inline edit and resend', () => {
     await expect.poll(() => page.getByRole('button', { name: 'Edit' }).count(), { timeout: 10_000 }).toBe(1)
     await page.getByRole('button', { name: 'Edit' }).click()
 
-    // The bubble is now the editor: prefilled with the sent text, focused.
-    const field = page.getByRole('textbox', { name: 'Edit message' })
-    await field.waitFor({ timeout: 5_000 })
-    expect(await field.inputValue()).toBe(SECOND_PROMPT)
-    await expect.poll(() => field.evaluate(el => el === document.activeElement)).toBe(true)
+    // The edit surface is the real resident composer: draft seeded with the
+    // sent text, caret focused, and the editing banner on the card.
+    await banner().waitFor({ timeout: 5_000 })
+    expect(await banner().textContent()).toContain('Re-editing this message')
+    await expect.poll(() => composer().inputValue()).toBe(SECOND_PROMPT)
+    await expect.poll(() => composer().evaluate(el => el === document.activeElement)).toBe(true)
+    // The addressed bubble marks the editing state instead of growing a second editor.
+    expect(await editingBubble().count()).toBe(1)
+    expect(await editingBubble().textContent()).toContain('Re-editing in the input box below')
 
     // The pencil click forked nothing: still one seeded session, no child rows.
     expect(scaffold.ctx.agents.list()).toHaveLength(1)
@@ -152,23 +166,37 @@ describe('web e2e: latest-user-message inline edit and resend', () => {
     await compareOrRefreshGolden(EDITOR_EXPECTED, snapshot, MODE)
   })
 
-  it.skipIf(MODE === 'record')('cancels on Escape, restores the bubble, and returns focus to the pencil', async () => {
+  it.skipIf(MODE === 'record')('composer Escape cancels the edit and keeps focus in the composer', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-edit-cancel'))
     await page.keyboard.press('Escape')
-    await expect.poll(() => page.getByRole('textbox', { name: 'Edit message' }).count(), { timeout: 5_000 }).toBe(0)
-    // Static bubble is back with the original text; nothing was sent or forked.
+    await expect.poll(() => banner().count(), { timeout: 5_000 }).toBe(0)
+    await expect.poll(() => editingBubble().count(), { timeout: 5_000 }).toBe(0)
+    // Static bubble is back with the original text; nothing was sent or forked;
+    // the stashed (empty) draft returned.
     await expect.poll(() => page.getByText(SECOND_PROMPT, { exact: true }).count(), { timeout: 5_000 }).toBe(1)
     expect(scaffold.ctx.agents.list()).toHaveLength(1)
-    // Keyboard focus landed back on the control that opened the editor.
+    expect(await composer().inputValue()).toBe('')
+    // A keyboard cancel inside the composer keeps the operator in the composer.
+    await expect.poll(() => composer().evaluate(el => el === document.activeElement)).toBe(true)
+  }, 30_000)
+
+  it.skipIf(MODE === 'record')('the bubble cancel restores the bubble and returns focus to the pencil', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-message-edit-bubble-cancel'))
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await banner().waitFor({ timeout: 5_000 })
+    await editingBubble().getByRole('button', { name: 'Cancel' }).click()
+    await expect.poll(() => banner().count(), { timeout: 5_000 }).toBe(0)
+    await expect.poll(() => page.getByText(SECOND_PROMPT, { exact: true }).count(), { timeout: 5_000 }).toBe(1)
+    expect(scaffold.ctx.agents.list()).toHaveLength(1)
+    // The bubble-side cancel hands keyboard focus back to the pencil.
     await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Edit')
   }, 30_000)
 
-  it.skipIf(MODE === 'record')('edit + send forks a child cut before the edited turn and submits the revision', async () => {
+  it.skipIf(MODE === 'record')('edit + composer send forks a child cut before the edited turn and submits the revision', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-edit-send'))
     await page.getByRole('button', { name: 'Edit' }).click()
-    const field = page.getByRole('textbox', { name: 'Edit message' })
-    await field.waitFor({ timeout: 5_000 })
-    await field.fill(REVISED_PROMPT)
+    await banner().waitFor({ timeout: 5_000 })
+    await composer().fill(REVISED_PROMPT)
     await page.keyboard.press('Enter')
 
     // The confirm is the first Host write: a child forked from the seed.

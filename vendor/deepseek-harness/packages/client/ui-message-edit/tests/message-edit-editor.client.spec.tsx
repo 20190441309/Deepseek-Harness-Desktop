@@ -1,261 +1,123 @@
 // @vitest-environment jsdom
 /**
- * MessageEditEditor: the bubble-replacement textarea prefills joined text,
- * cancel restores the owner and requests focus return, send runs the inject
- * resend verb with the draft, empty drafts cannot send, a running or stale
- * session blocks send with the reason announced, and a rejected resend keeps
- * the editor armed with the draft for retry.
+ * MessageEditEditor as the editing-state bubble: mounting arms the composer
+ * edit session through beginEdit with the joined text, the bubble shows the
+ * original message with the editing hint, the in-place cancel requests focus
+ * return and ends the session, a composer-side end (banner cancel / Escape /
+ * successful fork-resend) restores the static bubble without a focus-return
+ * request, a beginEdit refusal restores the bubble immediately, and
+ * unmounting with the edit still live cancels the composer session.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { MessageEditEditor } from '../src/client/MessageEditEditor.tsx'
 import { createMessageEditStore } from '../src/client/stores.ts'
 import type { MessageEditEditorProps } from '../src/client/slots.ts'
 import { zh } from '../src/client/locales.ts'
 
-/** Live ResizeObserver callbacks, newest last (jsdom ships no implementation). */
-let resizeCallbacks: ResizeObserverCallback[] = []
-
-beforeEach(() => {
-  resizeCallbacks = []
-  vi.stubGlobal('ResizeObserver', class {
-    constructor(callback: ResizeObserverCallback) { resizeCallbacks.push(callback) }
-    observe(): void {}
-    disconnect(): void {}
-  })
-})
-
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-  vi.useRealTimers()
-})
+afterEach(cleanup)
 
 const t = makeTranslate(zh, commonZh)
 
-interface SnapshotLike {
-  readonly nodes: readonly { kind: string; seq: number }[]
-  readonly running: boolean
-}
+/** The one InputState slice the bubble reads. */
+interface InputLike { edit: { key: string } | undefined }
 
 function mount(options: {
   seq?: number
   content: readonly unknown[]
-  resendResult?: Promise<void>
-  snapshot?: SnapshotLike
+  /** beginEdit verdict; true (accepted) unless the case refuses. */
+  accept?: boolean
 }) {
   const seq = options.seq ?? 7
-  const resend = vi.fn((_seq: number, _text: string) => options.resendResult ?? Promise.resolve())
-  const notify = vi.fn()
+  const accept = options.accept ?? true
+  // A live stand-in for the composer's machine state: beginEdit publishes the
+  // session, endEdit withdraws it, exactly as SessionInputShell would.
+  const input = createSnapshotStore<InputLike>({ edit: undefined }, { flush: 'sync' })
+  const beginEdit = vi.fn((s: number, _text: string) => {
+    if (!accept) return false
+    input.set({ edit: { key: `message-edit:${s}` } })
+    return true
+  })
+  const endEdit = vi.fn((_s: number) => { input.set({ edit: undefined }) })
   const cancelEdit = vi.fn()
   const store = createMessageEditStore().create()
-  const snapshot = options.snapshot ?? { nodes: [{ kind: 'user', seq }], running: false }
-  const useSession = (<T,>(select: (s: SnapshotLike) => T): T => select(snapshot)) as never
   const props = {
     seq,
     content: options.content as MessageEditEditorProps['content'],
     cancelEdit,
-    resend,
-    notify,
-    useSession,
+    beginEdit,
+    endEdit,
+    useInput: bindSnapshotSelector(input),
     actions: store.actions,
     t,
   } as unknown as MessageEditEditorProps
-  return { ...render(<MessageEditEditor {...props} />), resend, notify, cancelEdit, store }
+  return { ...render(<MessageEditEditor {...props} />), input, beginEdit, endEdit, cancelEdit, store }
 }
 
 const textBlock = (text: string) => ({ type: 'text' as const, text })
-const field = (ui: ReturnType<typeof mount>) =>
-  ui.getByRole('textbox', { name: zh['editor.field'] }) as HTMLTextAreaElement
 
 describe('MessageEditEditor', () => {
-  it('prefills joined text blocks and focuses the field', () => {
+  it('arms the composer edit session on mount with the joined text', () => {
     const ui = mount({ content: [textBlock('part one '), textBlock('part two')] })
-    expect(field(ui).value).toBe('part one part two')
-    expect(document.activeElement).toBe(field(ui))
+    expect(ui.beginEdit).toHaveBeenCalledExactlyOnceWith(7, 'part one part two')
+    expect(ui.cancelEdit).not.toHaveBeenCalled()
   })
 
-  it('opens empty when the message is not plain text', () => {
+  it('shows the original message text and the editing hint', () => {
+    const ui = mount({ content: [textBlock('hello world')] })
+    expect(ui.getByText('hello world')).toBeTruthy()
+    expect(ui.getByRole('status').textContent).toBe(zh['editor.editing'])
+  })
+
+  it('restores the static bubble immediately when beginEdit refuses', () => {
+    const ui = mount({ content: [textBlock('hello')], accept: false })
+    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
+    // Nothing to end: the session never started, and no focus return is owed
+    // (the refusal notice rides the composer's own channel).
+    ui.unmount()
+    expect(ui.endEdit).not.toHaveBeenCalled()
+    expect(ui.store.getSnapshot().returnFocusSeq).toBeNull()
+  })
+
+  it('the bubble cancel requests focus return and ends the composer session', () => {
+    const ui = mount({ content: [textBlock('hello')] })
+    fireEvent.click(ui.getByRole('button', { name: zh['action.cancel'] }))
+    expect(ui.store.getSnapshot().returnFocusSeq).toBe(7)
+    expect(ui.endEdit).toHaveBeenCalledWith(7)
+    // The end round-trips through the machine state, which restores the bubble.
+    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it('a composer-side end restores the bubble without a focus-return request', () => {
+    const ui = mount({ content: [textBlock('hello')] })
+    // Banner cancel, Escape, or a successful fork-resend: the machine state
+    // drops the edit without this component's cancel being pressed.
+    act(() => { ui.input.set({ edit: undefined }) })
+    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
+    expect(ui.store.getSnapshot().returnFocusSeq).toBeNull()
+  })
+
+  it('ignores a foreign edit session replacing this one', () => {
+    const ui = mount({ content: [textBlock('hello')] })
+    // Key mismatch reads as "not live" — the bubble restores rather than
+    // claiming an edit that belongs to someone else.
+    act(() => { ui.input.set({ edit: { key: 'other-plugin:1' } }) })
+    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it('unmounting with the edit still live cancels the composer session', () => {
+    const ui = mount({ content: [textBlock('hello')] })
+    ui.unmount()
+    expect(ui.endEdit).toHaveBeenCalledWith(7)
+  })
+
+  it('arms with an empty seed when the message is not plain text', () => {
     const ui = mount({
       content: [{ type: 'text', text: 'caption' }, { type: 'image', attachment: { attachmentId: 'a' } }],
     })
-    expect(field(ui).value).toBe('')
-    expect((ui.getByRole('button', { name: zh['action.send'] }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('restores the bubble through cancelEdit and requests focus return', () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.cancel'] }))
-    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
-    expect(ui.resend).not.toHaveBeenCalled()
-    expect(ui.store.getSnapshot().returnFocusSeq).toBe(7)
-  })
-
-  it('restores the bubble on Escape', () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.keyDown(field(ui), { key: 'Escape' })
-    expect(ui.cancelEdit).toHaveBeenCalledTimes(1)
-    expect(ui.store.getSnapshot().returnFocusSeq).toBe(7)
-  })
-
-  it('does not cancel on an IME composition Escape', () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.compositionStart(field(ui))
-    fireEvent.keyDown(field(ui), { key: 'Escape' })
-    expect(ui.cancelEdit).not.toHaveBeenCalled()
-    fireEvent.keyDown(field(ui), { key: 'Escape', isComposing: true })
-    expect(ui.cancelEdit).not.toHaveBeenCalled()
-  })
-
-  it('sends the edited draft through resend and not the original text', async () => {
-    const ui = mount({ seq: 7, content: [textBlock('hello')] })
-    fireEvent.change(field(ui), { target: { value: 'revised' } })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    await Promise.resolve()
-    expect(ui.resend).toHaveBeenCalledWith(7, 'revised')
-    expect(ui.notify).not.toHaveBeenCalled()
-    expect(ui.cancelEdit).not.toHaveBeenCalled()
-  })
-
-  it('sends on Enter and inserts a newline on Shift+Enter', async () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.keyDown(field(ui), { key: 'Enter', shiftKey: true })
-    expect(ui.resend).not.toHaveBeenCalled()
-    fireEvent.keyDown(field(ui), { key: 'Enter', repeat: true })
-    expect(ui.resend).not.toHaveBeenCalled()
-    fireEvent.keyDown(field(ui), { key: 'Enter', isComposing: true })
-    expect(ui.resend).not.toHaveBeenCalled()
-    fireEvent.keyDown(field(ui), { key: 'Enter', keyCode: 229 })
-    expect(ui.resend).not.toHaveBeenCalled()
-    fireEvent.compositionStart(field(ui))
-    fireEvent.keyDown(field(ui), { key: 'Enter' })
-    expect(ui.resend).not.toHaveBeenCalled()
-  })
-
-  it('sends a non-composing Enter', async () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.keyDown(field(ui), { key: 'Enter' })
-    await Promise.resolve()
-    expect(ui.resend).toHaveBeenCalledWith(7, 'hello')
-  })
-
-  it('sends Enter after IME composition ends', async () => {
-    vi.useFakeTimers()
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.compositionStart(field(ui))
-    fireEvent.compositionEnd(field(ui))
-    await vi.advanceTimersByTimeAsync(20)
-    fireEvent.keyDown(field(ui), { key: 'Enter' })
-    await Promise.resolve()
-    expect(ui.resend).toHaveBeenCalledWith(7, 'hello')
-    vi.useRealTimers()
-  })
-
-  it('disables send when the draft is only whitespace', () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    fireEvent.change(field(ui), { target: { value: '   ' } })
-    expect((ui.getByRole('button', { name: zh['action.send'] }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.keyDown(field(ui), { key: 'Enter' })
-    expect(ui.resend).not.toHaveBeenCalled()
-  })
-
-  it('blocks send while the session is running and announces the reason', () => {
-    const ui = mount({
-      content: [textBlock('hello')],
-      snapshot: { nodes: [{ kind: 'user', seq: 7 }], running: true },
-    })
-    expect((ui.getByRole('button', { name: zh['action.send'] }) as HTMLButtonElement).disabled).toBe(true)
-    expect(ui.getByRole('status').textContent).toBe(zh['editor.hint.running'])
-    expect(field(ui).getAttribute('aria-describedby')).toBe(ui.getByRole('status').id)
-    fireEvent.keyDown(field(ui), { key: 'Enter' })
-    expect(ui.resend).not.toHaveBeenCalled()
-  })
-
-  it('blocks send when a newer user message arrived mid-edit', () => {
-    const ui = mount({
-      content: [textBlock('hello')],
-      snapshot: { nodes: [{ kind: 'user', seq: 7 }, { kind: 'user', seq: 9 }], running: false },
-    })
-    expect((ui.getByRole('button', { name: zh['action.send'] }) as HTMLButtonElement).disabled).toBe(true)
-    expect(ui.getByRole('status').textContent).toBe(zh['editor.hint.stale'])
-  })
-
-  it('locks the row while resend is in flight and settles afterwards', async () => {
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    const ui = mount({ content: [textBlock('hello')], resendResult: gate })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    expect((ui.getByRole('button', { name: zh['action.pending'] }) as HTMLButtonElement).disabled).toBe(true)
-    expect((ui.getByRole('button', { name: zh['action.cancel'] }) as HTMLButtonElement).disabled).toBe(true)
-    expect(field(ui).disabled).toBe(true)
-    expect(ui.container.querySelector('[aria-busy]')).not.toBeNull()
-    fireEvent.keyDown(field(ui), { key: 'Escape' })
-    expect(ui.cancelEdit).not.toHaveBeenCalled()
-    fireEvent.click(ui.getByRole('button', { name: zh['action.pending'] }))
-    expect(ui.resend).toHaveBeenCalledTimes(1)
-    release()
-    await waitFor(() => {
-      expect((ui.getByRole('button', { name: zh['action.send'] }) as HTMLButtonElement).disabled).toBe(false)
-    })
-  })
-
-  it('keeps the editor armed with the draft when resend rejects', async () => {
-    const ui = mount({
-      content: [textBlock('hello')],
-      resendResult: Promise.reject(new Error('fork-unavailable')),
-    })
-    fireEvent.change(field(ui), { target: { value: 'revised' } })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    await waitFor(() => {
-      expect(ui.notify).toHaveBeenCalledWith(zh['error.generic'])
-    })
-    // The draft is the operator's work: no cancel, field re-enabled and refocused.
-    expect(ui.cancelEdit).not.toHaveBeenCalled()
-    expect(field(ui).value).toBe('revised')
-    expect(field(ui).disabled).toBe(false)
-    expect(document.activeElement).toBe(field(ui))
-    // Retry stays live on the same editor.
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    expect(ui.resend).toHaveBeenCalledTimes(2)
-    await waitFor(() => { expect(ui.notify).toHaveBeenCalledTimes(2) })
-  })
-
-  it('refits the field height when the bubble width changes', () => {
-    const ui = mount({ content: [textBlock('hello')] })
-    const el = field(ui)
-    el.style.height = ''
-    const observer = {} as ResizeObserver
-    const entry = (width: number) => [{ contentRect: { width } } as ResizeObserverEntry]
-    resizeCallbacks.at(-1)?.(entry(300), observer)
-    expect(el.style.height).not.toBe('')
-    // Same width and empty batches change nothing.
-    el.style.height = ''
-    resizeCallbacks.at(-1)?.(entry(300), observer)
-    resizeCallbacks.at(-1)?.([], observer)
-    expect(el.style.height).toBe('')
-  })
-
-  it('publishes no state after the editor unmounts mid-flight', async () => {
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    const ui = mount({ content: [textBlock('hello')], resendResult: gate })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    ui.unmount()
-    release()
-    await gate
-  })
-
-  it('notifies nothing after an unmount that outruns a failing resend', async () => {
-    let reject!: (error: Error) => void
-    const gate = new Promise<void>((_resolve, r) => { reject = r })
-    const ui = mount({ content: [textBlock('hello')], resendResult: gate })
-    fireEvent.click(ui.getByRole('button', { name: zh['action.send'] }))
-    ui.unmount()
-    reject(new Error('fork-unavailable'))
-    await gate.catch(() => {})
-    await Promise.resolve()
-    expect(ui.notify).not.toHaveBeenCalled()
+    expect(ui.beginEdit).toHaveBeenCalledExactlyOnceWith(7, '')
   })
 })
