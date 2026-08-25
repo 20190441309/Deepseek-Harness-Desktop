@@ -174,11 +174,15 @@ Phase 10 TC-REM-002 解禁前置        —— 低优先设计，不阻塞收口
 3. `xvfb-run -a npm run qa:source`（本地有显示器则免 xvfb）。
 4. 判读：只看三步的 step 行。三步全 PASS → 钉死 env-only，更新 `wallpaper-gallery` 卡 `last verified`（带日期 + 环境描述）；`gallery.confirmSet` 仍 FAIL 且步骤 1 的 200 成立 → **真回归**，开修复项、不许再记环境失败；`appearance.localCrop` 单独 FAIL → 与网络无关，按 file-input/crop 对话框链路排查。
 
-**本轮执行记录（出网云 Linux + xvfb）：**
+**本轮执行记录（出网云 Linux + xvfb）——已闭合 ✅：**
 
 - [x] 步骤 1：Bing 与 Wallhaven 均 200 —— 本环境出网可用，具备复验效力。
 - [x] 步骤 2 教训（已回填进上面的手续）：首跑仅 `build:lib` → walk 停在 boot 页（bootLogs：「还没安装依赖或构建。请运行 npm run setup:harness」），60 步连锁全红 —— 该失败形态与「壁纸三步失败」**完全不同**，判读时不可混淆。
-- [ ] 步骤 3–4：`setup:harness` 全量构建后重跑 `qa:source`，三步结果与归因回填此处（跑完前不填）。
+- [x] 步骤 3：`setup:harness` 后复跑 —— 出网正常（Bing 缩略图加载、确认对话框出现并点击「设为壁纸」成功），三步**仍失败**：`localCrop`「file assigned, crop missing」、`confirmSet`「Bing confirmed」（确认成功但裁剪未现）、`frost`「sliders missing」。三步共因收敛到**裁剪对话框从未被 walk 识别**。
+- [x] 步骤 4 真根因：**walk 匹配器缺英文标题**。裁剪对话框标题 `wallpaper.crop` 为 zh「调整背景图」/ en「Adjust wallpaper」，walk 的 `dshDialogNamed('调整背景图|crop wallpaper|crop')` 两者皆不匹配英文标题；本环境 UI 走英文局点（themeSwitch/surfaces 文案均英文），故对话框实际打开但 walk 视而不见、从不点「Use this image」，壁纸永不落地 → frost 滑杆永不出现。**此前「环境失败」的真面目 = 无网环境缩略图不加载（旧云）+ 英文局点匹配缺口（凡英文环境）两个不同原因；均非产品回归。**
+- [x] 修复：`release-ui-walk.js` 两处裁剪匹配器补 `adjust wallpaper`（QA 基础设施局部修复，不改产品契约；`wallpaper-gallery` 卡行为面零改动）。
+- [x] 复跑证据：`qa:source` **exit 0、failed=[]、三步全 PASS**（`crop confirmed` / `Bing confirmed and cropped` / `frost+pixelate after wallpaper`）——首次在云端拿到全绿 qa:source。desktop `npm test` 997 绿不回归。
+- [x] 结论回填：`wallpaper-gallery` 卡 `last verified` 刷新（真实证据）；QA 矩阵该行状态更新；「既知 3 项环境失败」豁免**作废**，此后 qa:source 允许 0 失败为基线。
 
 ## Phase 10 — TC-REM-002 真机扫码解禁前置（低优先设计 ☐）
 
@@ -200,7 +204,7 @@ Phase 10 TC-REM-002 解禁前置        —— 低优先设计，不阻塞收口
 | desktop `npm test` | ✅ | — | 997/0/3 绿（合并树） |
 | harness `pnpm run test:gui` | ✅ | — | 5338/0 绿（修复后） |
 | harness `pnpm run typecheck` | ✅ | — | 绿 |
-| `npm run qa:source`（xvfb + 源码 Electron） | ✅ | — | surfaces/terminal/files/diff/agents/git/market/dshbot 步骤全 PASS；仅壁纸区既知 3 项环境失败（`appearance.localCrop`/`gallery.confirmSet`/`appearance.frost`，与合并前记录一致，非回归） |
+| `npm run qa:source`（xvfb + 源码 Electron） | ✅ | — | 第二轮（Phase 9）：walk 裁剪匹配器补英文标题后**全绿 exit 0（failed=[]）**，含壁纸三步；「既知 3 项环境失败」豁免作废 |
 | `smoke:packaged` / `qa:packaged`（Linux 包） | ✅（CI artifact） | — | 未在本轮重跑（无行为改动） |
 | TC-WS-006 / TC-GIT-001…007 实机 | rehearsal 仅 | **必须**（Phase 5） | ☐ 待实机 |
 | TC-EXT-007 dshbot 三相 | A/C 探针 rehearsal | **必须**（Phase 6，B 相纯手工） | ☐ 待实机（模板已就位 `docs/qa/results/2026-08-25/`） |
