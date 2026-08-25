@@ -1295,6 +1295,57 @@ describe('FilePreview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rendered' }))
   })
 
+  it('keeps keystrokes typed during an explicit save dirty instead of marking them saved', async () => {
+    let finishWrite!: (result: { ok: boolean }) => void
+    const writePending = new Promise<{ ok: boolean }>((resolve) => { finishWrite = resolve })
+    // The debounced follow-up save (for the mid-flight keystrokes) stays
+    // in flight so the assertions below observe the still-dirty state.
+    const writeFile = vi.fn<(cwd: string, path: string, contents: string) => Promise<{ ok: boolean }>>()
+      .mockReturnValueOnce(writePending)
+      .mockReturnValue(new Promise<{ ok: boolean }>(() => {}))
+    const writeBuffer = vi.fn()
+    const onDirtyChange = vi.fn()
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="a.ts"
+        active
+        onDirtyChange={onDirtyChange}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={writeBuffer}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: 'x', binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('a.ts')
+    fireEvent.change(editor, { target: { value: 'saved snapshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(writeFile).toHaveBeenCalledWith('/tmp/proj', 'a.ts', 'saved snapshot')
+    })
+    // Keystrokes injected while the write is still in flight.
+    fireEvent.change(screen.getByLabelText('a.ts'), { target: { value: 'saved snapshot plus' } })
+    await act(async () => { finishWrite({ ok: true }) })
+    // Only the written snapshot is confirmed; the newer draft stays dirty.
+    await waitFor(() => {
+      expect(writeBuffer).toHaveBeenCalledWith({ text: 'saved snapshot', draft: 'saved snapshot plus' })
+    })
+    expect((screen.getByLabelText('a.ts') as HTMLTextAreaElement).value).toBe('saved snapshot plus')
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    expect((screen.getByRole('button', { name: /Save/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('shows the write error when save fails', async () => {
     render(
       <FilePreview

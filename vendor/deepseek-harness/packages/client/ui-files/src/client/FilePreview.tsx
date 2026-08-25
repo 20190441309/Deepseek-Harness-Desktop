@@ -166,7 +166,9 @@ function formatFileCommentComposerText(
  * through `FileSaveCoordinator`; persist rereads first and refuses once when
  * disk diverged from both the remembered baseline and the draft (`error.changed`
  * still wins: persist returns `{ ok: false }` and pending stays). Explicit Save /
- * Ctrl+S / `registerSave` use that same write path. The occupant rereads disk
+ * Ctrl+S / `registerSave` flush through the same coordinator, so an explicit
+ * save never interleaves with a debounced write, and only the flushed snapshot
+ * is marked saved — keystrokes typed while the write is in flight stay dirty. The occupant rereads disk
  * when `active` becomes true. A dirty draft stays in the editor (Markdown Source
  * included) when the last reread failed, returned truncated or binary bytes, or
  * ran without a cwd; Save writes whenever cwd exists. A successful write clears
@@ -450,10 +452,15 @@ export function FilePreview({
   const saveRef = useRef<() => Promise<boolean>>(async () => false)
   const save = async (): Promise<boolean> => {
     if (cwd === undefined || !dirty) return false
-    const result = await persistContents(cwd, relativePath, draftRef.current)
+    const coordinator = coordinatorRef.current
+    /* v8 ignore next -- the coordinator effect mounts before any user-triggered save. */
+    if (coordinator === null) return false
+    // Flush the pre-await draft snapshot through the coordinator: keystrokes
+    // typed while the write is in flight stay dirty (onConfirmed marks only the
+    // written snapshot as saved), and the shared in-flight slot means an
+    // explicit save can never interleave with a debounced write.
+    const result = await coordinator.flush(draftRef.current)
     if (!result.ok) return false
-    setText(draftRef.current)
-    writeBufferRef.current({ text: draftRef.current, draft: draftRef.current })
     setSaved(true)
     window.setTimeout(() => { setSaved(false) }, 1200)
     return true
