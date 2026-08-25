@@ -1,4 +1,10 @@
-/** Append a fragment into the current session composer draft. */
+/**
+ * Append a fragment into the current session composer draft.
+ *
+ * Mirror obligation: ui-files, ui-preview, and ui-user-terminal each carry a
+ * copy of this module because client packages must not share a value export.
+ * Any behavior change here must be applied to all three copies.
+ */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 

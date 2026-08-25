@@ -100,18 +100,16 @@ describe('PanelToggles', () => {
     input.remove()
   })
 
-  it('toggles the terminal drawer from the Ghostty input inside the pane but not the surfaces column', () => {
+  it('toggles the terminal drawer from the Ghostty pane textarea but not the surfaces column', () => {
     const b = mount()
-    // Production DOM: TerminalPane renders [data-terminal-pane] and Ghostty
-    // proxies keystrokes through a hidden textarea inside it.
     const pane = document.createElement('div')
     pane.setAttribute('data-terminal-pane', 'pty-1')
-    const ghosttyInput = document.createElement('textarea')
-    pane.append(ghosttyInput)
+    const input = document.createElement('textarea')
+    pane.append(input)
     document.body.append(pane)
-    fireEvent.keyDown(ghosttyInput, { key: '`', ctrlKey: true })
+    fireEvent.keyDown(input, { key: '`', ctrlKey: true })
     expect(b.toggleTerminalDrawer).toHaveBeenCalledOnce()
-    fireEvent.keyDown(ghosttyInput, { key: '\\', ctrlKey: true })
+    fireEvent.keyDown(input, { key: '\\', ctrlKey: true })
     expect(b.toggleSurfaces).not.toHaveBeenCalled()
     pane.remove()
   })

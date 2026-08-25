@@ -74,6 +74,44 @@ test('fileUrl serves an authorized pdf as application/pdf', async () => {
   }
 });
 
+test('serves a large binary with Content-Length and rejects an oversized text document with 413', async () => {
+  const cwd = makeTempDir();
+  const preview = controllerFor(cwd);
+  try {
+    // Above the 8 MiB text cap but under the 64 MiB binary cap.
+    const big = Buffer.alloc(8 * 1024 * 1024 + 1, 0x61);
+    fs.writeFileSync(path.join(cwd, 'huge.html'), big);
+    fs.writeFileSync(path.join(cwd, 'huge.bin'), big);
+    const html = await preview.fileUrl({ cwd, relativePath: 'huge.html' });
+    const tooLarge = await request(html.url);
+    assert.equal(tooLarge.status, 413);
+    const bin = await preview.fileUrl({ cwd, relativePath: 'huge.bin' });
+    const streamed = await request(bin.url);
+    assert.equal(streamed.status, 200);
+    assert.equal(streamed.headers['content-length'], String(big.length));
+    assert.equal(streamed.headers['content-type'], 'application/octet-stream');
+    assert.equal(Buffer.byteLength(streamed.body), big.length);
+  } finally {
+    await preview.close();
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('a file deleted between token mint and GET is 404', async () => {
+  const cwd = makeTempDir();
+  const preview = controllerFor(cwd);
+  try {
+    fs.writeFileSync(path.join(cwd, 'gone.html'), '<h1>bye</h1>');
+    const opened = await preview.fileUrl({ cwd, relativePath: 'gone.html' });
+    fs.rmSync(path.join(cwd, 'gone.html'));
+    const missing = await request(opened.url);
+    assert.equal(missing.status, 404);
+  } finally {
+    await preview.close();
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('GET without the token prefix is 404', async () => {
   const cwd = makeTempDir();
   const preview = controllerFor(cwd);

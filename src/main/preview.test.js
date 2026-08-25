@@ -1227,6 +1227,21 @@ test('saveRecording writes under preview-recordings', async () => {
   assert.equal(after.filter((name) => name.endsWith('.mp4')).length, 1);
 });
 
+test('saveRecording rejects a payload over the 512 MiB cap without writing', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-rec-cap-'));
+  const fake = fakeAttach();
+  const preview = createPreviewController({ attach: fake.attach, userDataPath: dir });
+  const opened = await preview.open({ url: 'http://127.0.0.1:3000' });
+  const result = await preview.saveRecording(opened.id, {
+    mimeType: 'video/webm',
+    data: Buffer.alloc(512 * 1024 * 1024 + 1),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /512 MiB/);
+  const entries = await fs.readdir(dir);
+  assert.ok(!entries.includes('preview-recordings'));
+});
+
 test('revealArtifact only opens files under preview-recordings', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dshd-preview-reveal-'));
   const recDir = path.join(dir, 'preview-recordings');

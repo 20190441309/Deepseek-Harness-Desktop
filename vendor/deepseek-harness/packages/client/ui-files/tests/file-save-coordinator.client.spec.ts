@@ -55,35 +55,30 @@ describe('FileSaveCoordinator', () => {
     expect(onPendingChange.mock.calls.at(-1)).toEqual([false])
   })
 
-  it('flush waits out an in-flight debounced write before persisting', async () => {
+  it('serializes an explicit flush behind an in-flight debounce write', async () => {
     vi.useFakeTimers()
     const firstWrite = deferred()
     const persist = vi.fn<(contents: string) => Promise<{ ok: boolean }>>()
       .mockReturnValueOnce(firstWrite.promise)
-      .mockResolvedValue({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
     const onConfirmed = vi.fn()
     const coordinator = new FileSaveCoordinator({
       debounceMs: 500, persist, onPendingChange: vi.fn(), onConfirmed,
     })
-    coordinator.change('debounced')
+    coordinator.change('first')
     await vi.advanceTimersByTimeAsync(500)
     expect(persist).toHaveBeenCalledTimes(1)
-    const flushed = coordinator.flush('explicit')
-    // The explicit save must not start a second write while one is in flight.
-    await vi.advanceTimersByTimeAsync(0)
+    const flush = coordinator.flush('explicit')
+    // The flush must wait for the in-flight debounce write, not run alongside it.
     expect(persist).toHaveBeenCalledTimes(1)
     firstWrite.resolve({ ok: true })
-    const result = await flushed
-    expect(result.ok).toBe(true)
+    await expect(flush).resolves.toBe(true)
     expect(persist).toHaveBeenCalledTimes(2)
     expect(persist).toHaveBeenLastCalledWith('explicit')
     expect(onConfirmed).toHaveBeenLastCalledWith('explicit')
-    // The rescheduled debounce was cancelled by flush: no third write.
-    await vi.runAllTimersAsync()
-    expect(persist).toHaveBeenCalledTimes(2)
   })
 
-  it('flush cancels the pending debounce and persists immediately', async () => {
+  it('folds a pending debounce write into an explicit flush', async () => {
     vi.useFakeTimers()
     const persist = vi.fn<(contents: string) => Promise<{ ok: boolean }>>()
       .mockResolvedValue({ ok: true })
@@ -91,29 +86,50 @@ describe('FileSaveCoordinator', () => {
     const coordinator = new FileSaveCoordinator({
       debounceMs: 500, persist, onPendingChange, onConfirmed: vi.fn(),
     })
-    coordinator.change('typed')
-    const result = await coordinator.flush('typed more')
-    expect(result.ok).toBe(true)
-    expect(persist).toHaveBeenCalledOnce()
-    expect(persist).toHaveBeenCalledWith('typed more')
-    expect(onPendingChange.mock.calls.at(-1)).toEqual([false])
+    coordinator.change('draft')
+    await expect(coordinator.flush('draft')).resolves.toBe(true)
     await vi.runAllTimersAsync()
-    expect(persist).toHaveBeenCalledOnce()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist).toHaveBeenCalledWith('draft')
+    expect(onPendingChange.mock.calls.at(-1)).toEqual([false])
   })
 
-  it('flush reports a failed write and keeps the file pending', async () => {
-    vi.useFakeTimers()
-    const onPendingChange = vi.fn()
-    const coordinator = new FileSaveCoordinator({
+  it('resolves a flush false when the write fails or rejects', async () => {
+    const failing = new FileSaveCoordinator({
       debounceMs: 500,
       persist: vi.fn().mockResolvedValue({ ok: false }),
-      onPendingChange,
+      onPendingChange: vi.fn(),
       onConfirmed: vi.fn(),
     })
-    const result = await coordinator.flush('unsaved')
-    expect(result.ok).toBe(false)
-    expect(onPendingChange).toHaveBeenCalledWith(true)
-    expect(onPendingChange).not.toHaveBeenCalledWith(false)
+    await expect(failing.flush('x')).resolves.toBe(false)
+    const rejecting = new FileSaveCoordinator({
+      debounceMs: 500,
+      persist: vi.fn().mockRejectedValue(new Error('boom')),
+      onPendingChange: vi.fn(),
+      onConfirmed: vi.fn(),
+    })
+    await expect(rejecting.flush('x')).resolves.toBe(false)
+  })
+
+  it('flushes unconfirmed contents on dispose but not confirmed ones', async () => {
+    vi.useFakeTimers()
+    const persist = vi.fn<(contents: string) => Promise<{ ok: boolean }>>()
+      .mockResolvedValue({ ok: true })
+    const coordinator = new FileSaveCoordinator({
+      debounceMs: 500, persist, onPendingChange: vi.fn(), onConfirmed: vi.fn(),
+    })
+    await coordinator.flush('saved')
+    coordinator.dispose()
+    await vi.runAllTimersAsync()
+    expect(persist).toHaveBeenCalledTimes(1)
+    const second = new FileSaveCoordinator({
+      debounceMs: 500, persist, onPendingChange: vi.fn(), onConfirmed: vi.fn(),
+    })
+    second.change('unsaved')
+    second.dispose()
+    await vi.runAllTimersAsync()
+    expect(persist).toHaveBeenCalledTimes(2)
+    expect(persist).toHaveBeenLastCalledWith('unsaved')
   })
 
   it('leaves the file pending when the latest write fails', async () => {

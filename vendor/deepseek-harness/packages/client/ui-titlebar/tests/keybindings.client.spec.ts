@@ -7,8 +7,17 @@ import {
   isEditableKeyboardTarget, isSurfacesShortcut, isTerminalShortcut, isTextEntryTarget,
 } from '../src/client/keybindings.ts'
 
+/** Ghostty pane host with its hidden input textarea, as production renders it. */
+function terminalPaneFixture(): { pane: HTMLDivElement; input: HTMLTextAreaElement } {
+  const pane = document.createElement('div')
+  pane.setAttribute('data-terminal-pane', 'pty-1')
+  const input = document.createElement('textarea')
+  pane.append(input)
+  return { pane, input }
+}
+
 describe('titlebar keybindings', () => {
-  it('treats input, textarea, select, contenteditable, and the terminal pane as editable', () => {
+  it('treats input, textarea, select, contenteditable, and terminal panes as editable', () => {
     expect(isEditableKeyboardTarget(null)).toBe(false)
     const input = document.createElement('input')
     const textarea = document.createElement('textarea')
@@ -16,29 +25,21 @@ describe('titlebar keybindings', () => {
     const editable = document.createElement('div')
     editable.contentEditable = 'true'
     editable.setAttribute('contenteditable', 'true')
-    const pane = document.createElement('div')
-    pane.setAttribute('data-terminal-pane', 'pty-1')
-    const inner = document.createElement('span')
-    pane.append(inner)
+    const { pane, input: paneInput } = terminalPaneFixture()
     expect(isEditableKeyboardTarget(input)).toBe(true)
     expect(isEditableKeyboardTarget(textarea)).toBe(true)
     expect(isEditableKeyboardTarget(select)).toBe(true)
     expect(isEditableKeyboardTarget(editable)).toBe(true)
-    expect(isEditableKeyboardTarget(inner)).toBe(true)
+    expect(isEditableKeyboardTarget(pane)).toBe(true)
+    expect(isEditableKeyboardTarget(paneInput)).toBe(true)
     expect(isEditableKeyboardTarget(document.createElement('div'))).toBe(false)
   })
 
-  it('exempts the Ghostty input textarea inside the pane from text-entry blocking', () => {
-    const pane = document.createElement('div')
-    pane.setAttribute('data-terminal-pane', 'pty-1')
-    const ghosttyInput = document.createElement('textarea')
-    pane.append(ghosttyInput)
-    // The drawer shortcut listener checks isTextEntryTarget: the terminal's
-    // hidden input proxy must not block Ctrl+` while typing in the terminal.
-    expect(isTextEntryTarget(ghosttyInput)).toBe(false)
-    expect(isEditableKeyboardTarget(ghosttyInput)).toBe(true)
-    const plainTextarea = document.createElement('textarea')
-    expect(isTextEntryTarget(plainTextarea)).toBe(true)
+  it('does not count the terminal pane textarea as plain text entry', () => {
+    const { pane, input } = terminalPaneFixture()
+    expect(isTextEntryTarget(input)).toBe(false)
+    expect(isTextEntryTarget(pane)).toBe(false)
+    expect(isTextEntryTarget(document.createElement('textarea'))).toBe(true)
     expect(isTextEntryTarget(null)).toBe(false)
   })
 

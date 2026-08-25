@@ -12,7 +12,7 @@ export type TerminalSurfaceProps =
   & InjectFace<TerminalShellInjected>
 
 /**
- * Right-panel Terminal occupant of `surfaces.terminal` (declared by Task 6).
+ * Right-panel Terminal occupant of the `surfaces.terminal` slot ui-surfaces declares.
  * @param props - session-maybe seats, this shell's store, and PTY IPC.
  * @returns the surface chrome, or nothing before a session exists.
  */

@@ -6,21 +6,10 @@ import type { SessionSurfaces, Surface, SurfacesState } from './stores.ts'
 export const SURFACES_PERSIST_PREFIX = 'dsh-surfaces:v1:'
 
 const WRITE_DELAY_MS = 80
-/**
- * Per-field cap for persisted dirty buffers, in UTF-8 bytes; aligned with the
- * desktop workspace-fs 1 MiB write cap (`MAX_WRITE_BYTES`) so every draft that
- * `writeFile` would accept also survives a reload.
- */
+/** Dirty draft utf8 bytes per field; matches workspace-fs MAX_WRITE_BYTES (1 MiB). */
 const DRAFT_MAX_BYTES = 1024 * 1024
 
-const utf8Encoder = new TextEncoder()
-
-function withinDraftCap(value: string): boolean {
-  // A JS string of N UTF-16 units encodes to at most 3N UTF-8 bytes, so most
-  // drafts skip the encode entirely.
-  if (value.length * 3 <= DRAFT_MAX_BYTES) return true
-  return utf8Encoder.encode(value).length <= DRAFT_MAX_BYTES
-}
+const draftEncoder = new TextEncoder()
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -201,7 +190,8 @@ function sanitizeDraft(raw: unknown): FileDraftBuffer | undefined {
   const entry = raw as { text?: unknown; draft?: unknown }
   if (typeof entry.text !== 'string' || typeof entry.draft !== 'string') return undefined
   if (entry.draft === entry.text) return undefined
-  if (!withinDraftCap(entry.text) || !withinDraftCap(entry.draft)) return undefined
+  if (draftEncoder.encode(entry.text).length > DRAFT_MAX_BYTES) return undefined
+  if (draftEncoder.encode(entry.draft).length > DRAFT_MAX_BYTES) return undefined
   return { text: entry.text, draft: entry.draft }
 }
 
@@ -243,20 +233,12 @@ function sanitizeSurface(raw: unknown): Surface | undefined {
       return entry.id === 'diff' ? { id: 'diff', kind: 'diff' } : undefined
     case 'agents':
       return entry.id === 'agents' ? { id: 'agents', kind: 'agents' } : undefined
-    case 'preview': {
-      const resourceId = 'resourceId' in entry && typeof (entry as { resourceId: unknown }).resourceId === 'string'
-        ? (entry as { resourceId: string }).resourceId
-        : null
-      return { id: entry.id, kind: 'preview', resourceId }
-    }
-    case 'terminal': {
-      const extra = entry as { terminalIds?: unknown; activeTerminalId?: unknown }
-      const terminalIds = Array.isArray(extra.terminalIds)
-        ? extra.terminalIds.filter((id): id is string => typeof id === 'string')
-        : []
-      const activeTerminalId = typeof extra.activeTerminalId === 'string' ? extra.activeTerminalId : ''
-      return { id: entry.id, kind: 'terminal', terminalIds, activeTerminalId }
-    }
+    // preview/terminal: older buckets carried resourceId / terminalIds /
+    // activeTerminalId; nothing ever read them, so loads drop the extras.
+    case 'preview':
+      return { id: entry.id, kind: 'preview' }
+    case 'terminal':
+      return { id: entry.id, kind: 'terminal' }
     case 'file': {
       const relativePath = (entry as { relativePath?: unknown }).relativePath
       if (typeof relativePath !== 'string' || relativePath.length === 0) return undefined

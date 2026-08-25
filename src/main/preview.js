@@ -49,6 +49,8 @@ const DISCOVER_TIMEOUT_MS = 200;
 const FRAME_RESOURCE_TYPES = new Set(['mainFrame', 'subFrame']);
 /** Max hostname characters in a screenshot filename slug. */
 const MAX_ARTIFACT_SITE_SLUG_LENGTH = 80;
+/** Byte cap for one saved MediaRecorder artifact. */
+const MAX_RECORDING_BYTES = 512 * 1024 * 1024;
 
 /**
  * Guest document URLs: any http(s) host. `file:`, `javascript:`, and `ftp:`
@@ -997,6 +999,9 @@ function createPreviewController(options = {}) {
       const artifactPath = path.join(directory, `${recordingId}.${extension}`);
       try {
         const bytes = toBuffer(payload.data);
+        if (bytes.length > MAX_RECORDING_BYTES) {
+          return { ok: false, message: 'recording exceeds the 512 MiB limit' };
+        }
         await fs.mkdir(directory, { recursive: true });
         await fs.writeFile(artifactPath, bytes);
         return {
@@ -1044,7 +1049,6 @@ function createPreviewController(options = {}) {
         return failClosed(error);
       }
     },
-
   };
 }
 

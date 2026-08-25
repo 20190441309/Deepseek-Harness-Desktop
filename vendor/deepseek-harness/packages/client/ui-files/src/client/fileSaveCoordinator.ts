@@ -7,56 +7,53 @@ export interface FileSaveCoordinatorOptions {
   readonly onConfirmed: (contents: string) => void
 }
 
+/**
+ * Serializes every write of one file: debounced draft edits (`change`) and
+ * explicit saves (`flush`) share a single persist queue, so two writes can
+ * never interleave. Each queued run persists the newest contents at run time;
+ * `onConfirmed` reports the exact contents that were written.
+ */
 export class FileSaveCoordinator {
   private timer: ReturnType<typeof setTimeout> | null = null
   private latestContents = ''
   private latestRevision = 0
-  private lastChangeAt = 0
-  /** The one in-flight persist; every save path waits on it before writing. */
-  private inFlight: Promise<FileSaveResult> | null = null
-  private disposed = false
+  private persistedRevision = 0
+  private queue: Promise<boolean> = Promise.resolve(true)
 
   constructor(private readonly options: FileSaveCoordinatorOptions) {}
 
   change(contents: string): void {
     this.latestContents = contents
     this.latestRevision += 1
-    this.lastChangeAt = Date.now()
     this.options.onPendingChange(true)
-    this.schedule(this.options.debounceMs)
+    this.schedule()
   }
 
   /**
-   * Explicit save: record `contents` as the latest revision, cancel the
-   * debounce, wait out any in-flight write, and persist. Serializing through
-   * the same in-flight slot as the debounced path means an explicit save can
-   * never interleave with a debounced write of older contents.
-   * @param contents - the draft snapshot the caller wants on disk.
-   * @returns the persist result for the flushed revision.
+   * Persist contents now, serialized behind any in-flight write; a pending
+   * debounce write is folded into this flush instead of running separately.
+   * @param contents - draft snapshot to write.
+   * @returns whether a write covering this revision was confirmed.
    */
-  async flush(contents: string): Promise<FileSaveResult> {
+  flush(contents: string): Promise<boolean> {
     this.latestContents = contents
     this.latestRevision += 1
-    this.lastChangeAt = Date.now()
     this.options.onPendingChange(true)
-    while (this.inFlight !== null) await this.inFlight
-    // The completed write may have rescheduled a debounce for our revision.
     this.clearTimer()
-    return this.persistLatest()
+    return this.enqueuePersist()
   }
 
   dispose(): void {
-    this.disposed = true
     this.clearTimer()
-    if (this.latestRevision > 0) void this.persistLatest()
+    if (this.latestRevision > this.persistedRevision) void this.enqueuePersist()
   }
 
-  private schedule(delay: number): void {
+  private schedule(): void {
     this.clearTimer()
     this.timer = setTimeout(() => {
       this.timer = null
-      void this.persistLatest()
-    }, delay)
+      void this.enqueuePersist()
+    }, this.options.debounceMs)
   }
 
   private clearTimer(): void {
@@ -65,39 +62,29 @@ export class FileSaveCoordinator {
     this.timer = null
   }
 
-  private persistLatest(): Promise<FileSaveResult> {
-    if (this.inFlight !== null || this.latestRevision === 0) {
-      return Promise.resolve({ ok: false })
-    }
-    const run = this.runSave()
-    this.inFlight = run
+  private enqueuePersist(): Promise<boolean> {
+    const run = this.queue.then(() => this.persistLatest())
+    this.queue = run
     return run
   }
 
-  private async runSave(): Promise<FileSaveResult> {
-    const contents = this.latestContents
+  private async persistLatest(): Promise<boolean> {
     const revision = this.latestRevision
-    const result = await this.options.persist(contents)
-    const succeeded = result.ok === true
-    if (succeeded) {
-      this.options.onConfirmed(contents)
+    if (revision <= this.persistedRevision) return true
+    const contents = this.latestContents
+    let result: FileSaveResult
+    try {
+      result = await this.options.persist(contents)
+    } catch {
+      // A rejected persist counts as a failed write; the queue stays alive.
+      result = { ok: false }
     }
-
-    this.inFlight = null
-    if (revision === this.latestRevision) {
-      if (succeeded) this.options.onPendingChange(false)
-      return result
-    }
-
-    const remainingDebounce = Math.max(
-      0,
-      this.options.debounceMs - (Date.now() - this.lastChangeAt),
-    )
-    if (this.disposed) {
-      void this.persistLatest()
-    } else {
-      this.schedule(remainingDebounce)
-    }
-    return result
+    if (!result.ok) return false
+    this.persistedRevision = revision
+    this.options.onConfirmed(contents)
+    // A change during the await bumped latestRevision; its own timer (or a
+    // dispose-time enqueue) still covers it, so pending stays true until then.
+    if (revision === this.latestRevision) this.options.onPendingChange(false)
+    return true
   }
 }

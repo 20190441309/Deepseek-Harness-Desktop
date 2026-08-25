@@ -13,8 +13,8 @@ export type OpenableKind = Exclude<SurfaceKind, 'file'>
 
 /** One right-panel surface descriptor. */
 export type Surface =
-  | { id: string; kind: 'preview'; resourceId: string | null }
-  | { id: string; kind: 'terminal'; terminalIds: string[]; activeTerminalId: string }
+  | { id: string; kind: 'preview' }
+  | { id: string; kind: 'terminal' }
   | { id: 'files'; kind: 'files' }
   | { id: 'diff'; kind: 'diff' }
   | { id: 'agents'; kind: 'agents' }
@@ -100,11 +100,11 @@ function surfaceFor(kind: OpenableKind, current: SessionSurfaces): Surface {
       return singleton(kind)
     case 'preview': {
       const existing = current.surfaces.find(surface => surface.kind === 'preview')
-      return existing ?? { id: 'browser:new', kind: 'preview', resourceId: null }
+      return existing ?? { id: 'browser:new', kind: 'preview' }
     }
     case 'terminal': {
       const existing = current.surfaces.find(surface => surface.kind === 'terminal')
-      return existing ?? { id: 'terminal:new', kind: 'terminal', terminalIds: [], activeTerminalId: '' }
+      return existing ?? { id: 'terminal:new', kind: 'terminal' }
     }
     /* v8 ignore next -- OpenableKind is a closed union; the never arm is uninhabited. */
     default: {

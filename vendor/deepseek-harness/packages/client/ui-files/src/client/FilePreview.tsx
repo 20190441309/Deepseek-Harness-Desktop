@@ -166,9 +166,9 @@ function formatFileCommentComposerText(
  * through `FileSaveCoordinator`; persist rereads first and refuses once when
  * disk diverged from both the remembered baseline and the draft (`error.changed`
  * still wins: persist returns `{ ok: false }` and pending stays). Explicit Save /
- * Ctrl+S / `registerSave` flush through the same coordinator, so an explicit
- * save never interleaves with a debounced write, and only the flushed snapshot
- * is marked saved — keystrokes typed while the write is in flight stay dirty. The occupant rereads disk
+ * Ctrl+S / `registerSave` flush through the same coordinator queue, so a
+ * debounce write and an explicit save never interleave, and characters typed
+ * while a save is in flight stay dirty. The occupant rereads disk
  * when `active` becomes true. A dirty draft stays in the editor (Markdown Source
  * included) when the last reread failed, returned truncated or binary bytes, or
  * ran without a cwd; Save writes whenever cwd exists. A successful write clears
@@ -452,15 +452,16 @@ export function FilePreview({
   const saveRef = useRef<() => Promise<boolean>>(async () => false)
   const save = async (): Promise<boolean> => {
     if (cwd === undefined || !dirty) return false
+    // Snapshot the draft before any await: characters typed while the write is
+    // in flight must stay dirty instead of being marked saved. The coordinator
+    // queue also serializes this write with the 500ms debounce persist, and
+    // onConfirmed records the exact written contents as the new baseline.
+    const contents = draftRef.current
     const coordinator = coordinatorRef.current
-    /* v8 ignore next -- the coordinator effect mounts before any user-triggered save. */
+    /* v8 ignore next -- the coordinator effect runs before any save trigger can fire. */
     if (coordinator === null) return false
-    // Flush the pre-await draft snapshot through the coordinator: keystrokes
-    // typed while the write is in flight stay dirty (onConfirmed marks only the
-    // written snapshot as saved), and the shared in-flight slot means an
-    // explicit save can never interleave with a debounced write.
-    const result = await coordinator.flush(draftRef.current)
-    if (!result.ok) return false
+    const ok = await coordinator.flush(contents)
+    if (!ok) return false
     setSaved(true)
     window.setTimeout(() => { setSaved(false) }, 1200)
     return true
@@ -621,14 +622,17 @@ export function FilePreview({
           <p className={css.message}>{error}</p>
         ) : null}
         {media !== null ? (
-          <>
-            {truncated ? <p className={css.message}>{t('preview.truncated')}</p> : null}
+          // A truncated image payload is not decodable; show the notice alone
+          // instead of a broken <img>.
+          truncated ? (
+            <p className={css.message}>{t('preview.truncated')}</p>
+          ) : (
             <img
               className={css.image}
               alt={fileName(relativePath)}
               src={`data:${media.mime};base64,${media.base64}`}
             />
-          </>
+          )
         ) : binary && !dirty ? (
           <p className={css.message}>{t('preview.binary')}</p>
         ) : !ready ? (

@@ -21,11 +21,13 @@ const TERMINAL_LINE_END = "\u0005";
 const TERMINAL_DELETE_TO_LINE_START = "\u0015";
 
 /**
- * True for Ctrl/Cmd+` (the titlebar terminal-drawer chord). The pane leaves
- * this chord to the titlebar window listener instead of encoding it for the
- * PTY; the predicate mirrors ui-titlebar's `isTerminalShortcut`.
- * @param event - keydown event as seen by the Ghostty `beforeKey` hook.
- * @returns true when the drawer-toggle chord fired.
+ * True for Ctrl/Cmd+` — the app-level terminal-drawer toggle. The terminal
+ * must not encode this chord; the pane lets it bubble so the titlebar window
+ * listener toggles the drawer even while the terminal is focused. Mirrors
+ * `isTerminalShortcut` in `ui-titlebar/keybindings.ts` (cross-package value
+ * imports are forbidden); keep the two in sync.
+ * @param event - keydown event.
+ * @returns true when the terminal drawer chord fired.
  */
 export function isTerminalDrawerShortcut(
   event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey">,

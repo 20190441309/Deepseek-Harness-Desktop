@@ -1,6 +1,7 @@
 # Agent Note: Surfaces workbench depth
 
 Status: implemented
+Archived: 2026-08-25
 
 [English](2026-08-15-surfaces-workbench-depth.md) | 中文
 
