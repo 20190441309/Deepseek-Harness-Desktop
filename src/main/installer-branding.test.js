@@ -80,11 +80,21 @@ test('installer languages are Chinese-first with an English fallback', () => {
 test('installer.nsh customizes GUI pages only and stays silent-install (/S) safe', () => {
   assert.equal(nsis.include, 'build/installer.nsh');
   const nsh = fs.readFileSync(path.join(ROOT, 'build', 'installer.nsh'), 'utf8');
-  // Exactly the two GUI-only extension points; anything else (customInstall,
+  // Exactly the three GUI-only extension points; anything else (customInstall,
   // customInit, sections…) would also run during silent installs/upgrades.
   const macros = [...nsh.matchAll(/^!macro\s+(\S+)/gm)].map((m) => m[1]);
-  assert.deepEqual(macros, ['customWelcomePage', 'customHeader']);
+  assert.deepEqual(macros, ['customWelcomePage', 'customUnWelcomePage', 'customHeader']);
   assert.match(nsh, /!insertmacro MUI_PAGE_WELCOME/);
+  // customUnWelcomePage *replaces* the stock un-welcome insertion in
+  // electron-builder's assistedInstaller.nsh, so it must (a) re-insert the
+  // page — or the uninstaller loses its welcome page entirely — and (b)
+  // re-define the 3-line title, because MUI2 unsets MUI_WELCOMEPAGE_* after
+  // every page and the installer-side define never reaches the uninstaller
+  // (that was the clipped "…Uninstall" third line).
+  const unWelcome = nsh.match(/^!macro customUnWelcomePage\n([\s\S]*?)^!macroend/m);
+  assert.ok(unWelcome, 'customUnWelcomePage macro body');
+  assert.match(unWelcome[1], /!define MUI_WELCOMEPAGE_TITLE_3LINES/);
+  assert.match(unWelcome[1], /!insertmacro MUI_UNPAGE_WELCOME/);
   assert.match(nsh, /BrandingText "Deepseek-Harness-Desktop \$\{VERSION\}"/);
   const code = nsh
     .split('\n')

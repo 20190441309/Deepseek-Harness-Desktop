@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `windows-installer` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 浅色对齐重制后 `node --test src/main/installer-branding.test.js` 8/8、`npm test` 1010 pass；stub 工程经 electron-builder 26.15.3 完整编译 NSIS 目标并在 wine+Xvfb 下逐页截图（欢迎/许可/模式/目录/卸载欢迎页 Pass，见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)）；完成页/真实 `/S` 待 CI windows artifact 实机走查（TC-INST-001/009/010） |
+| **last verified** | 2026-08-25 — 第三轮：`customUnWelcomePage` 修复卸载欢迎页 3 行标题裁字（契约决策 A，机制核对到 MUI2 源码；wine+Xvfb 修后截图见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)），门禁 8/8、`npm test` 全绿；完成页/真实 `/S`/zh_CN 仍待 CI windows artifact 实机走查，清单固化在 [TC-INST-RUNBOOK.md](../qa/results/2026-08-25/installer-branding/TC-INST-RUNBOOK.md)（workflow dispatch 云代理 403，须人触发） |
 
 ## User paths
 
@@ -15,7 +15,7 @@
 ## Invariants
 
 - `oneClick: false`、`allowToChangeInstallationDirectory: true`、桌面 + 开始菜单快捷方式、artifact 名 `Deepseek-Harness-Desktop-Setup-${version}.exe` 不得变——release.yml globs、SHA512SUMS、桌面更新器都按这个名字找包。
-- `/S` 静默安装必须保持可用。`build/installer.nsh` 只允许 `customWelcomePage` / `customHeader` 两个 GUI 宏；禁止 MessageBox、Section、RequestExecutionLevel、customInstall/customInit 等会影响静默/升级路径的内容。
+- `/S` 静默安装必须保持可用。`build/installer.nsh` 只允许 `customWelcomePage` / `customUnWelcomePage` / `customHeader` 三个 GUI 宏；禁止 MessageBox、Section、RequestExecutionLevel、customInstall/customInit 等会影响静默/升级路径的内容。`customUnWelcomePage` 是纯页面声明（替换 electron-builder 模板里的裸 `MUI_UNPAGE_WELCOME` 插入点），必须自己重插 `MUI_UNPAGE_WELCOME` 并重定义 `MUI_WELCOMEPAGE_TITLE_3LINES`——MUI2 每插一页就 UNSET 欢迎页设置，安装侧的 define 到不了卸载器，否则卸载欢迎页标题第三行（「…Uninstall」）被裁。
 - 默认 per-user 安装（`%LOCALAPPDATA%\Programs\Deepseek-Harness-Desktop`，TC-INST-013 依赖）；不设 `perMachine`，不设 `deleteAppDataOnUninstall`。
 - 位图是经典 24 位无压缩 BMP，几何固定：sidebar 164×314、header 150×57。改品牌图先改 `scripts/render-installer-assets.js` 再 `npm run installer:assets` 重新生成，禁止手改二进制或另起配色——色板是官方浅色表（`src/shared/dsh-webui-tokens.css`）的构建期镜像，与启动器同源：侧栏底 `--dsw-specific-sidebar-fill` `rgb(249,250,251)`、画布 `--dsw-alias-bg-base` 白、文字 `--dsw-alias-label-primary/secondary/tertiary`、强调仅细线用 `--dsw-static-deepseek-500` `rgb(65,118,230)`、发丝线 `rgba(0,0,0,.10)`。禁止近黑营销面板（icon-tile `#0b0d12` 第二皮肤）、禁止 `--boot-*` 仪器画布扩散进安装器；卸载侧栏是同一浅色构图的灰阶弱化版。
 - 安装器语言 zh_CN（首位 = 兜底）+ en_US；产品中文文案走 MUI 本地化串，不烙进位图。
@@ -41,7 +41,7 @@
 | Kind | What |
 | --- | --- |
 | Automated | `node --test src/main/installer-branding.test.js`（随 `npm test`）：nsis 契约、BMP 几何/位深、nsh 宏白名单、release.yml glob 对齐 |
-| Manual / QA | `TC-INST-001`（GUI 安装走查）、`TC-INST-009`（`/S` 覆盖升级）、`TC-INST-010`（卸载）、`TC-INST-012/013` in [production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md)；每次改品牌位图后对 CI windows artifact 目检欢迎/许可/目录/完成/卸载五页 |
+| Manual / QA | `TC-INST-001`（GUI 安装走查）、`TC-INST-009`（`/S` 覆盖升级）、`TC-INST-010`（卸载）、`TC-INST-012/013` in [production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md)；每次改品牌位图后对 CI windows artifact 目检欢迎/许可/目录/完成/卸载五页——实机执行清单（artifact 下载/SHA256/逐页 checklist/zh_CN）固化在 [TC-INST-RUNBOOK.md](../qa/results/2026-08-25/installer-branding/TC-INST-RUNBOOK.md) |
 
 ## Sources
 

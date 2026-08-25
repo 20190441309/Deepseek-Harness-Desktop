@@ -20,6 +20,20 @@
   !insertmacro MUI_PAGE_WELCOME
 !macroend
 
+# Inserted by assistedInstaller.nsh inside the BUILD_UNINSTALLER page list *in
+# place of* the stock `!insertmacro MUI_UNPAGE_WELCOME`, so this macro must
+# re-insert that page itself. MUI2's un-welcome page reuses the installer
+# welcome-page settings (MUI_WELCOMEPAGE_TITLE_3LINES included) but MUI_UNSETs
+# them after every page insertion, so the define from customWelcomePage never
+# reaches the uninstaller — without this the localized un-welcome title's
+# third line ("…Uninstall") is clipped. Page declaration only: MUI pages are
+# never shown in silent mode, so /S uninstall and overwrite upgrades are
+# untouched.
+!macro customUnWelcomePage
+  !define MUI_WELCOMEPAGE_TITLE_3LINES
+  !insertmacro MUI_UNPAGE_WELCOME
+!macroend
+
 !macro customHeader
   # Replace the stock "Nullsoft Install System vX.XX" footer with the product.
   BrandingText "Deepseek-Harness-Desktop ${VERSION}"
