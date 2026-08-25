@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-24 — packaged 下 `DSHD_HOME` 需 `DSHD_ALLOW_ENV_HOME=1`；`isOfficialDeepSeekBaseUrl` 仅 https |
+| **last verified** | 2026-08-25 — 启动器只读导入范围扩到 `settings.yaml` 白名单节 / 被引用凭据 / `.agent-presets` / home `AGENTS.md`（官方仍只读）；packaged 下 `DSHD_HOME` 需 `DSHD_ALLOW_ENV_HOME=1`；`isOfficialDeepSeekBaseUrl` 仅 https |
 
 ## User paths
 
@@ -17,7 +17,7 @@
 ## Invariants
 
 - 桌面 `$DSH_HOME` 仅为 `userData/dsh-home`（测试/调试可用 `DSHD_HOME`；packaged 构建忽略继承的 `DSHD_HOME`，除非显式 `DSHD_ALLOW_ENV_HOME=1`）。忽略环境 `DSH_HOME`，永不回落 `~/.dsh`。
-- 桌面 **Harness / PTY / `process.env.DSH_HOME`** 不读、不写、不清理 `~/.dsh`。壳层启动器可**只读**官方 home、`~/.agents/skills` 与用户另选的技能根，以及官方 `mcp-servers.yaml`，做用户确认后的勾选导入（见 [data-import](data-import.md)）；禁止静默自动迁、禁止写回或删除官方文件。
+- 桌面 **Harness / PTY / `process.env.DSH_HOME`** 不读、不写、不清理 `~/.dsh`。壳层启动器可**只读**官方 home、`~/.agents/skills` 与用户另选的技能根，以及官方 `mcp-servers.yaml`、`settings.yaml`（白名单节）、`.credentials.yaml`（被引用 refs）、`.agent-presets/`、home `AGENTS.md`，做用户确认后的勾选导入（见 [data-import](data-import.md)）；禁止静默自动迁、禁止写回或删除官方文件。
 - 不把桌面 home 写进 Electron `process.env.DSH_HOME`；PTY 不注入该值。
 - `dsh web` 与 `dsh plugin` 子进程的 `DSH_HOME` 覆盖为桌面 home。
 - 子进程 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` 仅在壳层 `baseUrl` 为空或为 `https://api.deepseek.com`（仅 https，不接受明文 http）时写入；第三方网关只留给自定义提供方。

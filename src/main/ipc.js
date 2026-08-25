@@ -24,10 +24,10 @@ const {
   setBundleEnabled,
   OFFICIAL_TEMPLATE_BUNDLES,
 } = require('./plugins');
-const { scanImport, shouldHoldForImport, runImport } = require('./data-import');
+const { scanImport, probeImportHold, runImport } = require('./data-import');
 const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
-const { readLastDesktopStart } = require('./launcher-gate');
+const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { registerPreviewIpc } = require('./preview');
@@ -106,14 +106,6 @@ function kernelNeedsAlign(dsh) {
 function kernelIsRunning(dsh) {
   const state = dshKernelState(dsh);
   return state !== 'idle' && state !== '';
-}
-
-function stickySkipActive(harness) {
-  const recovery = harness?.pluginRecovery;
-  if (!recovery?.skipUserPlugins) {
-    return false;
-  }
-  return recovery.appVersion === harness.appVersion;
 }
 
 function finiteNumber(value) {
@@ -224,8 +216,16 @@ function registerIpc({
     return result.filePaths[0];
   });
 
+  // Boot-page restarts are full desktop starts: record their outcome in
+  // last-desktop-start.json so the next cold-start gate sees the truth.
+  // Launcher-role paths go through startDesktop, which records it itself.
+  const recordBootRestart = () => recordLastDesktopStart(
+    app.getPath('userData'),
+    () => (harness ? harness.retryFullPlugins() : startHarness()),
+  );
+
   handle('shell:restart', BOOT_ONLY, async () => {
-    await (harness ? harness.retryFullPlugins() : startHarness());
+    await recordBootRestart();
     return harness ? harness.snapshot() : dsh.snapshot();
   });
 
@@ -237,7 +237,7 @@ function registerIpc({
       }
       return startDesktop({ recoveryLaunch: true, forceRestart: true });
     }
-    await (harness ? harness.retryFullPlugins() : startHarness());
+    await recordBootRestart();
     return harness ? harness.snapshot() : dsh.snapshot();
   });
 
@@ -560,13 +560,15 @@ function registerIpc({
       selectedSkillIds: Array.isArray(options.selectedSkillIds) ? options.selectedSkillIds : [],
       selectedPluginNames: Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [],
       selectedMcpIds: Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [],
+      selectedSettingIds: Array.isArray(options.selectedSettingIds) ? options.selectedSettingIds : [],
+      selectedPresetIds: Array.isArray(options.selectedPresetIds) ? options.selectedPresetIds : [],
       importAttachments: options.importAttachments === true,
       installPlugin: (spec) => installImportPlugin(spec, { token: loadConfig().githubToken }),
     });
     return {
       ...result,
       kernelStopped,
-      hold: shouldHoldForImport(scanImport({ sourceHome, extraSkillDirs })),
+      hold: probeImportHold({ sourceHome, extraSkillDirs }).hold,
     };
   });
 

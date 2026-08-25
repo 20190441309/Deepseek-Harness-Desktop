@@ -193,6 +193,26 @@ function applyAppTheme() {
   return theme;
 }
 
+/**
+ * Repaint every window when the OS light/dark preference flips so themes
+ * that follow the system table stay current without a restart.
+ * Injectable for tests; returns an unsubscribe.
+ */
+function watchSystemTheme({ theme = nativeTheme, apply = applyAppTheme } = {}) {
+  if (!theme || typeof theme.on !== 'function') {
+    return () => {};
+  }
+  const listener = () => apply();
+  theme.on('updated', listener);
+  return () => {
+    if (typeof theme.off === 'function') {
+      theme.off('updated', listener);
+    } else if (typeof theme.removeListener === 'function') {
+      theme.removeListener('updated', listener);
+    }
+  };
+}
+
 function attachIntegratedChrome(win, options = {}) {
   if (options.role) {
     chromeRoles.set(win, options.role);
@@ -228,6 +248,7 @@ module.exports = {
   hideNativeMenu,
   attachIntegratedChrome,
   applyAppTheme,
+  watchSystemTheme,
   prepareHarnessChrome,
   syncHarnessChrome,
   currentTheme,

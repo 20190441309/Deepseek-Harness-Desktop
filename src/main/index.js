@@ -17,14 +17,13 @@ const git = require('./git');
 const { listDir } = require('./workspace-fs');
 const { buildMenu } = require('./menu');
 const { createTray, invokeTrayAction } = require('./tray');
-const { checkUpdate, installUpdate } = require('./update');
-const { scanImport, shouldHoldForImport, recoverInterruptedImport } = require('./data-import');
+const { checkUpdate, installUpdate, setGithubTokenProvider } = require('./update');
+const { probeImportHold, recoverInterruptedImport } = require('./data-import');
 const {
-  shouldPromptUpdate,
-  shouldAutoStartDesktop,
   shouldCloseLauncherAfterDesktopStart,
-  readLastDesktopStart,
   writeLastDesktopStart,
+  recordLastDesktopStart,
+  runColdStartGate: runLauncherColdStartGate,
 } = require('./launcher-gate');
 const {
   startDesktopInstallControl,
@@ -49,6 +48,7 @@ const {
   closeLauncherWindow,
   showMain,
 } = require('./window');
+const { watchSystemTheme } = require('./chrome');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
 const { qaFlag } = require('./qa-gate');
@@ -208,74 +208,33 @@ async function startDesktopFromLauncher(options = {}) {
   }
 }
 
-async function runColdStartGate() {
-  const config = loadConfig();
-  let check = { status: 'current' };
-  try {
-    check = await checkUpdate();
-  } catch (error) {
-    check = { status: 'error', message: error.message || String(error) };
-  }
-  sendToLauncher('shell:launcher-hint', { check });
-  let updatePromptPending = false;
-  if (shouldPromptUpdate({ askOnUpdate: config.askOnUpdate, check })) {
-    updatePromptPending = true;
-    const result = await dialog.showMessageBox(getLauncherWindow() || undefined, {
-      type: 'question',
-      buttons: ['更新', '稍后'],
-      defaultId: 0,
-      cancelId: 1,
-      title: '发现新版本',
-      message: `是否更新到 ${check.latest || check.version || ''}？`,
-      noLink: true,
-    });
-    if (result.response === 0) {
-      try {
-        await installUpdate((payload) => {
-          sendToLauncher('shell:update-progress', payload);
-        });
-      } catch (error) {
-        sendToLauncher('shell:launcher-hint', {
-          check: { ...check, status: 'error', message: error.message || String(error) },
-        });
-      }
-      return;
-    }
-    updatePromptPending = false;
-  }
-  let importRecovery = { recovered: false, removedTmp: [] };
-  try {
-    importRecovery = recoverInterruptedImport({ userDataDir: app.getPath('userData') });
-  } catch (error) {
-    dsh.log(`导入日志恢复失败：${error.message || String(error)}`, 'error');
-  }
-  const scan = scanImport();
-  const holdForImport = shouldHoldForImport(scan) || importRecovery.recovered;
-  const lastStart = readLastDesktopStart(app.getPath('userData'));
-  const lastStartFailed = lastStart.ok === false;
-  const autoStartDesktop = shouldAutoStartDesktop({
-    autoStartDesktop: config.autoStartDesktop,
-    holdForImport,
-    updatePromptPending,
-    lastStartFailed,
+function runColdStartGate() {
+  const userDataDir = app.getPath('userData');
+  return runLauncherColdStartGate({
+    config: loadConfig(),
+    userDataDir,
+    isPackaged: app.isPackaged,
+    checkUpdate,
+    installUpdate,
+    confirmUpdate: async (check) => {
+      const result = await dialog.showMessageBox(getLauncherWindow() || undefined, {
+        type: 'question',
+        buttons: ['更新', '稍后'],
+        defaultId: 0,
+        cancelId: 1,
+        title: '发现新版本',
+        message: `是否更新到 ${check.latest || check.version || ''}？`,
+        noLink: true,
+      });
+      return result.response === 0;
+    },
+    openLauncher,
+    sendToLauncher,
+    recoverInterruptedImport: () => recoverInterruptedImport({ userDataDir }),
+    probeImportHold,
+    startDesktop: () => startDesktopFromLauncher(),
+    log: (line, level) => dsh.log(line, level),
   });
-  if (holdForImport) {
-    sendToLauncher('shell:show-tab', { tab: 'import' });
-  }
-  if (importRecovery.recovered) {
-    sendToLauncher('shell:launcher-hint', {
-      importResume: { removedTmp: importRecovery.removedTmp.length },
-    });
-  }
-  if (lastStartFailed && !holdForImport) {
-    sendToLauncher('shell:show-tab', { tab: 'home' });
-  }
-  if (holdForImport || !autoStartDesktop || (lastStartFailed && !holdForImport)) {
-    await openLauncher();
-  }
-  if (autoStartDesktop) {
-    await startDesktopFromLauncher();
-  }
 }
 
 const harness = new HarnessController({
@@ -335,7 +294,10 @@ function cleanupDesktopResources() {
 
 function restartWithCleanup() {
   cleanupDesktopResources();
-  return harness.restart();
+  // Menu / tray / plugin-align restarts must refresh last-desktop-start too,
+  // or a stale { ok:false } keeps holding the next cold start at the launcher
+  // even though the desktop already recovered through this path.
+  return recordLastDesktopStart(app.getPath('userData'), () => harness.restart());
 }
 
 function reloadWithCleanup() {
@@ -1159,6 +1121,7 @@ if (!gotLock) {
     fs.mkdirSync(config.workspace, { recursive: true });
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
+    setGithubTokenProvider(() => loadConfig().githubToken);
 
     startDesktopInstallControl({
       installPlugin: (spec, options) => installPlugin(spec, {
@@ -1195,6 +1158,8 @@ if (!gotLock) {
       onRestart: () => ignoreFailure(restartWithCleanup()),
       onQuit: () => quitApp(),
     });
+
+    watchSystemTheme();
 
     session.defaultSession.on('will-download', (event, item) => {
       const dest = downloadSavePath(app.getPath('downloads'), item.getFilename());

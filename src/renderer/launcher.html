@@ -70,6 +70,7 @@
           <header class="import-head">
             <h2>导入</h2>
             <p class="lede">只读扫描官方 home。勾选后写入桌面 home，不修改官方目录，也不复制工程工作区。</p>
+            <p class="import-scope-note" id="import-scope-note">将迁移：会话、附件、技能、可重装插件、MCP、模型/提供方/默认模型/主题设置（随所选模型配置同步其引用的 API key，仅落盘不显示）、预设、全局指令。不迁移：工作区文件、profiles/ 与 node_modules、storages/ 内部状态、旧 SQLite 会话库、OAuth 会话态与未被引用的凭据。</p>
             <p class="import-source-line" id="import-source"></p>
             <p class="import-source-line" id="import-skill-roots" hidden></p>
             <div class="import-toolbar">
@@ -84,6 +85,8 @@
             <button type="button" class="import-cat" data-import-cat="skills" role="tab" aria-selected="false">技能 <span id="import-skills-count">0</span></button>
             <button type="button" class="import-cat" data-import-cat="plugins" role="tab" aria-selected="false">插件 <span id="import-plugins-count">0</span></button>
             <button type="button" class="import-cat" data-import-cat="mcp" role="tab" aria-selected="false">MCP <span id="import-mcp-count">0</span></button>
+            <button type="button" class="import-cat" data-import-cat="settings" role="tab" aria-selected="false">设置 <span id="import-settings-count">0</span></button>
+            <button type="button" class="import-cat" data-import-cat="presets" role="tab" aria-selected="false">预设 <span id="import-presets-count">0</span></button>
           </div>
           <div class="import-board">
             <div class="import-board-bar">
@@ -98,6 +101,8 @@
               <ul id="import-skills" class="list import-list" hidden data-import-pane="skills"></ul>
               <ul id="import-plugins" class="list import-list" hidden data-import-pane="plugins"></ul>
               <ul id="import-mcp" class="list import-list" hidden data-import-pane="mcp"></ul>
+              <ul id="import-settings" class="list import-list" hidden data-import-pane="settings"></ul>
+              <ul id="import-presets" class="list import-list" hidden data-import-pane="presets"></ul>
             </div>
           </div>
           <footer class="import-foot">
