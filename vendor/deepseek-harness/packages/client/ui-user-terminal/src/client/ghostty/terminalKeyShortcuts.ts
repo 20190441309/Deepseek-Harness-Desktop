@@ -20,6 +20,20 @@ const TERMINAL_LINE_START = "\u0001";
 const TERMINAL_LINE_END = "\u0005";
 const TERMINAL_DELETE_TO_LINE_START = "\u0015";
 
+/**
+ * True for Ctrl/Cmd+` (the titlebar terminal-drawer chord). The pane leaves
+ * this chord to the titlebar window listener instead of encoding it for the
+ * PTY; the predicate mirrors ui-titlebar's `isTerminalShortcut`.
+ * @param event - keydown event as seen by the Ghostty `beforeKey` hook.
+ * @returns true when the drawer-toggle chord fired.
+ */
+export function isTerminalDrawerShortcut(
+  event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey">,
+): boolean {
+  if (!event.ctrlKey && !event.metaKey) return false;
+  return event.key === "`" || event.code === "Backquote";
+}
+
 function normalizeEventKey(key: string): string {
   const normalized = key.toLowerCase();
   if (normalized === "esc") return "escape";

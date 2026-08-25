@@ -1,4 +1,7 @@
-/** Titlebar panel shortcut matching: skip inputs, textareas, and xterm. */
+/** Titlebar panel shortcut matching: skip inputs, textareas, and the terminal pane. */
+
+/** Production terminal host marker rendered by ui-user-terminal's TerminalPane. */
+const TERMINAL_PANE_SELECTOR = '[data-terminal-pane]'
 
 /**
  * True when a keydown target is an editable field or the terminal, so panel
@@ -8,7 +11,7 @@
  */
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
-  if (target.closest('.xterm') !== null) return true
+  if (target.closest(TERMINAL_PANE_SELECTOR) !== null) return true
   return isTextEntryTarget(target)
 }
 
@@ -16,11 +19,14 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
  * True when a keydown target is a text entry field (not the terminal). The
  * terminal-drawer toggle still applies while typing inside the terminal, so
  * its shortcut checks this instead of {@link isEditableKeyboardTarget}.
+ * The Ghostty surface proxies keystrokes through a hidden textarea inside the
+ * pane host; that textarea is the terminal, not a text entry field.
  * @param target - event target.
  * @returns whether the target is a text input.
  */
 export function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
+  if (target.closest(TERMINAL_PANE_SELECTOR) !== null) return false
   const tag = target.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   const contentEditable = target.contentEditable
