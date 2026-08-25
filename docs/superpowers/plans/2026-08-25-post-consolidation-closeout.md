@@ -1,6 +1,7 @@
 # 合并收口（Post-consolidation closeout）：#39 落地、node-half 修复、QA 与实机缺口计划
 
 > **For agentic workers:** 本计划同时是设计文档与执行记录：Phase 1–4 已在云端执行完毕（含证据），Phase 5–6 是留给实机/人工的可执行手册。复核时用 checkbox 对账。
+> **第二轮追加（2026-08-25，模型 `claude-fable-5-thinking-high`）：** Phase 7–10 —— #40 落地记录、macOS watch 测试抖动修复、壁纸 qa:source 联网复验、TC-REM-002 解禁前置。Phase 7–8 已执行；9 见执行记录；10 为低优先设计。
 
 **Goal:** 把合并 PR #39（`cursor/consolidate-open-prs-562f`）安全落到 `main`、关闭全部被替代 PR、删除已并入的远端分支；修复 main 上遗留的 `node-half.client.spec.ts` 红灯；用**合并后树**的新数字刷新相关 feature card 的 `last verified`；把仅剩的两个实机缺口（Windows git-titlebar、TC-EXT-007 dshbot 冒烟）落成可一键执行的验证手册。
 
@@ -28,6 +29,10 @@ Phase 1 落地 #39 → Phase 2 关 PR / 删分支（GitHub 检测 head 可达自
                        → Phase 4 刷 feature card last verified（依赖 3 的新绿数字）
 Phase 5 Windows git-titlebar 实机   —— 独立，仅依赖 CI 安装包
 Phase 6 TC-EXT-007 dshbot 冒烟      —— 独立，仅依赖 CI 安装包（手册已在库内）
+Phase 7 落地 #40（本计划+node-half 修复上 main）→ 之后才可宣称 main 上 node-half 已修
+                 ↘ Phase 8 macOS watch 测试抖动修复（独立分支，修的是 main 既有 CI 红）
+Phase 9 壁纸 qa:source 联网复验     —— 独立，仅依赖出网 + xvfb 环境
+Phase 10 TC-REM-002 解禁前置        —— 低优先设计，不阻塞收口
 ```
 
 **风险 R1 —— #33 vs #37 双实现残渣。** #33（production-hardening）与 #37（surfaces/terminal Phase 0–5）都动过保存竞态、`` Ctrl+` `` 快捷键与 preview-automation 链；#39 合并时按「#37 架构胜出」解了 20 处冲突，并追加 `6343b9b3` 删掉与 #37 冒泡设计矛盾的旧 drawer-chord `preventDefault` 断言。**复核结论（本轮）：** 合并树上 `preview-automation` 仅剩两处**反向守卫**断言（`src/main/preview.test.js:795`、`src/preload/shell-api.test.js:125`，断言链路保持删除态）；`ui-titlebar` / `ui-user-terminal` 无 `.xterm` 残留；desktop 997 绿 + harness `test:gui` 5338 绿（见 Phase 3）即无残渣破门。风险闭合。
@@ -37,6 +42,8 @@ Phase 6 TC-EXT-007 dshbot 冒烟      —— 独立，仅依赖 CI 安装包（�
 **风险 R3 —— 误删未并入分支。** 删除前对每支跑 `git merge-base --is-ancestor origin/<branch> main`；不满足的一律保留并上报。（本轮全部满足，见 Phase 2。）
 
 **风险 R4 —— tsconfig paths 改动影响面。** paths 是全仓测试/静态门的源面解析入口，加错映射可能让 lib/ 双单例问题复发。缓解：只加**精确子路径**一条（exact match 优先于通配，不影响其他包）；typecheck + test:gui 全绿后才提交。
+
+**风险 R5 —— macOS CI 抖动掩盖真回归。** `git-workspace-watch.test.js` 的「arm 时注册文件已存在 → 恰好一次信号」断言在 macOS runner 上间歇双触发（main 头 `ea659884` 的 run 32843072840 与 #40 head 的 run 32844221093 同测同因失败）。若放着不管，macos-latest 红灯会常态化，掩盖后续真回归。根因与修复设计见 Phase 8；豁免依据：与 main 头**逐字相同**的既有失败 ≠ #40 回归。
 
 ---
 
@@ -117,7 +124,74 @@ Phase 6 TC-EXT-007 dshbot 冒烟      —— 独立，仅依赖 CI 安装包（�
 
 **证据落点：** `docs/qa/results/<日期>/` 三相报告 + CI SHA；汇总表 TC-EXT-007 行；`dshbot` 卡 Open follow-ups 首行。
 
----
+**占位脚手架（第二轮已落）：** [docs/qa/results/2026-08-25/](../../qa/results/2026-08-25/README.md) 内含 Phase 5 报告模板 `git-titlebar-windows.md` 与 Phase 6 报告模板 `tc-ext-007-dshbot.md`，全部字段 ☐ NOT RUN，实机执行日若晚于 2026-08-25 整体挪到实际日期目录。
+
+## Phase 7 — 落地 PR #40（第二轮已执行 ✅）
+
+**合并前检查单（依序执行，均通过）：**
+
+- [x] `gh pr view 40` → `MERGEABLE`；head `7c7689d4`（三 commit：tsconfig 一行、本计划、五卡刷新）。
+- [x] main 未分叉：`git rev-list origin/cursor/post-consolidation-closeout-562f..main` 为空，merge-base == main 头 `ea659884` —— PR head 树**就是**合并后树，CI 对 head 的结论直接适用于合并结果。
+- [x] CI 对 head 的结论：`vendor-gui`（windows，`pnpm install + build:lib + test:gui + gen-client-catalog/notices --check`）**SUCCESS**；`Desktop unit tests (windows-latest)` **SUCCESS**；`Desktop unit tests (macos-latest)` **FAILURE**。
+- [x] macOS 失败豁免核查：失败测试为 `git-workspace-watch.test.js` 第 332 号「arming … fires the initial signal once」（2 !== 1），与 main 头 `ea659884` 的 run 32843072840 **同测试、同断言、同错误** —— 既有抖动，非 #40 回归（根因与修复见 Phase 8）。豁免理由已写进合并 commit message。
+- [x] 本地 `git merge --no-ff` + `git push origin main`（非 force）→ main `ea659884..cecfbade`；GitHub 自动把 #40 标 `MERGED`（12:00:34Z）。
+- [x] ancestry 验证后删除远端分支 `cursor/post-consolidation-closeout-562f`。
+
+**合并后验证（云端 Linux，本轮已跑）：**
+
+- [x] desktop `npm test`（合并树 + Phase 8 修复）：**1000 tests / 997 pass / 0 fail / 3 skip**。
+- [x] harness `test:gui` + typecheck：不在本地重跑 —— CI `vendor-gui` 已对**同一棵树**（head == merge 树）全绿，即 main 上 node-half 修复已被验证。
+- 复核命令（任何人可重放）：`gh pr view 40 --json state,mergedAt`；`git log --oneline -3 main`；`npm test`。
+
+## Phase 8 — macOS `git-workspace-watch` 测试抖动修复（第二轮已执行 ✅）
+
+**症状：** macos-latest 间歇失败「arming with an already-existing registry fires the initial signal once」，`fired` 为 2 而非 1。Linux/Windows 稳定。
+
+**根因：** 测试先写入 `workspace.json` 再 arm（debounceMs=10）。arm 时 statSync 补发一次初始信号（产品设计如此，卡 `git-titlebar` 不变量明载）；随后 macOS FSEvents（libuv 进程级共享 stream，新增 watch 路径时重启 stream 会带出 arm **之前**的写事件）把这次 pre-arm 写**再投递一次**。生产 debounce 200ms 能把重放并进同一窗口；测试用的 10ms 窗口早已关闭 → 第二次 onChange。即：双触发是**平台重放 + 测试窗口过小**的组合，不是 watcher 逻辑缺陷 —— 实现注释本就声明「spurious refresh 是廉价的 status 重读」。
+
+**方案取舍：**
+
+| 选项 | 评估 |
+| --- | --- |
+| A. 断言改「补发 + 静默收敛」：`fired ≤ 2` 且再等 150ms 不增长 | **选定。** 测的是真实契约（recovery + quiescence），对重放时刻不敏感，确定性最高 |
+| B. 测试 debounce 调大到 ≥150ms 保住「恰好一次」 | 仍是与 FSEvents 重放赛跑，慢 runner 上重放晚于窗口照样红 |
+| C. 实现里 arm 后吞掉短窗内的 watch 事件 | 会吞真实变更，为测试改产品语义，违背「spurious 廉价、漏发才是 bug」的设计 |
+
+**Feature Spine：** Touching `git-titlebar`（Allowed touch 含 `git-*.js` 单测）；纯测试断言修正，产品行为与卡不变量**零改动**。
+
+- [x] 修改 `src/main/git-workspace-watch.test.js`：改名「fires the initial signal and settles」，断言 `settled ≤ 2` + 150ms 静默复查。
+- [x] 本地验证：该文件 `node --test` 连跑 5 次 8/8 绿；全套 `npm test` 997 绿。
+- [ ] 观察本分支 CI 的 macos-latest 结果；合并后连续 2 次 main run macOS 绿即视为抖动闭合（Linux 无 FSEvents，本地无法复现双触发路径，只能以 CI 为准）。
+
+## Phase 9 — 壁纸 `qa:source` 三步联网复验（第二轮设计 + 执行记录）
+
+**背景：** Phase 1–4 轮在云端跑 `qa:source` 时 `appearance.localCrop` / `gallery.confirmSet` / `appearance.frost` 三步失败，被记为「既知环境失败，非回归」。该结论需要在**具备出网**的环境复验一次才能钉死「env-only」。三步的依赖链：`gallery.confirmSet` 需要 Bing Daily 缩略图真实加载（出网）；`appearance.frost` 接受「壁纸设置成功后的滑杆」或「本地裁剪后的滑杆」两条路径，前一步失败会连锁；`appearance.localCrop` 走本地文件注入 + 裁剪对话框，理论上不依赖网络，需单独归因。
+
+**复验手续（联网机器 / 出网云环境通用）：**
+
+1. 前置探测：`curl https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1` 与 `curl https://wallhaven.cc/api/v1/search?purity=100` 均须 200（先证明「网络可用」，失败归因才有效力）。
+2. 环境就绪（顺序敏感）：Node 版本对齐 `.nvmrc`（22.22.2；22.14 会因 engine 不满足让 tsdown 缺 `unrun` 直接炸 build）→ 根 `npm ci` → **`npm run setup:harness`**（vendor pnpm install + **full build**——desktop 的 `sourceHarnessStatus` 检查 `apps/cli/lib/bin.js` 与 `apps/web/dist/index.html`，仅 `build:lib` 不够，walk 会停在 boot 页把全部步骤连锁打红）。
+3. `xvfb-run -a npm run qa:source`（本地有显示器则免 xvfb）。
+4. 判读：只看三步的 step 行。三步全 PASS → 钉死 env-only，更新 `wallpaper-gallery` 卡 `last verified`（带日期 + 环境描述）；`gallery.confirmSet` 仍 FAIL 且步骤 1 的 200 成立 → **真回归**，开修复项、不许再记环境失败；`appearance.localCrop` 单独 FAIL → 与网络无关，按 file-input/crop 对话框链路排查。
+
+**本轮执行记录（出网云 Linux + xvfb）：**
+
+- [x] 步骤 1：Bing 与 Wallhaven 均 200 —— 本环境出网可用，具备复验效力。
+- [x] 步骤 2 教训（已回填进上面的手续）：首跑仅 `build:lib` → walk 停在 boot 页（bootLogs：「还没安装依赖或构建。请运行 npm run setup:harness」），60 步连锁全红 —— 该失败形态与「壁纸三步失败」**完全不同**，判读时不可混淆。
+- [ ] 步骤 3–4：`setup:harness` 全量构建后重跑 `qa:source`，三步结果与归因回填此处（跑完前不填）。
+
+## Phase 10 — TC-REM-002 真机扫码解禁前置（低优先设计 ☐）
+
+**现状：** `mobile-remote` 卡 `parked`，`REMOTE_FEATURE_ENABLED = false`，QA 汇总表 TC-REM-001…003 记 N/A 是**设计口径**而非缺口；`#offer=` 自动登录链路已在真 `RemoteGateway` + 真 `mobile/web` 树上 e2e 钉死（remote.test.js 31/31）。
+
+**解禁 TC-REM-002 的前置（依序）：**
+
+1. 产品决策解除停放：翻 `REMOTE_FEATURE_ENABLED`，对 `mobile-remote` 卡开新 Touching（改 status、User paths 去停放注）—— 无此决策则 TC-REM-002 保持 N/A，**不是**本收口计划的欠账。
+2. 带该开关的打包构建（Windows Setup 或 Linux 包均可，网关在主进程）。
+3. 真机侧：手机与桌面同 LAN；扫码页要求 secure context（`BarcodeDetector` + `getUserMedia`）——LAN 明文页降级为粘贴 offer，跑 TC-REM-002 时两条路径都要各验一次；HTTPS 中继模式另验 relay origin。
+4. 执行 TC-REM-001…003 并回填汇总表（从 N/A 改实测值）；Android 侧同二维码走 Compose 客户端对照。
+
+**不做：** 本计划不翻开关、不改卡状态；此 Phase 仅把「哪天要解禁时从哪里开始」写死，避免重新考古。
 
 ## QA 矩阵：哪些门在云端/CI 可闭合，哪些必须实机
 
@@ -129,15 +203,18 @@ Phase 6 TC-EXT-007 dshbot 冒烟      —— 独立，仅依赖 CI 安装包（�
 | `npm run qa:source`（xvfb + 源码 Electron） | ✅ | — | surfaces/terminal/files/diff/agents/git/market/dshbot 步骤全 PASS；仅壁纸区既知 3 项环境失败（`appearance.localCrop`/`gallery.confirmSet`/`appearance.frost`，与合并前记录一致，非回归） |
 | `smoke:packaged` / `qa:packaged`（Linux 包） | ✅（CI artifact） | — | 未在本轮重跑（无行为改动） |
 | TC-WS-006 / TC-GIT-001…007 实机 | rehearsal 仅 | **必须**（Phase 5） | ☐ 待实机 |
-| TC-EXT-007 dshbot 三相 | A/C 探针 rehearsal | **必须**（Phase 6，B 相纯手工） | ☐ 待实机 |
-| TC-REM-002 真机扫码 | — | 必须（mobile-remote 卡既有缺口，不在本计划内展开） | ☐ |
+| TC-EXT-007 dshbot 三相 | A/C 探针 rehearsal | **必须**（Phase 6，B 相纯手工） | ☐ 待实机（模板已就位 `docs/qa/results/2026-08-25/`） |
+| TC-REM-002 真机扫码 | — | 必须（前置见 Phase 10；停放期 N/A 是设计口径） | ☐ |
+| macos-latest desktop 单测 | ✅（CI） | — | Phase 8 修复已落分支，待 CI 连续 2 绿闭合 |
+| 壁纸 qa:source 三步（联网） | ✅（出网环境） | — | Phase 9 执行中（见其执行记录） |
 
 ## Rollout / rollback
 
 - **Rollout：** main 已含全部合并；本工作分支（plan + tsconfig 一行 + 卡刷新）独立可并，无 stacking（#39 已落地，方案 (b)：直接基于新 main）。
 - **Rollback：** 若合并树暴露未预见回归，用 `git revert -m 1 ea659884` 一次性回退整个 consolidation 合并（分支已删但对象仍在，PR #39 页面可找回）；node-half 修复独立成 commit，可单独 revert；卡刷新纯 docs。**不 force-push main。**
+- **第二轮 rollback：** #40 的合并可 `git revert -m 1 cecfbade` 整体回退（内含 tsconfig 一行 + 纯 docs）；Phase 8 测试修复独立 commit 可单独 revert（回退后 macOS 抖动回归原状，非产品风险）；QA 模板与本计划追加均纯 docs。
 - 分支删除均验证过 ancestry，可随时从对应 merge commit / PR 页恢复。
 
 ## Open questions
 
-无阻塞性未决项。Phase 5/6 仅等待实机资源（Windows x64 + 已绿 CI artifact），手册与 Pass/Fail 标准已备齐。
+无阻塞性未决项。Phase 5/6 仅等待实机资源（Windows x64 + 已绿 CI artifact），手册、Pass/Fail 标准与报告模板（`docs/qa/results/2026-08-25/`）已备齐。Phase 8 待 CI macOS 连续绿确认；Phase 9 待本轮 `setup:harness` 后复跑回填；Phase 10 待产品解禁决策（非欠账）。
