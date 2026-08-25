@@ -35,10 +35,9 @@
   - img
   - img
   - text: Think Both files have been read. a.txt contains "alpha" and b.txt contains "beta". I'll now reply with DONE as instructed.
-- text: Stopped
-- textbox "Edit message": Now give the final answer.
+- text: Stopped Now give the final answer.
+- status: Re-editing in the input box below
 - button "Cancel"
-- button "Send"
 - paragraph: DONE
 - button "Copy":
   - img
@@ -49,12 +48,16 @@
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}}
-- textbox "Message the agent"
+- status:
+  - text: Re-editing this message
+  - button "Cancel edit":
+    - img
+- textbox "Message the agent": Now give the final answer.
 - button "Commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
-- button "Send message" [disabled]
+- button "Send message"
 - text: 2 turns · 3 steps LLM {{duration}} · Tool call {{duration}} TTFT avg {{duration}} · {{throughput}} tok/s Cache hit 98% Input 7.8K tok · Output 103 tok
