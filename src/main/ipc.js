@@ -11,7 +11,7 @@ const {
   normalizeLauncherConfigPatch,
 } = require('./config');
 const { normalizeRemotePatch } = require('./remote-patch');
-const { getMainWindow, dismissMainWindow, openHarnessSettings, openMarketplace, openRemote, getLauncherWindow } = require('./window');
+const { getMainWindow, dismissMainWindow, getHarnessWebContents, openHarnessSettings, openMarketplace, openRemote, getLauncherWindow } = require('./window');
 const { resolveNodeBin, resolveDshBin, sourceHarnessStatus } = require('./dsh');
 const { listThemes, resolveTheme } = require('../shared/themes');
 const { applyAppTheme } = require('./chrome');
@@ -31,6 +31,7 @@ const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = requi
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
 const { gitIpcNull, guardGitIpc } = require('./git-ipc-guard');
+const { watchWorkspaceRegistrations } = require('./git-workspace-watch');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
@@ -374,6 +375,16 @@ function registerIpc({
   handle('shell:git-branch-list', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitBranchList(cwd)));
   handle('shell:git-switch-branch', HARNESS_ONLY, guardGitIpc((_event, cwd, ref) => gitSwitchBranch(cwd, ref)));
   handle('shell:git-create-branch', HARNESS_ONLY, guardGitIpc((_event, cwd, name) => gitCreateBranch(cwd, name)));
+  // The harness registers a newly opened workspace asynchronously, so the
+  // titlebar's first git status read can race that write and come back
+  // unauthorized. Push a signal when the registry changes so ui-git refreshes
+  // as soon as the trust roots are live instead of waiting for window focus.
+  const stopWorkspaceWatch = watchWorkspaceRegistrations(() => {
+    const contents = getHarnessWebContents();
+    if (contents && !contents.isDestroyed()) {
+      contents.send('shell:git-workspaces-changed');
+    }
+  });
   const pty = registerPtyIpc(ipcMain, undefined, { authorize: authorizeHarness });
   const preview = registerPreviewIpc(ipcMain, undefined, { authorize: authorizeHarness });
 
@@ -724,7 +735,7 @@ function registerIpc({
     return start({ forceRestart: true });
   });
 
-  return { pty, preview };
+  return { pty, preview, stopWorkspaceWatch };
 }
 
 module.exports = { registerIpc };

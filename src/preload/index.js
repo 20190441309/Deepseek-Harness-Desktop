@@ -92,6 +92,7 @@ function harnessApi(renderer) {
     gitPush: invoke(renderer, 'shell:git-push'),
     gitPull: invoke(renderer, 'shell:git-pull'),
     onGitProgress: subscribe(renderer, 'shell:git-progress'),
+    onGitWorkspacesChanged: subscribe(renderer, 'shell:git-workspaces-changed'),
     gitCreateChangeRequest: invoke(renderer, 'shell:git-create-change-request'),
     gitPublishRepository: invoke(renderer, 'shell:git-publish'),
     openWorkspacePath: invoke(renderer, 'shell:open-workspace-path'),

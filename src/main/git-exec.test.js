@@ -36,6 +36,22 @@ test('killProcessTree on win32 runs taskkill /T /F on the child pid', () => {
   assert.equal(child.killed, 0, 'taskkill owns the tree; no direct SIGTERM');
 });
 
+test('killProcessTree on win32 falls back to child.kill when taskkill exits nonzero', () => {
+  const child = fakeChild(4242);
+  const killer = fakeKiller();
+  killProcessTree(child, { platform: 'win32', spawnKiller: () => killer });
+  killer.emit('exit', 1);
+  assert.equal(child.killed, 1, 'access-denied taskkill must not leave the git child alive');
+});
+
+test('killProcessTree on win32 does not double-kill after a clean taskkill', () => {
+  const child = fakeChild(4242);
+  const killer = fakeKiller();
+  killProcessTree(child, { platform: 'win32', spawnKiller: () => killer });
+  killer.emit('exit', 0);
+  assert.equal(child.killed, 0, 'taskkill /T /F already terminated the tree');
+});
+
 test('killProcessTree on win32 falls back to child.kill when taskkill errors', () => {
   const child = fakeChild(4242);
   const killer = fakeKiller();

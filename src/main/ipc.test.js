@@ -152,7 +152,7 @@ function loadIpc(options = {}) {
   });
   stub('./window', {
     getMainWindow: options.getMainWindow || (() => null),
-    getHarnessWebContents: () => null,
+    getHarnessWebContents: options.getHarnessWebContents || (() => null),
     getLauncherWindow: () => null,
     hideHarnessView: options.hideHarnessView || (() => {}),
     dismissMainWindow: options.dismissMainWindow || (() => false),
@@ -250,7 +250,16 @@ function loadIpc(options = {}) {
       return installResult;
     },
   });
-  stub('./git', gitStubs());
+  stub('./git', { ...gitStubs(), ...(options.git || {}) });
+  const workspaceWatch = { onChange: null, stopped: 0 };
+  stub('./git-workspace-watch', {
+    watchWorkspaceRegistrations: (onChange) => {
+      workspaceWatch.onChange = onChange;
+      return () => {
+        workspaceWatch.stopped += 1;
+      };
+    },
+  });
   stub('./preview', { registerPreviewIpc: () => ({}) });
   stub('./pty', { registerPtyIpc: () => ({}) });
   stub('./workspace-fs', {
@@ -330,8 +339,80 @@ function loadIpc(options = {}) {
     scanImportCalls,
     runImportCalls,
     lastStartWrites,
+    workspaceWatch,
   };
 }
+
+test('shell:git-branch-list resolves the guard failure payload when the handler throws', async () => {
+  const ipc = loadIpc({
+    git: {
+      gitBranchList: async () => {
+        throw new Error('registry walk exploded');
+      },
+    },
+  });
+  try {
+    const result = await ipc.invoke('shell:git-branch-list', harnessEvent(), '/work');
+    assert.deepEqual(result, { ok: false, message: 'registry walk exploded' });
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:git-status resolves null instead of rejecting when the handler throws', async () => {
+  const ipc = loadIpc({
+    git: {
+      gitStatus: async () => {
+        throw new Error('porcelain exploded');
+      },
+    },
+  });
+  try {
+    assert.equal(await ipc.invoke('shell:git-status', harnessEvent(), '/work'), null);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('a workspace registry change pushes shell:git-workspaces-changed to the harness', async () => {
+  const sent = [];
+  const ipc = loadIpc({
+    getHarnessWebContents: () => ({
+      isDestroyed: () => false,
+      send(channel, payload) {
+        sent.push({ channel, payload });
+      },
+    }),
+  });
+  try {
+    assert.equal(typeof ipc.workspaceWatch.onChange, 'function');
+    ipc.workspaceWatch.onChange();
+    assert.deepEqual(sent, [{ channel: 'shell:git-workspaces-changed', payload: undefined }]);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('a workspace registry change without a live harness webContents is a no-op', async () => {
+  const destroyedSent = [];
+  for (const getHarnessWebContents of [
+    () => null,
+    () => ({
+      isDestroyed: () => true,
+      send(channel) {
+        destroyedSent.push(channel);
+      },
+    }),
+  ]) {
+    const ipc = loadIpc({ getHarnessWebContents });
+    try {
+      ipc.workspaceWatch.onChange();
+    } finally {
+      ipc.restore();
+    }
+  }
+  assert.deepEqual(destroyedSent, []);
+});
 
 test('shell:list-marketplace forwards locale and refresh without a GitHub token', async () => {
   const ipc = loadIpc();
