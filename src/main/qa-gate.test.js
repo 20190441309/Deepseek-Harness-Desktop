@@ -28,8 +28,9 @@ test('packaged runs ignore ambient QA flags unless DSHD_ALLOW_PACKAGED_QA=1', ()
 
 test('index.js consumes QA env only through the gate and loads QA drivers lazily', () => {
   const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  // No top-level (column-0) requires of the QA driver modules: they must not
-  // ship resident in the production main process.
+  const smokeSource = fs.readFileSync(path.join(__dirname, 'smoke', 'index.js'), 'utf8');
+  // The production entry never requires the QA drivers; it only lazily loads
+  // the smoke module inside the DSH_SMOKE gate.
   for (const mod of [
     'release-ui-walk',
     'composer-official-qa',
@@ -39,15 +40,26 @@ test('index.js consumes QA env only through the gate and loads QA drivers lazily
   ]) {
     assert.doesNotMatch(
       source,
-      new RegExp(`^const .*require\\('\\./${mod}'\\)`, 'm'),
+      new RegExp(`require\\('\\./${mod}'\\)`),
+      `${mod} must not be required by index.js at all`,
+    );
+    // Inside the smoke module the drivers stay lazy (no top-level requires):
+    // they must not ship resident even in a smoke-gated main process.
+    assert.doesNotMatch(
+      smokeSource,
+      new RegExp(`^const .*require\\('\\.\\./${mod}'\\)`, 'm'),
       `${mod} must be required lazily inside the smoke path`,
     );
-    assert.match(source, new RegExp(`require\\('\\./${mod}'\\)`));
+    assert.match(smokeSource, new RegExp(`require\\('\\.\\./${mod}'\\)`));
   }
+  assert.doesNotMatch(source, /^const .*require\('\.\/smoke'\)/m, 'smoke module must load lazily');
+  assert.match(source, /require\('\.\/smoke'\)/);
   // Raw env reads of the QA flags would bypass the packaged gate.
-  assert.doesNotMatch(source, /process\.env\.DSH_QA[A-Z_]*\s*===\s*'1'/);
-  assert.doesNotMatch(source, /process\.env\.DSH_SMOKE\s*===\s*'1'/);
-  assert.doesNotMatch(source, /process\.env\.DSH_THEME_SMOKE\s*===\s*'1'/);
+  for (const qaSource of [source, smokeSource]) {
+    assert.doesNotMatch(qaSource, /process\.env\.DSH_QA[A-Z_]*\s*===\s*'1'/);
+    assert.doesNotMatch(qaSource, /process\.env\.DSH_SMOKE\s*===\s*'1'/);
+    assert.doesNotMatch(qaSource, /process\.env\.DSH_THEME_SMOKE\s*===\s*'1'/);
+  }
   assert.match(source, /require\('\.\/qa-gate'\)/);
 });
 

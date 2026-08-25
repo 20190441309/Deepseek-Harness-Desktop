@@ -102,10 +102,10 @@ test('assertAppendixAQaResult requires every turn', () => {
 });
 
 test('main process runs in-app appendix A when DSH_QA_APPENDIX is set', () => {
-  const index = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, 'index.js'),
+  const smoke = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, 'smoke', 'index.js'),
     'utf8',
   );
-  assert.match(index, /runAppendixAQa/);
-  assert.match(index, /DSH_QA_APPENDIX/);
+  assert.match(smoke, /runAppendixAQa/);
+  assert.match(smoke, /DSH_QA_APPENDIX/);
 });

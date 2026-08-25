@@ -53,10 +53,13 @@ test('assertPersistQaResult and assertRecoveryQaResult require their rows', () =
 test('shell P0 QA is wired into the main-process smoke path', () => {
   const fs = require('node:fs');
   const path = require('node:path');
+  const smoke = fs.readFileSync(path.join(__dirname, 'smoke', 'index.js'), 'utf8');
+  assert.match(smoke, /runShellP0Qa/);
+  assert.match(smoke, /DSH_QA_SHELL/);
+  assert.match(smoke, /DSH_QA_PERSIST/);
+  assert.match(smoke, /DSH_QA_RECOVERY/);
+  // The quit interception itself stays in the production entry (quitApp).
   const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /runShellP0Qa/);
   assert.match(index, /DSH_QA_SHELL/);
-  assert.match(index, /DSH_QA_PERSIST/);
-  assert.match(index, /DSH_QA_RECOVERY/);
   assert.match(index, /quit intercepted/);
 });

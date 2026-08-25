@@ -43,7 +43,7 @@ test('assertRemoteGateQaResult rejects missing cases', () => {
 });
 
 test('remote gate QA is wired into the main smoke path', () => {
-  const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /DSH_QA_REMOTE/);
-  assert.match(index, /runRemoteGateQa/);
+  const smoke = fs.readFileSync(path.join(__dirname, 'smoke', 'index.js'), 'utf8');
+  assert.match(smoke, /DSH_QA_REMOTE/);
+  assert.match(smoke, /runRemoteGateQa/);
 });

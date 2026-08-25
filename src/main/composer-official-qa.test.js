@@ -90,9 +90,9 @@ test('summarizeRemoteQaDetail keeps status and strips pairing secrets', () => {
 });
 
 test('composer official QA module is wired into the main process smoke path', () => {
-  const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /runComposerOfficialQa/);
-  assert.match(index, /DSH_QA_COMPOSER/);
+  const smoke = fs.readFileSync(path.join(__dirname, 'smoke', 'index.js'), 'utf8');
+  assert.match(smoke, /runComposerOfficialQa/);
+  assert.match(smoke, /DSH_QA_COMPOSER/);
   const source = fs.readFileSync(path.join(__dirname, 'composer-official-qa.js'), 'utf8');
   assert.match(source, /summarizeRemoteQaDetail\(remoteSnap\)/);
   assert.doesNotMatch(source, /JSON\.stringify\(remoteSnap\)/);

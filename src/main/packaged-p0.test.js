@@ -175,11 +175,11 @@ test('missing packaged runtime stamp after start fails closed', async () => {
 });
 
 test('packaged P0 is wired into smoke when DSH_SMOKE_SIBLING is set', () => {
-  const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /runPackagedP0/);
-  assert.match(index, /DSH_SMOKE_SIBLING/);
-  assert.match(index, /packagedP0/);
-  assert.doesNotMatch(index, /DSH_QA === '1' \|\| process\.env\.DSH_SMOKE_SIBLING/);
+  const smoke = fs.readFileSync(path.join(__dirname, 'smoke', 'index.js'), 'utf8');
+  assert.match(smoke, /runPackagedP0/);
+  assert.match(smoke, /DSH_SMOKE_SIBLING/);
+  assert.match(smoke, /packagedP0/);
+  assert.doesNotMatch(smoke, /DSH_QA === '1' \|\| process\.env\.DSH_SMOKE_SIBLING/);
 });
 
 test('qa:packaged is a local rehearsal script and not a GitHub Release job', () => {
