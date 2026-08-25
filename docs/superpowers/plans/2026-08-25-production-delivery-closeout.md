@@ -56,13 +56,13 @@
 - [x] P0 定点：Files 显式保存 flush 竞态（persist/save 测试 + 代码路径核对）
 - [x] P0 定点:终端焦点内 `` Ctrl+` ``（keybindings 测试 + Ghostty DOM 选择器核对)
 - [x] P0 定点：`preview-automation-*` IPC 全链已不存在(grep main/preload/ui-preview)
-- [x] GUI 证据：源码冒烟运行截图(见证据路径)
+- [x] GUI 证据：源码冒烟录屏 `/opt/cursor/artifacts/source-smoke-electron-titlebar-terminal.mp4`（真实 Electron 窗口，titlebar 含分支切换/Git actions/终端抽屉开关，PTY 回显 ok，点击命中 surfaces/branch/git 各 1）
 
 ### CI（GitHub，`gh` 只读核对）
 
-- [x] #33 checks 全绿(mac/win 单测 + vendor-gui)
-- [x] #34 vendor-gui 完成后复查 → **全绿**(mac/win 单测 + vendor-gui 10m20s pass)
-- [x] 收口分支 push 后核对自身 checks → **全绿**(Desktop mac 40s / win 1m59s、vendor-gui 10m3s，run 32825754431)
+- [x] #33 checks 全绿（mac/win 单测 + vendor-gui，run 32824257966）
+- [x] #34 首批提交 run 32824786135 三 job 全 success（含 vendor-gui）；随后 #34 又推 3 个新提交（run 32826879818 发起时 pending），新提交已二次合入本分支并本地全套验证
+- [ ] 收口分支自身 checks：`test.yml` 仅在 `pull_request` / push-main 触发，本分支尚无 PR 时不会跑；本 VM 已按 CI 三个 job 的完整步骤等价执行（desktop `npm test`、vendor `build:lib`+`test:gui`、`gen-client-catalog --check`+`gen-third-party-notices --check`）全绿；PR 开启后复核
 
 ### 诚实阻塞（本环境做不到）
 
@@ -84,8 +84,8 @@
 - [x] 本 VM:桌面 `npm test` 绿;#33/#34 触面的 vendor 套件绿。
 - [x] P0 三点(save flush / Ctrl+` / automation IPC 移除)有针对性验证记录。
 - [x] 审查发现的问题:已修(commit)或落入下方 backlog,无静默遗漏。
-- [x] 计划勾选更新;涉及行为变化的 feature 卡 `last verified` 已更新。
-- [x] CI:收口分支 checks 全绿(run 32825754431)。
+- [x] 计划勾选更新；涉及行为变化的 feature 卡 `last verified` 已由 #33/#34 更新。
+- [ ] CI：收口分支 checks 全绿——等 PR 开启触发 `test.yml` 后复核（本地已等价执行三个 job 全绿）。
 - [x] 报告注明 Windows NSIS / NPM_TOKEN 诚实阻塞。
 
 ## 七、审查发现（S2 输出，独立复审结论）
@@ -97,13 +97,13 @@
 - **R3（flush 并发交错）**: 推演 `FileSaveCoordinator.flush` 的 `while (inFlight) await` + 同步 `clearTimer→persistLatest`：JS 单线程下检查与启动之间无让出点，不会交错写。两个并发 flush 最坏情况是对同一 revision 冗余写一次（内容相同、`onConfirmed` 幂等），无数据丢失，可接受。
 - **R4（ui-git 双重 catch）**: 桌面侧 guard 已保证 `shell:git-*` 不 reject，vendor `ui-git` 的 `.catch` 看似不可达 —— 但 vendor 包可运行于非桌面 host，双保险保留合理。
 
-**成立并保持为 backlog（不阻塞合并）:**
+**成立项的处置:**
 
-- **F3（git-titlebar）**: `safeRefName` 字符集比 `git check-ref-format` 严（拒绝部分合法 unicode 分支名）；UX-only，保持从严。
-- **F4（surfaces-work-loops）**: Files 搜索每键 `git check-ignore` 串行风暴（原 plan P4）不在 #33 范围内，维持原 plan 条目。
-- **F5（build-release）**: Windows 超时进程树 kill 未在 Linux 验证（#34 自报）；合并后走 Windows CI。
+- **F3（git-titlebar）→ 已由 #34 追加提交解决**：`gitBranchList` 对 `safeRefName` 拒绝的名字标 `switchable: false`，picker 禁用该行并给 `branch.unsupportedName` 提示——白名单保持从严，失败不再不透明（commit 8c9aec99）。
+- **F4（surfaces-work-loops）**: Files 搜索每键 `git check-ignore` 串行风暴（原 plan P4）不在 #33 范围内，维持原 plan 条目为 backlog。
+- **F5（build-release）→ 代码已落地**：#34 追加 `killProcessTree`（win32 `taskkill /T /F` + POSIX 回退，带 spawn 测试 seam，`git-exec.test.js` 覆盖）（commit 54bc1e6b）；真实 Windows 行为仍待合并后 Windows CI/实机确认。
 
-本次收口分支**未新增代码改动**：#33+#34 合并后的独立复审未发现需要修复的生产缺陷；S3 的产出即上述 R1–R4 复核记录与 F3–F5 backlog 确认。
+审查期间 #34 又推送 3 个提交（后台 status/fetch/PR 刷新 reject 捕获、白名单行禁用、Windows 进程树 kill），已二次合入本收口分支并复跑桌面 `npm test`（980 pass）与 `ui-git` 全套（125 pass）。本分支自身**未需要新增修复代码**：独立复审未发现上述之外的生产缺陷。
 
 ## Backlog（诚实遗留，不阻塞合并）
 
