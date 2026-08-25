@@ -1,4 +1,4 @@
-import { offerFromHash, offerFromPaste } from './host/offer.js';
+import { offerFromHash, offerFromPaste, hashHasOffer } from './host/offer.js';
 import { callUnary, respond } from './host/rpc.js';
 import { loginWithOffer } from './host/login.js';
 import { handshake } from './host/handshake.js';
@@ -1605,6 +1605,17 @@ const bootOffer = offerFromHash(window.location.hash);
 if (bootOffer) {
   connect(bootOffer).catch((error) => showError(error.message || '连接失败'));
 } else {
-  // C9/C10：无 #offer= 时先用既有 Cookie 试探握手；失败（含 401）静默留在连接页。
-  connect(null).catch(() => {});
+  // 带了 #offer= 却解不开（字段/编码/版本不对）不是「未配对」，必须显式报错，
+  // 不能静默停在「等待配对」（connect() 开头会清错误行，所以文案在试探失败后给）。
+  const malformedOffer = hashHasOffer(window.location.hash);
+  // C9/C10：先用既有 Cookie 试探握手；401（未配对/已失效）静默留在连接页，
+  // 其他失败（网关 5xx、Harness 未就绪、握手方法失败）要给出文案。
+  connect(null).catch((error) => {
+    if (malformedOffer) {
+      showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或粘贴完整配对链接。');
+      return;
+    }
+    if (error?.status === 401) return;
+    showError(error?.message || '连接失败');
+  });
 }

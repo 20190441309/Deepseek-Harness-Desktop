@@ -36,6 +36,12 @@ function offerFromHash(hash) {
   return match ? decodeOffer(match[1]) : null;
 }
 
+// 「带了 #offer= 但解不开」必须和「根本没有 offer」分开处理：
+// 前者是配对失败，要给用户报错；后者才走静默的 Cookie 试探（C9）。
+function hashHasOffer(hash) {
+  return /(?:^|#|&)offer=[^&]+/.test(String(hash || ''));
+}
+
 function offerFromPaste(value) {
   const text = String(value || '').trim();
   if (!text) return null;
@@ -48,4 +54,4 @@ function offerFromPaste(value) {
   }
 }
 
-export { OFFER_VERSION, decodeOffer, offerFromHash, offerFromPaste };
+export { OFFER_VERSION, decodeOffer, offerFromHash, offerFromPaste, hashHasOffer };
