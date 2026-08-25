@@ -209,7 +209,8 @@ export function FilesPanel({
           onChange={event => { setQuery(event.target.value) }}
           onKeyDown={onSearchKey}
         />
-        <Tooltip label={copied ? t('copied') : t('refresh')} side="bottom">
+        {copied && <span className={css.copied} role="status">{t('copied')}</span>}
+        <Tooltip label={t('refresh')} side="bottom">
           <button
             type="button"
             className={css.refresh}

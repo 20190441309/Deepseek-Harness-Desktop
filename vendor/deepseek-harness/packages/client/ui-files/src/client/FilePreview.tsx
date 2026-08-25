@@ -622,14 +622,17 @@ export function FilePreview({
           <p className={css.message}>{error}</p>
         ) : null}
         {media !== null ? (
-          <>
-            {truncated ? <p className={css.message}>{t('preview.truncated')}</p> : null}
+          // A truncated image payload is not decodable; show the notice alone
+          // instead of a broken <img>.
+          truncated ? (
+            <p className={css.message}>{t('preview.truncated')}</p>
+          ) : (
             <img
               className={css.image}
               alt={fileName(relativePath)}
               src={`data:${media.mime};base64,${media.base64}`}
             />
-          </>
+          )
         ) : binary && !dirty ? (
           <p className={css.message}>{t('preview.binary')}</p>
         ) : !ready ? (

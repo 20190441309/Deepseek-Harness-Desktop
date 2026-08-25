@@ -335,8 +335,13 @@ describe('FilesPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Copy relative path' }))
     await act(async () => {
       await Promise.resolve()
+    })
+    // Copy feedback is its own status marker; the Refresh tooltip is untouched.
+    expect(screen.getByRole('status').textContent).toBe('Copied')
+    await act(async () => {
       vi.advanceTimersByTime(1200)
     })
+    expect(screen.queryByRole('status')).toBeNull()
     vi.useRealTimers()
   })
 
@@ -1087,6 +1092,8 @@ describe('FilePreview', () => {
       />,
     )
     expect(await screen.findByText('File is too large; showing the beginning.')).toBeTruthy()
+    // A truncated image payload never renders a broken <img>.
+    expect(screen.queryByRole('img')).toBeNull()
     rerender(
       <FilePreview
         sessionId={SID}

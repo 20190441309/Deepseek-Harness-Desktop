@@ -38,6 +38,13 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.copied {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .body {
   flex: 1;
   min-height: 0;
