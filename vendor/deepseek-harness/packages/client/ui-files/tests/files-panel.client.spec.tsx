@@ -1327,6 +1327,57 @@ describe('FilePreview', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
   })
 
+  it('keeps characters typed during an explicit save dirty instead of marking them saved', async () => {
+    let disk = 'base'
+    const writes: string[] = []
+    let releaseWrite!: () => void
+    const gate = new Promise<void>((resolve) => { releaseWrite = resolve })
+    const writeFile = vi.fn(async (_cwd: string, _path: string, contents: string) => {
+      writes.push(contents)
+      if (writes.length === 1) await gate
+      disk = contents
+      return { ok: true }
+    })
+    const writeBuffer = vi.fn()
+    render(
+      <FilePreview
+        sessionId={SID}
+        relativePath="race.txt"
+        active
+        onDirtyChange={() => {}}
+        registerSave={() => {}}
+        readBuffer={() => undefined}
+        writeBuffer={writeBuffer}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/proj'))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useInput={neverHook}
+        inputActions={undefined}
+        listDir={async () => ({ ok: false })}
+        readFile={async () => ({ ok: true, text: disk, binary: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={writeFile}
+        t={t}
+      />,
+    )
+    const editor = await screen.findByLabelText('race.txt')
+    fireEvent.change(editor, { target: { value: 'first' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => { expect(writeFile).toHaveBeenCalledTimes(1) })
+    // Inject characters while the explicit save's write is still in flight.
+    fireEvent.change(editor, { target: { value: 'first+typed' } })
+    releaseWrite()
+    await waitFor(() => {
+      // The written snapshot becomes the baseline; the newer draft stays dirty.
+      expect(writeBuffer).toHaveBeenCalledWith({ text: 'first', draft: 'first+typed' })
+    })
+    expect((screen.getByLabelText('race.txt') as HTMLTextAreaElement).value).toBe('first+typed')
+    // The debounced follow-up write persists the newer draft; nothing is lost.
+    await waitFor(() => { expect(writes).toContain('first+typed') }, { timeout: 3000 })
+  }, 10_000)
+
   it('keeps an unsaved draft when the parent stays mounted but hidden', async () => {
     const { rerender } = render(
       <div data-keep-alive hidden={false}>
