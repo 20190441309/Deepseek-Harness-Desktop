@@ -129,8 +129,7 @@ function gateDeps(overrides = {}) {
     openLauncher: async () => { calls.openLauncher += 1; },
     sendToLauncher: (channel, payload) => { calls.sent.push({ channel, payload }); },
     recoverInterruptedImport: () => ({ recovered: false, removedTmp: [] }),
-    scanImport: () => ({}),
-    shouldHoldForImport: () => false,
+    probeImportHold: () => ({ destEmpty: true, sourceHasData: false, hold: false }),
     startDesktop: async () => { calls.startDesktop += 1; },
     ...overrides,
   };
@@ -230,7 +229,9 @@ test('cold-start gate stays on the launcher after a source-run installer launch'
 });
 
 test('cold-start gate holds at import and at a failed last start', async () => {
-  const importCase = gateDeps({ shouldHoldForImport: () => true });
+  const importCase = gateDeps({
+    probeImportHold: () => ({ destEmpty: true, sourceHasData: true, hold: true }),
+  });
   try {
     const result = await runColdStartGate(importCase.deps);
     assert.equal(result.outcome, 'launcher');

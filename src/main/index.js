@@ -17,8 +17,8 @@ const git = require('./git');
 const { listDir } = require('./workspace-fs');
 const { buildMenu } = require('./menu');
 const { createTray, invokeTrayAction } = require('./tray');
-const { checkUpdate, installUpdate } = require('./update');
-const { scanImport, shouldHoldForImport, recoverInterruptedImport } = require('./data-import');
+const { checkUpdate, installUpdate, setGithubTokenProvider } = require('./update');
+const { probeImportHold, recoverInterruptedImport } = require('./data-import');
 const {
   shouldCloseLauncherAfterDesktopStart,
   writeLastDesktopStart,
@@ -231,8 +231,7 @@ function runColdStartGate() {
     openLauncher,
     sendToLauncher,
     recoverInterruptedImport: () => recoverInterruptedImport({ userDataDir }),
-    scanImport,
-    shouldHoldForImport,
+    probeImportHold,
     startDesktop: () => startDesktopFromLauncher(),
     log: (line, level) => dsh.log(line, level),
   });
@@ -1122,6 +1121,7 @@ if (!gotLock) {
     fs.mkdirSync(config.workspace, { recursive: true });
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
+    setGithubTokenProvider(() => loadConfig().githubToken);
 
     startDesktopInstallControl({
       installPlugin: (spec, options) => installPlugin(spec, {

@@ -25,6 +25,29 @@ const REGISTRY_SEMVER_SPEC = /^[\^~]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A
 const MCP_FILE = 'mcp-servers.yaml';
 const SKILL_DOC = 'SKILL.md';
 const ZSTD_MAGIC = 0xFD2FB528;
+const SETTINGS_FILE = 'settings.yaml';
+const CREDENTIALS_FILE = '.credentials.yaml';
+const AGENT_PRESETS_DIR = '.agent-presets';
+const PRESET_COMPOSITION_FILE = 'agent.cordis.yml';
+/** Official preset id charset (vendor `dsh-agent-presets` PRESET_ID). */
+const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
+const AGENTS_DOC = 'AGENTS.md';
+/** Pseudo settings row for the home-level AGENTS.md instructions file. */
+const AGENTS_DOC_SETTING_ID = 'agents-md';
+/**
+ * settings.yaml sections the import may move, verbatim as whole top-level
+ * blocks. Everything else in the document (shell executors, session-log
+ * export, onboarding flags, …) stays desktop-owned and is never copied.
+ */
+const SETTINGS_SECTION_WHITELIST = ['llm-deepseek', 'llm-pi-ai', 'agent-default-model', 'vision-fallback', 'ui-theme'];
+/** Sections whose `apiKeyEnv` fields reference `.credentials.yaml` refs. */
+const CREDENTIAL_REF_SECTIONS = new Set(['llm-deepseek', 'llm-pi-ai']);
+/** `llm-deepseek` resolves this ref when the section spells no `apiKeyEnv`. */
+const DEEPSEEK_DEFAULT_CREDENTIAL_REF = 'DEEPSEEK_API_KEY';
+/** Official credential ref charset (vendor `dsh-credentials` REF_PATTERN). */
+const CREDENTIAL_REF_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** A column-0 `key:` line opening one top-level YAML section. */
+const TOP_LEVEL_SECTION = /^([A-Za-z_][A-Za-z0-9_-]*):/;
 
 function officialDshHome() {
   return path.join(os.homedir(), '.dsh');
@@ -669,6 +692,292 @@ function destHasSkill(destSkills, name) {
   return isSkillPackage(path.join(destSkills, name));
 }
 
+function readTextFile(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Split one YAML document's text into raw top-level blocks so whitelisted
+ * sections move verbatim — comments, nesting, and formatting inside a block
+ * survive because the text is never re-rendered. Lines before the first
+ * top-level key (comments, `%` directives) stay in `preamble`.
+ * @param {string} text
+ * @returns {{ preamble: string[], order: string[], blocks: Map<string, string[]> }}
+ */
+function splitTopLevelSections(text) {
+  const preamble = [];
+  const order = [];
+  const blocks = new Map();
+  let current = null;
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const match = line.match(TOP_LEVEL_SECTION);
+    if (match) {
+      current = [];
+      if (!blocks.has(match[1])) {
+        order.push(match[1]);
+      }
+      blocks.set(match[1], current);
+    }
+    if (current) {
+      current.push(line);
+    } else {
+      preamble.push(line);
+    }
+  }
+  return { preamble, order, blocks };
+}
+
+function renderTopLevelSections({ preamble, order, blocks }) {
+  const lines = [...preamble];
+  for (const key of order) {
+    const block = blocks.get(key);
+    if (block) {
+      lines.push(...block);
+    }
+  }
+  const text = lines.join('\n').replace(/\n+$/, '');
+  return text ? `${text}\n` : '';
+}
+
+/** Atomic same-directory replace; best-effort 0600 (settings/credentials are user-private). */
+function writeFileAtomicPrivate(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.import-tmp`;
+  fs.writeFileSync(tmp, text, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  try {
+    fs.chmodSync(file, 0o600);
+  } catch {
+    // Windows has no POSIX mode; rename already committed the content.
+  }
+}
+
+/**
+ * Credential refs one copied section block references. `apiKeyEnv` values are
+ * scalar env-var-like names; `llm-deepseek` falls back to its default ref
+ * when the section spells none.
+ * @param {string} sectionId
+ * @param {string[]} blockLines
+ * @returns {string[]}
+ */
+function credentialRefsOfSection(sectionId, blockLines) {
+  if (!CREDENTIAL_REF_SECTIONS.has(sectionId)) {
+    return [];
+  }
+  const refs = new Set();
+  for (const line of blockLines || []) {
+    const match = line.match(/^\s*apiKeyEnv:\s*(.+?)\s*(?:#.*)?$/);
+    if (!match) {
+      continue;
+    }
+    let value = match[1].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (CREDENTIAL_REF_NAME.test(value)) {
+      refs.add(value);
+    }
+  }
+  if (sectionId === 'llm-deepseek' && refs.size === 0) {
+    refs.add(DEEPSEEK_DEFAULT_CREDENTIAL_REF);
+  }
+  return [...refs];
+}
+
+function readSettingsSections(home) {
+  return splitTopLevelSections(readTextFile(path.join(home, SETTINGS_FILE)) || '');
+}
+
+/**
+ * Importable settings rows: whitelisted `settings.yaml` sections present in
+ * the source, plus the home-level AGENTS.md pseudo row. Rows carry only ids
+ * and referenced credential ref *names*; never a secret value.
+ */
+function settingsCandidates(sourceHome, destTarget) {
+  const source = readSettingsSections(sourceHome);
+  const dest = readSettingsSections(destTarget);
+  const rows = [];
+  for (const id of SETTINGS_SECTION_WHITELIST) {
+    if (!source.blocks.has(id)) {
+      continue;
+    }
+    rows.push({
+      id,
+      conflict: dest.blocks.has(id),
+      credentialRefs: credentialRefsOfSection(id, source.blocks.get(id)),
+    });
+  }
+  if (fs.existsSync(path.join(sourceHome, AGENTS_DOC))) {
+    rows.push({
+      id: AGENTS_DOC_SETTING_ID,
+      conflict: fs.existsSync(path.join(destTarget, AGENTS_DOC)),
+      credentialRefs: [],
+    });
+  }
+  return rows;
+}
+
+/**
+ * Parse the flat `refs:` map of one `.credentials.yaml` without touching
+ * `records` (OAuth state stays behind). Only single-line scalar entries are
+ * importable; the raw value text (with its quoting) is kept verbatim so the
+ * copy never re-renders a secret.
+ * @param {string} home
+ * @returns {Map<string, { raw: string, unsupported: boolean }>}
+ */
+function readCredentialRefs(home) {
+  const refs = new Map();
+  const text = readTextFile(path.join(home, CREDENTIALS_FILE));
+  if (text === null) {
+    return refs;
+  }
+  let inRefs = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^refs:\s*(#.*)?$/.test(line)) {
+      inRefs = true;
+      continue;
+    }
+    if (/^\S/.test(line)) {
+      inRefs = false;
+      continue;
+    }
+    if (!inRefs) {
+      continue;
+    }
+    const match = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const rawValue = match[2];
+    const trimmed = rawValue.trim();
+    // Only single-line plain/quoted scalars move: an empty value (nested map),
+    // a block scalar header (| / >), or an anchor/alias would copy a line
+    // whose meaning depends on text this merge does not carry.
+    const unsupported = trimmed === ''
+      || /^[|>&*]/.test(trimmed);
+    refs.set(match[1], { raw: rawValue, unsupported });
+  }
+  return refs;
+}
+
+/**
+ * Merge selected refs into dest `.credentials.yaml` by inserting raw entry
+ * lines into (or creating) its top-level `refs:` block; `records` and every
+ * other line are preserved byte-for-byte. Results carry ref names only.
+ * @returns {{ ref: string, status: string }[]}
+ */
+function importCredentialRefs({ sourceHome, destTarget, refs, overwrite }) {
+  const wanted = [...new Set(refs)].filter((ref) => CREDENTIAL_REF_NAME.test(ref));
+  const results = [];
+  if (!wanted.length) {
+    return results;
+  }
+  const sourceRefs = readCredentialRefs(sourceHome);
+  const destFile = path.join(destTarget, CREDENTIALS_FILE);
+  const destText = readTextFile(destFile);
+  const destRefs = destText === null ? new Map() : readCredentialRefs(destTarget);
+  const additions = [];
+  const replacements = new Map();
+  for (const ref of wanted) {
+    const entry = sourceRefs.get(ref);
+    if (!entry) {
+      results.push({ ref, status: 'missing' });
+      continue;
+    }
+    if (entry.unsupported) {
+      results.push({ ref, status: 'unsupported' });
+      continue;
+    }
+    if (destRefs.has(ref)) {
+      if (!overwrite) {
+        results.push({ ref, status: 'skipped' });
+        continue;
+      }
+      replacements.set(ref, `  ${ref}:${entry.raw}`);
+      results.push({ ref, status: 'copied' });
+      continue;
+    }
+    additions.push(`  ${ref}:${entry.raw}`);
+    results.push({ ref, status: 'copied' });
+  }
+  if (!additions.length && !replacements.size) {
+    return results;
+  }
+  if (destText === null) {
+    writeFileAtomicPrivate(destFile, ['version: 1', 'refs:', ...additions, ''].join('\n'));
+    return results;
+  }
+  const lines = destText.split(/\r?\n/);
+  const out = [];
+  let inRefs = false;
+  let refsSeen = false;
+  let insertedAt = -1;
+  for (const line of lines) {
+    if (/^refs:\s*(#.*)?$/.test(line)) {
+      inRefs = true;
+      refsSeen = true;
+      out.push(line);
+      insertedAt = out.length;
+      continue;
+    }
+    if (inRefs && /^\S/.test(line)) {
+      inRefs = false;
+    }
+    if (inRefs) {
+      const match = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):/);
+      if (match && replacements.has(match[1])) {
+        out.push(replacements.get(match[1]));
+        insertedAt = out.length;
+        continue;
+      }
+      out.push(line);
+      insertedAt = out.length;
+      continue;
+    }
+    out.push(line);
+  }
+  if (refsSeen) {
+    out.splice(insertedAt, 0, ...additions);
+  } else {
+    while (out.length && out[out.length - 1].trim() === '') {
+      out.pop();
+    }
+    out.push('refs:', ...additions);
+  }
+  const rendered = `${out.join('\n').replace(/\n+$/, '')}\n`;
+  writeFileAtomicPrivate(destFile, rendered);
+  return results;
+}
+
+/** Agent preset directories under the source `.agent-presets/` root. */
+function presetCandidates(sourceHome, destTarget) {
+  const root = path.join(sourceHome, AGENT_PRESETS_DIR);
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const rows = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !PRESET_ID.test(entry.name)) {
+      continue;
+    }
+    const abs = path.join(root, entry.name);
+    rows.push({
+      id: entry.name,
+      abs,
+      broken: !fs.existsSync(path.join(abs, PRESET_COMPOSITION_FILE)),
+      conflict: fs.existsSync(path.join(destTarget, AGENT_PRESETS_DIR, entry.name)),
+    });
+  }
+  return rows.sort((a, b) => a.id.localeCompare(b.id));
+}
+
 function scanImport({
   sourceHome,
   destHome: dest,
@@ -703,12 +1012,16 @@ function scanImport({
   });
   const destMcpIds = new Set(readMcpServers(target).map((row) => String(row.id)));
   const mcp = readMcpServers(source).map((row) => publicMcpRow(row, destMcpIds));
+  const settings = settingsCandidates(source, target);
+  const presets = presetCandidates(source, target);
   const hasAttachments = fs.existsSync(attachmentsDir);
   const sourceHasData = sessions.some((row) => !row.unsupported)
     || hasAttachments
     || skills.length > 0
     || plugins.some((row) => !row.skipped)
-    || mcp.length > 0;
+    || mcp.length > 0
+    || settings.length > 0
+    || presets.some((row) => !row.broken);
   return {
     sourceHome: source,
     destHome: target,
@@ -719,6 +1032,8 @@ function scanImport({
     plugins,
     skills,
     mcp,
+    settings,
+    presets,
     skillRoots,
     extraSkillDirs: Array.isArray(extraSkillDirs) ? extraSkillDirs.filter(Boolean) : [],
     hasAttachments,
@@ -727,6 +1042,116 @@ function scanImport({
 
 function shouldHoldForImport(scan) {
   return Boolean(scan && scan.destEmpty && scan.sourceHasData);
+}
+
+/** Whether any directory under `sessionsRoot` holds session logs or legacy dbs (destEmpty peer). */
+function hasAnySessionDir(sessionsRoot) {
+  if (!fs.existsSync(sessionsRoot)) {
+    return false;
+  }
+  const stack = [sessionsRoot];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && (SESSION_LOG.test(entry.name) || UNSUPPORTED_DB.test(entry.name))) {
+        return true;
+      }
+      if (entry.isDirectory()) {
+        stack.push(path.join(dir, entry.name));
+      }
+    }
+  }
+  return false;
+}
+
+/** Whether the source holds at least one importable (non-preset, log-backed) session. */
+function hasImportableSession(sessionsRoot) {
+  if (!fs.existsSync(sessionsRoot)) {
+    return false;
+  }
+  const stack = [{ dir: sessionsRoot, rel: '' }];
+  while (stack.length) {
+    const { dir, rel } = stack.pop();
+    if (isHarnessPresetSessionRel(rel)) {
+      continue;
+    }
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (entries.some((entry) => entry.isFile() && SESSION_LOG.test(entry.name))) {
+      return true;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        stack.push({ dir: path.join(dir, entry.name), rel: rel ? `${rel}/${entry.name}` : entry.name });
+      }
+    }
+  }
+  return false;
+}
+
+function hasAnySkillPackage(root) {
+  if (!root || !fs.existsSync(root)) {
+    return false;
+  }
+  if (isSkillPackage(root)) {
+    return !path.basename(root).startsWith('.');
+  }
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  return entries.some((entry) => entry.isDirectory()
+    && !entry.name.startsWith('.')
+    && isSkillPackage(path.join(root, entry.name)));
+}
+
+/**
+ * Shallow cold-start gate probe: same `destEmpty && sourceHasData` verdict as
+ * `shouldHoldForImport(scanImport(...))` but every check early-exits at its
+ * first hit and no session display meta is read (no jsonl parse, no zstd
+ * decompress, no conflict marking). The full `scanImport` stays import-page
+ * only.
+ * @returns {{ destEmpty: boolean, sourceHasData: boolean, hold: boolean }}
+ */
+function probeImportHold({
+  sourceHome,
+  destHome: dest,
+  extraSkillDirs,
+  agentsSkillsRoot,
+} = {}) {
+  const source = resolveSourceHome(sourceHome);
+  const target = destHome(dest);
+  const destEmpty = !hasAnySessionDir(path.join(target, 'sessions'));
+  if (!destEmpty) {
+    return { destEmpty, sourceHasData: false, hold: false };
+  }
+  const skillRoots = [
+    path.join(source, 'skills'),
+    agentsSkillsRoot || defaultAgentsSkillsRoot(),
+    ...(Array.isArray(extraSkillDirs) ? extraSkillDirs : [])
+      .filter((dir) => typeof dir === 'string' && dir.trim())
+      .map((dir) => path.resolve(dir.trim())),
+  ];
+  const sourceHasData = hasImportableSession(path.join(source, 'sessions'))
+    || fs.existsSync(path.join(source, 'attachments'))
+    || skillRoots.some((root) => hasAnySkillPackage(root))
+    || pluginCandidates(source).some((row) => !row.skipped)
+    || readMcpServers(source).length > 0
+    || settingsCandidates(source, target).length > 0
+    || presetCandidates(source, target).some((row) => !row.broken);
+  return { destEmpty, sourceHasData, hold: destEmpty && sourceHasData };
 }
 
 function writeJournal(file, payload) {
@@ -809,14 +1234,22 @@ function recoverInterruptedImport({ userDataDir, destHome: dest } = {}) {
   const removedTmp = [
     ...removeImportTmpDirs(path.join(target, 'sessions')),
     ...removeImportTmpDirs(path.join(target, 'skills')),
+    ...removeImportTmpDirs(path.join(target, AGENT_PRESETS_DIR)),
   ];
-  const attachmentsTmp = path.join(target, 'attachments.import-tmp');
-  if (fs.existsSync(attachmentsTmp)) {
-    try {
-      fs.rmSync(attachmentsTmp, { recursive: true, force: true });
-      removedTmp.push(attachmentsTmp);
-    } catch {
-      // Same as above: a stuck staging dir does not block the re-run.
+  const staleTmp = [
+    path.join(target, 'attachments.import-tmp'),
+    path.join(target, `${SETTINGS_FILE}.import-tmp`),
+    path.join(target, `${CREDENTIALS_FILE}.import-tmp`),
+    path.join(target, `${AGENTS_DOC}.import-tmp`),
+  ];
+  for (const tmp of staleTmp) {
+    if (fs.existsSync(tmp)) {
+      try {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        removedTmp.push(tmp);
+      } catch {
+        // Same as above: a stuck staging entry does not block the re-run.
+      }
     }
   }
   writeJournal(journalPath(journalDir), {
@@ -996,6 +1429,129 @@ function importSkills({ scan, selectedIds, overwrite }) {
   return results;
 }
 
+/**
+ * Move selected whitelisted settings sections verbatim into the dest
+ * `settings.yaml` (whole top-level blocks; conflict-skip by default), copy
+ * the AGENTS.md pseudo row as one file, then sync the credential refs the
+ * selected llm sections reference. Results and journal rows carry section
+ * ids and ref names only — never a secret value.
+ * @returns {{ settings: {id:string,status:string}[], credentials: {ref:string,status:string}[] }}
+ */
+function importSettings({ scan, selectedIds, overwrite }) {
+  const chosen = Array.isArray(selectedIds) ? selectedIds : [];
+  const results = [];
+  const credentials = [];
+  if (!chosen.length) {
+    return { settings: results, credentials };
+  }
+  const source = readSettingsSections(scan.sourceHome);
+  const destFile = path.join(scan.destHome, SETTINGS_FILE);
+  const dest = readSettingsSections(scan.destHome);
+  const wantedRefs = [];
+  let changed = false;
+  for (const id of chosen) {
+    if (id === AGENTS_DOC_SETTING_ID) {
+      const sourceDoc = path.join(scan.sourceHome, AGENTS_DOC);
+      if (!fs.existsSync(sourceDoc)) {
+        results.push({ id, status: 'missing' });
+        continue;
+      }
+      const destDoc = path.join(scan.destHome, AGENTS_DOC);
+      if (fs.existsSync(destDoc) && !overwrite) {
+        results.push({ id, status: 'skipped' });
+        continue;
+      }
+      try {
+        writeFileAtomicPrivate(destDoc, fs.readFileSync(sourceDoc, 'utf8'));
+        results.push({ id, status: 'copied' });
+      } catch (error) {
+        results.push({ id, status: 'failed', error: error.message || String(error) });
+      }
+      continue;
+    }
+    if (!SETTINGS_SECTION_WHITELIST.includes(id)) {
+      results.push({ id, status: 'rejected', error: 'not-whitelisted' });
+      continue;
+    }
+    const block = source.blocks.get(id);
+    if (!block) {
+      results.push({ id, status: 'missing' });
+      continue;
+    }
+    if (dest.blocks.has(id) && !overwrite) {
+      results.push({ id, status: 'skipped' });
+      wantedRefs.push(...credentialRefsOfSection(id, block));
+      continue;
+    }
+    if (!dest.blocks.has(id)) {
+      dest.order.push(id);
+    }
+    dest.blocks.set(id, [...block]);
+    changed = true;
+    results.push({ id, status: 'copied' });
+    wantedRefs.push(...credentialRefsOfSection(id, block));
+  }
+  if (changed) {
+    try {
+      writeFileAtomicPrivate(destFile, renderTopLevelSections(dest));
+    } catch (error) {
+      for (const row of results) {
+        if (row.status === 'copied' && row.id !== AGENTS_DOC_SETTING_ID) {
+          row.status = 'failed';
+          row.error = error.message || String(error);
+        }
+      }
+      return { settings: results, credentials };
+    }
+  }
+  if (wantedRefs.length) {
+    credentials.push(...importCredentialRefs({
+      sourceHome: scan.sourceHome,
+      destTarget: scan.destHome,
+      refs: wantedRefs,
+      overwrite,
+    }));
+  }
+  return { settings: results, credentials };
+}
+
+/** Copy selected agent preset directories into dest `.agent-presets/` (conflict-skip). */
+function importPresets({ scan, selectedIds, overwrite }) {
+  const chosen = Array.isArray(selectedIds) ? selectedIds : [];
+  const byId = new Map((scan.presets || []).map((row) => [row.id, row]));
+  const results = [];
+  for (const id of chosen) {
+    if (isUnsafeRel(id) || !PRESET_ID.test(String(id || ''))) {
+      results.push({ id, status: 'rejected', error: 'invalid-path' });
+      continue;
+    }
+    const row = byId.get(id);
+    if (!row) {
+      results.push({ id, status: 'missing' });
+      continue;
+    }
+    if (row.broken) {
+      results.push({ id, status: 'unsupported' });
+      continue;
+    }
+    if (!isInside(path.join(scan.sourceHome, AGENT_PRESETS_DIR), row.abs)) {
+      results.push({ id, status: 'rejected', error: 'invalid-path' });
+      continue;
+    }
+    if (row.conflict && !overwrite) {
+      results.push({ id, status: 'skipped' });
+      continue;
+    }
+    try {
+      copyDirAtomic(row.abs, path.join(scan.destHome, AGENT_PRESETS_DIR, id));
+      results.push({ id, status: 'copied' });
+    } catch (error) {
+      results.push({ id, status: 'failed', error: error.message || String(error) });
+    }
+  }
+  return results;
+}
+
 function importMcp({ scan, selectedIds, overwrite }) {
   const chosen = Array.isArray(selectedIds) ? selectedIds : [];
   const results = [];
@@ -1034,11 +1590,15 @@ async function runImport(options = {}) {
   const selectedSkillIds = Array.isArray(options.selectedSkillIds) ? options.selectedSkillIds : [];
   const selectedPluginNames = Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [];
   const selectedMcpIds = Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [];
+  const selectedSettingIds = Array.isArray(options.selectedSettingIds) ? options.selectedSettingIds : [];
+  const selectedPresetIds = Array.isArray(options.selectedPresetIds) ? options.selectedPresetIds : [];
   const importAttachments = options.importAttachments === true;
   const empty = selectedRels.length === 0
     && selectedSkillIds.length === 0
     && selectedPluginNames.length === 0
     && selectedMcpIds.length === 0
+    && selectedSettingIds.length === 0
+    && selectedPresetIds.length === 0
     && !importAttachments;
   const scan = scanImport(options);
   const journalFile = journalPath(options.userDataDir || path.join(scan.destHome, '..'));
@@ -1057,6 +1617,9 @@ async function runImport(options = {}) {
       skills: [],
       plugins: [],
       mcp: [],
+      settings: [],
+      credentials: [],
+      presets: [],
       attachments: 'absent',
       journal: journalFile,
     };
@@ -1073,6 +1636,12 @@ async function runImport(options = {}) {
     selectedNames: selectedPluginNames,
   });
   const mcp = importMcp({ scan, selectedIds: selectedMcpIds, overwrite: options.overwrite === true });
+  const settingsOutcome = importSettings({
+    scan,
+    selectedIds: selectedSettingIds,
+    overwrite: options.overwrite === true,
+  });
+  const presets = importPresets({ scan, selectedIds: selectedPresetIds, overwrite: options.overwrite === true });
   writeJournal(journalFile, {
     phase: 'done',
     sourceHome: scan.sourceHome,
@@ -1081,12 +1650,18 @@ async function runImport(options = {}) {
     skills,
     plugins: plugins.plugins,
     mcp,
+    settings: settingsOutcome.settings,
+    credentials: settingsOutcome.credentials,
+    presets,
     attachments: sessions.attachments,
   });
   const ok = sessions.ok
     && plugins.ok
     && skills.every((row) => row.status !== 'failed')
-    && mcp.every((row) => row.status !== 'failed');
+    && mcp.every((row) => row.status !== 'failed')
+    && settingsOutcome.settings.every((row) => row.status !== 'failed')
+    && settingsOutcome.credentials.every((row) => row.status !== 'failed')
+    && presets.every((row) => row.status !== 'failed');
   return {
     ok,
     empty: false,
@@ -1094,6 +1669,9 @@ async function runImport(options = {}) {
     skills,
     plugins: plugins.plugins,
     mcp,
+    settings: settingsOutcome.settings,
+    credentials: settingsOutcome.credentials,
+    presets,
     attachments: sessions.attachments,
     journal: journalFile,
   };
@@ -1103,12 +1681,21 @@ module.exports = {
   officialDshHome,
   scanImport,
   shouldHoldForImport,
+  probeImportHold,
   importSessions,
   importPlugins,
+  importSettings,
+  importCredentialRefs,
+  importPresets,
   pluginReinstallSpec,
+  splitTopLevelSections,
+  credentialRefsOfSection,
+  readCredentialRefs,
   recoverInterruptedImport,
   readImportJournal,
   runImport,
   journalPath,
   SESSION_LOG,
+  SETTINGS_SECTION_WHITELIST,
+  AGENTS_DOC_SETTING_ID,
 };

@@ -24,7 +24,7 @@ const {
   setBundleEnabled,
   OFFICIAL_TEMPLATE_BUNDLES,
 } = require('./plugins');
-const { scanImport, shouldHoldForImport, runImport } = require('./data-import');
+const { scanImport, probeImportHold, runImport } = require('./data-import');
 const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
 const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = require('./launcher-gate');
@@ -560,13 +560,15 @@ function registerIpc({
       selectedSkillIds: Array.isArray(options.selectedSkillIds) ? options.selectedSkillIds : [],
       selectedPluginNames: Array.isArray(options.selectedPluginNames) ? options.selectedPluginNames : [],
       selectedMcpIds: Array.isArray(options.selectedMcpIds) ? options.selectedMcpIds : [],
+      selectedSettingIds: Array.isArray(options.selectedSettingIds) ? options.selectedSettingIds : [],
+      selectedPresetIds: Array.isArray(options.selectedPresetIds) ? options.selectedPresetIds : [],
       importAttachments: options.importAttachments === true,
       installPlugin: (spec) => installImportPlugin(spec, { token: loadConfig().githubToken }),
     });
     return {
       ...result,
       kernelStopped,
-      hold: shouldHoldForImport(scanImport({ sourceHome, extraSkillDirs })),
+      hold: probeImportHold({ sourceHome, extraSkillDirs }).hold,
     };
   });
 

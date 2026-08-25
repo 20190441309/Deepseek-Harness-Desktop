@@ -145,8 +145,7 @@ async function runColdStartGate({
   openLauncher,
   sendToLauncher,
   recoverInterruptedImport,
-  scanImport,
-  shouldHoldForImport,
+  probeImportHold,
   startDesktop,
   log = () => {},
 }) {
@@ -195,7 +194,10 @@ async function runColdStartGate({
   } catch (error) {
     log(`导入日志恢复失败：${error && error.message ? error.message : String(error)}`, 'error');
   }
-  const holdForImport = shouldHoldForImport(scanImport()) || importRecovery.recovered === true;
+  // Shallow probe only (feature card `data-import`): the gate needs the
+  // destEmpty && sourceHasData verdict, not session titles/cwd metadata —
+  // the full scanImport stays on the import page.
+  const holdForImport = probeImportHold().hold === true || importRecovery.recovered === true;
   const lastStartFailed = readLastDesktopStart(userDataDir).ok === false;
   const autoStart = shouldAutoStartDesktop({
     autoStartDesktop: config.autoStartDesktop,

@@ -185,12 +185,16 @@ function loadIpc(options = {}) {
   stub('./data-import', {
     scanImport: (opts) => {
       scanImportCalls.push(opts);
-      return { ok: true, destEmpty: true, sourceHasData: false, sessions: [], plugins: [], skills: [], mcp: [] };
+      return {
+        ok: true, destEmpty: true, sourceHasData: false, sessions: [], plugins: [], skills: [], mcp: [], settings: [], presets: [],
+      };
     },
-    shouldHoldForImport: () => false,
+    probeImportHold: () => ({ destEmpty: true, sourceHasData: false, hold: false }),
     runImport: async (opts) => {
       runImportCalls.push(opts);
-      return { ok: true, empty: true, sessions: [], skills: [], plugins: [], mcp: [] };
+      return {
+        ok: true, empty: true, sessions: [], skills: [], plugins: [], mcp: [], settings: [], credentials: [], presets: [],
+      };
     },
   });
   stub('./plugin-forensics', {
@@ -1096,6 +1100,8 @@ test('launcher scan-import and run-import forward extra skill dirs and selection
       selectedSkillIds: ['home:alpha'],
       selectedPluginNames: ['good-plugin'],
       selectedMcpIds: ['wiki'],
+      selectedSettingIds: ['llm-deepseek', 'agents-md'],
+      selectedPresetIds: ['research'],
     };
     const result = await ipc.invoke('shell:run-import', launcherEvent(), payload);
     assert.equal(result.empty, true);
@@ -1109,6 +1115,8 @@ test('launcher scan-import and run-import forward extra skill dirs and selection
     assert.deepEqual(opts.selectedSkillIds, payload.selectedSkillIds);
     assert.deepEqual(opts.selectedPluginNames, payload.selectedPluginNames);
     assert.deepEqual(opts.selectedMcpIds, payload.selectedMcpIds);
+    assert.deepEqual(opts.selectedSettingIds, payload.selectedSettingIds);
+    assert.deepEqual(opts.selectedPresetIds, payload.selectedPresetIds);
     assert.equal(typeof opts.installPlugin, 'function');
   } finally {
     ipc.restore();

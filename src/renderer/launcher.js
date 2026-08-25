@@ -414,7 +414,29 @@ const IMPORT_CATS = {
   skills: { name: 'skill-id', hint: '官方 skills、用户技能根与额外目录' },
   plugins: { name: 'plugin-name', hint: '按名单重装，不拷 node_modules' },
   mcp: { name: 'mcp-id', hint: '按 id 合并，密钥不出现在界面' },
+  settings: { name: 'setting-id', hint: '整节搬运白名单设置；API key 随模型配置落盘，不在界面显示' },
+  presets: { name: 'preset-id', hint: '官方 .agent-presets 按目录拷贝' },
 };
+
+const SETTING_LABELS = {
+  'llm-deepseek': 'DeepSeek 模型与提供方',
+  'llm-pi-ai': '自定义提供方（pi-ai）',
+  'agent-default-model': '默认模型',
+  'vision-fallback': '视觉回退模型',
+  'ui-theme': '主题与外观',
+  'agents-md': '全局指令 AGENTS.md',
+};
+
+function settingRowMeta(row) {
+  if (row.id === 'agents-md') {
+    return 'home 级指令文件，逐字拷贝';
+  }
+  const refs = Array.isArray(row.credentialRefs) ? row.credentialRefs : [];
+  if (refs.length) {
+    return `settings.yaml 整节 · 同步 API key 引用 ${refs.join('、')}`;
+  }
+  return 'settings.yaml 整节';
+}
 
 let importCat = 'sessions';
 let importHomeDir = '';
@@ -529,11 +551,15 @@ function syncImportSummary() {
   const skillsChecked = countChecked('skill-id');
   const pluginsChecked = countChecked('plugin-name');
   const mcpChecked = countChecked('mcp-id');
+  const settingsChecked = countChecked('setting-id');
+  const presetsChecked = countChecked('preset-id');
   $('import-sessions-count').textContent = `${sessionsChecked}/${countBoxes('session-rel')}`;
   $('import-skills-count').textContent = `${skillsChecked}/${countBoxes('skill-id')}`;
   $('import-plugins-count').textContent = `${pluginsChecked}/${countBoxes('plugin-name')}`;
   $('import-mcp-count').textContent = `${mcpChecked}/${countBoxes('mcp-id')}`;
-  $('import-result').textContent = `已选 会话 ${sessionsChecked} · 技能 ${skillsChecked} · 插件 ${pluginsChecked} · MCP ${mcpChecked}`;
+  $('import-settings-count').textContent = `${settingsChecked}/${countBoxes('setting-id')}`;
+  $('import-presets-count').textContent = `${presetsChecked}/${countBoxes('preset-id')}`;
+  $('import-result').textContent = `已选 会话 ${sessionsChecked} · 技能 ${skillsChecked} · 插件 ${pluginsChecked} · MCP ${mcpChecked} · 设置 ${settingsChecked} · 预设 ${presetsChecked}`;
 }
 
 function syncSessionClusters() {
@@ -569,6 +595,8 @@ function captureImportSelections() {
     'skill-id': new Set(checkedValues('skill-id')),
     'plugin-name': new Set(checkedValues('plugin-name')),
     'mcp-id': new Set(checkedValues('mcp-id')),
+    'setting-id': new Set(checkedValues('setting-id')),
+    'preset-id': new Set(checkedValues('preset-id')),
   };
 }
 
@@ -705,6 +733,8 @@ function summarizeImport(result) {
     `技能 已拷 ${countStatus(result.skills, 'copied')} · 跳过 ${countStatus(result.skills, 'skipped')} · 拒绝 ${countStatus(result.skills, 'rejected')}`,
     `插件 已装 ${countStatus(result.plugins, 'installed')} · 跳过 ${countStatus(result.plugins, 'skipped')} · 失败 ${countStatus(result.plugins, 'failed')}`,
     `MCP 已写入 ${countStatus(result.mcp, 'copied')} · 跳过 ${countStatus(result.mcp, 'skipped')} · 拒绝 ${countStatus(result.mcp, 'rejected')}`,
+    `设置 已写入 ${countStatus(result.settings, 'copied')} · 跳过 ${countStatus(result.settings, 'skipped')} · 凭据引用 已同步 ${countStatus(result.credentials, 'copied')} · 跳过 ${countStatus(result.credentials, 'skipped')}`,
+    `预设 已拷 ${countStatus(result.presets, 'copied')} · 跳过 ${countStatus(result.presets, 'skipped')} · 拒绝 ${countStatus(result.presets, 'rejected')}`,
     `附件 ${result.attachments || 'absent'}`,
   ];
   if (result.ok === false) {
@@ -746,6 +776,8 @@ async function refreshImport(options = {}) {
     const skills = Array.isArray(scan?.skills) ? scan.skills : [];
     const plugins = Array.isArray(scan?.plugins) ? scan.plugins : [];
     const mcp = Array.isArray(scan?.mcp) ? scan.mcp : [];
+    const settings = Array.isArray(scan?.settings) ? scan.settings : [];
+    const presets = Array.isArray(scan?.presets) ? scan.presets : [];
     const renderOptions = { selections: savedSelections, foldState };
 
     renderSessionList(sessions, renderOptions);
@@ -781,6 +813,24 @@ async function refreshImport(options = {}) {
       skipLabel: () => '',
       selections: savedSelections,
     });
+    renderCheckList('import-settings', settings, {
+      name: 'setting-id',
+      value: (row) => row.id,
+      title: (row) => SETTING_LABELS[row.id] || row.id,
+      meta: (row) => settingRowMeta(row),
+      disabled: () => false,
+      skipLabel: () => '',
+      selections: savedSelections,
+    });
+    renderCheckList('import-presets', presets, {
+      name: 'preset-id',
+      value: (row) => row.id,
+      title: (row) => row.id,
+      meta: (row) => (row.broken ? 'agent.cordis.yml 缺失或无效' : 'agent.cordis.yml'),
+      disabled: (row) => Boolean(row.broken),
+      skipLabel: () => '组合损坏',
+      selections: savedSelections,
+    });
 
     $('import-attachments').checked = Boolean(scan?.hasAttachments) && sessions.some((row) => !row.unsupported);
     importListRendered = true;
@@ -788,7 +838,7 @@ async function refreshImport(options = {}) {
     syncImportSummary();
     if (showFeedback) {
       const when = new Date().toLocaleString();
-      $('import-scan-status').textContent = `扫描完成 · 会话 ${sessions.length} · 技能 ${skills.length} · 插件 ${plugins.length} · MCP ${mcp.length} · ${when}`;
+      $('import-scan-status').textContent = `扫描完成 · 会话 ${sessions.length} · 技能 ${skills.length} · 插件 ${plugins.length} · MCP ${mcp.length} · 设置 ${settings.length} · 预设 ${presets.length} · ${when}`;
     }
   } catch (error) {
     setHint(error && error.message ? error.message : String(error));
@@ -1059,6 +1109,8 @@ function bind() {
       selectedSkillIds: checkedValues('skill-id'),
       selectedPluginNames: checkedValues('plugin-name'),
       selectedMcpIds: checkedValues('mcp-id'),
+      selectedSettingIds: checkedValues('setting-id'),
+      selectedPresetIds: checkedValues('preset-id'),
     });
     $('import-result').textContent = summarizeImport(result);
   });
