@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 冷启动导入闸门改 `probeImportHold` 浅探针；更新检查/下载首跳注入 `config.githubToken`；冷启动闸门抽入 `launcher-gate.runColdStartGate`：更新询问/下载挂可见启动器、失败回首页不留无窗进程；`downloadFile` 断流/截断防护；`last-desktop-start.json` 写入方统一；v0.2.7 正式发布（启动器随 Setup） |
+| **last verified** | 2026-08-25 — 无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
 
 ## User paths
 
@@ -30,7 +30,8 @@
 - `last-desktop-start.json` 写入方唯一集合：启动器 `startDesktopFromLauncher`、boot 页 `shell:restart` / boot `shell:retry-full-plugins`、菜单/托盘/插件对齐 `restartWithCleanup`（经 `recordLastDesktopStart`）。成功写 `{ok:true}`，失败写 `{ok:false, error}`；launcher 角色 `shell:retry-full-plugins`/`shell:start-desktop` 由 `startDesktopFromLauncher` 代写，不双写。
 - sticky skip 判定唯一实现 `launcher-gate.stickySkipActive({pluginRecovery, appVersion})`；ipc 与 `HarnessController.shouldSkipUserPlugins` 共用（后者负责清掉跨版本的陈旧标记）。
 - OS 浅深色切换经 `chrome.watchSystemTheme`（`nativeTheme updated` → `applyAppTheme`）即时重绘窗口背景。
-- Release 若带 `SHA512SUMS.txt`，下载后强制 sha512 校验（失败即删除并报错）；老版本 Release 无清单则跳过校验（已知限制，见 build-release handbook）。
+- Release 若带 `SHA512SUMS.txt`，下载后强制 sha512 校验（失败即删除并报错）；无清单的 Release **不静默直装**——必须经用户确认（`confirmUnverified`，默认 fail-closed 拒绝即不开始下载），确认后安装但不做校验。
+- 卸载与「设置 → 应用」回退绝不经 shell 执行注册表命令串：只 spawn 已验证存在的卸载 exe 路径（`extractUninstallExe`），提取失败落「设置 → 应用」。
 - 关启动器：桌面主窗还在则只关启动器；主窗不在则退出应用。
 - `readLastDesktopStart` 三态：缺文件 `{ ok:null }`（不挡 auto start）；失败 `{ ok:false }`；成功 `{ ok:true }`。
 - 「启动桌面端」清除「跳过用户插件」sticky 时必须 `forceRestart`；`HarnessController.restart()` 不得把旧 in-flight Promise 交给新调用方（先 await 再开新 `replaceOperation`）。

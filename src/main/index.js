@@ -255,6 +255,20 @@ async function startDesktopFromLauncher(options = {}) {
   }
 }
 
+/** Cold-start twin of the ipc.js unverified-install confirmation. */
+async function confirmUnverifiedColdStart(info) {
+  const result = await dialog.showMessageBox(getLauncherWindow() || undefined, {
+    type: 'warning',
+    buttons: ['仍要安装', '取消'],
+    defaultId: 1,
+    cancelId: 1,
+    title: '安装包无法校验',
+    message: `版本 ${info?.tag || info?.latest || ''} 未提供 SHA512SUMS.txt 校验清单，无法验证安装包完整性。仍要下载并安装吗？`,
+    noLink: true,
+  });
+  return result.response === 0;
+}
+
 function runColdStartGate() {
   const userDataDir = app.getPath('userData');
   return runLauncherColdStartGate({
@@ -262,7 +276,9 @@ function runColdStartGate() {
     userDataDir,
     isPackaged: app.isPackaged,
     checkUpdate,
-    installUpdate,
+    installUpdate: (onProgress) => installUpdate(onProgress, {
+      confirmUnverified: confirmUnverifiedColdStart,
+    }),
     confirmUpdate: async (check) => {
       const result = await dialog.showMessageBox(getLauncherWindow() || undefined, {
         type: 'question',

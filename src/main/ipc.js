@@ -448,13 +448,32 @@ function registerIpc({
     return remote ? remote.snapshot() : null;
   });
 
+  // Releases without SHA512SUMS.txt must never install silently: the user
+  // explicitly accepts the unverified download or nothing is fetched.
+  async function confirmUnverifiedInstall(info) {
+    const win = getLauncherWindow() || getMainWindow() || undefined;
+    const en = configLocale() === 'en';
+    const result = await dialog.showMessageBox(win, {
+      type: 'warning',
+      buttons: en ? ['Install anyway', 'Cancel'] : ['仍要安装', '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      title: en ? 'Unverified installer' : '安装包无法校验',
+      message: en
+        ? `Release ${info?.tag || info?.latest || ''} has no SHA512SUMS.txt manifest, so the installer cannot be verified. Install anyway?`
+        : `版本 ${info?.tag || info?.latest || ''} 未提供 SHA512SUMS.txt 校验清单，无法验证安装包完整性。仍要下载并安装吗？`,
+      noLink: true,
+    });
+    return result.response === 0;
+  }
+
   handle('shell:install-update', UPDATE_SURFACES, async (event) => {
     try {
       return await installUpdate((payload) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('shell:update-progress', payload);
         }
-      });
+      }, { confirmUnverified: confirmUnverifiedInstall });
     } catch (error) {
       return {
         status: 'error',
@@ -597,7 +616,7 @@ function registerIpc({
         if (!event.sender.isDestroyed()) {
           event.sender.send('shell:update-progress', payload);
         }
-      });
+      }, { confirmUnverified: confirmUnverifiedInstall });
     } catch (error) {
       return { status: 'error', launched: false, message: error.message || String(error) };
     }

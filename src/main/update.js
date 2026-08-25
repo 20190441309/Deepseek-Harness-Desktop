@@ -644,15 +644,15 @@ function discoverWindowsInstall(deps = {}) {
   };
 }
 
-async function openWindowsAppsSettings() {
+async function openWindowsAppsSettings(deps = {}) {
+  const doSpawn = deps.spawn || spawn;
   try {
     await shell.openExternal(SETTINGS_APPS_URL);
     return true;
   } catch {
     try {
-      const child = spawn('control.exe', ['appwiz.cpl'], {
+      const child = doSpawn('control.exe', ['appwiz.cpl'], {
         detached: true,
-        shell: true,
         stdio: 'ignore',
         windowsHide: false,
       });
@@ -725,24 +725,48 @@ function getInstalledAppInfo(deps = {}) {
 
 async function launchUninstaller(deps = {}) {
   const packaged = deps.isPackaged !== undefined ? deps.isPackaged : readPackagedFlag();
+  const existsSync = deps.existsSync || fs.existsSync.bind(fs);
+  const doSpawn = deps.spawn || spawn;
   const discovery = discoverWindowsInstall(deps);
   const searchedLabel = discovery.searchedPaths.length
     ? discovery.searchedPaths.join('、')
     : '安装目录与注册表';
 
   if (discovery.uninstallMode === 'direct' && discovery.uninstallCommand) {
-    const child = spawn(discovery.uninstallCommand, [], {
-      detached: true,
-      shell: true,
-      stdio: 'ignore',
-      windowsHide: false,
-    });
-    child.unref();
-    return { ok: true, mode: 'direct' };
+    // Never spawn the registry UninstallString through a shell: the value is
+    // attacker-influenceable text. Use the plain exe path when the command is
+    // one, otherwise extract the quoted/leading exe and verify it exists.
+    const uninstallExe = existsSync(discovery.uninstallCommand)
+      ? discovery.uninstallCommand
+      : extractUninstallExe(discovery.uninstallCommand);
+    if (uninstallExe && existsSync(uninstallExe)) {
+      const child = doSpawn(uninstallExe, [], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: false,
+      });
+      child.unref();
+      return { ok: true, mode: 'direct' };
+    }
+    const opened = await openWindowsAppsSettings(deps);
+    if (opened) {
+      return {
+        ok: true,
+        openedSettings: true,
+        mode: 'settings',
+        message: '已打开「设置 → 应用」，请在列表中卸载 Deepseek-Harness-Desktop。',
+      };
+    }
+    return {
+      ok: false,
+      error: 'uninstaller-not-found',
+      searchedPaths: discovery.searchedPaths,
+      message: `未找到卸载程序（已查找：${searchedLabel}）。请在「设置 → 应用」中卸载 Deepseek-Harness-Desktop。`,
+    };
   }
 
   if (discovery.registered && discovery.uninstallMode === 'settings') {
-    const opened = await openWindowsAppsSettings();
+    const opened = await openWindowsAppsSettings(deps);
     if (opened) {
       return {
         ok: true,
@@ -793,12 +817,29 @@ async function listReleases() {
   }
 }
 
-async function installFromAsset(info, onProgress) {
+async function installFromAsset(info, onProgress, options = {}) {
   if (!info?.assetUrl) {
     if (info?.htmlUrl) {
       await shell.openExternal(info.htmlUrl);
     }
     return { ...info, launched: false, openedPage: Boolean(info?.htmlUrl) };
+  }
+  if (!info.checksumUrl) {
+    // No SHA512SUMS.txt on this release: never install unverified silently.
+    // The caller must supply a user confirmation; absent or declined, the
+    // download does not even start (fail closed).
+    const confirm = options.confirmUnverified;
+    const confirmed = typeof confirm === 'function' ? await confirm(info) : false;
+    if (confirmed !== true) {
+      return {
+        ...info,
+        launched: false,
+        openedPage: false,
+        unverified: true,
+        declined: true,
+        message: '该版本未提供 SHA512SUMS.txt 校验清单，已取消未校验安装',
+      };
+    }
   }
   if (typeof onProgress === 'function') {
     onProgress({ phase: 'download', percent: 0 });
@@ -826,7 +867,7 @@ async function installFromAsset(info, onProgress) {
   return { ...info, launched: true, installer: dest };
 }
 
-async function installRelease(tag, onProgress) {
+async function installRelease(tag, onProgress, options = {}) {
   const raw = String(tag || '').trim();
   if (!raw) {
     return snapshot({ status: 'error', message: 'missing-tag', launched: false });
@@ -845,7 +886,7 @@ async function installRelease(tag, onProgress) {
     if (!summary.installable) {
       return snapshot({ ...summary, status: 'error', message: 'no-installer', launched: false });
     }
-    return installFromAsset(summary, onProgress);
+    return installFromAsset(summary, onProgress, options);
   } catch (error) {
     return snapshot({
       status: 'error',
@@ -855,7 +896,7 @@ async function installRelease(tag, onProgress) {
   }
 }
 
-async function installUpdate(onProgress) {
+async function installUpdate(onProgress, options = {}) {
   const info = await checkUpdate();
   if (info.status === 'error') {
     return { ...info, launched: false, openedPage: false };
@@ -866,7 +907,7 @@ async function installUpdate(onProgress) {
     assetName: info.assetName,
     checksumUrl: info.checksumUrl,
     htmlUrl: info.htmlUrl,
-  }, onProgress);
+  }, onProgress, options);
 }
 
 module.exports = {

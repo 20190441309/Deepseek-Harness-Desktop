@@ -480,3 +480,92 @@ test('installRelease refuses a tag with no Setup.exe', async () => {
     global.fetch = previousFetch;
   }
 });
+
+function releaseWithoutChecksum() {
+  return {
+    draft: false,
+    prerelease: false,
+    tag_name: 'v0.2.6',
+    html_url: 'https://example.test/r',
+    body: '',
+    assets: [{
+      name: 'Deepseek-Harness-Desktop-Setup-0.2.6.exe',
+      browser_download_url: 'https://example.test/setup.exe',
+    }],
+  };
+}
+
+test('installRelease without SHA512SUMS.txt fails closed when no confirmation is wired', async () => {
+  const previousFetch = global.fetch;
+  const fetched = [];
+  global.fetch = async (url) => {
+    fetched.push(String(url));
+    return { ok: true, status: 200, json: async () => releaseWithoutChecksum() };
+  };
+  try {
+    const result = await installRelease('v0.2.6');
+    assert.equal(result.launched, false);
+    assert.equal(result.declined, true);
+    assert.equal(result.unverified, true);
+    assert.match(result.message, /SHA512SUMS\.txt/);
+    assert.equal(fetched.some((url) => url.includes('setup.exe')), false, '拒绝后不得开始下载');
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('installRelease without SHA512SUMS.txt asks confirmUnverified and stops on decline', async () => {
+  const previousFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => releaseWithoutChecksum() });
+  const asked = [];
+  try {
+    const result = await installRelease('v0.2.6', undefined, {
+      confirmUnverified: async (info) => {
+        asked.push(info.assetName);
+        return false;
+      },
+    });
+    assert.deepEqual(asked, ['Deepseek-Harness-Desktop-Setup-0.2.6.exe']);
+    assert.equal(result.launched, false);
+    assert.equal(result.declined, true);
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('launchUninstaller spawns the extracted exe without a shell', async () => {
+  const installDir = 'C:\\Program Files\\Deepseek-Harness-Desktop';
+  const exe = `${installDir}\\Uninstall Deepseek-Harness-Desktop.exe`;
+  const spawns = [];
+  const result = await launchUninstaller({
+    isPackaged: false,
+    platform: 'win32',
+    existsSync: (candidate) => candidate === exe,
+    execFileSync: (cmd, args) => {
+      if (args[1] && args[1].endsWith(APP_ID)) {
+        return [
+          `HKEY_LOCAL_MACHINE\\...\\${APP_ID}`,
+          `    DisplayName    REG_SZ    ${PRODUCT_NAME}`,
+          `    InstallLocation    REG_SZ    ${installDir}`,
+          `    UninstallString    REG_SZ    "${exe}" /currentuser`,
+        ].join('\r\n');
+      }
+      throw new Error('missing');
+    },
+    spawn: (command, args, options) => {
+      spawns.push({ command, args, options });
+      return { unref() {} };
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, 'direct');
+  assert.equal(spawns.length, 1);
+  assert.equal(spawns[0].command, exe, '必须 spawn 提取后的 exe 路径');
+  assert.deepEqual(spawns[0].args, []);
+  assert.equal(spawns[0].options.shell, undefined, '绝不能经 shell 执行注册表命令串');
+});
+
+test('update.js no longer spawns through a shell', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'update.js'), 'utf8');
+  assert.doesNotMatch(source, /shell:\s*true/);
+});
