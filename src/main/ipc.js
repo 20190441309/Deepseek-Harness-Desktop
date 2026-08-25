@@ -205,19 +205,6 @@ function registerIpc({
     return true;
   });
 
-  handle('shell:pick-workspace', HARNESS_ONLY, async () => {
-    const win = getMainWindow();
-    const result = await dialog.showOpenDialog(win || undefined, {
-      title: configLocale() === 'en' ? 'Choose workspace' : '选择工作区',
-      defaultPath: loadConfig().workspace,
-      properties: ['openDirectory'],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return null;
-    }
-    return result.filePaths[0];
-  });
-
   // Boot-page restarts are full desktop starts: record their outcome in
   // last-desktop-start.json so the next cold-start gate sees the truth.
   // Launcher-role paths go through startDesktop, which records it itself.

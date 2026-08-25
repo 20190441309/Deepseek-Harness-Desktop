@@ -70,7 +70,6 @@ function harnessApi(renderer, remoteFeature) {
   return {
     ...windowApi(renderer),
     ...configApi(renderer),
-    pickWorkspace: invoke(renderer, 'shell:pick-workspace'),
     openExternal: invoke(renderer, 'shell:open-external'),
     openSettings: invoke(renderer, 'shell:open-settings'),
     openLauncher: invoke(renderer, 'shell:open-launcher'),

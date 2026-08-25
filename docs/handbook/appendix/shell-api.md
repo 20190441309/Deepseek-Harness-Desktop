@@ -45,7 +45,6 @@
 
 | API | Channel |
 | --- | --- |
-| `pickWorkspace` | `shell:pick-workspace` |
 | `openExternal` | `shell:open-external` |
 | `openSettings` | `shell:open-settings` |
 | `retryFullPlugins` | `shell:retry-full-plugins` |
