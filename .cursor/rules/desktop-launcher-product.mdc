@@ -9,7 +9,9 @@ Cold start opens the **launcher window only** (same Electron process). Do not ca
 
 Launcher uses official `--dsw-alias-*` and the official light/dark tables (`data-ds-dark-theme`). Do not paint Appearance wallpaper seeds onto the launcher. `--boot-*` stays on the main-window boot canvas. Marketplace / wallpaper gallery still must not open extra product windows.
 
-Versions are desktop Setup.exe from non-draft GitHub Releases, not a `vendor/dsh` pin switch. Keep 0.2.7 a GitHub **draft** until this launcher ships in the installer (`/releases/latest` must not push 0.2.6 users onto a build without the launcher).
+Versions are desktop Setup.exe from non-draft GitHub Releases, not a `vendor/dsh` pin switch. 0.2.7 is formally released with the launcher in Setup; `/releases/latest` points at 0.2.7.
+
+Update ask + download progress sit on a **visible** launcher (openLauncher before the prompt). A failed/incomplete update falls back to the launcher home —「启动桌面端」must keep working; never leave a hidden window-less process. Only packaged + installer-launched waits for app quit. `downloadFile` fails on body error/abort or a content-length mismatch and deletes the partial. `last-desktop-start.json` writers: `startDesktopFromLauncher`, boot `shell:restart`/`shell:retry-full-plugins`, and `restartWithCleanup` (menu/tray/plugin-align) — success `{ok:true}`, failure `{ok:false}`. Sticky-skip truth is `launcher-gate.stickySkipActive` (shared by ipc + HarnessController).
 
 Full card: [docs/features/desktop-launcher.md](../../docs/features/desktop-launcher.md)
 Import: [docs/features/data-import.md](../../docs/features/data-import.md)
