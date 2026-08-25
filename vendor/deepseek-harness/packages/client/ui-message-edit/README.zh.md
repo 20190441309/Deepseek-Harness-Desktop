@@ -4,9 +4,9 @@
 
 「编辑并重新发送」插件（浏览器侧）：在最新一条用户消息的操作条上提供一个铅笔按钮。点击后该气泡就地变成可编辑输入（textarea 加「取消／发送」）。确认后在**该消息之前**创建子会话（子会话保留此前所有轮次，但不包含这条消息及它的旧回答），打开子会话并提交修改后的文本。原会话保持不变；子会话以血缘形式出现在侧栏，从修改后的提示词继续生成。点击铅笔本身不会创建会话。
 
-铅笔作为 `conversation.chat.user-actions` 条带的 `edit` 条目（order 10）贡献；编辑器占据 `conversation.chat.user-editor`。两个座位都由 `ui-conversation` 在已定稿 user 节点上声明。仅当被寻址的节点是转录中最新一条 `kind: 'user'` 节点时才渲染铅笔（历史用户消息不显示编辑控件）；会话仍在运行、或消息包含非文本块（如图片）时控件不可用。编辑器在本次 fork 并提交的请求尚未结束时锁定「取消／发送」。
+铅笔作为 `conversation.chat.user-actions` 条带的 `edit` 条目（order 10）贡献；编辑器占据 `conversation.chat.user-editor`。两个座位都由 `ui-conversation` 在已定稿 user 节点上声明。仅当被寻址的节点是转录中最新一条 `kind: 'user'` 节点时才渲染铅笔（历史用户消息不显示编辑控件）；会话仍在运行、或消息包含非文本块（如图片）时控件不可用。编辑器键盘与 composer 一致：Enter 发送、Shift+Enter 换行、Escape 取消，三者均对 IME 安全（输入法组合中的 Enter 或 Escape 只作用于候选列表）。编辑器在本次 fork 并提交的请求尚未结束时锁定「取消／发送」；若编辑期间源会话开始运行、或有更新的用户消息到达，则阻止发送并在按钮旁说明原因（此时发送会以静默丢弃较新轮次的切点创建分支）。取消编辑时通过两个条目共享的交互 store 把键盘焦点交还给铅笔。
 
-fork／打开／回填／提交事务封装在编辑器的注入面中：`sessions.fork({ sessionId, beforeSeq, increaseTitle })`，随后解析子会话作用域，再 `sessions.open(childId)`，最后通过该作用域的输入 facade `setDraft(text)` 与 `submit()`。fork 失败或子会话作用域缺失时保持源会话选中，恢复静态气泡，并在其 composer 上发布本地化的失败提示。
+fork／打开／回填／提交事务封装在编辑器的注入面中：`sessions.fork({ sessionId, beforeSeq, increaseTitle })`，随后解析子会话作用域，再 `sessions.open(childId)`，最后通过该作用域的输入 facade `setDraft(text)` 与 `submit()`。fork 失败或子会话作用域缺失时保持源会话选中，在其 composer 上发布本地化的失败提示，并让编辑器带着草稿继续待命——修改内容是操作者的劳动成果，重试与取消都只需一步。
 
 `/client` 导出插件本体（`apply`／`inject`）、`MessageEditAction` 以及注入面类型。
 
@@ -21,5 +21,6 @@ fork／打开／回填／提交事务封装在编辑器的注入面中：`sessio
 ## 已知限制与后续工作
 
 - **仅纯文本消息**：包含图片或其他非文本块的消息暂不支持编辑；铅笔保持可见但禁用，并以 tooltip 说明原因。
-- **运行中不可编辑**：当前回复未结束时控件禁用，不会打断正在运行的轮次。
+- **运行中不可编辑**：当前回复未结束时控件禁用，不会打断正在运行的轮次；编辑器打开后会话才开始运行时，同样阻止发送。
 - **仅聊天视图**：trajectory 与 waterfall 视图不渲染用户消息编辑控件。
+- **取消即丢弃草稿**：取消的修改不会暂存；重新打开编辑器时从已发送文本重新开始。

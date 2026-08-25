@@ -77,6 +77,7 @@ async function bench() {
       return {
         ...entry.options,
         locale: entry.locale,
+        store: entry.store,
       }
     },
     editor: () => {
@@ -85,6 +86,7 @@ async function bench() {
       return {
         ...entry.options,
         locale: entry.locale,
+        store: entry.store,
         inject: entry.inject as unknown as ((sessionId: SessionId) => MessageEditInjected) | undefined,
       }
     },
@@ -99,6 +101,14 @@ describe('ui-message-edit browser plugin', () => {
     expect(b.action()).toMatchObject({ id: 'edit', order: 10, locale: 'messageEdit' })
     expect(b.editor()).toMatchObject({ locale: 'messageEdit' })
     expect(b.editor()?.inject).toBeTypeOf('function')
+  })
+
+  it('shares one interaction store handle between the pencil and the editor', async () => {
+    const b = await bench()
+    await b.fiber.await()
+
+    expect(b.action()?.store).toBeDefined()
+    expect(b.action()?.store).toBe(b.editor()?.store)
   })
 
   it('forks with beforeSeq, opens the child, prefills its draft, and submits', async () => {

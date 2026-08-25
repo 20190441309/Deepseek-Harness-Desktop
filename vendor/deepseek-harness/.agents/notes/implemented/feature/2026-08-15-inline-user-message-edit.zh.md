@@ -14,7 +14,7 @@ Status: implemented
 
 `ui-conversation` 在已定稿 user 节点上，于 `conversation.chat.user-actions` 旁边声明 `conversation.chat.user-editor`（single，session）。`UserMessageNodeView` 保存本地 `editing` 标志：动作条 owner 上的 `startEdit` 用编辑器占位替换静态气泡和 IconActions；`cancelEdit` 将其恢复。核心会话包仍不带编辑文案，也不实现 textarea。
 
-`ui-message-edit` 占据这两个座位。铅笔只调用 `startEdit`，不 fork。编辑器是用户气泡几何里的 textarea，外加「取消／发送」（`Button` `sm` ghost / primary）。Escape 取消；Enter 发送；Shift+Enter 换行。确认时执行 `sessions.fork({ beforeSeq, increaseTitle: true })`，解析子会话作用域，再 `sessions.open(childId)`，然后在子会话输入面上 `setDraft(text)` 和 `submit()`。fork 失败或子会话作用域缺失则留在源会话、恢复气泡，并在该 composer 上提示。
+`ui-message-edit` 占据这两个座位。铅笔只调用 `startEdit`，不 fork。编辑器是用户气泡几何里的 textarea，外加「取消／发送」（`Button` `sm` ghost / primary）。Escape 取消；Enter 发送；Shift+Enter 换行；三者均对 IME 安全。确认时执行 `sessions.fork({ beforeSeq, increaseTitle: true })`，解析子会话作用域，再 `sessions.open(childId)`，然后在子会话输入面上 `setDraft(text)` 和 `submit()`。fork 失败或子会话作用域缺失则留在源会话、在该 composer 上提示，并让编辑器带着草稿继续待命；编辑中途的状态守卫与焦点交还 store 由[生产打磨记录](2026-08-25-message-edit-production-polish.md)定案。
 
 日志不变：子会话切在被编辑轮次之前，模型不会两次看到旧提示词。[去掉无效编辑存根](../simplification/2026-07-31-drop-user-message-edit-stub.md) 对 `MessageIconActions` 仍然有效；控件只存在于该插件中。
 
@@ -30,4 +30,4 @@ Status: implemented
 
 ## 后果
 
-点击铅笔只是该 user 节点上的本地 React 状态。第一次 Host 写入发生在确认时的 `beforeSeq` fork。测试钉住：铅笔不 fork；编辑器回填拼接后的文本；取消恢复气泡；发送才是 fork／打开／回填／提交序列；失败的重新发送不 `open`。message-actions 的 aria 预期输出把铅笔标为 `Edit`。历史用户消息、仍在运行的轮次、以及非文本内容都不会出现已启用的编辑器。
+点击铅笔只是该 user 节点上的本地 React 状态。第一次 Host 写入发生在确认时的 `beforeSeq` fork。测试钉住：铅笔不 fork；编辑器回填拼接后的文本；取消恢复气泡；发送才是 fork／打开／回填／提交序列；失败的重新发送不 `open`，且编辑器带着草稿继续待命。message-actions 的 aria 预期输出把铅笔标为 `Edit`。历史用户消息、仍在运行的轮次、以及非文本内容都不会出现已启用的编辑器。

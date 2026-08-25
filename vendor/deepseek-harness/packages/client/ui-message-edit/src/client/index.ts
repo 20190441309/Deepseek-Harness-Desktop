@@ -4,6 +4,8 @@
  * child session cut before the message, opens it, and submits the edited
  * text. The fork/open/draft/submit transaction and the failure notice live in
  * the editor inject face; the pencil only gates visibility and calls startEdit.
+ * Both entries share one interaction store carrying the focus-return
+ * handshake after a cancelled edit.
  * @module @deepseek-ai/dsh-client-ui-message-edit/client
  */
 
@@ -14,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { MessageEditAction } from './MessageEditAction.tsx'
 import { MessageEditEditor } from './MessageEditEditor.tsx'
+import { createMessageEditStore } from './stores.ts'
 import type { MessageEditInjected } from './slots.ts'
 import { en, zh } from './locales.ts'
 
@@ -34,16 +37,22 @@ export const inject = ['slots', 'sessions', 'conversation', 'locale']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-message-edit: dictionaries')
 
+  // One shared handle for both entries: the editor writes the focus-return
+  // request on cancel, the pencil consumes it (one instance per session).
+  const store = createMessageEditStore()
+
   ctx.slots.inject('conversation.chat.user-actions', () => ctx.slots.register({
     name: 'conversation.chat.user-actions',
     id: 'edit',
     order: 10,
     locale: NS,
+    store,
   }, MessageEditAction))
 
   ctx.slots.inject('conversation.chat.user-editor', () => ctx.slots.register({
     name: 'conversation.chat.user-editor',
     locale: NS,
+    store,
     inject: (sessionId): MessageEditInjected => ({
       resend: async (seq, text) => {
         const childId = await ctx.sessions.fork({ sessionId, beforeSeq: seq, increaseTitle: true })

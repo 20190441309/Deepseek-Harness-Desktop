@@ -8,6 +8,9 @@ export const zh = {
   'action.cancel': '取消',
   'action.send': '发送',
   'action.pending': '正在重新发送',
+  'editor.field': '编辑消息',
+  'editor.hint.running': '当前回复尚未结束，结束后可发送',
+  'editor.hint.stale': '会话已有更新的消息，此条不能再重新发送',
   'error.generic': '无法创建编辑分支，请重试',
 } satisfies Record<string, string>
 
@@ -29,5 +32,8 @@ export const en = {
   'action.cancel': 'Cancel',
   'action.send': 'Send',
   'action.pending': 'Resending',
+  'editor.field': 'Edit message',
+  'editor.hint.running': 'The current response has not finished; send once it settles',
+  'editor.hint.stale': 'Newer messages arrived, so this one can no longer be resent',
   'error.generic': 'Could not create an editable branch. Try again.',
 } satisfies Record<MessageEditKey, string>

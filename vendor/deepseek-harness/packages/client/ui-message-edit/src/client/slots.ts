@@ -4,16 +4,22 @@
  * are declared and typed by ui-conversation; this package only contributes
  * the entries, so no SlotMap merge lives here. The fork-before/open/draft/
  * submit transaction and the failure notice ride the editor inject; the
- * pencil only calls the owner `startEdit` callback.
+ * pencil only calls the owner `startEdit` callback. Both entries declare the
+ * shared interaction store (the focus-return handshake after a cancelled
+ * edit).
  * @module @deepseek-ai/dsh-client-ui-message-edit/client/slots
  */
 
 import type {
-  InjectFace, PropsLocale, PropsRuntime,
+  InjectFace, PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'messageEdit' seat).
 import type {} from './locales.ts'
+import type { createMessageEditStore } from './stores.ts'
+
+/** The shared pencil/editor store share (focus-return handshake). */
+type MessageEditStoreProps = PropsStore<ReturnType<typeof createMessageEditStore>>
 
 /** Injected business face of the inline user-message editor. */
 export interface MessageEditInjected {
@@ -31,10 +37,12 @@ export interface MessageEditInjected {
 /** Full props of one user-message edit action. */
 export type MessageEditActionProps =
   PropsRuntime<'conversation.chat.user-actions'>
+  & MessageEditStoreProps
   & PropsLocale<'messageEdit'>
 
 /** Full props of the inline user-message editor. */
 export type MessageEditEditorProps =
   PropsRuntime<'conversation.chat.user-editor'>
+  & MessageEditStoreProps
   & InjectFace<MessageEditInjected>
   & PropsLocale<'messageEdit'>
