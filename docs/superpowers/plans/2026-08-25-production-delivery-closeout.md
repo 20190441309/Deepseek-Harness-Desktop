@@ -52,7 +52,8 @@
 
 ### 实机（本 VM Linux）
 
-- [x] `npm run smoke:source`（源码启动冒烟）或等价 Electron 启动验证
+- [x] `npm run smoke:source`（源码启动冒烟）：titlebar 全按钮、PTY 回显、命中测试全过
+- [x] `npm run pack`（electron-builder Linux dir 包）+ `DSH_SMOKE_EXE=dist/linux-unpacked/deepseek-harness-desktop npm run smoke:packaged`：packaged 冒烟全过（Windows NSIS 本环境不可做，见诚实阻塞）
 - [x] P0 定点：Files 显式保存 flush 竞态（persist/save 测试 + 代码路径核对）
 - [x] P0 定点:终端焦点内 `` Ctrl+` ``（keybindings 测试 + Ghostty DOM 选择器核对)
 - [x] P0 定点：`preview-automation-*` IPC 全链已不存在(grep main/preload/ui-preview)
