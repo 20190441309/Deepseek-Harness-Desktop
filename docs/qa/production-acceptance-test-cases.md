@@ -760,7 +760,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ### TC-EXT-007 · dshbot 独立插件（默认不装） · P1
 
-**步骤：** 默认安装确认侧栏**没有**「机器人 / Bots」页签，且启动日志无 dshbot 阻断；（可选）`dsh plugin --profile web add` 安装 dshbot 后重启，页签出现、可建群；`dsh plugin remove dshbot` 后重启，页签消失、`.agent-presets/dshbot-room` 被清理。
+**步骤：** 默认安装确认侧栏**没有**「机器人 / Bots」页签，且启动日志无 dshbot 阻断；（可选）设置 → 插件市场第一方 dshbot 行一键安装（或 `dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot`）后重启，页签出现、可建群；卸载 dshbot 后重启，页签消失、`.agent-presets/dshbot-room` 被清理。
 
 **期望：** dshbot 是独立可发布插件：桌面从不预置、从不因它启动失败；卸载无残留（feature 卡 `dshbot`）。
 

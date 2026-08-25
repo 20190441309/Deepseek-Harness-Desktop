@@ -7,7 +7,7 @@
 
 ## 用户路径
 
-- 默认无 Bots 页签。`dsh plugin add` 安装后：建 Bot、建群（名称 + description + 1–6 成员）、打开 1:1 或群；卸载后页签消失，桌面启动清无主 preset。
+- 默认无 Bots 页签。设置 → 插件市场第一方行一键安装，或 `dsh plugin add`（`github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot`）；装后建 Bot、建群（名称 + description + 1–6 成员）、打开 1:1 或群；卸载后页签消失，桌面启动清无主 preset。
 - 契约见 Feature 卡 `dshbot` 与 `TC-EXT-007`。
 
 ## 架构要点
@@ -17,12 +17,13 @@
 - 纯协议：`lib/group-chat.js`；建群/成员/epoch：`group-chat-host.js`；调度唯一实现在 `catalog.js`（`nextRoomSpeakerId` 事件链）——平行 `GroupChatOrchestrator` 与 redrive 助手已删。
 - 房间推进借 Harness `llm/stream` → 链式 `ask_participant`；成员 spawn `toolFilter` 仅 `send_room_message`，system prompt 同口径（talking-circle）。
 - A2A：`send_to_agent` 可发同伴或 post 进群；priority 仅队列序；1:1 系统提示带 `dshbot:teammates` 目录段（Grok agent-directory 适配）。
-- 插件源在 `vendor/dshbot`，可 `npm publish` / `dsh plugin add`；不再进 electron-builder extraResources。
+- inbox drain 独立在无依赖的 `lib/inbox-drain.js`：assemble 只 PEEK、ack 在消费 turn 之后，at-least-once（崩溃重投、ack 幂等、重复注入不双删）。
+- 插件源在 `vendor/dshbot`，可 `npm publish` / `dsh plugin add`；不再进 electron-builder extraResources；市场入口是 `marketplace-catalog.js` 的 `FIRST_PARTY_PLUGINS` 第一方行（registry 同 id 覆盖）。
 
 ## 实现入口
 
 - `src/main/dshbot-preset.js`（ensure 开发预置 / removeDshbotPreset 清理）、`harness-controller.js`
-- `vendor/dshbot/lib/{group-chat,group-chat-host,ask-participant,agent-messaging,send-to-agent,room-preset,memory,catalog,index}.js`
+- `vendor/dshbot/lib/{group-chat,group-chat-host,ask-participant,agent-messaging,send-to-agent,inbox-drain,room-preset,memory,catalog,index}.js`
 - `vendor/dshbot/client/client.js`
 
 ## 不变量
@@ -33,7 +34,7 @@
 
 ## 门槛
 
-- Automated：`dshbot-*.test.js`（含 room-preset 自装、prompt/toolFilter 一致、avatar lockstep）、`harness-controller`、`release-ui-walk` `plugin.dshbot.tabAbsent`
+- Automated：`dshbot-*.test.js`（含 room-preset 自装、market-row 目录行与安装通道、runtime-resilience epoch/inbox、prompt/toolFilter 一致、avatar lockstep）、`harness-controller`、`release-ui-walk` `plugin.dshbot.tabAbsent`
 - QA：`TC-EXT-007`
 
 ## 延伸阅读
