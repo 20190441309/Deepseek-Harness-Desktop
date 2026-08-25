@@ -275,6 +275,41 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Host usable for TCP connects / fetch / BrowserView loads. Wildcard binds
+ * (`0.0.0.0`, `::`) accept connections on loopback but are not themselves
+ * connectable targets on every platform (Windows rejects them outright).
+ */
+function connectHost(host) {
+  const value = String(host || '').trim().replace(/^\[|\]$/g, '');
+  if (!value || value === '0.0.0.0' || value === '::' || value === '*') {
+    return '127.0.0.1';
+  }
+  return value;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Readiness-line matcher for `dsh web: <url>`. The harness prints the
+ * loopback URL today, but an externally installed dsh may echo the configured
+ * host, so the pattern accepts loopback, localhost, the configured host, and
+ * its connectable form instead of hardcoding `127.0.0.1|localhost` (L-2).
+ */
+function readyUrlPattern(host) {
+  const hosts = new Set(['127.0.0.1', 'localhost']);
+  const configured = String(host || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+  if (configured) {
+    // IPv6 literals appear bracketed inside URLs.
+    hosts.add(configured.includes(':') ? `[${configured}]` : configured);
+  }
+  hosts.add(connectHost(host).toLowerCase());
+  const alternatives = [...hosts].map(escapeRegExp).join('|');
+  return new RegExp(`dsh web:\\s*(https?:\\/\\/(?:${alternatives}):\\d+)`, 'i');
+}
+
 function isPortInUse(host, port) {
   return new Promise((resolve) => {
     const socket = net.connect({ host, port });
@@ -290,9 +325,10 @@ function isPortInUse(host, port) {
 }
 
 async function findFreePort(host, startPort) {
+  const probeHost = connectHost(host);
   const begin = Number(startPort) || 3080;
   for (let port = begin; port < begin + PORT_SCAN_RANGE; port += 1) {
-    if (!(await isPortInUse(host, port))) {
+    if (!(await isPortInUse(probeHost, port))) {
       return port;
     }
   }
@@ -300,11 +336,12 @@ async function findFreePort(host, startPort) {
 }
 
 async function probePort(host, port) {
-  const inUse = await isPortInUse(host, port);
+  const probeHost = connectHost(host);
+  const inUse = await isPortInUse(probeHost, port);
   if (!inUse) {
-    return { host, port, inUse: false, httpReady: false };
+    return { host: probeHost, port, inUse: false, httpReady: false };
   }
-  const baseUrl = `http://${host}:${port}`;
+  const baseUrl = `http://${probeHost}:${port}`;
   let httpReady = false;
   try {
     const controller = new AbortController();
@@ -315,7 +352,7 @@ async function probePort(host, port) {
   } catch {
     httpReady = false;
   }
-  return { host, port, inUse: true, httpReady, baseUrl };
+  return { host: probeHost, port, inUse: true, httpReady, baseUrl };
 }
 
 /**
@@ -596,13 +633,19 @@ class DshManager extends EventEmitter {
   }
 
   attachOutput(child) {
+    const pattern = readyUrlPattern(this.host);
     const onChunk = (chunk, source) => {
       const text = chunk.toString('utf8');
       for (const line of text.split(/\r?\n/)) {
         this.log(line, source);
-        const match = line.match(/dsh web:\s*(https?:\/\/(?:127\.0\.0\.1|localhost):\d+)/i);
+        const match = line.match(pattern);
         if (match) {
-          this.baseUrl = match[1].replace(/\/$/, '');
+          // Wildcard hosts in the announced URL are bind targets, not connect
+          // targets: rewrite them so reachability checks and the BrowserView
+          // load use a connectable address.
+          const url = new URL(match[1]);
+          url.hostname = connectHost(url.hostname);
+          this.baseUrl = url.toString().replace(/\/$/, '');
           this.webReady = true;
         }
       }
@@ -673,7 +716,7 @@ class DshManager extends EventEmitter {
 
     const port = Number(options.port) || Number(config.port) || 3080;
     const launch = this._buildLaunch({ ...config, ...options, port });
-    const expectedUrl = `http://${launch.host}:${launch.port}`;
+    const expectedUrl = `http://${connectHost(launch.host)}:${launch.port}`;
     this.host = launch.host;
     this.port = launch.port;
     this.error = '';
@@ -911,4 +954,6 @@ module.exports = {
   probePort,
   findFreePort,
   ensureOwnedPort,
+  connectHost,
+  readyUrlPattern,
 };

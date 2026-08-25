@@ -704,3 +704,107 @@ test('dsh.js 不再包含按进程名扫描端口的兜底击杀', () => {
   assert.doesNotMatch(source, /netstat/);
   assert.doesNotMatch(source, /lsof/);
 });
+
+// ---------------------------------------------------------------------------
+// L-2：就绪探测尊重 config.host（不再硬编码 127.0.0.1|localhost）
+// ---------------------------------------------------------------------------
+
+test('connectHost 将通配绑定归一为回环，具体地址原样保留', () => {
+  const { connectHost } = require('./dsh');
+  assert.equal(connectHost('0.0.0.0'), '127.0.0.1');
+  assert.equal(connectHost('::'), '127.0.0.1');
+  assert.equal(connectHost('[::]'), '127.0.0.1');
+  assert.equal(connectHost('*'), '127.0.0.1');
+  assert.equal(connectHost(''), '127.0.0.1');
+  assert.equal(connectHost(undefined), '127.0.0.1');
+  assert.equal(connectHost('127.0.0.1'), '127.0.0.1');
+  assert.equal(connectHost('localhost'), 'localhost');
+  assert.equal(connectHost('192.168.1.5'), '192.168.1.5');
+});
+
+test('readyUrlPattern 接受配置 host、回环与 localhost，拒绝无关主机', () => {
+  const { readyUrlPattern } = require('./dsh');
+  const custom = readyUrlPattern('192.168.1.5');
+  assert.ok(custom.test('dsh web: http://192.168.1.5:3080'));
+  assert.ok(custom.test('dsh web: http://127.0.0.1:3080'));
+  assert.ok(custom.test('dsh web: http://localhost:3080'));
+  assert.equal(custom.test('dsh web: http://192.168.1.50:3080'), false, '正则须转义点号，禁止前缀误配');
+  assert.equal(custom.test('dsh web: http://evil.example:3080'), false);
+
+  const wildcard = readyUrlPattern('0.0.0.0');
+  assert.ok(wildcard.test('dsh web: http://0.0.0.0:3080'));
+  assert.ok(wildcard.test('dsh web: http://127.0.0.1:3080'));
+
+  const ipv6 = readyUrlPattern('::');
+  assert.ok(ipv6.test('dsh web: http://[::]:3080'));
+  assert.ok(ipv6.test('dsh web: http://127.0.0.1:3080'));
+});
+
+test('L-2：config.host 为具体地址时，就绪行按该 host 匹配并进入 ready', async (t) => {
+  const HOST = '192.168.1.5';
+  const URL_ON_HOST = `http://${HOST}:3080`;
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-host-ws-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const h = makeHarness({
+    announceReady: false,
+    deps: {
+      loadConfig: () => ({ workspace, host: HOST, port: 3080 }),
+    },
+  });
+  t.after(h.cleanup);
+  const outcome = settle(h.manager.start());
+  await waitFor(() => h.spawned.length === 1);
+  h.setReachable(true, false);
+  await tick(20);
+  assert.equal(h.manager.state, 'starting', '旧正则会在此永远等不到就绪行');
+  h.lastChild().stdout.emit('data', Buffer.from(`dsh web: ${URL_ON_HOST}\n`));
+  const result = await outcome;
+  assert.equal(result.ok, true);
+  assert.equal(h.manager.baseUrl, URL_ON_HOST);
+  assert.equal(h.manager.state, 'ready');
+});
+
+test('L-2：通配 host 0.0.0.0 的就绪 URL 归一为可连接的 127.0.0.1', async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wild-ws-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const h = makeHarness({
+    announceReady: false,
+    deps: {
+      loadConfig: () => ({ workspace, host: '0.0.0.0', port: 3080 }),
+    },
+  });
+  t.after(h.cleanup);
+  const outcome = settle(h.manager.start());
+  await waitFor(() => h.spawned.length === 1);
+  assert.equal(
+    h.manager.baseUrl,
+    'http://127.0.0.1:3080',
+    'expectedUrl 应使用可连接地址而非 0.0.0.0',
+  );
+  h.setReachable(true, false);
+  h.lastChild().stdout.emit('data', Buffer.from('dsh web: http://0.0.0.0:3080\n'));
+  const result = await outcome;
+  assert.equal(result.ok, true);
+  assert.equal(h.manager.baseUrl, 'http://127.0.0.1:3080', '就绪 URL 中的通配主机应重写为回环');
+  assert.equal(h.manager.state, 'ready');
+});
+
+test('probePort/findFreePort 对通配 host 归一探测地址', async () => {
+  const http = require('node:http');
+  const { probePort: probe, findFreePort: findFree } = require('./dsh');
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { connection: 'close' });
+    res.end('ok');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  try {
+    const result = await probe('0.0.0.0', port);
+    assert.equal(result.inUse, true, '通配 host 探测应命中回环上的监听');
+    assert.equal(result.host, '127.0.0.1');
+    const free = await findFree('0.0.0.0', port);
+    assert.notEqual(free, port, 'findFreePort 归一后应看到端口被占');
+  } finally {
+    server.close();
+  }
+});
