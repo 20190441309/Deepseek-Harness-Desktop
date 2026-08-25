@@ -169,6 +169,35 @@ describe('GitActionsControl', () => {
     expect(screen.queryByRole('menuitem', { name: 'Publish repository' })).toBeNull()
   })
 
+  it('treats a rejected status read like a null snapshot instead of rejecting refresh', async () => {
+    mount({
+      cwd: '/work',
+      gitStatus: vi.fn(async () => { throw new Error('status ipc dropped') }),
+      gitFetchForStatus: vi.fn(async () => { throw new Error('fetch ipc dropped') }),
+      gitReadPullRequest: vi.fn(async () => { throw new Error('pr ipc dropped') }),
+    })
+    const main = await screen.findByRole<HTMLButtonElement>('button', { name: 'Commit' })
+    expect(main.disabled).toBe(true)
+    fireEvent.focus(main)
+    expect(await screen.findByText('Git status is unavailable.')).toBeTruthy()
+  })
+
+  it('keeps the local snapshot when the background fetch and PR refresh reject', async () => {
+    const gitFetchForStatus = vi.fn(async () => { throw new Error('fetch ipc dropped') })
+    const gitReadPullRequest = vi.fn(async () => { throw new Error('pr ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({ refName: 'feature/keep' }),
+      gitFetchForStatus,
+      gitReadPullRequest,
+    })
+    const trigger = await screen.findByRole('button', { name: 'Switch branch' })
+    await waitFor(() => { expect(gitFetchForStatus).toHaveBeenCalled() })
+    await waitFor(() => { expect(gitReadPullRequest).toHaveBeenCalled() })
+    expect(trigger.textContent).toContain('feature/keep')
+    expect(screen.queryByRole('status', { name: 'Action failed' })).toBeNull()
+  })
+
   it('labels the main button Commit & push when the default ref has local changes', async () => {
     mount({
       cwd: '/work',
@@ -900,6 +929,23 @@ describe('GitActionsControl', () => {
     expect(await screen.findByRole('status', { name: 'Unable to open file' })).toBeTruthy()
     expect(screen.getByText('no handler')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Action failed' })).toBeNull()
+  })
+
+  it('shows a rejected open-file IPC promise on the progress toast', async () => {
+    const openWorkspacePath = vi.fn(async () => { throw new Error('open ipc dropped') })
+    mount({
+      cwd: '/work',
+      git: status({
+        hasWorkingTreeChanges: true,
+        workingTree: filesTree([{ path: 'only.ts', insertions: 1, deletions: 0 }]),
+      }),
+      openWorkspacePath,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Git actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Commit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'only.ts' }))
+    expect(await screen.findByRole('status', { name: 'Unable to open file' })).toBeTruthy()
+    expect(screen.getByText('open ipc dropped')).toBeTruthy()
   })
 
   it('disables the branch picker while a stacked action is running', async () => {

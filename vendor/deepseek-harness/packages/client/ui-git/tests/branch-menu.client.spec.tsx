@@ -239,6 +239,23 @@ describe('BranchMenu', () => {
     expect(screen.queryByRole('menuitem', { name: 'only-in-proj' })).toBeNull()
   })
 
+  it('disables desktop-unswitchable rows instead of hiding them', async () => {
+    const b = mountMenu({
+      gitBranchList: vi.fn(async () => ({
+        ok: true,
+        branches: [
+          { name: 'main', isRemote: false, isCurrent: true },
+          { name: '_wip', isRemote: false, isCurrent: false, switchable: false },
+        ] satisfies BranchRef[],
+      })),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch branch' }))
+    const row = await screen.findByRole<HTMLButtonElement>('menuitem', { name: /_wip/ })
+    expect(row.disabled).toBe(true)
+    fireEvent.click(row)
+    expect(b.gitSwitchBranch).not.toHaveBeenCalled()
+  })
+
   it('disables the trigger while a stacked Git action holds the titlebar', () => {
     mountMenu({ disabled: true })
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Switch branch' }).disabled).toBe(true)

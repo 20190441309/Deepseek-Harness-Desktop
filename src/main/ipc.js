@@ -354,7 +354,9 @@ function registerIpc({
   handle('shell:git-publish', HARNESS_ONLY, guardGitIpc((event, cwd, input, actionId) => (
     gitPublishRepository(cwd, input, sendGitProgress(event, actionId))
   )));
-  handle('shell:open-workspace-path', HARNESS_ONLY, (_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath));
+  // Not a git channel, but ui-git consumes it as the same `{ ok, message }`
+  // failure payload from the commit dialog's file rows.
+  handle('shell:open-workspace-path', HARNESS_ONLY, guardGitIpc((_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath)));
   handle('shell:list-dir', HARNESS_ONLY, (_event, cwd, relativePath) => listDir(cwd, relativePath));
   handle('shell:read-file', HARNESS_ONLY, (_event, cwd, relativePath) => readFile(cwd, relativePath));
   handle('shell:read-file-media', HARNESS_ONLY, (_event, cwd, relativePath) => readFileMedia(cwd, relativePath));

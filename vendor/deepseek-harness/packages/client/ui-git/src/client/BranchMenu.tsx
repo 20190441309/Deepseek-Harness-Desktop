@@ -166,7 +166,10 @@ export function BranchMenu({ cwd, currentRef, t, onChanged, onError, disabled = 
       : rows.map(ref => ({
         id: ref.name,
         label: ref.name,
-        disabled: disabled || busy || ref.isCurrent,
+        disabled: disabled || busy || ref.isCurrent || ref.switchable === false,
+        // Desktop-unsupported name: the row stays listed (the branch exists)
+        // but cannot be switched to, and the hint says why.
+        ...(ref.switchable === false ? { hint: t('branch.unsupportedName') } : {}),
       }))
 
   return (
