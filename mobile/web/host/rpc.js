@@ -20,7 +20,10 @@ async function postJson({ fetchImpl, origin, path, body, signal }) {
     signal,
   });
   if (!response.ok) {
-    throw new Error(`transport failure for ${path}: HTTP ${response.status}`);
+    const error = new Error(`transport failure for ${path}: HTTP ${response.status}`);
+    // 401 是「登录失效/未配对」，启动试探要静默落回连接页；其他状态必须报给用户。
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }

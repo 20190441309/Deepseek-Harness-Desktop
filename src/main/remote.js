@@ -133,11 +133,14 @@ function loginPage() {
       --dsw-alias-button-primary-fill: rgb(249, 250, 251);
       --dsw-alias-label-primary-foreground: rgb(15, 17, 21);
       --dsw-alias-button-primary-hover: rgb(235, 238, 242);
+      --dsw-alias-state-error-primary: rgb(242, 90, 90);
     }
     html, body { margin: 0; min-height: 100%; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: 16px/24px var(--dsw-font-family); }
     main { max-width: 380px; margin: 0 auto; padding: 48px 24px; }
     h1 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0 0 8px; }
     p { color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 22px; margin: 0 0 20px; }
+    p.error { color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; margin: 0 0 12px; }
+    p.error[hidden] { display: none; }
     input, button { width: 100%; box-sizing: border-box; font: inherit; }
     input { height: 36px; padding: 0 14px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: inherit; margin-bottom: 12px; }
     button { height: 36px; border: 0; border-radius: 18px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font-size: 14px; line-height: 22px; font-weight: 500; }
@@ -147,6 +150,7 @@ function loginPage() {
   <main>
     <h1>连接本机 Harness</h1>
     <p>用桌面端侧栏手机按钮弹出的二维码打开本页。密钥在地址的 #offer= 里，不会发到服务器查询串。</p>
+    <p class="error" id="login-error" hidden></p>
     <form method="post" action="/__remote__/login">
       <input name="token" type="password" autocomplete="current-password" placeholder="访问令牌" required />
       <button type="submit">进入</button>
@@ -154,27 +158,48 @@ function loginPage() {
   </main>
   <script>
     (function () {
+      // #offer= 自动登录失败绝不能静默：解不开、密钥被拒、网络断都要落文案，
+      // 手动令牌表单始终保留为兜底。
+      var errorLine = document.getElementById('login-error');
+      function showError(message) {
+        errorLine.textContent = message;
+        errorLine.hidden = false;
+      }
       var hash = location.hash || '';
       var match = hash.match(/(?:^|#|&)offer=([^&]+)/);
       if (!match) return;
+      var token = '';
       try {
         var padded = match[1].replace(/-/g, '+').replace(/_/g, '/');
         while (padded.length % 4) padded += '=';
         var json = JSON.parse(decodeURIComponent(escape(atob(padded))));
-        var token = json && json.token;
-        if (!token) return;
-        var body = new URLSearchParams();
-        body.set('token', token);
-        fetch('/__remote__/login', {
-          method: 'POST',
-          headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: body,
-          credentials: 'same-origin',
-          redirect: 'follow'
-        }).then(function (res) {
-          if (res.ok || res.redirected) location.replace('/');
-        }).catch(function () {});
-      } catch (e) {}
+        token = json && json.token ? String(json.token) : '';
+      } catch (e) {
+        token = '';
+      }
+      if (!token) {
+        showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或手动输入访问令牌。');
+        return;
+      }
+      var body = new URLSearchParams();
+      body.set('token', token);
+      fetch('/__remote__/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: body,
+        credentials: 'same-origin',
+        redirect: 'follow'
+      }).then(function (res) {
+        if (res.ok || res.redirected) {
+          location.replace('/');
+          return;
+        }
+        showError(res.status === 401 || res.status === 403
+          ? '配对密钥无效：二维码可能已过期（令牌被轮换）。请在桌面端重新打开远程弹窗再扫一次。'
+          : '自动登录失败（HTTP ' + res.status + '）。可以手动输入访问令牌重试。');
+      }).catch(function () {
+        showError('无法连接桌面端：网络请求失败。请确认手机和电脑在同一网络后刷新本页。');
+      });
     })();
   </script>
 </body>

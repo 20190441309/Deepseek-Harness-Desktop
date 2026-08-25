@@ -32,10 +32,21 @@ test('callUnary posts client-request and returns echoed result', async () => {
 });
 
 test('callUnary throws on HTTP failure and surfaces result.ok false', async () => {
-  await assert.rejects(() => callUnary({
-    fetchImpl: async () => new Response('nope', { status: 502 }),
-    origin: 'http://x', method: 'session.list', payload: {},
-  }));
+  // 传输错误必须携带 status：启动试探对 401 静默、对其他状态报错。
+  await assert.rejects(
+    () => callUnary({
+      fetchImpl: async () => new Response('nope', { status: 502 }),
+      origin: 'http://x', method: 'session.list', payload: {},
+    }),
+    (error) => error.status === 502,
+  );
+  await assert.rejects(
+    () => callUnary({
+      fetchImpl: async () => new Response('unauthorized', { status: 401 }),
+      origin: 'http://x', method: 'host.describe', payload: {},
+    }),
+    (error) => error.status === 401,
+  );
   const out = await callUnary({
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);

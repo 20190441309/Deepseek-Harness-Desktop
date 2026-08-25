@@ -33,8 +33,32 @@ test('foldEvents builds user, assistant, and tool bubbles', () => {
   ]);
   assert.equal(rows[0].role, 'user');
   assert.equal(rows[0].text, '你好');
+  assert.deepEqual(rows[0].images, []);
   assert.equal(rows[1].role, 'assistant');
   assert.equal(rows[1].text, '帮你');
   assert.equal(rows[2].role, 'tool');
   assert.equal(rows[2].card, 'read_file');
+});
+
+// 对应 Android Fold.kt imagesFromBlocks。
+test('foldEvents keeps image blocks on user bubbles', () => {
+  const rows = foldEvents([
+    {
+      event: {
+        type: 'user/message',
+        seq: 1,
+        data: {
+          id: 'm1',
+          source: { kind: 'user' },
+          content: [
+            { type: 'text', text: '看这张图' },
+            { type: 'image', mediaType: 'image/png', data: 'aGk=' },
+            { type: 'image', mediaType: 'image/jpeg' },
+          ],
+        },
+      },
+    },
+  ]);
+  assert.equal(rows[0].text, '看这张图');
+  assert.deepEqual(rows[0].images, [{ mediaType: 'image/png', data: 'aGk=' }]);
 });
