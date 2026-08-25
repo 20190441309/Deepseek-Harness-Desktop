@@ -6,9 +6,15 @@ remove it like any other plugin.
 
 ## Install
 
-Through the official plugin channels:
+In the desktop app: Settings → 插件市场 lists dshbot as a first-party row;
+one click installs it through the curated catalog channel (spec below).
+
+Through the official plugin CLI channels:
 
 ```sh
+# from this repository (the marketplace row uses exactly this spec)
+dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot
+
 # once published to a registry
 dsh plugin --profile web add dshbot@0.2.0
 
