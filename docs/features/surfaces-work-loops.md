@@ -43,3 +43,4 @@
 - Handbook：[../handbook/modules/surfaces.md](../handbook/modules/surfaces.md)
 - Note：`vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-work-loops.md`
 - AGENTS.md Surfaces 段
+- 审查与硬化计划：[../superpowers/plans/2026-08-25-surfaces-terminal-hardening.md](../superpowers/plans/2026-08-25-surfaces-terminal-hardening.md)
