@@ -289,9 +289,21 @@ function downloadFile(url, dest, onProgress, { timeoutMs = DOWNLOAD_TIMEOUT_MS }
             });
           }
         });
+        // A reset or aborted body would otherwise just end the pipe and look
+        // like a completed download; fail it and drop the partial file.
+        response.on('error', (error) => {
+          fail(new Error(`下载连接中断：${error && error.message ? error.message : String(error)}`));
+        });
+        response.on('aborted', () => {
+          fail(new Error('下载连接中断（服务器提前断开）'));
+        });
         response.pipe(file);
         file.on('finish', () => {
           if (settled) {
+            return;
+          }
+          if (total > 0 && received !== total) {
+            fail(new Error(`下载不完整（${received}/${total} 字节），已删除未完成文件`));
             return;
           }
           settled = true;

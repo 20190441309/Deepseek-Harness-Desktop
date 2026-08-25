@@ -225,6 +225,98 @@ test('downloadFile fails, aborts the request, and removes the partial after the 
   }
 });
 
+function fakeDownloadResponse({ contentLength = 100 } = {}) {
+  const { PassThrough } = require('node:stream');
+  const response = new PassThrough();
+  response.statusCode = 200;
+  response.headers = { 'content-length': String(contentLength) };
+  return response;
+}
+
+test('downloadFile fails without crashing and removes the partial when the body errors mid-stream', async () => {
+  const previousGet = https.get;
+  let destroyed = false;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => { destroyed = true; };
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(40));
+      setImmediate(() => response.emit('error', new Error('socket hang up')));
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-err-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载连接中断/,
+    );
+    assert.equal(destroyed, true);
+    assert.equal(fs.existsSync(dest), false, 'partial download must be removed');
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('downloadFile rejects a truncated body whose size disagrees with content-length', async () => {
+  const previousGet = https.get;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(40));
+      // Server closes the connection cleanly after 40 of 100 bytes.
+      response.end();
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-trunc-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载不完整（40\/100 字节）/,
+    );
+    assert.equal(fs.existsSync(dest), false, 'truncated download must be removed');
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('downloadFile fails and cleans up when the response is aborted', async () => {
+  const previousGet = https.get;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(10));
+      setImmediate(() => response.emit('aborted'));
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-abort-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载连接中断/,
+    );
+    assert.equal(fs.existsSync(dest), false);
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('summarizeRelease exposes the SHA512SUMS.txt checksum manifest when present', () => {
   const listed = summarizeRelease({
     draft: false,
