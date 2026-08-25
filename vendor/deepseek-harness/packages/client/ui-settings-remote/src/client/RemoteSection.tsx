@@ -233,6 +233,9 @@ export function RemoteSection({
                     {t('modeRelay')}
                   </Button>
                 </div>
+                {enabled && mode === 'lan' ? (
+                  <p className={css.hint} role="note" data-dsh-remote-lan-warning="">{t('lanPlaintextWarning')}</p>
+                ) : null}
                 <button
                   type="button"
                   className={css.devices}

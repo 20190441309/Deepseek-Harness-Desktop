@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 桌面门禁 `run-remote-gate-qa.mjs`（NEG/REM-001）Pass；真机见 [remote-phone-real.md](../qa/results/2026-08-25/remote-phone-real.md)：已装 APK + 浏览器 SPA / Android 粘贴 `#offer=` 配对 + 发 `phone-native-qa-ping`（`adb reverse`；本 AP 无纯 Wi‑Fi LAN） |
+| **last verified** | 2026-08-25 — 远程弹窗在「已开启 + 局域网」下常驻明文 HTTP 警示（`lanPlaintextWarning`，仅限可信局域网）；此前：桌面门禁 `run-remote-gate-qa.mjs`（NEG/REM-001）Pass；真机见 [remote-phone-real.md](../qa/results/2026-08-25/remote-phone-real.md)：已装 APK + 浏览器 SPA / Android 粘贴 `#offer=` 配对 + 发 `phone-native-qa-ping`（`adb reverse`；本 AP 无纯 Wi‑Fi LAN） |
 
 ## User paths
 
@@ -21,6 +21,7 @@
 - 已登录 `POST /__remote__/shell/<name>` 只映射白名单 git / `listDir` / `openSettings` / `openGallery` / `getConfig` / `saveConfig`。无 PTY、`writeFile`、Browser preview。
 - 侧栏 `ui-settings-remote` 已加载；preload 暴露 `getRemote` / `saveRemote` / `rotateRemoteToken` / `unbindRemoteDevice`。
 - 主进程构造 `RemoteGateway`，不走 `createDisabledRemote`。未开启时 `listening !== true`。
+- LAN 模式是明文 HTTP 且监听 `0.0.0.0`（整个网段可达）：远程弹窗在「已开启 + 局域网」状态必须常驻可信局域网警示（`lanPlaintextWarning`）；handbook「安全边界」段与本卡为该限制的文档来源。绑定地址可配置 / LAN TLS 为后续工作。
 - 手机 SPA 与 Android Compose 抄 `--dsw-alias-*`，不挂官方插件树，不用启动页 `--boot-*`。Android 不套 WebView。
 - Android 外观只改本机；电脑项走 shell / Host 请求。Git 胶囊 action 标签英文。
 

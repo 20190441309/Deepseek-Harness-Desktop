@@ -24,6 +24,10 @@
 - 手机页与 Android 是文档化例外：语义色一致，不挂官方插件树，不用 `--boot-*`。
 - 代理剥掉 `cookie` / `authorization`。Shell 白名单见 Feature 卡。
 
+## 安全边界（LAN 模式）
+
+LAN 模式在 `0.0.0.0` 上监听**明文 HTTP**：令牌与会话内容对同网段的窃听者可见，仅限可信局域网（家庭 / 办公内网）使用；公共 Wi‑Fi 场景应改用 HTTPS 中继或关闭远程。远程弹窗在「已开启 + 局域网」状态下常驻此警示（`lanPlaintextWarning`）。绑定地址可配置与 LAN 自签 TLS 属后续工作，未在 v1 范围。
+
 ## 门槛
 
 - 以 [手机远程 Feature 卡](../../features/mobile-remote.md) 与当轮 QA 为准；改 UI 遵守 design-language 手机 / Android 例外段。

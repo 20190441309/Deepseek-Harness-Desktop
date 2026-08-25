@@ -148,6 +148,25 @@ describe('RemoteSection', () => {
     await screen.findByText(en.offHint)
   })
 
+  it('warns about plaintext LAN only while enabled in LAN mode', async () => {
+    renderRemote()
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.getByText(en.lanPlaintextWarning)).toBeTruthy()
+    cleanup()
+
+    renderRemote({ getRemote: vi.fn(async () => snap({ mode: 'relay' })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
+    cleanup()
+
+    renderRemote({ getRemote: vi.fn(async () => snap({ enabled: false, listening: false, urls: [] })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
+  })
+
   it('shows loading while the first read is in flight', async () => {
     let finish: (value: RemoteSnapshot) => void = () => {}
     renderRemote({
