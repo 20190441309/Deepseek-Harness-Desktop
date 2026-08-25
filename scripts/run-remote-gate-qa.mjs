@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * Real-machine Electron suite for composer draft + official triggers + Remote on.
- *
- * Starts a fresh Electron with remoteEnabled=true on disk, walks only the
- * composer-official cases, and fails if any required case is missing or red.
+ * Real-machine Electron suite for TC-NEG-001 + TC-REM-001 (unparked Remote).
+ * Does not open the pairing URL / phone SPA.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -16,7 +14,7 @@ import {
 } from './smoke-workspace.mjs'
 
 const require = createRequire(import.meta.url)
-const { assertComposerOfficialQaResult } = require('../src/main/composer-official-qa.js')
+const { assertRemoteGateQaResult } = require('../src/main/remote-gate-qa.js')
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const timeoutMs = Number(process.env.DSH_SMOKE_TIMEOUT_MS) || 420_000
@@ -32,7 +30,7 @@ function electronExecutable() {
   ]
   const found = candidates.find((item) => existsSync(item))
   if (!found) {
-    throw new Error('Composer official QA needs a local Electron binary (npm ci, then node node_modules/electron/install.js).')
+    throw new Error('Remote gate QA needs a local Electron binary (npm ci, then node node_modules/electron/install.js).')
   }
   return found
 }
@@ -61,7 +59,7 @@ function run(executable, args, env) {
     })
     const timer = setTimeout(() => {
       stopProcessTree(child)
-      reject(new Error(`Composer official QA timed out after ${timeoutMs}ms.`))
+      reject(new Error(`Remote gate QA timed out after ${timeoutMs}ms.`))
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => process.stdout.write(chunk))
@@ -79,7 +77,11 @@ function run(executable, args, env) {
 
 function printStepTable(qa) {
   const steps = Array.isArray(qa?.steps) ? qa.steps : []
-  console.log('\nComposer official QA cases:')
+  if (steps.length === 0) {
+    console.log('Remote gate QA recorded no steps.')
+    return
+  }
+  console.log('\nRemote gate steps:')
   for (const step of steps) {
     const mark = step.ok ? 'PASS' : (step.optional ? 'SKIP' : 'FAIL')
     const detail = step.detail ? `  ${step.detail}` : ''
@@ -87,8 +89,8 @@ function printStepTable(qa) {
   }
 }
 
-function writeComposerQaConfig(userData, workspace, port) {
-  // remoteEnabled:true on disk proves the gateway listens after Harness is ready.
+function writeRemoteGateConfig(userData, workspace, port) {
+  // Default off — TC-NEG-001. The walk turns remote on then off for TC-REM-001.
   writeFileSync(path.join(userData, 'config.json'), JSON.stringify({
     workspace,
     host: '127.0.0.1',
@@ -96,55 +98,58 @@ function writeComposerQaConfig(userData, workspace, port) {
     closeToTray: false,
     openAtLogin: false,
     openDevTools: false,
-    remoteEnabled: true,
+    remoteEnabled: false,
     remoteMode: 'lan',
     remoteRelayUrl: '',
+    quitAfterStart: true,
+    autoStartDesktop: true,
   }, null, 2))
 }
 
-const dirs = createSmokeDirs('dsh-composer-qa-')
+const dirs = createSmokeDirs('dsh-remote-gate-')
 const keepRequested = process.env.DSH_SMOKE_KEEP === '1'
 let keepArtifacts = keepRequested
 
 try {
   const executable = electronExecutable()
   initGitWorkspace(dirs.workspace)
-  writeFileSync(path.join(dirs.workspace, 'note.md'), 'composer official qa\nline-two\n')
+  writeFileSync(path.join(dirs.workspace, 'note.md'), 'remote gate qa\n')
   const port = await reservePort()
-  writeComposerQaConfig(dirs.userData, dirs.workspace, port)
+  writeRemoteGateConfig(dirs.userData, dirs.workspace, port)
 
-  console.log(`Composer official QA: ${executable}`)
-  console.log(`Config forces remoteEnabled=true; gateway must listen after Harness is ready.`)
+  console.log(`Remote gate QA: ${executable}`)
+  console.log(`Config seeds remoteEnabled=false; walk enables LAN then disables. Pairing URL is not opened.`)
   const outcome = await run(executable, ['.', `--user-data-dir=${dirs.userData}`, '--no-first-run'], electronSpawnEnv({
     DSH_SMOKE: '1',
-    DSH_QA_COMPOSER: '1',
+    DSH_QA_REMOTE: '1',
   }))
 
   if (!existsSync(dirs.resultPath)) {
-    throw new Error(`QA result was not written (exit=${outcome.code}, signal=${outcome.signal || 'none'}).`)
+    keepArtifacts = true
+    throw new Error(`Remote gate QA wrote no result file (exit ${outcome.code}${outcome.signal ? ` / ${outcome.signal}` : ''}).`)
   }
   const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
-  const qa = result.result?.composerOfficialQa || result.composerOfficialQa
-  printStepTable(qa)
   assertDesktopHarnessHome(dirs.userData, result)
   assertSmokeResult(outcome, result)
-  assertComposerOfficialQaResult(qa)
-  console.log(`Composer official QA passed on port ${port}.`)
+  assertRemoteGateQaResult(result.result?.remoteGateQa)
+  printStepTable(result.result?.remoteGateQa)
+  console.log(`Remote gate QA passed. Artifacts: ${dirs.userData}`)
 } catch (error) {
   keepArtifacts = true
-  console.error(error instanceof Error ? error.message : String(error))
+  console.error(error instanceof Error ? error.stack || error.message : String(error))
+  if (existsSync(dirs.resultPath)) {
+    try {
+      const result = JSON.parse(readFileSync(dirs.resultPath, 'utf8'))
+      printStepTable(result.result?.remoteGateQa)
+    } catch {
+      // ignore parse errors while reporting the primary failure
+    }
+  }
   process.exitCode = 1
 } finally {
-  if (keepArtifacts) {
-    console.log(`QA artifacts kept at ${dirs.smokeRoot}`)
-    if (existsSync(path.join(dirs.userData, 'dshd-composer-qa.png'))) {
-      console.log(`Screenshot: ${path.join(dirs.userData, 'dshd-composer-qa.png')}`)
-    }
-  } else if (!keepRequested) {
-    try {
-      rmSync(dirs.smokeRoot, { recursive: true, force: true, maxRetries: 3 })
-    } catch (error) {
-      console.warn(`Could not remove QA artifacts at ${dirs.smokeRoot}: ${error.message}`)
-    }
+  if (!keepArtifacts) {
+    rmSync(dirs.smokeRoot, { recursive: true, force: true })
+  } else {
+    console.error(`Kept smoke dirs: ${dirs.smokeRoot}`)
   }
 }

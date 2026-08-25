@@ -1,6 +1,6 @@
 # 系统蓝图
 
-Deepseek-Harness-Desktop 是 Electron 桌面壳：本机拉起官方 `dsh web`，用 `BrowserView` 嵌官方 Web UI。桌面独占能力（Git、PTY、工作区 FS、Browser 预览、市场安装、壁纸目录、托盘、更新；手机远程代码仍在、产品停放）经 `preload` → `window.shell` → `src/main/ipc.js` 桥接。
+Deepseek-Harness-Desktop 是 Electron 桌面壳：本机拉起官方 `dsh web`，用 `BrowserView` 嵌官方 Web UI。桌面独占能力（Git、PTY、工作区 FS、Browser 预览、市场安装、壁纸目录、托盘、更新、手机远程）经 `preload` → `window.shell` → `src/main/ipc.js` 桥接。
 
 ## 进程模型
 

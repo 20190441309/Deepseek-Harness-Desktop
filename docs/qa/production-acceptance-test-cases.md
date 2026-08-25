@@ -50,7 +50,7 @@
 
 **每次发布前**（GitHub Release 或分发该 SHA 的 Setup）：对 **该 CI SHA** 走完本表，写下 `docs/qa/results/<日期>/` 执行报告，填 §16 且勾「Release 将上传同一 SHA」。没有这份绑定 CI SHA 的报告，**禁止发版**。
 
-**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免），且 §16 绑定 CI artifact SHA。** 手机远程已停放：TC-REM-001…003 标 **N/A**，不计入 P0 门禁，也不得标 Pass。dshbot 已拆为独立插件：TC-EXT-007 降为 **P1**（默认不装：无页签 + 启动不阻断）。当前没有远程书面豁免条。P1 失败记入发布说明或豁免单。P2 记入后续迭代。
+**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免），且 §16 绑定 CI artifact SHA。** dshbot 已拆为独立插件：TC-EXT-007 降为 **P1**（默认不装：无页签 + 启动不阻断）。当前没有远程书面豁免条。P1 失败记入发布说明或豁免单。P2 记入后续迭代。
 
 **造障类 P0**（插件弄挂、杀子进程、强制升级包）：能造则测；本轮无法安全造障时标 **Blocked**，附原因，由产品负责人决定是否豁免，**不得静默标 Pass**。
 
@@ -865,21 +865,21 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 ## 12. 负向、远程与韧性
 
-### TC-NEG-001 · 远程入口隐藏且不监听 · P0
+### TC-NEG-001 · 远程默认关闭且不监听 · P0
 
-**步骤：** 启动后看侧栏底部（设置齿轮旁）；用资源监视器/netstat 确认 3180。磁盘即使有 `remoteEnabled: true` 也走本条。
+**步骤：** 全新配置（不要打开侧栏远程）；用资源监视器/netstat 确认 3180。
 
-**期望：** 没有手机 **远程** 图标或「远程」入口；快照 `available === false`；**不**开 HTTP 监听。不得出现配对二维码。
+**期望：** 侧栏有手机 **远程** 入口；快照 `available`；`enabled` 为关；**不**开 HTTP 监听。磁盘若已 `remoteEnabled: true` 则走 TC-REM-001，不走本条。
 
-### TC-REM-001 · 打开局域网远程并出现二维码 · N/A（产品停放）
+### TC-REM-001 · 打开局域网远程并出现二维码 · P0
 
-**步骤：** 不测。重新打开产品前把 [mobile-remote](../features/mobile-remote.md) 改回 `active` 再恢复为本条 P0。
+**步骤：** 侧栏底部手机图标 → 远程弹窗 → 开 → 局域网。
 
-**期望：** N/A。不得标 Pass。
+**期望：** 3180 监听；弹窗显示配对二维码（URL 含 `#offer=`）；关闭远程后停止监听。
 
-### TC-REM-002 · 手机浏览器打开 SPA · N/A（产品停放）
+### TC-REM-002 · 手机浏览器打开 SPA · P0
 
-**步骤：** 停放期间不测。解禁恢复 P0 时按下列步骤走（2026-08-25 Web ≈ Android 对齐后的完整面）：
+**步骤：**（2026-08-25 Web ≈ Android 对齐后的完整面）
 
 1. 系统相机扫码 `#offer=` 直开自动登录进对话；刷新后无 `#offer=` 时 Cookie 试探握手自动回到对话，401 静默落回连接页。
 2. HTTPS 中继 origin：连接页出现「扫描二维码」→ 应用内扫码（取景框/取消/条件手电筒）→ 扫桌面码自动登录；扫异 origin 码整页跳转后自动登录；拒绝相机权限出权限说明屏并可改用粘贴。LAN `http://` 明文页：扫码按钮不渲染，出「用系统相机或粘贴」降级文案。
@@ -887,13 +887,13 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 4. 设置 Hub 钻取：连接详情（主机/通道）+ 断开这台设备回连接页；手机外观浅/深/跟随系统 + 玻璃 + 字体刷新后保持；电脑外观/界面设置/MCP/技能/插件/市场 =「在电脑上打开」请求，无假清单，无 `settings.describe` 只读行。
 5. 工作区：抽屉「工作区」入口 + 顶栏 Git 胶囊（开关控制）→ 32px 分段胶囊主操作标签与 Android 同状态一致（英文）→ Commit 对话框（默认分支警告/在新建分支上提交）→ 菜单 sheet 禁用项与 hint 一致 → 文件 tab 搜索并 `@path` 插入 composer。
 
-**期望：** N/A。不得标 Pass。不得用书面豁免把本条写成 Pass。
+**期望：** 打开的是 `mobile/web` 连接/对话壳，不是官方四栏；上述路径可用。Android 安装包扫同一条码走等价路径。
 
-### TC-REM-003 · 审批允许一次 / 拒绝 · N/A（产品停放）
+### TC-REM-003 · 审批允许一次 / 拒绝 · P1
 
-**步骤：** 不测。
+**步骤：** 从手机发一条会触发审批的请求；在输入区接管条点允许一次或拒绝。
 
-**期望：** N/A。中继 HTTPS 在停放期间不测；HTTP 中继 origin 仍不得生效（随 TC-NEG-001 不监听一并覆盖）。
+**期望：** 审批不另开整页模态；结果回到对话。中继 HTTPS 可选测；HTTP 中继 origin 不得生效。
 
 ### TC-NEG-002 · Harness 崩溃恢复 · P0（造障）
 
@@ -960,7 +960,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 2. 源码 / packaged smoke 若声称 Git/终端全绿，却只探针启动工作区，视为套件 Fail。  
 3. 无 stamp 陈旧 extract 时源码树不测 `--no-open` 覆盖。
 
-**发版：** 下载 CI windows artifact → 对本 SHA 走完本表 → `docs/qa/results/<日期>/` + §16 勾同一 SHA → 再 `gh release` 上传**该文件**。TC-REM-001…003 为 N/A（产品停放）。GitHub `release.yml` **不得**跑 `qa:packaged`（那也不是本表）。
+**发版：** 下载 CI windows artifact → 对本 SHA 走完本表 → `docs/qa/results/<日期>/` + §16 勾同一 SHA → 再 `gh release` 上传**该文件**。GitHub `release.yml` **不得**跑 `qa:packaged`（那也不是本表）。
 
 ---
 
@@ -1062,10 +1062,10 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-DESK-007 | P2 | N/A | CI SHA + 已装 exe | 未测开机启动 | Trent | 2026-08-23 |
 | TC-DESK-008 | P1 | Pass | CI SHA + 已装 exe | 通用设置自动恢复开；实机 1/3 重启 | Trent | 2026-08-23 |
 | TC-DESK-009 | P1 |  |  |  | Trent |  |
-| TC-NEG-001 | P0 | Pass | CI SHA + 已装 exe | 无远程图标；3180 无监听 | Trent | 2026-08-23 |
-| TC-REM-001 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
-| TC-REM-002 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
-| TC-REM-003 | N/A 停放 | N/A |  | 不得 Pass | Trent | 2026-08-23 |
+| TC-NEG-001 | P0 | Pass | 源码实机 `run-remote-gate-qa` | 侧栏 trigger；默认不监听；3180 未开 | Auto | 2026-08-25 |
+| TC-REM-001 | P0 | Pass | 源码实机 `run-remote-gate-qa` | 开 LAN → 听 3180 + `#offer=` + QR SVG；关停听 | Auto | 2026-08-25 |
+| TC-REM-002 | P0 | 待测 |  | 手机 SPA / Android 扫码对话（本轮未开配对 URL） |  |  |
+| TC-REM-003 | P1 | 待测 |  | 审批允许一次 / 拒绝 |  |  |
 | TC-NEG-002 | P0 造障 | Pass | CI SHA + 已装 exe | 杀 dsh 后自动重启回主界面 | Trent | 2026-08-23 |
 | TC-NEG-003 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-NEG-004 | P2 |  |  |  | Trent | 2026-08-23 |

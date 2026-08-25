@@ -1,7 +1,7 @@
 const { app, dialog, globalShortcut, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot } = require('./config');
+const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot, publicConfig, normalizeRendererConfigPatch, normalizeRemotePatch } = require('./config');
 const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome, sanitizePackagedDshHomeEnv } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
@@ -93,6 +93,52 @@ async function probeRemoteSnapshot() {
     return parkRemoteSnapshot(snap);
   }
   return snap;
+}
+
+async function setRemoteFromQa(patch) {
+  saveConfig(normalizeRemotePatch(patch || {}));
+  if (remote && typeof remote.sync === 'function') {
+    return remote.sync();
+  }
+  return remote && typeof remote.snapshot === 'function' ? remote.snapshot() : null;
+}
+
+/** Keep the desktop up with LAN remote on and print a pairing URL for phone QA. */
+async function keepRemotePhoneHost() {
+  const { pairingUrl, listLanAddresses } = require('../shared/lan');
+  const deadline = Date.now() + 120_000;
+  let snap = null;
+  while (Date.now() < deadline) {
+    try {
+      saveConfig({ remoteEnabled: true, remoteMode: 'lan' });
+      snap = await probeRemoteSnapshot();
+      if (snap && snap.listening === true && snap.token) {
+        break;
+      }
+    } catch (error) {
+      console.log('[DSH_REMOTE_PHONE_HOST] sync wait', String(error));
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (!snap || snap.listening !== true || !snap.token) {
+    console.log('[DSH_REMOTE_PHONE_HOST]', JSON.stringify({ ok: false, snap }));
+    await app.exit(1);
+    return;
+  }
+  const preferred = String(process.env.DSH_REMOTE_LAN || '').trim();
+  const lan = preferred
+    || listLanAddresses().find((a) => a.startsWith('192.168.'))
+    || listLanAddresses()[0]
+    || '127.0.0.1';
+  const port = Number(snap.port) || 3180;
+  const url = pairingUrl(lan, port, snap.token, { mode: 'lan' });
+  const out = path.join(app.getPath('userData'), 'pairing-url.txt');
+  fs.writeFileSync(out, `${url}\n`, 'utf8');
+  fs.writeFileSync(path.join(app.getPath('userData'), 'pairing-meta.json'), JSON.stringify({
+    ok: true, url, lan, port, listening: true,
+  }, null, 2));
+  console.log(`[DSH_REMOTE_PHONE_HOST] ${JSON.stringify({ ok: true, url, file: out })}`);
+  console.log(`[PAIRING_URL] ${url}`);
 }
 let quitting = false;
 let stoppingForQuit = false;
@@ -647,6 +693,7 @@ async function runSmoke(win) {
   // main process that did not enter the smoke path.
   const { runReleaseUiWalk, connectConfiguredWorkspace, makeRecorder } = require('./release-ui-walk');
   const { runComposerOfficialQa } = require('./composer-official-qa');
+  const { runRemoteGateQa } = require('./remote-gate-qa');
   const { runAppendixAQa } = require('./appendix-a-qa');
   const { runShellP0Qa, runPersistQa, runRecoveryQa } = require('./shell-p0-qa');
   const pageErrors = [];
@@ -815,13 +862,14 @@ async function runSmoke(win) {
     }
     let qaAttached = false;
     const needsComposerQa = qaEnv('DSH_QA_COMPOSER');
+    const needsRemoteGateQa = qaEnv('DSH_QA_REMOTE');
     const needsReleaseQa = qaEnv('DSH_QA');
     const needsAppendixQa = qaEnv('DSH_QA_APPENDIX');
     const needsShellQa = qaEnv('DSH_QA_SHELL');
     const needsPersistQa = qaEnv('DSH_QA_PERSIST');
     const needsRecoveryQa = qaEnv('DSH_QA_RECOVERY');
     const needsThemeSmoke = qaEnv('DSH_THEME_SMOKE');
-    if (needsReleaseQa || needsComposerQa || needsAppendixQa || needsShellQa || needsPersistQa) {
+    if (needsReleaseQa || needsComposerQa || needsRemoteGateQa || needsAppendixQa || needsShellQa || needsPersistQa) {
       if (!wc.debugger.isAttached()) {
         await wc.debugger.attach('1.3');
         qaAttached = true;
@@ -878,6 +926,29 @@ async function runSmoke(win) {
       try {
         const png = await wc.capturePage();
         fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-composer-qa.png'), png.toPNG());
+      } catch {
+        // Screenshot is evidence, not the verdict.
+      }
+    }
+    if (needsRemoteGateQa) {
+      try {
+        result.remoteGateQa = await runRemoteGateQa(wc, {
+          pressEscape,
+          probeRemote: probeRemoteSnapshot,
+          setRemote: setRemoteFromQa,
+        });
+      } catch (error) {
+        result.remoteGateQa = {
+          ok: false,
+          error: String(error),
+          steps: [],
+          failed: ['remote-gate-threw'],
+        };
+      }
+      console.log('[DSH_QA_REMOTE]', JSON.stringify(result.remoteGateQa));
+      try {
+        const png = await wc.capturePage();
+        fs.writeFileSync(path.join(app.getPath('userData'), 'dshd-remote-gate-qa.png'), png.toPNG());
       } catch {
         // Screenshot is evidence, not the verdict.
       }
@@ -1044,6 +1115,7 @@ async function runSmoke(win) {
       && (!needsThemeSmoke || result.themeSmoke?.ok === true)
       && (!needsReleaseQa || result.qa?.ok === true)
       && (!needsComposerQa || result.composerOfficialQa?.ok === true)
+      && (!needsRemoteGateQa || result.remoteGateQa?.ok === true)
       && (!needsAppendixQa || result.appendixQa?.ok === true)
       && (!needsShellQa || result.shellP0Qa?.ok === true)
       && (!needsPersistQa || result.persistQa?.ok === true)
@@ -1173,7 +1245,11 @@ if (!gotLock) {
       if (!getMainWindow()) {
         await startDesktopFromLauncher();
       }
-      void runSmoke(getMainWindow());
+      if (qaEnv('DSH_REMOTE_PHONE_HOST')) {
+        void keepRemotePhoneHost();
+      } else {
+        void runSmoke(getMainWindow());
+      }
     }
   });
 

@@ -5,7 +5,7 @@ const SHELL_ROLES = new Set(['boot', 'harness', 'launcher']);
 // Keep in sync with REMOTE_FEATURE_ENABLED in src/main/config.js.
 // Preload cannot import that module. When false, omit the four
 // methods so ui-settings-remote does not register the sidebar icon.
-const REMOTE_FEATURE_ENABLED = false;
+const REMOTE_FEATURE_ENABLED = true;
 
 function shellRole(argv = process.argv) {
   const prefix = '--dshd-shell-role=';

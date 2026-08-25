@@ -122,19 +122,32 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
   }
 });
 
-test('remote feature is parked and cannot be enabled', () => {
-  assert.equal(REMOTE_FEATURE_ENABLED, false);
-  const saved = saveConfig({
+test('remote feature is enabled and strips HTTP relay origins', () => {
+  assert.equal(REMOTE_FEATURE_ENABLED, true);
+  const httpRelay = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remoteRelayUrl: 'http://relay.example:8787/path',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(httpRelay.remoteEnabled, true);
+  assert.equal(httpRelay.remoteMode, 'lan');
+  assert.equal(httpRelay.remoteRelayUrl, '');
+  const httpsRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
     remoteRelayUrl: 'https://relay.example/path',
     remoteRelayToken: 'a'.repeat(32),
   });
-  assert.equal(saved.remoteEnabled, false);
-  assert.equal(saved.remoteMode, 'lan');
-  const pub = publicConfig(saved);
-  assert.equal(pub.remoteAvailable, false);
-  assert.equal(pub.remoteEnabled, false);
+  assert.equal(httpsRelay.remoteEnabled, true);
+  assert.equal(httpsRelay.remoteMode, 'relay');
+  assert.equal(httpsRelay.remoteRelayUrl, 'https://relay.example');
+  const pub = publicConfig(httpsRelay);
+  assert.equal(pub.remoteAvailable, true);
+  assert.equal(pub.remoteEnabled, true);
+});
+
+test('parkRemoteSnapshot forces unavailable shape for IPC park path', () => {
   const parked = parkRemoteSnapshot({
     available: true,
     enabled: true,

@@ -6,7 +6,7 @@ const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
 const { normalizeRemotePatch } = require('./remote-patch');
 
-const REMOTE_FEATURE_ENABLED = false;
+const REMOTE_FEATURE_ENABLED = true;
 
 const DEFAULTS = {
   workspace: '',

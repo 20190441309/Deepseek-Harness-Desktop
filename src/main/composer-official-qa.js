@@ -29,10 +29,10 @@ const COMPOSER_OFFICIAL_CASES = Object.freeze([
   { id: 'case.at.noDesktopPathSource', title: 'Typing @ does not register a desktop path source' },
   { id: 'case.terminal.addToChat', title: 'Terminal selection Add to chat writes a terminal fence' },
   { id: 'case.terminal.noSessionsCrash', title: 'Terminal Add to chat does not trip sessions-without-inject' },
-  { id: 'case.remote.available', title: 'Remote snapshot is unavailable while the feature is parked' },
-  { id: 'case.remote.listening', title: 'Remote does not listen while the feature is parked' },
-  { id: 'case.remote.spa', title: 'Parked remote does not serve a phone SPA' },
-  { id: 'case.remote.pairingSpa', title: 'Parked remote has no pairing URL' },
+  { id: 'case.remote.available', title: 'Remote snapshot is available after Harness is ready' },
+  { id: 'case.remote.listening', title: 'Remote sync opens a listener when remoteEnabled is on disk' },
+  { id: 'case.remote.spa', title: 'Pairing URL serves the phone SPA' },
+  { id: 'case.remote.pairingSpa', title: 'Phone SPA can list sessions and send a prompt' },
 ]);
 
 function sleep(ms) {
@@ -589,7 +589,7 @@ async function runComposerOfficialQa(wc, helpers) {
     terminalTrip.length ? terminalTrip.join(' | ') : 'no sessions-without-inject console error',
   );
 
-  // --- Remote is parked: unavailable, not listening, no phone SPA ---
+  // --- Remote gateway is available and listens when enabled ---
   let remoteSnap = null;
   try {
     remoteSnap = await helpers.probeRemote();
@@ -599,19 +599,14 @@ async function runComposerOfficialQa(wc, helpers) {
   rec(
     'case.remote.available',
     remoteSnap
-      && remoteSnap.available === false
+      && remoteSnap.available === true
       && !remoteHasError(remoteSnap),
     summarizeRemoteQaDetail(remoteSnap),
   );
   rec(
     'case.remote.listening',
-    remoteSnap != null && remoteSnap.listening !== true && !remoteHasError(remoteSnap),
+    remoteSnap != null && remoteSnap.listening === true && !remoteHasError(remoteSnap),
     remoteSnap ? `listening=${remoteSnap.listening}` : 'no snapshot',
-  );
-  rec(
-    'case.remote.spa',
-    remoteSnap != null && remoteSnap.listening !== true && !remoteHasError(remoteSnap),
-    remoteSnap ? `parked: listening=${remoteSnap.listening}` : 'no snapshot',
   );
 
   let pairingOk = false;
@@ -685,15 +680,21 @@ async function runComposerOfficialQa(wc, helpers) {
         }
       }
     } catch (error) {
+      pairingOk = false;
       pairingDetail = error instanceof Error ? error.message : String(error);
     } finally {
       if (!guest.isDestroyed()) guest.close();
     }
   }
   rec(
+    'case.remote.spa',
+    pairingOk,
+    pairingDetail,
+  );
+  rec(
     'case.remote.pairingSpa',
-    !pairingRaw,
-    pairingRaw ? (pairingDetail || 'unexpected pairing url while parked') : 'parked: no pairing url',
+    pairingOk,
+    pairingDetail,
   );
 
   const failed = steps.filter((s) => !s.ok && !s.optional).map((s) => s.name);

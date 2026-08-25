@@ -86,7 +86,7 @@ test('marketplace preload role is not exposed', () => {
   assert.equal(exposed, null);
 });
 
-test('harness preload keeps work loops and omits parked remote', () => {
+test('harness preload keeps work loops and remote controls', () => {
   const api = buildShellApi('harness', fakeRenderer());
   assert.equal(typeof api.writeFile, 'function');
   assert.equal(typeof api.listEditors, 'function');
@@ -126,10 +126,10 @@ test('harness preload keeps work loops and omits parked remote', () => {
   for (const key of Object.keys(api)) {
     assert.ok(!key.startsWith('previewAutomation'), `${key} must not be exposed`);
   }
-  assert.equal(api.getRemote, undefined);
-  assert.equal(api.saveRemote, undefined);
-  assert.equal(api.rotateRemoteToken, undefined);
-  assert.equal(api.unbindRemoteDevice, undefined);
+  assert.equal(typeof api.getRemote, 'function');
+  assert.equal(typeof api.saveRemote, 'function');
+  assert.equal(typeof api.rotateRemoteToken, 'function');
+  assert.equal(typeof api.unbindRemoteDevice, 'function');
   assert.equal(api.saveBootLog, undefined);
 });
 
