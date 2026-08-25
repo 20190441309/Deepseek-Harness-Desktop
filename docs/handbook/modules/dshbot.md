@@ -35,7 +35,11 @@
 ## 门槛
 
 - Automated：`dshbot-*.test.js`（含 room-preset 自装、market-row 目录行与安装通道、runtime-resilience epoch/inbox、prompt/toolFilter 一致、avatar lockstep）、`harness-controller`、`release-ui-walk` `plugin.dshbot.tabAbsent`
-- QA：`TC-EXT-007`
+- QA：`TC-EXT-007`（P1；汇总表待安装包实机填 Pass——见 feature 卡 Open follow-ups）
+
+## 未完成（文档落地）
+
+详见 feature 卡 **Open follow-ups**：安装包实机冒烟、npm 独立发布、spec 废弃段改写、成员全工具另卡、Grok exclusive/interrupt/Shared Room 另史诗。
 
 ## 延伸阅读
 

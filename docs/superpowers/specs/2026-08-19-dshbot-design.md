@@ -1,11 +1,13 @@
 # dshbot：侧栏 Bot 列表与群聊
 
-桌面启动时把插件 `dshbot` 装进 web profile（和 `dshmarket` 一样）。官方侧栏只多一个 Tab 插槽；不装插件时侧栏与现在一致。视觉语言仍是 `ui-primitives` + `--dsw-alias-*`，编辑走居中 `Modal`，不占用右侧 Files/Browser。
+> **状态（2026-08-25）：** 产品已改为**独立可发布 dsh 插件**（feature 卡 `dshbot` status=`standalone`）。桌面**默认不预置**；市场第一方行 / `dsh plugin add` 可选安装。下文「决定」中与现行实现冲突的段落以 **Grok-aligned 本地协议（2026-08-24）** 与 feature 卡为准。
+
+桌面壳不再强制把插件 `dshbot` 装进 web profile；可选安装后官方侧栏多一个 Tab 插槽；不装时侧栏与现在一致。视觉语言仍是 `ui-primitives` + `--dsw-alias-*`，编辑走居中 `Modal`，不占用右侧 Files/Browser。
 
 ## 决定
 
 1. **每个 Bot 是持久联系人。** 目录在 settings 命名空间 `dshbot`。点列表项 `sessions.open` 打开已有对话。会话打 `origin: 'dshbot'`，工作区浏览器的 `sessionVisible` 把它们藏起来。
-2. **群聊是 WhatsApp 群，不是带父对话的调度室。** 只从侧栏「机器人」加号创建，至少选两个成员。房间会话用 preset `dshbot-room`（写入 `$DSH_HOME/.agent-presets/dshbot-room`，不出现在会话的 agent preset 选择器里；composer 也不渲染 `conversation.input.model`）。可见气泡只有用户和成员：房间 session 只做日志、取消、以及 one-shot child 的技术父级，从不调用聊天模型。选人用代码，对齐 [agentschat](https://github.com/nvganta/agentschat) 与 [agents-team](https://github.com/pedros-team/agents-team) 的共享 transcript：默认按成员顺序全员轮询（后者能看到前者已落盘的话）；用户 `@名字` 则只叫被点名的。后到座位默认沉默：`ask_participant` 的子会话 user 消息是 `[名字]` 群日志再加一段座位 `speakInstruction`（first 回答用户；later 列出本轮已有正文，默认整段只能是 `NEXT: pass`，只有人设能提供日志里没有的纠正、反对或一个新点时才开口）。空 `description` 的 later 座位写明没有独特信息、应当 pass。编辑资料用芯片填互不重叠的中文人设（反对 / 补全 / 落地 / 毒舌），不是商店。成员回复最后一行是调度脚注 `NEXT: pass` / `NEXT: done` / `NEXT: all` / `NEXT: @甲 @乙`（缺行等于 `pass`）；代码从 session 事件重放队列，首轮名单说完后才接受 `all` 或点名，`done` 立即停，次数和轮次上限是插件 `Config` 的 `maxSpeaks`（默认 12）与 `maxRounds`（默认 4）。人设不把 `NEXT: all` 写成首轮默认。气泡和 `groupTranscript` 剥掉该脚注，只调度、没有可见正文的 `pass` 不画气泡。不要用 AutoGen `GroupChatManager` 再雇一个 LLM 当群主。`llm/stream` 每步只产出一个 `ask_participant`，队列空了就 empty stop。`ask_participant` 用 `subagents.start` 按该成员的模型和人设跑一轮并 `await result`，不使用 continuable followup。`ask_participant` 由插件全局注册；`dshbot-room` preset 只 `tools.restrict` 到该工具。非房间调用执行失败。v1 不在空回车后让成员自己聊一轮。会话里选「群聊」预设不是建群。空白 `origin: 'dshbot'` 会话不是新对话草稿：跳过 EmptyHero（「探索未至之境」、工作区芯片、`dshbot-room` 花粒），顶栏显示群名，transcript 空态画成员头像/名字，底部是普通 composer。房间 transcript 不画「上下文注入」、`Deep diving...`、turn-tail；composer 不画 `+`、plan、ContextMeter、`$` 技能菜单。插件把 `dshbot-room` 打到目录房间的会话列表行上，以免 host 汇总漏掉 preset 时仍露出这些铬。输入 `@` 只出成员（`inputTriggers` source `dshbot`），房间里文件/子智能体/cordis/`/` 候选为空。侧栏一行名字、一行模型（空则「使用部署默认」）；群聊无第二行，头像角标「群」。New Session 的空白复用不吃 `origin: 'dshbot'` 或 `'subagent'`。
+2. **~~群聊是 WhatsApp 群…（含 `NEXT:` 脚注调度、`maxSpeaks` 默认 12 / `maxRounds` 默认 4）~~ — Deprecated 2026-08-24。** 仍成立的部分：只从侧栏「机器人」加号创建、至少两名成员、房间 preset `dshbot-room`、父会话不调聊天模型、可见气泡仅用户与成员。调度与上限以下方「Grok-aligned」为准（无 `NEXT:` 决定下一说话人；`maxSpeaks=10` / `maxRounds=3` / 成员上限 6）。完整旧文保留在 git 历史；勿再按 `NEXT:` / 12/4 实现。
 3. **Bot 私有模型不改全局默认。** 只在编辑资料里选模型；保存和打开联系人时 `session.selectModel({ persistDefault: false })`。composer 不渲染 `conversation.input.model`。
 4. **人设按会话注入。** Host `systemPrompt` section 仅当组装中的 session 在目录里且不是房间时写入 `description`。
 5. **已有 `turn/start` 的会话不能改 cwd。** 空白会话可以在编辑里换工作区并重建绑定。

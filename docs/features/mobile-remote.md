@@ -3,13 +3,15 @@
 | Field | Value |
 | --- | --- |
 | **id** | `mobile-remote` |
-| **status** | `active` |
-| **last verified** | 2026-08-23 — `node --test src/main/remote.test.js src/main/remote-shell.test.js` 29/29；`mobile/android` `gradlew :protocol:test` 24/24，`:app:assembleDebug`；USB 真机 `23124RN87C` 重装 debug APK：对话页汉堡/发丝顶栏/胶囊作曲器（只读·模型芯片、info 发送），抽屉搜索+新会话+底栏工作区/设置，设置分组钻取+断开危险行，工作区 32px Git 胶囊英文 `Commit & push` + 底部 Git 操作 sheet。未点 Commit/Push；无挂起审批 |
+| **status** | `parked` |
+| **last verified** | 2026-08-25（第二轮）— `#offer=` 自动登录链路在**真 `RemoteGateway` + 真 `mobile/web` 树**上 e2e 钉死（`remote.test.js` 新增两条回归：encodeOffer→登录页内联脚本→表单登录→parity SPA→SPA offer/login 模块→`/api` 反代；31/31）。上一轮「停在等待配对」根因为测试侧 serve 错分支 SPA + offer 编码不合谱被静默吞掉；产品侧已修三处吞错（登录页自动登录失败落 `login-error` 文案、SPA 无效 `#offer=` 报「配对链接无效」、Cookie 试探仅对 401 静默）。`npm test` 925/925。同日第一轮：Web ≈ Android 对齐（[计划](../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md)）。真机扫码走查待解禁轮（TC-REM-002 保持 N/A）。上轮 2026-08-23：Android `:protocol:test` 24/24、USB 真机 `23124RN87C` 走查 |
 
 ## User paths
 
+> **停放（parked）：** `REMOTE_FEATURE_ENABLED = false`，侧栏远程入口隐藏、网关默认不监听（与 [README 索引](README.md)、QA 表 TC-REM-001…003 N/A 口径一致）。以下路径描述解禁后的产品形态；停放期间开发与测试直接构造 `RemoteGateway`（`remote.test.js` 做法），不翻产品开关。
+
 1. 侧栏底部手机图标打开 **远程** 弹窗 → 开 → 局域网（或 HTTPS 中继）→ 二维码。
-2. 系统相机 / 浏览器扫码（`#offer=`）→ 登录 → `mobile/web` SPA：列会话、发消息、审批允许一次 / 拒绝。
+2. 系统相机 / 浏览器扫码（`#offer=`）→ 登录 → `mobile/web` SPA：列会话、发消息、审批允许一次 / 拒绝；SPA 内可再扫码（`BarcodeDetector` + `getUserMedia`，仅 secure context；LAN 明文页降级为粘贴）、发图、停止运行、工作区 Git 胶囊与文件插入。设置为分组钻取 Hub（`settings.describe` 只读行已下线）。
 3. Android 安装包（`mobile/android`）扫**同一条**二维码 → JSON 登录拿设备令牌 → Compose 对话 / 审批 / 传图 / 工作区 Git 胶囊。
 4. 关远程后 3180 不再监听；默认 `remoteEnabled` 为关，不会在用户未打开时占口。
 
@@ -46,14 +48,14 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `node --test src/main/remote.test.js src/main/remote-shell.test.js src/main/ipc.test.js src/preload/shell-api.test.js src/shared/post-merge-ui.test.js src/main/composer-official-qa.test.js src/main/release-ui-walk.test.js mobile/web/**/*.test.js`；Android：`mobile/android` 下 `./gradlew :protocol:test`（Host / offer / fold / Git JSON） |
+| Automated | `node --test src/main/remote.test.js src/main/remote-shell.test.js src/main/ipc.test.js src/preload/shell-api.test.js src/shared/post-merge-ui.test.js src/main/composer-official-qa.test.js src/main/release-ui-walk.test.js mobile/web/**/*.test.js`（含 `mobile/web/shell/remote-shell.test.js`、`git/vcs-parse.test.js`、`git/quick.test.js`、`host/prompt.test.js`、`pair/scan.test.js`、`ui/settings-hub.test.js`、`fence.test.js`）；Android：`mobile/android` 下 `./gradlew :protocol:test`（Host / offer / fold / Git JSON） |
 | Manual / QA | [TC-NEG-001](../qa/production-acceptance-test-cases.md)（默认不监听）；[TC-REM-001](../qa/production-acceptance-test-cases.md) … [TC-REM-003](../qa/production-acceptance-test-cases.md)；Android 扫码 → 列表 → 发文本 → 审批 → 传图 → Commit 对话框 |
 
 ## Sources
 
 - Handbook: [../handbook/modules/mobile-remote.md](../handbook/modules/mobile-remote.md)、[../handbook/flows/remote-pair.md](../handbook/flows/remote-pair.md)
 - Spec: [../superpowers/specs/2026-08-20-mobile-web-client-design.md](../superpowers/specs/2026-08-20-mobile-web-client-design.md)、[../superpowers/specs/2026-08-23-mobile-android-client-design.md](../superpowers/specs/2026-08-23-mobile-android-client-design.md)
-- Plan: [../superpowers/plans/2026-08-20-mobile-web-client.md](../superpowers/plans/2026-08-20-mobile-web-client.md)、[../superpowers/plans/2026-08-23-mobile-android-client.md](../superpowers/plans/2026-08-23-mobile-android-client.md)
+- Plan: [../superpowers/plans/2026-08-20-mobile-web-client.md](../superpowers/plans/2026-08-20-mobile-web-client.md)、[../superpowers/plans/2026-08-23-mobile-android-client.md](../superpowers/plans/2026-08-23-mobile-android-client.md)、[../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md](../superpowers/plans/2026-08-25-mobile-web-scan-android-parity.md)
 - Mock: [../superpowers/mocks/2026-08-20-mobile-phone.html](../superpowers/mocks/2026-08-20-mobile-phone.html)、[../superpowers/mocks/2026-08-23-android-phone.html](../superpowers/mocks/2026-08-23-android-phone.html)
 - Agent Note: [vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-22-desktop-phone-remote.md](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-22-desktop-phone-remote.md)
 - Implementation: `src/main/remote.js`、`src/main/remote-shell.js`、`src/main/index.js`、`mobile/web/`、`mobile/android/`、`ui-settings-remote`

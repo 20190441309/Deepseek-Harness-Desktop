@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-25 — 市场第一方行一键安装打通（真实 pnpm `#path:` 子目录装/卸实测）；inbox drain 抽出并锁 at-least-once/epoch 重启语义 |
+| **last verified** | 2026-08-25 — standalone 拆除 + 市场第一方行 + inbox/epoch 韧性；未完成项见下方 Open follow-ups（已落地文档，不挡合并） |
 
 ## User paths
 
@@ -37,6 +37,18 @@
 - 成员 turn `toolFilter` 仅 `send_room_message`（Talking Circle）；全工具另卡。
 - 市场行是桌面本地第一方合并，外部 registry 收录后以 registry 行为准；`#path:` 规格未钉 SHA 时装 main 分支最新（存有 GitHub token 时安装通道自动钉 SHA）。
 - avatar 助手在 lib 与 client 各一份（client 无法 import 服务端 ESM）；单测锁两份 lockstep。
+
+## Open follow-ups（未完成 · 已文档落地，不挡本卡合并）
+
+生产交付仍缺、须后续迭代关闭的项（优先级从高到低）：
+
+| Pri | 项 | 验收 |
+| --- | --- | --- |
+| P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」 | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
+| P1 | **npm 独立发布** `dshbot@<semver>`（或镜像独立 GitHub 仓），打通 `dsh plugin add dshbot@x.y.z`；可选提交外部 awesome registry（本地第一方行已可装，不依赖收录） | README / 发布说明写清安装规格；registry 收录后第一方行可删或让位 |
+| P1 | ~~**设计 spec 废弃段**~~ | **已落地（2026-08-25）：** spec 文首与决定 2 标 Deprecated；以 Grok-aligned 段与本卡为准 |
+| P2 | **成员全工具房间**：解 `toolFilter` 限制时同步改 `buildGroupMemberSystemPrompt`；另开 feature 卡，本史诗不做 | 新卡 + 单测锁 prompt/toolFilter 同口径 |
+| P2 | **Grok 未搬能力**（明确不做直至新卡）：exclusive room job / runner interrupt / Shared Room / Routines / 云电脑 / 富 SendMessage / 真 multi-lane interrupt | 新史诗卡批准前禁止静默实现 |
 
 ## Allowed touch
 

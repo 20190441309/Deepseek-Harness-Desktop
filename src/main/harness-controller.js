@@ -1,5 +1,6 @@
 const EventEmitter = require('events');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
+const { stickySkipActive } = require('./launcher-gate');
 const { isDshbotPresetEnabled } = require('./dshbot-preset');
 
 const DEFAULT_STABLE_MS = 60_000;
@@ -208,9 +209,9 @@ class HarnessController extends EventEmitter {
   }
 
   shouldSkipUserPlugins() {
-    const recovery = this.pluginRecovery;
-    if (!recovery.skipUserPlugins) return false;
-    if (recovery.appVersion === this.appVersion) return true;
+    if (!this.pluginRecovery.skipUserPlugins) return false;
+    // Shared predicate with ipc.js — one truth for "sticky for this build".
+    if (stickySkipActive(this)) return true;
     this.clearPluginRecovery();
     return false;
   }

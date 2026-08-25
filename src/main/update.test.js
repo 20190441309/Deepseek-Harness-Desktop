@@ -182,6 +182,80 @@ test('checkUpdate passes an abort signal and degrades to status error on timeout
   }
 });
 
+test('checkUpdate and listReleases send Authorization only when a githubToken is configured, and never log it', async () => {
+  const { setGithubTokenProvider } = require('./update');
+  const previousFetch = global.fetch;
+  const seenHeaders = [];
+  global.fetch = async (_url, options) => {
+    seenHeaders.push(options?.headers || {});
+    return {
+      ok: true,
+      status: 200,
+      json: async () => null,
+    };
+  };
+  try {
+    await checkUpdate();
+    assert.equal(seenHeaders[0].Authorization, undefined, 'no token configured, no header');
+
+    setGithubTokenProvider(() => ' ghp_test_token_value ');
+    await checkUpdate();
+    assert.equal(seenHeaders[1].Authorization, 'Bearer ghp_test_token_value');
+    const listed = await listReleases();
+    assert.equal(seenHeaders[2].Authorization, 'Bearer ghp_test_token_value');
+    assert.equal(JSON.stringify(listed).includes('ghp_test_token_value'), false, 'token never surfaces in results');
+
+    setGithubTokenProvider(() => { throw new Error('config unreadable'); });
+    const degraded = await checkUpdate();
+    assert.equal(seenHeaders[3].Authorization, undefined, 'provider failure degrades to anonymous');
+    assert.equal(JSON.stringify(degraded).includes('ghp_test_token_value'), false);
+  } finally {
+    setGithubTokenProvider(null);
+    global.fetch = previousFetch;
+  }
+});
+
+test('download headers carry the token only on the first hop toward GitHub hosts', async () => {
+  const { setGithubTokenProvider } = require('./update');
+  const previousGet = https.get;
+  const seen = [];
+  setGithubTokenProvider(() => 'ghp_dl_token');
+  https.get = (target, options, onResponse) => {
+    seen.push({ target: String(target), headers: options.headers });
+    const response = new EventEmitter();
+    if (seen.length === 1) {
+      response.statusCode = 302;
+      response.headers = { location: 'https://objects.githubusercontent.com/signed/asset' };
+    } else {
+      response.statusCode = 200;
+      response.headers = {};
+    }
+    response.resume = () => {};
+    response.pipe = (file) => {
+      setImmediate(() => {
+        response.emit('end');
+        file.end();
+      });
+      return file;
+    };
+    setImmediate(() => onResponse(response));
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-dl-auth-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await downloadFile('https://github.com/ChisaAlter/Deepseek-Harness-Desktop/releases/download/v1/setup.exe', dest, null, { timeoutMs: 2000 });
+    assert.equal(seen[0].headers.Authorization, 'Bearer ghp_dl_token', 'first hop to github.com carries the token');
+    assert.equal(seen[1].headers.Authorization, undefined, 'signed CDN redirect hop must not carry the token');
+  } finally {
+    setGithubTokenProvider(null);
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('listReleases degrades to an empty list with a message on timeout', async () => {
   const previousFetch = global.fetch;
   global.fetch = async () => {
@@ -218,6 +292,98 @@ test('downloadFile fails, aborts the request, and removes the partial after the 
       /下载超时/,
     );
     assert.equal(destroyed, true);
+    assert.equal(fs.existsSync(dest), false);
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function fakeDownloadResponse({ contentLength = 100 } = {}) {
+  const { PassThrough } = require('node:stream');
+  const response = new PassThrough();
+  response.statusCode = 200;
+  response.headers = { 'content-length': String(contentLength) };
+  return response;
+}
+
+test('downloadFile fails without crashing and removes the partial when the body errors mid-stream', async () => {
+  const previousGet = https.get;
+  let destroyed = false;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => { destroyed = true; };
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(40));
+      setImmediate(() => response.emit('error', new Error('socket hang up')));
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-err-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载连接中断/,
+    );
+    assert.equal(destroyed, true);
+    assert.equal(fs.existsSync(dest), false, 'partial download must be removed');
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('downloadFile rejects a truncated body whose size disagrees with content-length', async () => {
+  const previousGet = https.get;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(40));
+      // Server closes the connection cleanly after 40 of 100 bytes.
+      response.end();
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-trunc-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载不完整（40\/100 字节）/,
+    );
+    assert.equal(fs.existsSync(dest), false, 'truncated download must be removed');
+  } finally {
+    https.get = previousGet;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('downloadFile fails and cleans up when the response is aborted', async () => {
+  const previousGet = https.get;
+  https.get = (_target, _options, onResponse) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    const response = fakeDownloadResponse({ contentLength: 100 });
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(Buffer.alloc(10));
+      setImmediate(() => response.emit('aborted'));
+    });
+    return request;
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-update-dl-abort-'));
+  const dest = path.join(dir, 'setup.exe');
+  try {
+    await assert.rejects(
+      () => downloadFile('https://example.test/setup.exe', dest, null, { timeoutMs: 5_000 }),
+      /下载连接中断/,
+    );
     assert.equal(fs.existsSync(dest), false);
   } finally {
     https.get = previousGet;

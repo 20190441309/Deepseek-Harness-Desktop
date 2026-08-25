@@ -479,6 +479,246 @@ test('runImport copies only selected rows and never writes the source', async ()
   fs.rmSync(tree.root, { recursive: true, force: true });
 });
 
+const SETTINGS_FIXTURE = `# global note
+llm-deepseek:
+  baseURL: https://gw.example.test/v1
+  models:
+    - id: deepseek-v4-pro
+      name: Pro
+ui-theme:
+  preference: dark
+  activeDarkThemeId: midnight
+llm-pi-ai:
+  providers:
+    openai:
+      apiKeyEnv: OPENAI_API_KEY
+    acme:
+      apiKeyEnv: "ACME_GATEWAY_KEY"
+shell:
+  historyLimit: 100
+agent-default-model:
+  provider: deepseek-official
+  model: deepseek-v4-pro
+`;
+
+const CREDENTIALS_FIXTURE = `version: 1
+refs:
+  DEEPSEEK_API_KEY: sk-source-secret
+  OPENAI_API_KEY: "sk-openai-secret"
+  UNRELATED_KEY: sk-unrelated
+records:
+  deepseek-official/session:
+    kind: api-key
+    apiKey: sk-oauth-ish
+`;
+
+test('scanImport lists whitelisted settings sections, presets, and home AGENTS.md — never secrets', () => {
+  const tree = makeTree();
+  fs.writeFileSync(path.join(tree.source, 'settings.yaml'), SETTINGS_FIXTURE);
+  fs.writeFileSync(path.join(tree.source, '.credentials.yaml'), CREDENTIALS_FIXTURE);
+  fs.writeFileSync(path.join(tree.source, 'AGENTS.md'), '# global instructions\n');
+  fs.mkdirSync(path.join(tree.source, '.agent-presets', 'research'), { recursive: true });
+  fs.writeFileSync(path.join(tree.source, '.agent-presets', 'research', 'agent.cordis.yml'), '- name: dsh-agent\n');
+  fs.mkdirSync(path.join(tree.source, '.agent-presets', 'broken-one'), { recursive: true });
+  fs.mkdirSync(path.join(tree.source, '.agent-presets', 'Bad Name'), { recursive: true });
+  const { scanImport } = require('./data-import');
+  const scan = scanImport({ sourceHome: tree.source, destHome: tree.dest });
+  const settingIds = scan.settings.map((row) => row.id);
+  assert.deepEqual(settingIds, ['llm-deepseek', 'llm-pi-ai', 'agent-default-model', 'ui-theme', 'agents-md']);
+  assert.equal(settingIds.includes('shell'), false, 'non-whitelist sections never listed');
+  const deepseek = scan.settings.find((row) => row.id === 'llm-deepseek');
+  assert.deepEqual(deepseek.credentialRefs, ['DEEPSEEK_API_KEY'], 'implicit default ref');
+  const piAi = scan.settings.find((row) => row.id === 'llm-pi-ai');
+  assert.deepEqual(piAi.credentialRefs.sort(), ['ACME_GATEWAY_KEY', 'OPENAI_API_KEY']);
+  const serialized = JSON.stringify(scan);
+  assert.equal(serialized.includes('sk-source-secret'), false);
+  assert.equal(serialized.includes('sk-openai-secret'), false);
+  const presetIds = scan.presets.map((row) => row.id);
+  assert.deepEqual(presetIds, ['broken-one', 'research']);
+  assert.equal(scan.presets.find((row) => row.id === 'broken-one').broken, true);
+  assert.equal(scan.presets.find((row) => row.id === 'research').broken, false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('runImport moves selected settings sections verbatim, syncs referenced refs only, and never writes the source', async () => {
+  const tree = makeTree();
+  fs.writeFileSync(path.join(tree.source, 'settings.yaml'), SETTINGS_FIXTURE);
+  fs.writeFileSync(path.join(tree.source, '.credentials.yaml'), CREDENTIALS_FIXTURE);
+  fs.writeFileSync(path.join(tree.source, 'AGENTS.md'), '# global instructions\n');
+  fs.mkdirSync(tree.dest, { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'settings.yaml'), 'ui-titlebar:\n  action: copy\n');
+  const sourceSettings = fs.readFileSync(path.join(tree.source, 'settings.yaml'), 'utf8');
+  const sourceCreds = fs.readFileSync(path.join(tree.source, '.credentials.yaml'), 'utf8');
+  const { runImport } = require('./data-import');
+  const result = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: [],
+    selectedSkillIds: [],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    selectedSettingIds: ['llm-deepseek', 'ui-theme', 'agents-md', 'shell'],
+    selectedPresetIds: [],
+    importAttachments: false,
+  });
+  assert.equal(result.settings.find((row) => row.id === 'llm-deepseek').status, 'copied');
+  assert.equal(result.settings.find((row) => row.id === 'ui-theme').status, 'copied');
+  assert.equal(result.settings.find((row) => row.id === 'agents-md').status, 'copied');
+  assert.equal(result.settings.find((row) => row.id === 'shell').status, 'rejected');
+  const destSettings = fs.readFileSync(path.join(tree.dest, 'settings.yaml'), 'utf8');
+  assert.match(destSettings, /ui-titlebar:\n {2}action: copy/, 'existing desktop sections preserved');
+  assert.match(destSettings, /llm-deepseek:\n {2}baseURL: https:\/\/gw\.example\.test\/v1\n {2}models:\n {4}- id: deepseek-v4-pro\n {6}name: Pro/, 'nested block moved verbatim');
+  assert.match(destSettings, /ui-theme:\n {2}preference: dark/);
+  assert.equal(destSettings.includes('historyLimit'), false, 'non-whitelist section never written');
+  assert.equal(fs.readFileSync(path.join(tree.dest, 'AGENTS.md'), 'utf8'), '# global instructions\n');
+  assert.deepEqual(result.credentials, [{ ref: 'DEEPSEEK_API_KEY', status: 'copied' }]);
+  const destCreds = fs.readFileSync(path.join(tree.dest, '.credentials.yaml'), 'utf8');
+  assert.match(destCreds, /^version: 1$/m);
+  assert.match(destCreds, /^ {2}DEEPSEEK_API_KEY: sk-source-secret$/m);
+  assert.equal(destCreds.includes('UNRELATED_KEY'), false, 'unreferenced refs stay behind');
+  assert.equal(destCreds.includes('records:'), false, 'OAuth records never migrate');
+  const journal = fs.readFileSync(result.journal, 'utf8');
+  assert.equal(journal.includes('sk-source-secret'), false, 'journal carries ref names only');
+  assert.deepEqual(sourceSettings, fs.readFileSync(path.join(tree.source, 'settings.yaml'), 'utf8'));
+  assert.deepEqual(sourceCreds, fs.readFileSync(path.join(tree.source, '.credentials.yaml'), 'utf8'));
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('settings and credential imports conflict-skip by default and replace on overwrite', async () => {
+  const tree = makeTree();
+  fs.writeFileSync(path.join(tree.source, 'settings.yaml'), SETTINGS_FIXTURE);
+  fs.writeFileSync(path.join(tree.source, '.credentials.yaml'), CREDENTIALS_FIXTURE);
+  fs.mkdirSync(tree.dest, { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'settings.yaml'), 'ui-theme:\n  preference: light\n');
+  fs.writeFileSync(path.join(tree.dest, '.credentials.yaml'), 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-dest-existing\n');
+  const { runImport } = require('./data-import');
+  const skipped = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: [],
+    selectedSkillIds: [],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    selectedSettingIds: ['ui-theme', 'llm-deepseek'],
+    selectedPresetIds: [],
+    importAttachments: false,
+  });
+  assert.equal(skipped.settings.find((row) => row.id === 'ui-theme').status, 'skipped');
+  assert.equal(skipped.settings.find((row) => row.id === 'llm-deepseek').status, 'copied');
+  assert.deepEqual(skipped.credentials, [{ ref: 'DEEPSEEK_API_KEY', status: 'skipped' }]);
+  assert.match(fs.readFileSync(path.join(tree.dest, 'settings.yaml'), 'utf8'), /preference: light/);
+  assert.match(fs.readFileSync(path.join(tree.dest, '.credentials.yaml'), 'utf8'), /sk-dest-existing/);
+
+  const overwritten = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    overwrite: true,
+    selectedRels: [],
+    selectedSkillIds: [],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    selectedSettingIds: ['ui-theme', 'llm-deepseek'],
+    selectedPresetIds: [],
+    importAttachments: false,
+  });
+  assert.equal(overwritten.settings.find((row) => row.id === 'ui-theme').status, 'copied');
+  assert.deepEqual(overwritten.credentials, [{ ref: 'DEEPSEEK_API_KEY', status: 'copied' }]);
+  const destSettings = fs.readFileSync(path.join(tree.dest, 'settings.yaml'), 'utf8');
+  assert.match(destSettings, /preference: dark/);
+  assert.equal(destSettings.includes('preference: light'), false);
+  const destCreds = fs.readFileSync(path.join(tree.dest, '.credentials.yaml'), 'utf8');
+  assert.match(destCreds, /sk-source-secret/);
+  assert.equal(destCreds.includes('sk-dest-existing'), false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('runImport copies selected presets by directory and rejects unsafe or broken ids', async () => {
+  const tree = makeTree();
+  fs.mkdirSync(path.join(tree.source, '.agent-presets', 'research'), { recursive: true });
+  fs.writeFileSync(path.join(tree.source, '.agent-presets', 'research', 'agent.cordis.yml'), '- name: dsh-agent\n');
+  fs.mkdirSync(path.join(tree.source, '.agent-presets', 'broken-one'), { recursive: true });
+  const { runImport } = require('./data-import');
+  const result = await runImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+    userDataDir: tree.userData,
+    selectedRels: [],
+    selectedSkillIds: [],
+    selectedPluginNames: [],
+    selectedMcpIds: [],
+    selectedSettingIds: [],
+    selectedPresetIds: ['research', 'broken-one', '../escape', 'Bad Name'],
+    importAttachments: false,
+  });
+  assert.equal(result.presets.find((row) => row.id === 'research').status, 'copied');
+  assert.equal(result.presets.find((row) => row.id === 'broken-one').status, 'unsupported');
+  assert.equal(result.presets.find((row) => row.id === '../escape').status, 'rejected');
+  assert.equal(result.presets.find((row) => row.id === 'Bad Name').status, 'rejected');
+  assert.equal(
+    fs.readFileSync(path.join(tree.dest, '.agent-presets', 'research', 'agent.cordis.yml'), 'utf8'),
+    '- name: dsh-agent\n',
+  );
+  assert.equal(fs.existsSync(path.join(tree.dest, 'escape')), false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+});
+
+test('probeImportHold matches shouldHoldForImport(scanImport()) without reading session meta', () => {
+  const tree = makeTree();
+  const { probeImportHold, scanImport, shouldHoldForImport } = require('./data-import');
+  const probe = probeImportHold({ sourceHome: tree.source, destHome: tree.dest, agentsSkillsRoot: path.join(tree.root, 'no-agents') });
+  assert.equal(probe.hold, true);
+  assert.equal(probe.hold, shouldHoldForImport(scanImport({
+    sourceHome: tree.source,
+    destHome: tree.dest,
+    agentsSkillsRoot: path.join(tree.root, 'no-agents'),
+  })));
+
+  fs.mkdirSync(path.join(tree.dest, 'sessions', 'proj', 'existing'), { recursive: true });
+  fs.writeFileSync(path.join(tree.dest, 'sessions', 'proj', 'existing', 'session.jsonl'), '{"id":"x"}\n');
+  const nonEmpty = probeImportHold({ sourceHome: tree.source, destHome: tree.dest, agentsSkillsRoot: path.join(tree.root, 'no-agents') });
+  assert.equal(nonEmpty.destEmpty, false);
+  assert.equal(nonEmpty.hold, false);
+  fs.rmSync(tree.root, { recursive: true, force: true });
+
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-bare-'));
+  const emptySource = path.join(bare, 'official');
+  const emptyDest = path.join(bare, 'desktop');
+  fs.mkdirSync(emptySource, { recursive: true });
+  setDesktopDshHome(emptyDest);
+  const idle = probeImportHold({ sourceHome: emptySource, destHome: emptyDest, agentsSkillsRoot: path.join(bare, 'no-agents') });
+  assert.equal(idle.destEmpty, true);
+  assert.equal(idle.sourceHasData, false);
+  assert.equal(idle.hold, false);
+
+  fs.writeFileSync(path.join(emptySource, 'settings.yaml'), 'ui-theme:\n  preference: dark\n');
+  const settingsOnly = probeImportHold({ sourceHome: emptySource, destHome: emptyDest, agentsSkillsRoot: path.join(bare, 'no-agents') });
+  assert.equal(settingsOnly.hold, true, 'whitelisted settings alone hold the gate');
+  fs.rmSync(bare, { recursive: true, force: true });
+});
+
+test('probeImportHold ignores preset fixture sessions and legacy-db-only sources', () => {
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-preset-'));
+  const source = path.join(bare, 'official');
+  const dest = path.join(bare, 'desktop');
+  fs.mkdirSync(path.join(source, 'sessions', '_no-cwd', 'preset-demo'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'sessions', '_no-cwd', 'preset-demo', 'session.jsonl'), '{"id":"p"}\n');
+  fs.mkdirSync(path.join(source, 'sessions', 'legacy'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'sessions', 'legacy', 'chat.db'), 'sqlite');
+  setDesktopDshHome(dest);
+  const { probeImportHold } = require('./data-import');
+  const probe = probeImportHold({ sourceHome: source, destHome: dest, agentsSkillsRoot: path.join(bare, 'no-agents') });
+  assert.equal(probe.sourceHasData, false);
+  assert.equal(probe.hold, false);
+  fs.rmSync(bare, { recursive: true, force: true });
+});
+
 test('runImport skips MCP/skill conflicts unless overwrite, and rejects paths outside roots', async () => {
   const tree = makeTree();
   writeSkill(path.join(tree.source, 'skills'), 'alpha');

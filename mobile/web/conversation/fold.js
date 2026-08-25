@@ -7,6 +7,18 @@ function textFromBlocks(blocks) {
   }).join('');
 }
 
+// 镜像 Android Fold.kt imagesFromBlocks：user/message 里的 image block 折叠成气泡图片。
+function imagesFromBlocks(blocks) {
+  if (!Array.isArray(blocks)) return [];
+  const images = [];
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object' || block.type !== 'image') continue;
+    if (typeof block.mediaType !== 'string' || typeof block.data !== 'string') continue;
+    images.push({ mediaType: block.mediaType, data: block.data });
+  }
+  return images;
+}
+
 function chunkText(data) {
   const chunk = data?.chunk;
   if (typeof chunk === 'string') return chunk;
@@ -34,6 +46,7 @@ function foldEvents(entries) {
         id: String(event.data?.id || event.seq),
         role: 'user',
         text: textFromBlocks(event.data?.content),
+        images: imagesFromBlocks(event.data?.content),
       });
       continue;
     }

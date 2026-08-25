@@ -23,6 +23,12 @@ function walk(dir, out = []) {
 test('mobile web production files do not import the desktop shell or official client plugins', () => {
   const files = walk(root);
   assert.ok(files.length > 0, 'expected production files under mobile/web');
+  for (const dir of ['host', 'conversation', 'ui', 'shell', 'git', 'pair']) {
+    assert.ok(
+      files.some((file) => path.relative(root, file).startsWith(`${dir}${path.sep}`)),
+      `fence walk must cover mobile/web/${dir}`,
+    );
+  }
   const banned = [
     /from\s+['"]\.\.\/\.\.\/src\//,
     /require\(\s*['"]\.\.\/\.\.\/src\//,

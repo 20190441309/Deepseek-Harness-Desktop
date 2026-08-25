@@ -382,6 +382,13 @@ main:has(#panel-import.is-active) {
   display: none;
 }
 
+.import-scope-note {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .import-toolbar {
   display: flex;
   flex-wrap: wrap;

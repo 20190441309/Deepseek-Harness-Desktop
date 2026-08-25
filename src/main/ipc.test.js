@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { IPC_ROLES } = require('./ipc-authorization');
+const launcherGate = require('./launcher-gate');
 
 const ipcPath = require.resolve('./ipc');
 
@@ -184,12 +185,16 @@ function loadIpc(options = {}) {
   stub('./data-import', {
     scanImport: (opts) => {
       scanImportCalls.push(opts);
-      return { ok: true, destEmpty: true, sourceHasData: false, sessions: [], plugins: [], skills: [], mcp: [] };
+      return {
+        ok: true, destEmpty: true, sourceHasData: false, sessions: [], plugins: [], skills: [], mcp: [], settings: [], presets: [],
+      };
     },
-    shouldHoldForImport: () => false,
+    probeImportHold: () => ({ destEmpty: true, sourceHasData: false, hold: false }),
     runImport: async (opts) => {
       runImportCalls.push(opts);
-      return { ok: true, empty: true, sessions: [], skills: [], plugins: [], mcp: [] };
+      return {
+        ok: true, empty: true, sessions: [], skills: [], plugins: [], mcp: [], settings: [], credentials: [], presets: [],
+      };
     },
   });
   stub('./plugin-forensics', {
@@ -202,8 +207,20 @@ function loadIpc(options = {}) {
     setBundleEnabled: () => ({ ok: true, changed: false }),
     OFFICIAL_TEMPLATE_BUNDLES: new Set(['@deepseek-ai/dsh-base']),
   });
+  const lastStartWrites = [];
   stub('./launcher-gate', {
+    ...launcherGate,
     readLastDesktopStart: () => ({ ok: true, at: '', error: '' }),
+    recordLastDesktopStart: async (_dir, work) => {
+      try {
+        const value = await work();
+        lastStartWrites.push({ ok: true });
+        return value;
+      } catch (error) {
+        lastStartWrites.push({ ok: false, error: error && error.message ? error.message : String(error) });
+        throw error;
+      }
+    },
   });
   stub('./marketplace-catalog', {
     listMarketplace: async (opts) => {
@@ -312,6 +329,7 @@ function loadIpc(options = {}) {
     startDesktopArgs,
     scanImportCalls,
     runImportCalls,
+    lastStartWrites,
   };
 }
 
@@ -858,7 +876,7 @@ test('launcher retry-full-plugins clears sticky and uses startDesktop recovery l
   }
 });
 
-test('boot retry-full-plugins still uses harness retryFullPlugins', async () => {
+test('boot retry-full-plugins still uses harness retryFullPlugins and records the start outcome', async () => {
   let retried = 0;
   const ipc = loadIpc({
     harness: {
@@ -873,6 +891,51 @@ test('boot retry-full-plugins still uses harness retryFullPlugins', async () => 
     await ipc.invoke('shell:retry-full-plugins', bootEvent());
     assert.equal(retried, 1);
     assert.equal(ipc.startDesktop(), 0);
+    assert.deepEqual(ipc.lastStartWrites, [{ ok: true }]);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('launcher retry-full-plugins leaves last-start recording to startDesktop', async () => {
+  const ipc = loadIpc({ harness: { clearPluginRecovery() {} } });
+  try {
+    await ipc.invoke('shell:retry-full-plugins', launcherEvent());
+    assert.equal(ipc.startDesktop(), 1);
+    assert.deepEqual(ipc.lastStartWrites, [], 'startDesktop writes the marker itself');
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('boot shell:restart writes last-desktop-start ok:true on success', async () => {
+  const ipc = loadIpc({
+    harness: {
+      retryFullPlugins: async () => ({ state: 'ready' }),
+      snapshot: () => ({ state: 'ready' }),
+    },
+  });
+  try {
+    const snapshot = await ipc.invoke('shell:restart', bootEvent());
+    assert.equal(snapshot.state, 'ready');
+    assert.deepEqual(ipc.lastStartWrites, [{ ok: true }]);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('boot shell:restart writes last-desktop-start ok:false and rethrows on failure', async () => {
+  const ipc = loadIpc({
+    harness: {
+      retryFullPlugins: async () => {
+        throw new Error('plugin tree exploded');
+      },
+      snapshot: () => ({ state: 'error' }),
+    },
+  });
+  try {
+    await assert.rejects(() => ipc.invoke('shell:restart', bootEvent()), /plugin tree exploded/);
+    assert.deepEqual(ipc.lastStartWrites, [{ ok: false, error: 'plugin tree exploded' }]);
   } finally {
     ipc.restore();
   }
@@ -1037,6 +1100,8 @@ test('launcher scan-import and run-import forward extra skill dirs and selection
       selectedSkillIds: ['home:alpha'],
       selectedPluginNames: ['good-plugin'],
       selectedMcpIds: ['wiki'],
+      selectedSettingIds: ['llm-deepseek', 'agents-md'],
+      selectedPresetIds: ['research'],
     };
     const result = await ipc.invoke('shell:run-import', launcherEvent(), payload);
     assert.equal(result.empty, true);
@@ -1050,6 +1115,8 @@ test('launcher scan-import and run-import forward extra skill dirs and selection
     assert.deepEqual(opts.selectedSkillIds, payload.selectedSkillIds);
     assert.deepEqual(opts.selectedPluginNames, payload.selectedPluginNames);
     assert.deepEqual(opts.selectedMcpIds, payload.selectedMcpIds);
+    assert.deepEqual(opts.selectedSettingIds, payload.selectedSettingIds);
+    assert.deepEqual(opts.selectedPresetIds, payload.selectedPresetIds);
     assert.equal(typeof opts.installPlugin, 'function');
   } finally {
     ipc.restore();
