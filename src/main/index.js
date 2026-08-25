@@ -1,4 +1,4 @@
-const { app, dialog, globalShortcut, session } = require('electron');
+const { app, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot, publicConfig, normalizeRendererConfigPatch, normalizeRemotePatch } = require('./config');
@@ -52,6 +52,7 @@ const { watchSystemTheme } = require('./chrome');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
 const { qaFlag } = require('./qa-gate');
+const { devToolsShortcutAllowed, attachDevToolsShortcut } = require('./devtools-shortcut');
 
 /** Packaged-gated QA flag (see qa-gate.js). */
 function qaEnv(name) {
@@ -1175,6 +1176,22 @@ if (!gotLock) {
   app.setName('Deepseek-Harness-Desktop');
   app.setAppUserModelId('ai.deepseek.harness.gui');
 
+  // Window-scoped DevTools toggle (Ctrl+Shift+I / Cmd+Alt+I). Never an OS
+  // global shortcut: that would hijack the chord in other applications and
+  // opened DevTools unconditionally in packaged builds.
+  app.on('web-contents-created', (_event, contents) => {
+    attachDevToolsShortcut(contents, {
+      allowed: () => devToolsShortcutAllowed({
+        isPackaged: app.isPackaged,
+        openDevTools: loadConfig().openDevTools === true,
+      }),
+      resolveTarget: () => {
+        const win = getMainWindow() || getLauncherWindow();
+        return getHarnessWebContents(win) || win?.webContents;
+      },
+    });
+  });
+
   app.whenReady().then(async () => {
     const homeEnv = sanitizePackagedDshHomeEnv({ isPackaged: app.isPackaged });
     if (homeEnv.dropped) {
@@ -1232,12 +1249,6 @@ if (!gotLock) {
       item.setSavePath(dest);
     });
 
-    globalShortcut.register('CommandOrControl+Shift+I', () => {
-      const win = getMainWindow() || getLauncherWindow();
-      const wc = getHarnessWebContents(win) || win?.webContents;
-      wc?.toggleDevTools();
-    });
-
     const launcherWin = await prepareLauncher();
     bindLauncherClose(launcherWin);
     await runColdStartGate();
@@ -1259,7 +1270,6 @@ if (!gotLock) {
 
   app.on('before-quit', (event) => {
     quitting = true;
-    globalShortcut.unregisterAll();
     if (stoppingForQuit) {
       return;
     }
