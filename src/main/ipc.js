@@ -30,6 +30,7 @@ const { isPluginTreeFailure } = require('./plugin-tree-failure');
 const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
 const { gitBranchList, gitCommit, gitCreateBranch, gitCreateChangeRequest, gitDiff, gitDiscard, gitFetchForStatus, gitInit, gitPublishRepository, gitPull, gitPush, gitReadPullRequest, gitStage, gitStatus, gitStatusEntries, gitSwitchBranch, gitUnstage, openWorkspacePath } = require('./git');
+const { gitIpcNull, guardGitIpc } = require('./git-ipc-guard');
 const { registerPreviewIpc } = require('./preview');
 const { registerPtyIpc } = require('./pty');
 const { listDir, readFile, readFileMedia, writeFile } = require('./workspace-fs');
@@ -330,26 +331,29 @@ function registerIpc({
 
   handle('shell:open-marketplace', HARNESS_ONLY, () => openMarketplace());
 
-  handle('shell:git-status', HARNESS_ONLY, (_event, cwd) => gitStatus(cwd));
-  handle('shell:git-fetch-status', HARNESS_ONLY, (_event, cwd) => gitFetchForStatus(cwd));
-  handle('shell:git-pull-request', HARNESS_ONLY, (_event, cwd) => gitReadPullRequest(cwd));
-  handle('shell:git-init', HARNESS_ONLY, (_event, cwd) => gitInit(cwd));
-  handle('shell:git-diff', HARNESS_ONLY, (_event, cwd, options) => gitDiff(cwd, options));
+  // Every shell:git-* listener is guarded: a thrown handler error resolves to
+  // the channel's failure payload instead of rejecting the renderer invoke,
+  // which would strand the titlebar progress toast in the loading state.
+  handle('shell:git-status', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitStatus(cwd), gitIpcNull));
+  handle('shell:git-fetch-status', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitFetchForStatus(cwd), gitIpcNull));
+  handle('shell:git-pull-request', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitReadPullRequest(cwd)));
+  handle('shell:git-init', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitInit(cwd)));
+  handle('shell:git-diff', HARNESS_ONLY, guardGitIpc((_event, cwd, options) => gitDiff(cwd, options), gitIpcNull));
   const sendGitProgress = (event, actionId) => (progress) => {
     if (actionId == null || event.sender.isDestroyed()) return;
     event.sender.send('shell:git-progress', { actionId, ...progress });
   };
-  handle('shell:git-commit', HARNESS_ONLY, (event, cwd, message, filePaths, actionId, options) => (
+  handle('shell:git-commit', HARNESS_ONLY, guardGitIpc((event, cwd, message, filePaths, actionId, options) => (
     gitCommit(cwd, message, filePaths, sendGitProgress(event, actionId), options)
-  ));
-  handle('shell:git-push', HARNESS_ONLY, (event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId)));
-  handle('shell:git-pull', HARNESS_ONLY, (event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId)));
-  handle('shell:git-create-change-request', HARNESS_ONLY, (event, cwd, input, actionId) => (
+  )));
+  handle('shell:git-push', HARNESS_ONLY, guardGitIpc((event, cwd, actionId) => gitPush(cwd, sendGitProgress(event, actionId))));
+  handle('shell:git-pull', HARNESS_ONLY, guardGitIpc((event, cwd, actionId) => gitPull(cwd, sendGitProgress(event, actionId))));
+  handle('shell:git-create-change-request', HARNESS_ONLY, guardGitIpc((event, cwd, input, actionId) => (
     gitCreateChangeRequest(cwd, input, sendGitProgress(event, actionId))
-  ));
-  handle('shell:git-publish', HARNESS_ONLY, (event, cwd, input, actionId) => (
+  )));
+  handle('shell:git-publish', HARNESS_ONLY, guardGitIpc((event, cwd, input, actionId) => (
     gitPublishRepository(cwd, input, sendGitProgress(event, actionId))
-  ));
+  )));
   handle('shell:open-workspace-path', HARNESS_ONLY, (_event, cwd, relativePath) => openWorkspacePath(cwd, relativePath));
   handle('shell:list-dir', HARNESS_ONLY, (_event, cwd, relativePath) => listDir(cwd, relativePath));
   handle('shell:read-file', HARNESS_ONLY, (_event, cwd, relativePath) => readFile(cwd, relativePath));
@@ -361,13 +365,13 @@ function registerIpc({
   handle('shell:open-with-default', HARNESS_ONLY, (_event, cwd, relativePath) => (
     openWithSystemDefault({ cwd, relativePath })
   ));
-  handle('shell:git-stage', HARNESS_ONLY, (_event, cwd, relativePath) => gitStage(cwd, relativePath));
-  handle('shell:git-unstage', HARNESS_ONLY, (_event, cwd, relativePath) => gitUnstage(cwd, relativePath));
-  handle('shell:git-discard', HARNESS_ONLY, (_event, cwd, relativePath) => gitDiscard(cwd, relativePath));
-  handle('shell:git-status-entries', HARNESS_ONLY, (_event, cwd) => gitStatusEntries(cwd));
-  handle('shell:git-branch-list', HARNESS_ONLY, (_event, cwd) => gitBranchList(cwd));
-  handle('shell:git-switch-branch', HARNESS_ONLY, (_event, cwd, ref) => gitSwitchBranch(cwd, ref));
-  handle('shell:git-create-branch', HARNESS_ONLY, (_event, cwd, name) => gitCreateBranch(cwd, name));
+  handle('shell:git-stage', HARNESS_ONLY, guardGitIpc((_event, cwd, relativePath) => gitStage(cwd, relativePath)));
+  handle('shell:git-unstage', HARNESS_ONLY, guardGitIpc((_event, cwd, relativePath) => gitUnstage(cwd, relativePath)));
+  handle('shell:git-discard', HARNESS_ONLY, guardGitIpc((_event, cwd, relativePath) => gitDiscard(cwd, relativePath)));
+  handle('shell:git-status-entries', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitStatusEntries(cwd)));
+  handle('shell:git-branch-list', HARNESS_ONLY, guardGitIpc((_event, cwd) => gitBranchList(cwd)));
+  handle('shell:git-switch-branch', HARNESS_ONLY, guardGitIpc((_event, cwd, ref) => gitSwitchBranch(cwd, ref)));
+  handle('shell:git-create-branch', HARNESS_ONLY, guardGitIpc((_event, cwd, name) => gitCreateBranch(cwd, name)));
   const pty = registerPtyIpc(ipcMain, undefined, { authorize: authorizeHarness });
   const preview = registerPreviewIpc(ipcMain, undefined, { authorize: authorizeHarness });
 
