@@ -103,6 +103,7 @@
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/ui-settings-remote" },
+    { "path": "./packages/client/ui-settings-market" },
     { "path": "./packages/client/ui-settings-mcp" },
     { "path": "./packages/client/ui-settings-skills" },
     { "path": "./packages/client/locale" },
