@@ -6,9 +6,7 @@ const EventEmitter = require('events');
 const { loadConfig, configPath } = require('./config');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
-const { prependPath } = require('../shared/env-path');
-const { applyDesktopDshHome } = require('../shared/dsh-home');
-const { applyOfficialDeepSeekSpawnEnv } = require('../shared/official-deepseek-env');
+const { childSpawnEnv } = require('../shared/child-spawn-env');
 const { desktopInstallEnv } = require('./desktop-install-control');
 const { readPin } = require('../shared/harness-upstream');
 
@@ -574,12 +572,6 @@ class DshManager extends EventEmitter {
   }
 
   spawnEnv(config, nodeBin) {
-    const env = applyDesktopDshHome({ ...process.env });
-    delete env.ELECTRON_RUN_AS_NODE;
-    delete env.ELECTRON_NO_ASAR;
-    applyOfficialDeepSeekSpawnEnv(env, config);
-    env.npm_config_update_notifier = 'false';
-    env.npm_config_yes = 'true';
     const extras = [];
     if (process.env.APPDATA) {
       extras.push(path.join(process.env.APPDATA, 'npm'));
@@ -587,14 +579,18 @@ class DshManager extends EventEmitter {
     if (nodeBin) {
       extras.push(path.dirname(nodeBin));
     }
+    let root = null;
     try {
-      const root = harnessRoot();
+      root = harnessRoot();
       extras.push(path.join(root, 'node_modules', '.bin'));
-      env.DSH_HARNESS_ROOT = root;
     } catch {
       // app not ready
     }
-    prependPath(env, extras);
+    const env = childSpawnEnv(config, { extras });
+    env.npm_config_yes = 'true';
+    if (root) {
+      env.DSH_HARNESS_ROOT = root;
+    }
     Object.assign(env, desktopInstallEnv());
     return env;
   }

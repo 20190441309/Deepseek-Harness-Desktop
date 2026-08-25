@@ -6,8 +6,7 @@ const { app } = require('electron');
 const { loadConfig } = require('./config');
 const { resolveNodeBin, sourceHarnessStatus } = require('./dsh');
 const { projectRoot, harnessRoot } = require('./paths');
-const { applyDesktopDshHome } = require('../shared/dsh-home');
-const { applyOfficialDeepSeekSpawnEnv } = require('../shared/official-deepseek-env');
+const { childSpawnEnv } = require('../shared/child-spawn-env');
 const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha, getMarketplacePlugin } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
@@ -22,8 +21,6 @@ const {
   parseGithubSpec,
   isAllowedMarketplaceSpec,
 } = require('./marketplace-spec');
-const { prependPath } = require('../shared/env-path');
-
 const ALLOW_HINT = /ignored build scripts|allowbuilds|approve-builds|blocked.*prepare|pnpm-workspace\.yaml/i;
 
 function whichAll(command) {
@@ -85,13 +82,6 @@ function ensurePnpmShim(nodeBin) {
 }
 
 function pluginEnv(nodeBin) {
-  const config = loadConfig();
-  const env = applyDesktopDshHome({ ...process.env });
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.ELECTRON_NO_ASAR;
-  applyOfficialDeepSeekSpawnEnv(env, config);
-  env.npm_config_update_notifier = 'false';
-  env.CI = env.CI || '1';
   const extras = [];
   const shim = ensurePnpmShim(nodeBin);
   if (shim) {
@@ -103,7 +93,8 @@ function pluginEnv(nodeBin) {
   if (process.env.APPDATA) {
     extras.push(path.join(process.env.APPDATA, 'npm'));
   }
-  prependPath(env, extras);
+  const env = childSpawnEnv(loadConfig(), { extras });
+  env.CI = env.CI || '1';
   return env;
 }
 

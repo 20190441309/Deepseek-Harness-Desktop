@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-home` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 启动器只读导入范围扩到 `settings.yaml` 白名单节 / 被引用凭据 / `.agent-presets` / home `AGENTS.md`（官方仍只读）；packaged 下 `DSHD_HOME` 需 `DSHD_ALLOW_ENV_HOME=1`；`isOfficialDeepSeekBaseUrl` 仅 https |
+| **last verified** | 2026-08-25 — `dsh web` / `dsh plugin` 子进程环境的公共部分（DSH_HOME 覆盖、Electron 变量清理、DEEPSEEK_* 门禁、PATH extras）合并为单实现 `src/shared/child-spawn-env.js`；行为不变，`spawnEnv` / `pluginEnv` 只保留各自的 PATH 顺序与附加项 |
 
 ## User paths
 
@@ -29,7 +29,7 @@
 - `src/shared/dsh-home.js` 与其单测
 - `src/main/open-dsh-home.js`、`ipc.js`、`src/preload/index.js` 与其单测
 - `vendor/deepseek-harness/packages/client/ui-settings-general` 的 About 页 / desktop-shell / 词典
-- `src/shared/official-deepseek-env.js` 与其单测
+- `src/shared/official-deepseek-env.js`、`src/shared/child-spawn-env.js` 与其单测
 - `src/main/index.js`、`dsh.js`、`plugins.js`、`marketplace-install.js`、`workspace-authority.js`
 - `src/shared/themes.js` 读 `settings.yaml` 的路径
 - `scripts/smoke-workspace.mjs` 与 `qa:source` / `qa:composer` / `qa:packaged` / packaged smoke 的 spawn 环境
