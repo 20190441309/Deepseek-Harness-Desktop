@@ -54,7 +54,8 @@ test('inspectPlugins flags suspects and presets without deleting the latter', ()
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').suspect, true);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').disabled, true);
   assert.equal(isPresetPlugin('dsh-usage-panel'), true);
-  assert.equal(isPresetPlugin('dshbot'), true);
+  // dshbot is a standalone user plugin now, so forensics may suspect/disable it.
+  assert.equal(isPresetPlugin('dshbot'), false);
   assert.equal(isPresetPlugin('evil-pack'), false);
 });
 

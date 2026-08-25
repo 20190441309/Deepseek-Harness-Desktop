@@ -50,7 +50,7 @@
 
 **每次发布前**（GitHub Release 或分发该 SHA 的 Setup）：对 **该 CI SHA** 走完本表，写下 `docs/qa/results/<日期>/` 执行报告，填 §16 且勾「Release 将上传同一 SHA」。没有这份绑定 CI SHA 的报告，**禁止发版**。
 
-**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免），且 §16 绑定 CI artifact SHA。** 手机远程已停放：TC-REM-001…003 标 **N/A**，不计入 P0 门禁，也不得标 Pass。dshbot 已停放：TC-EXT-007 标 **N/A**。当前没有远程/dshbot 书面豁免条。P1 失败记入发布说明或豁免单。P2 记入后续迭代。
+**「可交付」= 全部 P0 = Pass（或合法 Blocked+书面豁免），且 §16 绑定 CI artifact SHA。** 手机远程已停放：TC-REM-001…003 标 **N/A**，不计入 P0 门禁，也不得标 Pass。dshbot 已拆为独立插件：TC-EXT-007 降为 **P1**（默认不装：无页签 + 启动不阻断）。当前没有远程书面豁免条。P1 失败记入发布说明或豁免单。P2 记入后续迭代。
 
 **造障类 P0**（插件弄挂、杀子进程、强制升级包）：能造则测；本轮无法安全造障时标 **Blocked**，附原因，由产品负责人决定是否豁免，**不得静默标 Pass**。
 
@@ -769,11 +769,11 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 可进入；取消无坏状态。
 
-### TC-EXT-007 · 预置 dshbot 侧栏入口 · N/A（产品停放）
+### TC-EXT-007 · dshbot 独立插件（默认不装） · P1
 
-**步骤：** 确认侧栏**没有**「机器人 / Bots」页签；启动不因 dshbot 半装而失败。
+**步骤：** 默认安装确认侧栏**没有**「机器人 / Bots」页签，且启动日志无 dshbot 阻断；（可选）设置 → 插件市场第一方 dshbot 行一键安装（或 `dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot`）后重启，页签出现、可建群；卸载 dshbot 后重启，页签消失、`.agent-presets/dshbot-room` 被清理。
 
-**期望：** 与 `DSHBOT_FEATURE_ENABLED = false` 一致。重新打开产品时恢复本卡 P0 步骤（侧栏入口 + 群聊手测）。
+**期望：** dshbot 是独立可发布插件：桌面从不预置、从不因它启动失败；卸载无残留（feature 卡 `dshbot`）。
 
 ### TC-EXT-008 · 设置内用量统计 · P0
 
@@ -1051,7 +1051,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-EXT-004 | P1 |  |  | 未安装市场插件 | Trent | 2026-08-23 |
 | TC-EXT-005 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-EXT-006 | P1 | Pass | CI SHA + 已装 exe | 设置有 MCP/技能 | Trent | 2026-08-23 |
-| TC-EXT-007 | P0 | Pass | CI SHA + 已装 exe | 无机器人入口；已安装空 | Trent | 2026-08-23 |
+| TC-EXT-007 | P1 | 待测 | 待绑 CI SHA + 已装 exe | 独立插件：默认无页签；可选市场一键装/卸（不得用 2026-08-23 停放 Pass） |  |  |
 | TC-EXT-008 | P0 |  | 源码实机 53709（非 CI 包） | 设置有「用量统计」；零用量 KPI；安装包未测 | Trent | 2026-08-23 |
 | TC-DESK-001 | P0 | Pass | CI SHA + 已装 exe | 关窗无标题；进程与 3080 仍在 | Trent | 2026-08-23 |
 | TC-DESK-002 | P0 | Pass | CI SHA `47ad187` + 已装 exe | `run-installed-shell-p0.mjs` invokeTrayAction 五项 | Trent | 2026-08-24 |

@@ -18,6 +18,8 @@ import {
 } from './catalog.js';
 import { abortRoomMemberTurns, registerAskParticipant } from './ask-participant.js';
 import { nextTurnEpoch } from './group-chat-host.js';
+import { buildAgentDirectoryPrompt } from './agent-messaging.js';
+import { ensureRoomPreset } from './room-preset.js';
 import {
   ackPendingInboxDrain,
   registerInboxDrain,
@@ -97,6 +99,14 @@ function dshHomeDir() {
 export function apply(ctx, config = {}) {
   const maxSpeaks = config.maxSpeaks ?? DEFAULT_MAX_SPEAKS;
   const maxRounds = config.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  // Standalone install path: provision the dshbot-room agent preset into
+  // $DSH_HOME so sessions.create({ agentPreset: 'dshbot-room' }) mounts
+  // without any desktop shell copying presets for us.
+  try {
+    ensureRoomPreset(dshHomeDir());
+  } catch {
+    // Room creation surfaces a missing preset; 1:1 bots are unaffected.
+  }
   registerAskParticipant(ctx);
   const scope = ctx.settings.register(NS, CatalogSchema);
   const getScope = () => scope;
@@ -193,6 +203,19 @@ export function apply(ctx, config = {}) {
       const home = dshHomeDir();
       const memory = home ? readBotMemory(home, bot.id) : '';
       return composePersonaWithMemory(base, memory);
+    },
+  });
+  // Grok agent-directory prompt: a 1:1 bot sees its teammates and rooms so
+  // send_to_agent is a discoverable capability, not a hidden one.
+  ctx.systemPrompt.section({
+    name: 'dshbot:teammates',
+    order: 22,
+    text: (assembleCtx) => {
+      const sessionId = assembleCtx.agent?.session?.id ?? assembleCtx.agent?.id;
+      const items = scope.get()?.items ?? [];
+      const bot = items.find((entry) => entry.sessionId === sessionId && entry.kind !== 'room');
+      if (!bot) return '';
+      return buildAgentDirectoryPrompt(items, bot.id);
     },
   });
 }

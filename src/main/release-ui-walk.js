@@ -253,8 +253,9 @@ async function waitUntil(probe, timeoutMs, intervalMs = 200) {
   return last;
 }
 
-function pageEval(wc, fn) {
-  return wc.executeJavaScript(`(() => { ${PAGE_HELPERS}; return (${fn.toString()})(); })()`);
+function pageEval(wc, fn, ...args) {
+  const serialized = args.map((value) => JSON.stringify(value)).join(', ');
+  return wc.executeJavaScript(`(() => { ${PAGE_HELPERS}; return (${fn.toString()})(${serialized}); })()`);
 }
 
 function pageScript(wc, body, args) {
@@ -1185,25 +1186,44 @@ async function runReleaseUiWalk(wc, helpers) {
   rec('market.section', Boolean(marketOpened && market?.nav), marketOpened ? '' : 'market section missing');
   rec('market.discover', Boolean(market?.discover), '');
 
-  await clickNamed(wc, '^installed$|^已安装$');
-  const installed = await waitUntil(() => pageEval(wc, () => {
+  // The installed truth comes from the profile manifest (main process), not
+  // from scraping the async Installed list: the list fetch can land after
+  // the scrape and must not flip the two-state gate.
+  let dshbotInstalled = false;
+  try {
+    const { listInstalledPlugins } = require('./plugins');
+    const profile = listInstalledPlugins();
+    dshbotInstalled = (profile.plugins || []).some((row) => row.name === 'dshbot')
+      || (profile.bundles || []).includes('dshbot');
+  } catch {
+    // Unreadable profile counts as not installed; the tab checks stay strict.
+  }
+
+  // The tab label grows a count suffix once anything is installed
+  // (「已安装 (1)」), so the click pattern must not anchor on the bare label.
+  await clickNamed(wc, '^(installed|已安装)( \\(\\d+\\))?$');
+  const installed = await waitUntil(() => pageEval(wc, (expectDshbot) => {
     const dialog = dshDialog();
     if (!dialog) return null;
-    const tab = Array.from(dialog.querySelectorAll('[role="tab"]')).find((el) =>
-      /installed|已安装/i.test(dshLabel(el)));
-    const selected = Boolean(tab && tab.getAttribute('aria-selected') === 'true');
     const text = dialog.innerText || '';
-    if (!selected && !/installed|已安装/i.test(text)) return null;
-    return {
-      selected,
-      dshbot: /\bdshbot\b/i.test(text),
-    };
-  }), 8_000);
+    const dshbot = /\bdshbot\b/i.test(text);
+    // The Installed pane is open once its content rendered: the empty-state
+    // copy, the ungrouped section, or an actual row. When the profile says
+    // dshbot is installed, keep polling until the async list shows the row.
+    const paneOpen = /还没有装过社区插件|No community plugins yet|未分组|Ungrouped/i.test(text) || dshbot;
+    if (!paneOpen) return null;
+    if (expectDshbot && !dshbot) return null;
+    return { dshbot };
+  }, dshbotInstalled), 10_000);
   rec('market.installed', Boolean(installed), installed ? '' : 'Installed tab missing');
   rec(
     'plugin.dshbot.market',
-    Boolean(installed?.dshbot),
-    installed?.dshbot ? 'listed on Installed' : 'preset Cordis plugin, not a market catalog row',
+    dshbotInstalled ? Boolean(installed?.dshbot) : true,
+    installed?.dshbot
+      ? 'standalone dshbot listed on Installed'
+      : (dshbotInstalled
+        ? 'dshbot installed but missing from the Installed list'
+        : 'standalone plugin, not installed on this profile'),
     true,
   );
 
@@ -1219,6 +1239,8 @@ async function runReleaseUiWalk(wc, helpers) {
   await dismiss();
   await sleep(300);
 
+  // dshbot is a standalone plugin: the Bots tab may only exist when the
+  // profile actually has dshbot installed (profile manifest above).
   const botsTab = await pageEval(wc, () => {
     const tab = Array.from(document.querySelectorAll('[role="tab"]')).find((el) =>
       dshShown(el) && /(bots|机器人)/i.test(dshLabel(el)));
@@ -1226,14 +1248,17 @@ async function runReleaseUiWalk(wc, helpers) {
   });
   rec(
     'plugin.dshbot.tabAbsent',
-    !botsTab,
-    botsTab ? 'dshbot sidebar tab still visible' : '',
+    dshbotInstalled ? true : !botsTab,
+    botsTab && !dshbotInstalled ? 'bots tab visible without a dshbot install' : '',
   );
-  if (botsTab) {
-    rec('plugin.dshbot.page', false, 'unexpected bots tab while parked', true);
-  } else {
-    rec('plugin.dshbot.page', true, 'skipped while parked', true);
-  }
+  rec(
+    'plugin.dshbot.page',
+    dshbotInstalled ? botsTab : !botsTab,
+    dshbotInstalled
+      ? (botsTab ? 'installed dshbot shows the Bots tab' : 'dshbot installed but Bots tab missing')
+      : 'not installed; tab absent',
+    true,
+  );
   } catch (error) {
     rec('walk.uncaught', false, error && error.stack ? error.stack : String(error));
   }

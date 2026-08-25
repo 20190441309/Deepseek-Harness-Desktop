@@ -47,7 +47,7 @@
 | `plugins.js` / `plugin-runtime-files.js` | 插件列表、禁用 bundles、运行时文件 |
 | `plugin-forensics.js` | 不启内核解析日志嫌疑包 |
 | `plugin-tree-failure.js` / `plugin-recovery-actions.js` | 启动失败恢复 |
-| `dshbot-preset.js` | dshbot 预置 ensure / hide |
+| `dshbot-preset.js` | dshbot 开发预置（config 开关）/ removeDshbotPreset 残留清理 |
 | `harness-extract.js` | 打包 harness 提取 |
 
 ## 壁纸 / 远程 / 桌面壳

@@ -171,13 +171,6 @@ export function isPotentialPassPrefix(text) {
 }
 
 /**
- * @returns {string}
- */
-export function buildGroupRedriveNote() {
-  return '\n(Redelivery: your previous attempt at this turn was interrupted by a direct message to you. The room has NOT seen any reply from you for the messages above — anything you said or did while handling that direct message stayed in that private chat. If you already did the work, send the result to this room with send_room_message now; otherwise take the turn normally.)';
-}
-
-/**
  * @param {GroupMessage} message
  * @param {string} viewerId
  * @returns {string}
@@ -274,7 +267,7 @@ export function buildGroupMemberSystemPrompt(member, group, peers, options = {})
       : 'Right now you are speaking in this group chat.',
     options.isSharedRoom === true
       ? 'This is a cross-user room turn. Tool calls and plain text are private scratch space; only send_room_message plain text is delivered to the room.'
-      : 'You have your full toolkit in this room. Do the work first, then deliver the result with send_room_message.',
+      : 'This is a talking-circle turn: send_room_message is the only tool available to you here. Speak from your persona and the conversation so far; do not promise work you cannot do inside this turn.',
     '',
     `Stay fully in character as ${member.name}. The ONLY way to say something the room can see is the send_room_message tool. Keep each message short and conversational. If you have nothing new worth adding, send exactly "(pass)". Never reveal private one-on-one context.`,
   );

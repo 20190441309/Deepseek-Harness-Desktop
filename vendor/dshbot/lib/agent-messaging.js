@@ -5,6 +5,19 @@
 export const AGENT_MESSAGE_MAX_TEXT = 8_000;
 export const AGENT_INBOUND_WAKE_CUE = '[agent]';
 export const SAND_SEND_TO_AGENT_TOOL_NAME = 'send_to_agent';
+export const AGENT_DIRECTORY_PROMPT_LIMIT = 12;
+const DIRECTORY_DESCRIPTION_MAX = 200;
+
+/**
+ * @param {string | undefined} text
+ * @param {number} max
+ * @returns {string}
+ */
+function clampLine(text, max) {
+  const line = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (line.length <= max) return line;
+  return `${line.slice(0, max - 1)}…`;
+}
 
 /**
  * @param {string | undefined} text
@@ -80,6 +93,54 @@ export function buildAgentInboundWakePrompt(message) {
     '',
     `If it needs a reply or an action, handle it: reply to ${fromName} with ${SAND_SEND_TO_AGENT_TOOL_NAME}${fromId ? ` (their id: ${fromId})` : ''}, which reaches them on a later turn — not a live back-and-forth — and use SendMessage / your user chat only when you have a real result to share. If it is just an FYI with nothing for you to do, it is fine to stay silent — no need to reply just to acknowledge it.`,
   ];
+  return lines.join('\n');
+}
+
+/**
+ * Grok buildAgentDirectoryPrompt adapted to the dshbot catalog: list the
+ * other 1:1 bots and the rooms this bot belongs to, so send_to_agent is a
+ * surfaced capability. Empty when the bot has no teammates and no rooms.
+ * @param {readonly object[]} items
+ * @param {string} selfId
+ * @returns {string}
+ */
+export function buildAgentDirectoryPrompt(items, selfId) {
+  const others = items.filter(
+    (entry) => entry.kind !== 'room' && entry.id !== selfId && entry.hidden !== true,
+  );
+  const groups = items.filter(
+    (entry) => entry.kind === 'room' && (entry.memberBotIds ?? []).includes(selfId),
+  );
+  if (others.length === 0 && groups.length === 0) return '';
+  const lines = [
+    'Your teammates: the other bots this user runs. Each is its own assistant with its own chat, persona, and memory.',
+    `Messaging is ASYNCHRONOUS: call ${SAND_SEND_TO_AGENT_TOOL_NAME} with a target id and your message; it is delivered and returns right away. Do not wait or poll for a reply — one arrives later as its own message that wakes you (the cue ${AGENT_INBOUND_WAKE_CUE}). The target can be a single bot or a group room you belong to; posting to a room reaches every member.`,
+    'Use it with judgment: it is a real side effect that wakes another bot. Message a teammate only when it genuinely helps the user\'s goal, and never relay the user\'s unfiltered words verbatim.',
+  ];
+  if (others.length > 0) {
+    lines.push('Teammates you can message right now:');
+    for (const bot of others.slice(0, AGENT_DIRECTORY_PROMPT_LIMIT)) {
+      const name = String(bot.name ?? '').trim() || bot.id;
+      const description = clampLine(bot.description, DIRECTORY_DESCRIPTION_MAX);
+      lines.push(`- ${name} (id: ${bot.id})${description ? ` — ${description}` : ''}`);
+    }
+    if (others.length > AGENT_DIRECTORY_PROMPT_LIMIT) {
+      lines.push('…and more on the Bots tab.');
+    }
+  }
+  if (groups.length > 0) {
+    lines.push(`Group rooms you are in (${SAND_SEND_TO_AGENT_TOOL_NAME} with the room id posts to all members):`);
+    for (const room of groups.slice(0, AGENT_DIRECTORY_PROMPT_LIMIT)) {
+      const name = String(room.name ?? '').trim() || room.id;
+      const memberNames = (room.memberBotIds ?? [])
+        .map((id) => items.find((entry) => entry.id === id && entry.kind !== 'room'))
+        .filter(Boolean)
+        .map((bot) => String(bot.name ?? '').trim() || bot.id)
+        .join(', ');
+      lines.push(`- ${name} (id: ${room.id})${memberNames ? ` — with ${memberNames}` : ''}`);
+    }
+    lines.push('This conversation is your private 1:1 with the user; room members cannot see it. Don\'t @-mention anyone else here.');
+  }
   return lines.join('\n');
 }
 

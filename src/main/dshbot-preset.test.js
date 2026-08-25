@@ -8,13 +8,16 @@ const path = require('path');
 const {
   DSHBOT_BEGIN,
   DSHBOT_END,
-  DSHBOT_FEATURE_ENABLED,
+  isDshbotPresetEnabled,
   ensureDshbotPlugin,
-  hideDshbotPlugin,
+  removeDshbotPreset,
 } = require('./dshbot-preset');
 
-test('dshbot feature is parked for 0.2.7', () => {
-  assert.equal(DSHBOT_FEATURE_ENABLED, false);
+test('dshbot dev preset is config opt-in and off by default', () => {
+  assert.equal(isDshbotPresetEnabled(undefined), false);
+  assert.equal(isDshbotPresetEnabled({}), false);
+  assert.equal(isDshbotPresetEnabled({ dshbotPreset: 'yes' }), false);
+  assert.equal(isDshbotPresetEnabled({ dshbotPreset: true }), true);
 });
 
 function writeSource(dir) {
@@ -23,7 +26,7 @@ function writeSource(dir) {
   fs.mkdirSync(path.join(dir, 'presets', 'dshbot-room'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
     name: 'dshbot',
-    version: '0.1.0',
+    version: '0.2.0',
     type: 'module',
     main: 'lib/index.js',
     exports: {
@@ -57,7 +60,7 @@ function writeSource(dir) {
   return dir;
 }
 
-test('ensureDshbotPlugin copies the bundled package, room preset, and inserts a managed patch', () => {
+test('ensureDshbotPlugin copies the package and inserts a managed patch, but no preset', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
   try {
@@ -75,17 +78,16 @@ test('ensureDshbotPlugin copies the bundled package, room preset, and inserts a 
     assert.ok(patch.includes(DSHBOT_END));
     assert.ok(patch.includes('id: dsh-bot'));
     assert.match(patch, /name: ['"]dshbot['"]/);
-    const preset = path.join(home, '.agent-presets', 'dshbot-room', 'agent.cordis.yml');
-    assert.equal(fs.existsSync(preset), true);
-    const manifestFile = path.join(profileDir, 'package.json');
-    assert.equal(fs.existsSync(manifestFile), false);
+    // The plugin provisions its own room preset at apply time; the desktop
+    // shell no longer copies it.
+    assert.equal(fs.existsSync(path.join(home, '.agent-presets', 'dshbot-room')), false);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
 });
 
-test('ensureDshbotPlugin refreshes the bundled copy on later starts', () => {
+test('ensureDshbotPlugin refreshes the dev copy on later starts', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
   try {
@@ -112,7 +114,7 @@ test('ensureDshbotPlugin skips the patch insert when the profile already lists t
     const profileDir = path.join(home, 'profiles', 'web');
     fs.mkdirSync(profileDir, { recursive: true });
     fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({
-      dependencies: { dshbot: '0.1.0' },
+      dependencies: { dshbot: '0.2.0' },
       dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app', 'dshbot'] } },
     }, null, 2)}\n`, 'utf8');
     fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
@@ -151,7 +153,7 @@ test('ensureDshbotPlugin does not replace a pnpm-installed dshbot directory', ()
   }
 });
 
-test('ensureDshbotPlugin fails closed when the bundled package is missing', () => {
+test('ensureDshbotPlugin fails closed when the workspace package is missing', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-missing-'));
   try {
@@ -167,82 +169,87 @@ test('ensureDshbotPlugin fails closed when the bundled package is missing', () =
   }
 });
 
-test('ensureDshbotPlugin fails closed when the room preset is missing', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
-  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
-  try {
-    fs.rmSync(path.join(source, 'presets'), { recursive: true, force: true });
-    const result = ensureDshbotPlugin({
-      sourceDir: source,
-      profileDir: path.join(home, 'profiles', 'web'),
-    });
-    assert.equal(result.ok, false);
-    assert.match(result.error, /missing-source:preset/);
-  } finally {
-    fs.rmSync(home, { recursive: true, force: true });
-    fs.rmSync(source, { recursive: true, force: true });
-  }
-});
-
-test('repo vendors dshbot for offline profile copy', () => {
+test('repo keeps the standalone dshbot package publishable', () => {
   const root = path.join(__dirname, '..', '..', 'vendor', 'dshbot');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'dshbot');
+  assert.equal(pkg.private, undefined);
+  assert.equal(typeof pkg.repository, 'object');
+  assert.ok(Array.isArray(pkg.files) && pkg.files.includes('presets'));
   assert.equal(fs.existsSync(path.join(root, 'client', 'client.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'lib', 'index.js')), true);
+  assert.equal(fs.existsSync(path.join(root, 'lib', 'room-preset.js')), true);
   assert.equal(fs.existsSync(path.join(root, 'cordis.patch.yml')), true);
   assert.equal(fs.existsSync(path.join(root, 'presets', 'dshbot-room', 'agent.cordis.yml')), true);
+  // The unwired parallel orchestrator stays deleted.
+  assert.equal(fs.existsSync(path.join(root, 'lib', 'group-chat-orchestrator.js')), false);
+  assert.equal(JSON.stringify(pkg.exports).includes('group-chat-orchestrator'), false);
 });
 
-test('hideDshbotPlugin strips the managed patch after ensure', () => {
+test('removeDshbotPreset removes patch block, copy, link, and orphan preset', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
   try {
     const profileDir = path.join(home, 'profiles', 'web');
     ensureDshbotPlugin({ sourceDir: source, profileDir });
-    const result = hideDshbotPlugin({ profileDir });
+    // Simulate the plugin's self-provisioned preset from an earlier run.
+    const presetDir = path.join(home, '.agent-presets', 'dshbot-room');
+    fs.mkdirSync(presetDir, { recursive: true });
+    fs.writeFileSync(path.join(presetDir, 'agent.cordis.yml'), '- id: persona\n', 'utf8');
+    const result = removeDshbotPreset({ profileDir });
     assert.equal(result.ok, true);
     assert.equal(result.stripped, true);
+    assert.equal(result.removedCopy, true);
+    assert.equal(result.removedLink, true);
+    assert.equal(result.removedPreset, true);
+    assert.equal(result.changed, true);
     const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
     assert.equal(patch.includes(DSHBOT_BEGIN), false);
     assert.equal(patch.includes('id: dsh-bot'), false);
-    assert.equal(fs.existsSync(path.join(profileDir, 'desktop-plugins', 'dshbot', 'package.json')), true);
+    assert.equal(fs.existsSync(path.join(profileDir, 'desktop-plugins', 'dshbot')), false);
+    assert.equal(fs.existsSync(path.join(profileDir, 'node_modules', 'dshbot')), false);
+    assert.equal(fs.existsSync(presetDir), false);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
 });
 
-test('hideDshbotPlugin drops dshbot from profile bundles and dependencies', () => {
+test('removeDshbotPreset keeps a user-installed dshbot and its preset', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   try {
     const profileDir = path.join(home, 'profiles', 'web');
-    fs.mkdirSync(profileDir, { recursive: true });
+    const installed = path.join(profileDir, 'node_modules', 'dshbot');
+    fs.mkdirSync(installed, { recursive: true });
+    fs.writeFileSync(path.join(installed, 'package.json'), '{"name":"dshbot","version":"0.2.0"}\n', 'utf8');
     fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({
-      dependencies: { dshbot: '0.1.0', other: '1.0.0' },
-      dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app', 'dshbot'] } },
+      dependencies: { dshbot: '0.2.0' },
     }, null, 2)}\n`, 'utf8');
-    const result = hideDshbotPlugin({ profileDir });
+    const presetDir = path.join(home, '.agent-presets', 'dshbot-room');
+    fs.mkdirSync(presetDir, { recursive: true });
+    fs.writeFileSync(path.join(presetDir, 'agent.cordis.yml'), '- id: persona\n', 'utf8');
+    const result = removeDshbotPreset({ profileDir });
     assert.equal(result.ok, true);
-    assert.equal(result.manifestRemoved, true);
+    assert.equal(result.removedLink, false);
+    assert.equal(result.removedPreset, false);
+    // User install and manifest dependency are untouched.
+    assert.equal(fs.existsSync(path.join(installed, 'package.json')), true);
     const manifest = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'));
-    assert.equal(Object.prototype.hasOwnProperty.call(manifest.dependencies, 'dshbot'), false);
-    assert.equal(manifest.dependencies.other, '1.0.0');
-    assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-web-app']);
+    assert.equal(manifest.dependencies.dshbot, '0.2.0');
+    assert.equal(fs.existsSync(presetDir), true);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-test('hideDshbotPlugin is a no-op when the profile has no dshbot insert', () => {
+test('removeDshbotPreset is a no-op on a clean profile', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   try {
     const profileDir = path.join(home, 'profiles', 'web');
     fs.mkdirSync(profileDir, { recursive: true });
-    const result = hideDshbotPlugin({ profileDir });
+    const result = removeDshbotPreset({ profileDir });
     assert.equal(result.ok, true);
-    assert.equal(result.stripped, false);
-    assert.equal(result.manifestRemoved, false);
+    assert.equal(result.changed, false);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
