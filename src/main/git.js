@@ -992,6 +992,11 @@ async function gitBranchList(cwd) {
       isRemote,
       isCurrent: headMark === '*',
       remoteName: isRemote ? short.split('/')[0] : undefined,
+      // `gitSwitchBranch` passes this name through `safeRefName`, whose
+      // injection whitelist is narrower than what git itself allows (Unicode,
+      // `@`, `+`, ...). Flag rows the picker must disable instead of listing a
+      // branch the switch IPC would then reject.
+      ...(safeRefName(short) === null ? { switchable: false } : {}),
     });
   }
   const sym = await runGit(root, ['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD']);
@@ -1004,10 +1009,22 @@ async function gitBranchList(cwd) {
 }
 
 /**
+ * Rejection for a ref name outside `safeRefName`'s injection whitelist. Names
+ * git itself accepts (Unicode, `@`, `+`, ...) can hit this; the whitelist
+ * stays narrow on purpose, and `gitBranchList` flags such rows `switchable:
+ * false` so the picker disables them instead of surfacing this failure.
+ */
+const UNSUPPORTED_REF_NAME_MESSAGE =
+  'Branch name contains characters the desktop cannot pass to git safely.';
+
+/**
  * Check this workspace out onto `ref`.
  * `--ignore-other-worktrees` is required: Git otherwise refuses a branch
  * already checked out in another worktree (ChisaCode, Cursor, etc.), and the
  * titlebar picker means "switch this folder", not "move the other tree".
+ * A remote-tracking row without a local branch (`origin/feature-x`) checks
+ * out through `--track`, which creates the local tracking branch instead of
+ * detaching HEAD at the remote ref.
  * @param {unknown} cwd
  * @param {unknown} ref
  */
@@ -1015,8 +1032,14 @@ async function gitSwitchBranch(cwd, ref) {
   const root = asCwd(cwd);
   const name = safeRefName(ref);
   if (!root) return fail('Git status is unavailable.');
-  if (!name) return fail('Invalid branch name.');
-  const result = await runGit(root, ['checkout', '--ignore-other-worktrees', name]);
+  if (!name) return fail(UNSUPPORTED_REF_NAME_MESSAGE);
+  const args = ['checkout', '--ignore-other-worktrees'];
+  const localRef = await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`]);
+  if (localRef.code !== 0) {
+    const remoteRef = await runGit(root, ['show-ref', '--verify', '--quiet', `refs/remotes/${name}`]);
+    if (remoteRef.code === 0) args.push('--track');
+  }
+  const result = await runGit(root, [...args, name]);
   if (result.missing) return fail('Git is unavailable.');
   if (result.timedOut) return fail('Git command timed out.');
   if (result.code !== 0) return fail(result.stderr.trim() || result.stdout.trim() || 'git checkout failed.');
@@ -1028,7 +1051,7 @@ async function gitCreateBranch(cwd, name) {
   const root = asCwd(cwd);
   const branch = safeRefName(name);
   if (!root) return fail('Git status is unavailable.');
-  if (!branch) return fail('Invalid branch name.');
+  if (!branch) return fail(UNSUPPORTED_REF_NAME_MESSAGE);
   const result = await runGit(root, ['checkout', '-b', branch]);
   if (result.missing) return fail('Git is unavailable.');
   if (result.timedOut) return fail('Git command timed out.');

@@ -14,6 +14,7 @@ import { readXtermFont, terminalFontOptions, terminalThemeFromApp } from './term
 import { GhosttyTerminalSurface } from './ghostty/surface.ts'
 import {
   isTerminalClearShortcut,
+  isTerminalDrawerShortcut,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
 } from './ghostty/terminalKeyShortcuts.ts'
@@ -83,6 +84,14 @@ export function TerminalPane({
     const font = readXtermFont(host)
     const setupFont = terminalFontOptions(font.fontFamily, font.fontSize)
     function handleBeforeKey(event: KeyboardEvent): boolean {
+      if (isTerminalDrawerShortcut(event)) {
+        // Leave Ctrl/Cmd+` to the titlebar drawer listener: prevent only the
+        // browser default and let the event bubble to the window keydown
+        // handler. Returning false routes the release through
+        // suppressedKeyCodes so the PTY never sees a lone keyup.
+        event.preventDefault()
+        return false
+      }
       const navigationData = terminalNavigationShortcutData(event)
       if (navigationData !== null) {
         event.preventDefault()

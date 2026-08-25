@@ -32,6 +32,25 @@ Desktop development: set `dshbotPreset: true` in the desktop config to have
 the shell copy this workspace package into the web profile on start
 (non-blocking; a failure only logs).
 
+## Publishing to npm
+
+The package is publish-ready (`publishConfig.access: public`, MIT LICENSE,
+`files` manifest locked by `src/main/dshbot-publish-manifest.test.js`).
+To release `dshbot@<semver>`:
+
+```sh
+# 1. bump "version" in vendor/dshbot/package.json (and land it on main)
+# 2. preflight locally (also runs in the desktop unit suite)
+node scripts/check-dshbot-publish.mjs dshbot-v0.2.0
+# 3. tag exactly dshbot-v<version> and push; CI publishes with provenance
+git tag dshbot-v0.2.0 && git push origin dshbot-v0.2.0
+```
+
+The `Publish dshbot` workflow (`.github/workflows/publish-dshbot.yml`)
+requires the `NPM_TOKEN` repository secret (an npm automation token with
+publish rights on the `dshbot` name); without it the job fails with a clear
+message instead of half-publishing.
+
 ## What it does
 
 - Sidebar "Bots" tab (`sidebar.nav.tab` slot): 1:1 bot contacts and group

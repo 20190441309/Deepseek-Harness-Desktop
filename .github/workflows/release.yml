@@ -17,8 +17,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # deepseek-harness 的构建依赖 node:sqlite（Node >= 22.5）
-          node-version: 22
+          # engines 要求 ^22.19.0 || >=24（node:sqlite 等）；.nvmrc 是唯一钉版来源
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install app dependencies
@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install app dependencies

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — B1 pin `copy-ghostty-assets.mjs`（d55468de11）；0.2.7 `%APPDATA%\Deepseek-Harness-Desktop\runtime\0.2.7\…\lib\assets\` 含 ghostty wasm + Nerd Font；`127.0.0.1:3080`（0.2.7 `dsh web`）三 URL 均 200；验收合同 CI 安装包全表 |
+| **last verified** | 2026-08-25 — P1 修复：焦点在 Ghostty 终端内 `` Ctrl+` `` 可开关抽屉（`keybindings.ts` 钉 `[data-terminal-pane]`，`handleBeforeKey` 放行冒泡）；`.xterm` fixtures 清零。此前 2026-08-23 — B1 pin `copy-ghostty-assets.mjs`（d55468de11）；0.2.7 runtime 含 ghostty wasm + Nerd Font；`127.0.0.1:3080` 三 URL 均 200 |
 
 ## User paths
 
@@ -24,6 +24,7 @@
 - `src/main/pty.js` 及 PTY 相关测试
 - `src/main/dsh.js`、`src/shared/ghostty-assets.js` 及对应测试（源码启动 Ghostty 校验/拷贝）
 - Harness `ui-user-terminal`（及桌面接线）
+- Harness `ui-titlebar` 的 keybindings / PanelToggles（面板快捷键判定，2026-08-25 硬化计划扩围）
 - 本卡与 handbook terminal 章
 
 ## Do not touch

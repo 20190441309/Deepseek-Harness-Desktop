@@ -88,45 +88,6 @@ export interface PreviewRecordingSaveInput {
   data: ArrayBuffer
 }
 
-/** automationClick target: a point or a querySelector. */
-export interface PreviewAutomationClickInput {
-  x?: number
-  y?: number
-  selector?: string
-}
-
-/** automationType payload. */
-export interface PreviewAutomationTypeInput {
-  text: string
-  selector?: string
-}
-
-/** automationPress payload. */
-export interface PreviewAutomationPressInput {
-  key: string
-}
-
-/** automationScroll payload. */
-export interface PreviewAutomationScrollInput {
-  x: number
-  y: number
-  deltaX: number
-  deltaY: number
-}
-
-/** automationEvaluate payload. */
-export interface PreviewAutomationEvaluateInput {
-  expression: string
-}
-
-/** automationWaitFor poll conditions. */
-export interface PreviewAutomationWaitForInput {
-  selector?: string
-  text?: string
-  urlIncludes?: string
-  timeoutMs?: number
-}
-
 /** One discovered loopback server. */
 export interface DiscoveredServer {
   url: string
@@ -169,28 +130,6 @@ export interface PreviewShellInjected {
   previewSaveRecording: (id: string, input: PreviewRecordingSaveInput) => Promise<{ ok: boolean; path?: string; message?: string }>
   previewRevealArtifact: (absolutePath: string) => Promise<{ ok: boolean; message?: string }>
   previewCopyArtifactToClipboard: (absolutePath: string) => Promise<{ ok: boolean; message?: string }>
-  previewAutomationStatus: (id: string) => Promise<{
-    ok: boolean
-    available?: boolean
-    url?: string | null
-    title?: string | null
-    loading?: boolean
-    message?: string
-  }>
-  previewAutomationSnapshot: (id: string) => Promise<{
-    ok: boolean
-    title?: string
-    url?: string
-    html?: string
-    screenshot?: { mimeType: string; data: string; width: number; height: number }
-    message?: string
-  }>
-  previewAutomationClick: (id: string, input: PreviewAutomationClickInput) => Promise<{ ok: boolean; message?: string }>
-  previewAutomationType: (id: string, input: PreviewAutomationTypeInput) => Promise<{ ok: boolean; message?: string }>
-  previewAutomationPress: (id: string, input: PreviewAutomationPressInput) => Promise<{ ok: boolean; message?: string }>
-  previewAutomationScroll: (id: string, input: PreviewAutomationScrollInput) => Promise<{ ok: boolean; message?: string }>
-  previewAutomationEvaluate: (id: string, input: PreviewAutomationEvaluateInput) => Promise<{ ok: boolean; value?: unknown; message?: string }>
-  previewAutomationWaitFor: (id: string, input: PreviewAutomationWaitForInput) => Promise<{ ok: boolean; message?: string }>
   previewState: (id: string) => Promise<PreviewNavState>
   onPreviewStateChange: (handler: (state: PreviewNavState) => void) => () => void
   previewOpenDevTools: (id: string) => Promise<{ ok: boolean; id?: string }>
@@ -228,14 +167,6 @@ interface PreviewShell {
   previewSaveRecording?: PreviewShellInjected['previewSaveRecording']
   previewRevealArtifact?: PreviewShellInjected['previewRevealArtifact']
   previewCopyArtifactToClipboard?: PreviewShellInjected['previewCopyArtifactToClipboard']
-  previewAutomationStatus?: PreviewShellInjected['previewAutomationStatus']
-  previewAutomationSnapshot?: PreviewShellInjected['previewAutomationSnapshot']
-  previewAutomationClick?: PreviewShellInjected['previewAutomationClick']
-  previewAutomationType?: PreviewShellInjected['previewAutomationType']
-  previewAutomationPress?: PreviewShellInjected['previewAutomationPress']
-  previewAutomationScroll?: PreviewShellInjected['previewAutomationScroll']
-  previewAutomationEvaluate?: PreviewShellInjected['previewAutomationEvaluate']
-  previewAutomationWaitFor?: PreviewShellInjected['previewAutomationWaitFor']
   previewState?: PreviewShellInjected['previewState']
   onPreviewStateChange?: PreviewShellInjected['onPreviewStateChange']
   previewOpenDevTools?: PreviewShellInjected['previewOpenDevTools']
@@ -293,14 +224,6 @@ export function readPreviewShell(): PreviewShellInjected {
     previewCopyArtifactToClipboard: absolutePath => (
       shell?.previewCopyArtifactToClipboard?.(absolutePath) ?? Promise.resolve({ ok: false })
     ),
-    previewAutomationStatus: id => shell?.previewAutomationStatus?.(id) ?? Promise.resolve({ ok: false }),
-    previewAutomationSnapshot: id => shell?.previewAutomationSnapshot?.(id) ?? Promise.resolve({ ok: false }),
-    previewAutomationClick: (id, input) => shell?.previewAutomationClick?.(id, input) ?? Promise.resolve({ ok: false }),
-    previewAutomationType: (id, input) => shell?.previewAutomationType?.(id, input) ?? Promise.resolve({ ok: false }),
-    previewAutomationPress: (id, input) => shell?.previewAutomationPress?.(id, input) ?? Promise.resolve({ ok: false }),
-    previewAutomationScroll: (id, input) => shell?.previewAutomationScroll?.(id, input) ?? Promise.resolve({ ok: false }),
-    previewAutomationEvaluate: (id, input) => shell?.previewAutomationEvaluate?.(id, input) ?? Promise.resolve({ ok: false }),
-    previewAutomationWaitFor: (id, input) => shell?.previewAutomationWaitFor?.(id, input) ?? Promise.resolve({ ok: false }),
     previewState: id => shell?.previewState?.(id) ?? Promise.resolve(missing()),
     onPreviewStateChange: handler => (
       typeof shell?.onPreviewStateChange === 'function'

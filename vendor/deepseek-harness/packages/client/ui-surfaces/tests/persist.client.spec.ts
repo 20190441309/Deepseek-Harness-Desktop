@@ -175,9 +175,17 @@ describe('surfaces persist', () => {
     expect(readDrafts(JSON.stringify({ drafts: [] }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: 1 } }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'a', draft: 'a' } } }))).toEqual({})
-    const huge = 'x'.repeat(512 * 1024 + 1)
+    // The cap is UTF-8 bytes aligned with the desktop 1 MiB write cap: a large
+    // ASCII draft the shell can write must survive, one byte over must not.
+    const maxAscii = 'x'.repeat(1024 * 1024)
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: maxAscii, draft: 'y' } } })))
+      .toEqual({ x: { text: maxAscii, draft: 'y' } })
+    const huge = 'x'.repeat(1024 * 1024 + 1)
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: huge, draft: 'y' } } }))).toEqual({})
     expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: huge } } }))).toEqual({})
+    // Multibyte: 512Ki CJK chars fit the old char cap but exceed 1 MiB of UTF-8.
+    const hugeCjk = '汉'.repeat(512 * 1024)
+    expect(readDrafts(JSON.stringify({ drafts: { x: { text: 'y', draft: hugeCjk } } }))).toEqual({})
 
     const buffers = new Map([
       ['sess-1:file:a.ts', { text: 'disk', draft: 'edited' }],

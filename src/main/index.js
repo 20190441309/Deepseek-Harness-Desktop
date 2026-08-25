@@ -582,19 +582,15 @@ async function probeThemeBackgrounds(wc) {
           return null;
         }
       };
+      // Ghostty renders straight into a canvas inside [data-terminal-pane];
+      // there is no xterm DOM to probe.
       const readOwner = (owner) => {
         const root = document.querySelector('[data-terminal-owner="' + owner + '"]');
         const pane = root?.querySelector('[data-terminal-pane]');
-        const xterm = pane?.querySelector('.xterm');
-        const viewport = pane?.querySelector('.xterm-viewport');
-        const screen = pane?.querySelector('.xterm-screen');
         return {
           root: stylesFor(root),
           pane: stylesFor(pane),
-          xterm: stylesFor(xterm),
-          viewport: stylesFor(viewport),
-          screen: stylesFor(screen),
-          canvasPixel: canvasPixel(xterm),
+          canvasPixel: canvasPixel(pane),
         };
       };
       const tokenStyles = getComputedStyle(document.body);
@@ -617,10 +613,8 @@ async function probeThemeBackgrounds(wc) {
       const backgrounds = [
         owners.surface?.root?.backgroundColor,
         owners.surface?.pane?.backgroundColor,
-        owners.surface?.viewport?.backgroundColor,
         owners.drawer?.root?.backgroundColor,
         owners.drawer?.pane?.backgroundColor,
-        owners.drawer?.viewport?.backgroundColor,
       ];
       return {
         ok: Boolean(

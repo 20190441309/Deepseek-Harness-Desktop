@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-surfaces-workbench-depth.md
-2026-08-15-surfaces-workbench-depth.md: 7dc9ba31e5dd6137466ed535f691507a4986b986
-2026-08-15-surfaces-workbench-depth.zh.md: e6ec22741897da545263de7c27d37d6304d20508
+2026-08-15-surfaces-workbench-depth.md: 560d8152c5e38fff4b917f685cb81e449fc69fef
+2026-08-15-surfaces-workbench-depth.zh.md: 9a48b761772b848b563d9e596f7faeca2e788f4d

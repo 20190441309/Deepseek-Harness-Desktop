@@ -12,7 +12,8 @@ export class FileSaveCoordinator {
   private latestContents = ''
   private latestRevision = 0
   private lastChangeAt = 0
-  private saving = false
+  /** The one in-flight persist; every save path waits on it before writing. */
+  private inFlight: Promise<FileSaveResult> | null = null
   private disposed = false
 
   constructor(private readonly options: FileSaveCoordinatorOptions) {}
@@ -23,6 +24,25 @@ export class FileSaveCoordinator {
     this.lastChangeAt = Date.now()
     this.options.onPendingChange(true)
     this.schedule(this.options.debounceMs)
+  }
+
+  /**
+   * Explicit save: record `contents` as the latest revision, cancel the
+   * debounce, wait out any in-flight write, and persist. Serializing through
+   * the same in-flight slot as the debounced path means an explicit save can
+   * never interleave with a debounced write of older contents.
+   * @param contents - the draft snapshot the caller wants on disk.
+   * @returns the persist result for the flushed revision.
+   */
+  async flush(contents: string): Promise<FileSaveResult> {
+    this.latestContents = contents
+    this.latestRevision += 1
+    this.lastChangeAt = Date.now()
+    this.options.onPendingChange(true)
+    while (this.inFlight !== null) await this.inFlight
+    // The completed write may have rescheduled a debounce for our revision.
+    this.clearTimer()
+    return this.persistLatest()
   }
 
   dispose(): void {
@@ -45,10 +65,16 @@ export class FileSaveCoordinator {
     this.timer = null
   }
 
-  private async persistLatest(): Promise<void> {
-    if (this.saving || this.latestRevision === 0) return
+  private persistLatest(): Promise<FileSaveResult> {
+    if (this.inFlight !== null || this.latestRevision === 0) {
+      return Promise.resolve({ ok: false })
+    }
+    const run = this.runSave()
+    this.inFlight = run
+    return run
+  }
 
-    this.saving = true
+  private async runSave(): Promise<FileSaveResult> {
     const contents = this.latestContents
     const revision = this.latestRevision
     const result = await this.options.persist(contents)
@@ -57,10 +83,10 @@ export class FileSaveCoordinator {
       this.options.onConfirmed(contents)
     }
 
-    this.saving = false
+    this.inFlight = null
     if (revision === this.latestRevision) {
       if (succeeded) this.options.onPendingChange(false)
-      return
+      return result
     }
 
     const remainingDebounce = Math.max(
@@ -72,5 +98,6 @@ export class FileSaveCoordinator {
     } else {
       this.schedule(remainingDebounce)
     }
+    return result
   }
 }

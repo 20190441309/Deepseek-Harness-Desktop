@@ -17,6 +17,12 @@ export interface BranchRef {
   remoteName?: string
   /** True on the origin/HEAD target when known. */
   isDefault?: boolean
+  /**
+   * `false` when the desktop switch IPC would reject this name (its
+   * injection whitelist is narrower than git's own ref rules); the picker
+   * disables such rows. Absent means switchable.
+   */
+  switchable?: boolean
 }
 
 /**
