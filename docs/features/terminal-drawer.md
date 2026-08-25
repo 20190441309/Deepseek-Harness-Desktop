@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `terminal-drawer` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — B1 pin `copy-ghostty-assets.mjs`（d55468de11）；0.2.7 `%APPDATA%\Deepseek-Harness-Desktop\runtime\0.2.7\…\lib\assets\` 含 ghostty wasm + Nerd Font；`127.0.0.1:3080`（0.2.7 `dsh web`）三 URL 均 200；验收合同 CI 安装包全表 |
+| **last verified** | 2026-08-25 — 硬化：`` Ctrl+` `` 在 Ghostty 焦点内切抽屉（`[data-terminal-pane]` 取代 `.xterm`）；reload/`render-process-gone` 收割 sender 名下 PTY；keep-alive 语义写入本卡与 handbook；`pty.test.js` 17 绿 + ui-titlebar/ui-user-terminal spec 绿 + `qa:source` terminal 步骤 PASS。（前次 2026-08-23：B1 pin `copy-ghostty-assets.mjs`；0.2.7 安装包 ghostty wasm + Nerd Font 三 URL 200） |
 
 ## User paths
 

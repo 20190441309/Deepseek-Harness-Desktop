@@ -1024,16 +1024,16 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-GIT-006 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-GIT-007 | P2 |  |  |  | Trent | 2026-08-23 |
 | TC-SURF-001 | P0 | Pass | CI SHA + 已装 exe | 刷新后搜索/预览 README；Mention | Trent | 2026-08-23 |
-| TC-SURF-002 | P1 |  |  |  | Trent | 2026-08-23 |
-| TC-SURF-003 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-SURF-002 | P1 |  |  | 2026-08-25 硬化：显式保存竞态已修（FileSaveCoordinator 串行 flush），ui-files spec 绿 + `qa:source` files 环绿（源码级，非发版证据）；待装包补测 | Trent | 2026-08-23 |
+| TC-SURF-003 | P1 |  |  | 2026-08-25：关 tab 确认由 ui-surfaces spec + `qa:source` 覆盖（源码级，非发版证据）；待装包补测 | Trent | 2026-08-23 |
 | TC-SURF-004 | P0 | Pass | CI SHA + 已装 exe | previewOpen example.com | Trent | 2026-08-23 |
 | TC-SURF-005 | P2 |  |  |  | Trent | 2026-08-23 |
 | TC-SURF-006 | P1 |  |  | 空态卡片含代理 | Trent | 2026-08-23 |
 | TC-SURF-007 | P0 | Pass | CI SHA + 已装 exe | 关闭 README.md / 关闭 文件 在标题侧 | Trent | 2026-08-23 |
 | TC-TERM-001 | P0 | Pass | CI SHA + 已装 exe | cwd ChisaTerminal；echo；wasm 200 | Trent | 2026-08-23 |
 | TC-TERM-002 | P0 | Pass | CI SHA `00a7f3b9e0` + 已装 exe | Ghostty 选区「加入对话」terminal fence | Trent | 2026-08-23 |
-| TC-TERM-003 | P1 |  |  |  | Trent | 2026-08-23 |
-| TC-TERM-004 | P1 |  |  |  | Trent | 2026-08-23 |
+| TC-TERM-003 | P1 |  |  | 2026-08-25：`` Ctrl+` `` 终端焦点内切抽屉已修（`[data-terminal-pane]`），ui-titlebar/ui-user-terminal spec 绿（源码级，非发版证据）；待装包补测 | Trent | 2026-08-23 |
+| TC-TERM-004 | P1 |  |  | 2026-08-25：reload/崩溃收割 sender 名下 PTY 已实现，`pty.test.js` 绿（源码级，非发版证据）；待装包补测 | Trent | 2026-08-23 |
 | TC-APP-001 | P0 | Pass | CI SHA + 已装 exe | 浅色/深色切换 | Trent | 2026-08-23 |
 | TC-APP-002 | P0 | Pass | CI SHA + 已装 exe | Appearance 无源列表 | Trent | 2026-08-23 |
 | TC-APP-003 | P0 | Pass | CI SHA + 已装 exe | 本地 PNG 进入裁切 | Trent | 2026-08-23 |
