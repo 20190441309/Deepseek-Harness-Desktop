@@ -4,7 +4,7 @@
 
 1. 冷启动装用户插件树时失败（造障或真实坏插件）。启动器**不关**，切到「插件问诊」。
 2. 问诊不启内核：列出 `profiles/web` 已装包；从上次 boot 日志抽出嫌疑包名。对得上的行标「可能导致本次失败」。OOM / 端口占用 / 缺 Node 只显示分类原因，不谎称某个插件。
-3. 用户可禁用（从 bundles 去掉，写入壳层 `disabledPlugins`）或删除（`dsh plugin remove`，仅桌面 home）。桌面预置 `dshmarket` / `dsh-usage-panel` 不允许删除。
+3. 用户可禁用（从 bundles 去掉，写入壳层 `disabledPlugins`）或删除（`dsh plugin remove`，仅桌面 home）。桌面预置 `dsh-usage-panel` 不允许删除。
 4. 「再试桌面端」先清 sticky skip，再全插件启动。问诊删/禁完之前，仍可「先跳过用户插件启动」进桌面（sticky `--skip-user-plugins` 保留）。
 5. 跳过成功后进入主界面（功能可能缺用户插件）；可再调「再试完整插件」`retryFullPlugins`。
 6. Harness 运行中崩溃：可回故障页 + 自动重启倒计时；用户可取消倒计时。

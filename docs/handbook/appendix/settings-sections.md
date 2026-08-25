@@ -5,7 +5,7 @@
 | id / 称呼 | 用途 | 备注 |
 | --- | --- | --- |
 | `appearance` | 外观、主题、壁纸行 | `ui-theme` |
-| `market` | 插件市场 | 内置 `dshmarket`；**无**独立 BrowserWindow |
+| `market` | 插件市场 | 桌面自有 `ui-settings-market`（fork 包）；**无**独立 BrowserWindow |
 | `usage-stats` | 用量统计 | 预置改版 `dsh-usage-panel`；跨会话 Token，无余额 |
 | 模型 / Models | 提供方与模型 | QA §2；具体 id 以界面/插件为准 |
 | MCP | MCP 服务器 | QA `TC-EXT-006` |

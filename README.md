@@ -76,7 +76,7 @@ macOS 把 `$HOME/.dsh/sessions` 拷到 `~/Library/Application Support/Deepseek-H
 - **文件与终端** — `Ctrl+\` 打开右栏（Files / Diff / Browser / Agents）；`` Ctrl+` `` 打开底栏终端，选区可送进对话。
 - **模型** — 第三方思考强度、识图兜底；最新一条用户消息可改完再发。
 - **外观** — 浅色 / 深色主题。壁纸在外观里选或点「浏览」打开图库（分类、搜索、收藏，确认后按窗口比例裁切）；毛玻璃和像素化也在外观里调。
-- **扩展** — 设置里管理 MCP、技能和插件。市场是随应用内置的 [dsh-market](https://github.com/dsh-market/dsh-market)（`dshmarket`），没有独立窗口。
+- **扩展** — 设置里管理 MCP、技能和插件。市场是桌面自有的设置分区（内置精选目录与安装引擎，源自 [dsh-market](https://github.com/dsh-market/dsh-market) 的产品形态但已与上游分离），没有独立窗口。
 - **桌面壳** — 关闭进托盘、自动更新；Harness 挂了会回到故障页并自动重启。用户插件把启动弄挂时，启动器可以按包禁用或先跳过用户插件。
 
 `Ctrl+,` 打开设置。

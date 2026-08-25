@@ -77,7 +77,7 @@ The launcher is the cold-start gate window, not the instrument canvas. Sources: 
 
 ## Known drift (do not spread)
 
-Product pages use official tokens and `ui-primitives`. Mobile remote Web (`mobile/web`) is a documented exception: it copies `--dsw-alias-*`, does not embed the official plugin tree, and does not use the boot instrument canvas. The Settings marketplace is the preset `dshmarket` plugin’s `settings.section` (id `market`) and keeps that plugin’s own UI. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet. The cold-start launcher uses official tokens; see [Desktop launcher](#desktop-launcher). It is not a second exception.
+Product pages use official tokens and `ui-primitives`. Mobile remote Web (`mobile/web`) is a documented exception: it copies `--dsw-alias-*`, does not embed the official plugin tree, and does not use the boot instrument canvas. The Settings marketplace is the desktop-owned `ui-settings-market` package’s `settings.section` (id `market`) and must use the same tokens / primitives as the official settings pages. Do not open a `--bg` / `--accent` palette. The desktop boot page is the documented instrument-canvas exception; see [Desktop boot page](#desktop-boot-page). Do not spread that sheet. The cold-start launcher uses official tokens; see [Desktop launcher](#desktop-launcher). It is not a second exception.
 
 ## Self-check
 
