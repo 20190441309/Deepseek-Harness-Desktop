@@ -120,6 +120,13 @@ function failureMessage(result: GitResult, fallback: string): string | undefined
   return message !== undefined && message !== '' ? message : fallback
 }
 
+/** Message for a rejected git IPC promise, so the progress toast never hangs in loading. */
+function thrownMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim() !== '') return error.message
+  const text = String(error).trim()
+  return text !== '' && text !== 'undefined' && text !== 'null' ? text : fallback
+}
+
 function foldCommit(result: GitResult): NonNullable<StackedActionResult['commit']> {
   return {
     status: result.skipped ? 'skipped' : 'created',
@@ -386,13 +393,20 @@ export function GitActionsControl({
     () => buildMenuItems(status, busy, hasPrimaryRemote),
     [busy, hasPrimaryRemote, status],
   )
-  const pendingCopy = pending
+  const pendingKeys = pending
     ? resolveDefaultBranchActionDialogCopy({
         action: pending.action,
         branchName: pending.branchName,
         includesCommit: pending.includesCommit,
         terminology: getChangeRequestTerminology(status?.sourceControlProvider),
       })
+    : null
+  const pendingCopy = pendingKeys
+    ? {
+        title: t(pendingKeys.title.key, pendingKeys.title.params),
+        description: t(pendingKeys.description.key, pendingKeys.description.params),
+        continueLabel: t(pendingKeys.continueLabel.key, pendingKeys.continueLabel.params),
+      }
     : null
 
   const runInit = (): void => {
@@ -403,6 +417,8 @@ export function GitActionsControl({
       const failed = failureMessage(result, t('error.fallback'))
       if (failed !== undefined) failProgress(failed)
       else succeedProgress(t('action.init'))
+    }).catch((error: unknown) => {
+      failProgress(thrownMessage(error, t('error.fallback')))
     }).finally(() => {
       setBusy(false)
       void refresh(cwd)
@@ -574,6 +590,9 @@ export function GitActionsControl({
             ? { label: cta.label, onAction: () => { void runStacked(cta.action) } }
             : undefined,
       )
+    } catch (error) {
+      // A rejected git IPC promise must land on the toast, not strand it loading.
+      failProgress(thrownMessage(error, fallback))
     } finally {
       setBusy(false)
       if (!settled) await refresh(cwd)
@@ -631,6 +650,8 @@ export function GitActionsControl({
             upstream: result.upstreamRef || 'upstream',
           }),
         )
+      }).catch((error: unknown) => {
+        failProgress(thrownMessage(error, t('error.fallback')))
       }).finally(() => {
         setBusy(false)
         void refresh(cwd)
@@ -865,6 +886,10 @@ export function GitActionsControl({
                 ? { label: t('progress.openRepo'), onAction: () => { void openExternal(url) } }
                 : undefined,
             )
+          }).catch((error: unknown) => {
+            // Same recovery as an ok:false publish: fail the toast, reopen the dialog.
+            failProgress(thrownMessage(error, t('error.fallback')))
+            setPublishOpen(true)
           }).finally(() => {
             setBusy(false)
             void refresh(cwd)
