@@ -45,7 +45,7 @@ Gate: <卡上 gates>
 | [terminal-drawer](terminal-drawer.md) | 底栏 PTY 工作环 | `pty.js` / ui-user-terminal | TC-TERM-001…004（TC-WS-006 仓） |
 | [settings-select](settings-select.md) | 设置内值选择统一为官方胶囊 + Menu | `SettingsSelect` | vendor client spec |
 | [mobile-remote](mobile-remote.md) | 停放：侧栏远程入口隐藏；网关不监听 | `REMOTE_FEATURE_ENABLED` / preload | TC-NEG-001（负向）；TC-REM-001…003 N/A |
-| [dshbot](dshbot.md) | 停放：侧栏 Bots 隐藏 | `DSHBOT_FEATURE_ENABLED` / `hideDshbotPlugin` | TC-EXT-007 **N/A** |
+| [dshbot](dshbot.md) | 独立 dsh 插件：桌面不预置、可选安装 | `vendor/dshbot` / `removeDshbotPreset` | TC-EXT-007 |
 | [dsh-home](dsh-home.md) | 桌面 `userData/dsh-home`；Harness 不读官方 `~/.dsh` | `dsh-home.js` / spawnEnv | TC-INST-009、011；TC-WS-006 |
 | [desktop-launcher](desktop-launcher.md) | 冷启动闸门：更新询问、启停桌面、版本、插件问诊 | `launcher.*` / launcher-gate | TC-LAUNCH-001…007 |
 | [data-import](data-import.md) | 启动器只读导入官方会话/插件名单 | `data-import.js` | TC-LAUNCH-004 |

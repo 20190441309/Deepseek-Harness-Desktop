@@ -30,7 +30,7 @@
 - `readLastDesktopStart` 三态：缺文件 `{ ok:null }`（不挡 auto start）；失败 `{ ok:false }`；成功 `{ ok:true }`。
 - 「启动桌面端」清除「跳过用户插件」sticky 时必须 `forceRestart`；`HarnessController.restart()` 不得把旧 in-flight Promise 交给新调用方（先 await 再开新 `replaceOperation`）。
 - 插件排查禁用/启用写盘后若内核在跑，只经 `startHarness`/`restartWithCleanup` 对齐，不得经 `startDesktopFromLauncher`（避免 `quitAfterStart` 关掉排查窗）。批量禁用可疑走 `shell:disable-plugins`（一次写盘 + 一次 align）。
-- 「跳过用户插件」救生启动不 ensure market/usage/dshbot（`hideDshbotPlugin`）；`DSHBOT_FEATURE_ENABLED === false` 时完整启动亦 hide dshbot。desktop-install 仍 required。可选桌面预置不得拖垮恢复通道。
+- 「跳过用户插件」救生启动不 ensure market/usage/dshbot；dshbot 是独立插件，任何启动都只 `removeDshbotPreset` 清残留（config `dshbotPreset: true` 且非 skip 时才跑开发预置，log-only）。desktop-install 仍 required。可选桌面预置不得拖垮恢复通道。
 - Recovery Board 在 sticky skip、`lastStart.ok===false`、desktop error、genericCause、pluginTreeFailure 或存在 suspects 时于首页展开。
 - `shell:stop-desktop`（启动器专用）取消 harness 自动恢复与在途 restart/start、停止 dsh 内核、清理 PTY/预览并销毁主窗；托盘在内核未运行时打开启动器；不退出 Electron 进程、不关启动器。
 - 版本页 `listReleases` 附带 `installed`（运行模式、注册表 Setup 版本/路径、是否可卸载）；卸载优先 NSIS `Uninstall*.exe`，否则打开「设置 → 应用」；源码运行且无注册表安装时隐藏卸载按钮并给出明确说明。
