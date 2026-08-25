@@ -73,7 +73,7 @@
 
 ### Preview（Browser surface）
 
-`previewOpen` … `previewClose`、自动化系列 `previewAutomation*`、订阅 `onPreviewStateChange` / `onOpenPreviewUrl` / `onPreviewRecordingFrame` — 详见 preload 同文件列表。
+`previewOpen` … `previewClose`、订阅 `onPreviewStateChange` / `onOpenPreviewUrl` / `onPreviewRecordingFrame` — 详见 preload 同文件列表。原 `previewAutomation*` 系列（含 evaluate / CDP 输入）因零消费者已整链删除（2026-08-25），恢复须新 feature 卡 + 权限模型。
 
 ## 维护
 
