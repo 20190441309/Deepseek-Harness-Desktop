@@ -755,9 +755,6 @@ function assertHarnessRuntime(harnessDest, pin) {
 module.exports = async function afterPack(context) {
   const projectDir = context.packager.projectDir;
   const resources = resolveResourcesDir(context);
-  restoreVendoredPluginNodeModules(projectDir, resources, 'dshmarket');
-  installPluginRuntimeDeps(path.join(resources, 'vendor', 'dshmarket'), { skipIfComplete: true });
-  assertVendoredPluginRuntimeDeps(resources, 'dshmarket');
   restoreVendoredPluginNodeModules(projectDir, resources, 'dsh-usage-panel');
   installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-usage-panel'), { skipIfComplete: true });
   assertVendoredPluginRuntimeDeps(resources, 'dsh-usage-panel');

@@ -6,7 +6,7 @@ const { setDesktopDshHome, desktopDshHomeFromUserData, tryGetDesktopDshHome, san
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
-const { ensureDshMarketPlugin } = require('./dshmarket-preset');
+const { removeDshMarketPreset } = require('./dshmarket-preset');
 const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
 const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
@@ -251,7 +251,7 @@ const harness = new HarnessController({
   resolveLaunchTarget,
   stripDroppedPlugins,
   ensureDesktopInstallPlugin,
-  ensureDshMarketPlugin,
+  removeDshMarketPreset,
   ensureUsagePanelPlugin,
   ensureDshbotPlugin,
   removeDshbotPreset,

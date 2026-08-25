@@ -13,8 +13,9 @@ const EVIDENCE_PATTERNS = [
   { kind: 'compose', regex: /failed to compose[^\n]*['"](@?[\w./-]+)['"]/gi },
 ];
 
-// dshbot is a standalone user plugin now, not a desktop preset.
-const PRESET_PLUGINS = new Set(['dshmarket', 'dsh-usage-panel']);
+// dshbot is a standalone user plugin and the marketplace is desktop-owned
+// code now; the usage panel is the only remaining desktop preset.
+const PRESET_PLUGINS = new Set(['dsh-usage-panel']);
 const EVIDENCE_LINE_MAX = 240;
 
 function classifyGenericFailure(text) {
