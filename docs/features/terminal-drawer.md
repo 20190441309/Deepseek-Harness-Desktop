@@ -17,6 +17,8 @@
 - 终端是工作环，不是空态说明卡片。
 - PTY 由桌面 `pty.js` 提供；UI 为官方终端组件语言（等宽网格 / Ghostty）。
 - `libghostty-vt` wasm 必须能从 `/plugins/<id>/assets/` 读到；源码启动会校验并把 wasm 拷到 `lib/assets`，缺则拒绝启动。
+- PTY 生命周期：关抽屉 / 关 surface tab / 切会话都**不** kill（进程保活，回来还在）；kill 只发生在终端 UI 的垃圾桶按钮与 app 退出；renderer reload / 崩溃（`render-process-gone` / 跨文档导航）时 main 收割该 renderer 名下全部 PTY，不留孤儿。
+- `` Ctrl+` `` 在 Ghostty 终端焦点内也切换抽屉（beforeKey 放行给 titlebar window 监听）。
 - 不做未承诺的 GPU 终端嵌入。
 
 ## Allowed touch

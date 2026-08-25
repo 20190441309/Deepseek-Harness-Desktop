@@ -29,6 +29,7 @@
 - 官方终端组件语言：等宽网格。源码启动与 `setup:harness` 必须能提供 `libghostty-vt` wasm，不能 404。  
 - 不做未承诺的 GPU 嵌入。
 - PTY 不注入桌面 `$DSH_HOME`；终端里的官方 `dsh` 仍走 `~/.dsh`（[dsh-home.md](dsh-home.md)）。
+- PTY 生命周期：关抽屉 / 关 tab / 切会话不 kill；kill 仅垃圾桶与 app 退出；renderer reload / `render-process-gone` 时 `pty.js` 按 sender 收割其名下 PTY（`pty-create` 记录属主，`did-navigate` / `destroyed` 同样触发）。
 
 ## 门槛
 
