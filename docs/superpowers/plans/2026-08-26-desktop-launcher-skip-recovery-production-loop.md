@@ -67,4 +67,12 @@
 
 ## 执行与验证记录
 
-（交付时回填：测试数字、实机证据、提交清单。）
+全部修订范围（E1 + E1b + E2 + E3 + E4）已落地；`npm test` **1080 pass / 0 fail / 3 skip**（1083 total，本 VM Node 22 实测）。
+
+- **E1**：`scripts/check-skip-compose-contract.js`（纯断言函数 + 注入式 spawn，单测 5 例覆盖「正向证据先行、canary 复活、非零退出、缺 CLI」）；`scripts/after-pack.js` 在 `assertHarnessRuntime` 后、tar 前调用 `runSkipComposeContract(harnessDest)`。**实机证据（Linux，source-built CLI，`vendor/deepseek-harness`）**：skip 轮 dump 仅含 `dshd-desktop-plugin-install`、canary 缺席；full 轮 canary + install 都在（单轮 dump-config ~90ms，boot-free）。**反证**：把 `--patch` 换回整份 `cordis.patch.yml` 后 canary 在 skip 轮复活（grep 命中 2 行）——旧行为会被门禁当场击落。
+- **E1b（对抗审查 Q1 的条件项，实测通过后纳入）**：test.yml `vendor-gui` job 在 build:lib 之后直接跑契约脚本——已验证 pnpm install + build:lib 产物足以运行 dump-config（`apps/cli` 在 tsdown host face 的 workspace 里）。该 job 在 windows-latest 上跑，同时提前验证了脚本的 Windows 路径/env 行为。
+- **E2**：`dsh.test.js` 从 vendored `args.ts` 的 web 子命令块提取 launcher flags（提取为空或缺已知两旗标即 fail-loud），按 CLI 的「首个未知 token 截断」语义行走 `buildLaunch` argv，断言 `--skip-user-plugins`/`--patch` 全部位于语法前缀内。
+- **E3**：`plugin-forensics` 新增 `isInBoxPackageName`（精确名 + 子路径 specifier）；orphan suspect 命中 `DESKTOP_PACKAGES` → `inBox: true` + payload/summary `desktopRuntimeDamage`；`launcher-recovery.recoveryVerdict` 内置损坏文案压过 sticky skip 分支（skip 修不了运行时损坏），`sortPluginRows` inBox 置顶；launcher.js badge「内置组件」+ 行说明「禁用或跳过均无效，需重装桌面端」，`forensicsSummaryText` 同步。同名用户插件在 profile 清单内时仍是普通可禁用 suspect（反向测试钉死）。
+- **E4**：`docs/features/desktop-launcher.md`（last verified、3 条新 invariants、Allowed touch 扩入 skip 救生链路文件与契约脚本并注明理由、Gates 更新）；`.cursor/rules/desktop-launcher-product.mdc` 同步一段。
+- **顺手修复（不在计划内但挡合入）**：main 上两处既有 CI 红——`installer-branding.test.js` 的 NSIS 宏断言不容忍 Windows autocrlf 检出（`\r?\n`）；vendor `remote-section.client.spec.tsx` 违反 `exactOptionalPropertyTypes`（TS2379，`??` 兜底）。
+- **Windows 侧未验证项（明确不声称）**：真实 NSIS Setup 的 after-pack 契约门禁首跑将发生在下一次 release CI `npm run dist`；本轮 Linux 已实证 source-built 路径，E1b 让 windows-latest 每 PR 都跑同一脚本。

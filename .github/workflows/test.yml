@@ -43,6 +43,10 @@ jobs:
         run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness install --frozen-lockfile
       - name: Build vendor client + host libs
         run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run build:lib
+      # 每次 PR 用刚构建的真实 CLI 验证 skip compose 契约（dump-config skip/full
+      # 双轮 + 用户层 canary），补上 after-pack 门禁覆盖不到的 vendor PR 回归面。
+      - name: Skip compose contract (real CLI dump-config)
+        run: node scripts/check-skip-compose-contract.js vendor/deepseek-harness
       - name: GUI component suites
         run: node node_modules/pnpm/bin/pnpm.cjs --dir vendor/deepseek-harness run test:gui
       - name: Client catalog and notices up to date
