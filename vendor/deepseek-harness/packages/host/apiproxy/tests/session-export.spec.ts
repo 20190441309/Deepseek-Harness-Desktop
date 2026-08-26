@@ -117,6 +117,10 @@ async function buildApi(
       agent: {} as never,
       dispose: vi.fn(async () => {}),
     })),
+    create: vi.fn(async () => ({
+      agent: {} as never,
+      dispose: vi.fn(async () => {}),
+    })),
   } as never)
   return createApiProxy(ctx, {
     defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
