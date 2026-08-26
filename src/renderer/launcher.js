@@ -181,6 +181,9 @@ function forensicsSummaryText(forensics) {
     };
     return labels[forensics.genericCause] || String(forensics.genericCause);
   }
+  if (forensics.desktopRuntimeDamage && window.launcherRecovery?.desktopRuntimeDamageVerdict) {
+    return window.launcherRecovery.desktopRuntimeDamageVerdict(forensics);
+  }
   if (forensics.suspects && forensics.suspects.length) {
     return `启动日志指向以下可疑插件：${forensics.suspects.map((row) => row.name || row).join('、')}。建议优先处理后再启动。`;
   }
@@ -206,14 +209,16 @@ function renderPluginBoard(forensics, options = {}) {
   const rows = pluginBoardRows(forensics, options.sortSuspectsFirst === true);
   list.innerHTML = rows.map((row) => {
     const marks = [
-      row.orphan ? badge('未在 profile 登记', true) : '',
+      row.inBox ? badge('内置组件', true) : (row.orphan ? badge('未在 profile 登记', true) : ''),
       row.officialTemplate ? badge('官方模板') : '',
       row.preset ? badge('桌面预置') : '',
       row.disabled ? badge('已禁用') : '',
       row.suspect ? badge('可疑冲突', true) : '',
     ].join('');
     let actions = '';
-    if (row.orphan) {
+    if (row.inBox) {
+      actions = '<span class="row-meta">桌面内置组件损坏；禁用或跳过均无效，需重装桌面端。</span>';
+    } else if (row.orphan) {
       actions = '<span class="row-meta">日志中出现但未写入 profile，无法在此禁用。</span>';
     } else if (row.officialTemplate) {
       actions = '<span class="row-meta" title="官方模板插件不可禁用。">不可禁用</span>';
