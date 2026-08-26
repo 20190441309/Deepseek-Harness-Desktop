@@ -16,6 +16,7 @@ import type {
   PluginOpResult,
   PluginProgress,
 } from './desktop-shell.ts'
+import { specMatchesOwnerRepo } from './spec-match.ts'
 import css from './MarketSection.module.css'
 
 /** Registration-side desktop callbacks used by the marketplace section. */
@@ -58,8 +59,7 @@ function installedNameFor(item: MarketItem, plugins: InstalledPlugin[]): string 
   if (item.packageName && plugins.some(row => row.name === item.packageName)) {
     return item.packageName
   }
-  const key = `${item.owner}/${item.repo}`.toLowerCase()
-  const bySpec = plugins.find(row => row.spec.toLowerCase().includes(key))
+  const bySpec = plugins.find(row => specMatchesOwnerRepo(row.spec, item.owner, item.repo))
   return bySpec ? bySpec.name : null
 }
 
@@ -67,8 +67,17 @@ function installedNameFor(item: MarketItem, plugins: InstalledPlugin[]): string 
 function catalogItemFor(plugin: InstalledPlugin, items: MarketItem[]): MarketItem | null {
   const byName = items.find(item => item.packageName === plugin.name)
   if (byName) return byName
-  const spec = plugin.spec.toLowerCase()
-  return items.find(item => spec.includes(`${item.owner}/${item.repo}`.toLowerCase())) ?? null
+  return items.find(item => specMatchesOwnerRepo(plugin.spec, item.owner, item.repo)) ?? null
+}
+
+/**
+ * Whether a not-yet-installed catalog row may offer its Install button:
+ * deprecated rows and rows whose desktop engine resolved no install spec
+ * get no install path from the card (parity: 空 `installSpec` 的卡片不提供
+ * 安装按钮), matching the main-process gate that rejects them anyway.
+ */
+function installable(item: MarketItem): boolean {
+  return item.deprecated !== true && item.installSpec.trim().length > 0
 }
 
 /** Whether one catalog row matches the local search query. */
@@ -279,6 +288,7 @@ export function MarketSection({
             className={css.iconAction}
             icon={<IconRefreshOutline16 />}
             aria-label={t('refresh')}
+            title={t('refresh')}
             disabled={isBusy || state.status === 'loading'}
             onClick={() => { void load(true) }}
           />
@@ -296,7 +306,9 @@ export function MarketSection({
           <div className={css.tabs} role="tablist" aria-label={t('heading')}>
             <Pill
               role="tab"
+              id="market-tab-discover"
               aria-selected={tab === 'discover'}
+              aria-controls="market-panel-discover"
               active={tab === 'discover'}
               onClick={() => { setTab('discover') }}
             >
@@ -304,7 +316,9 @@ export function MarketSection({
             </Pill>
             <Pill
               role="tab"
+              id="market-tab-installed"
               aria-selected={tab === 'installed'}
+              aria-controls="market-panel-installed"
               active={tab === 'installed'}
               onClick={() => { setTab('installed') }}
             >
@@ -339,7 +353,14 @@ export function MarketSection({
               {progress.map((line, position) => <code key={`${position}-${line}`}>{line}</code>)}
             </div>
           ) : null}
-          <div key={tab} data-dsh-motion="swap" className={css.pane}>
+          <div
+            key={tab}
+            role="tabpanel"
+            id={`market-panel-${tab}`}
+            aria-labelledby={`market-tab-${tab}`}
+            data-dsh-motion="swap"
+            className={css.pane}
+          >
             {tab === 'discover' ? (
               <>
                 <div className={css.toolbar}>
@@ -438,7 +459,7 @@ export function MarketSection({
                                   {busyKind === 'uninstall' ? t('uninstalling') : t('uninstall')}
                                 </Button>
                               </>
-                            ) : (
+                            ) : installable(item) ? (
                               <Button
                                 size="sm"
                                 variant="primary"
@@ -447,7 +468,7 @@ export function MarketSection({
                               >
                                 {busyKind === 'install' ? t('installing') : t('install')}
                               </Button>
-                            )}
+                            ) : null}
                           </div>
                         </li>
                       )
