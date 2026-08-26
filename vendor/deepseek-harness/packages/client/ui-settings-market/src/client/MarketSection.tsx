@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Button, IconSearchOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button,
+  IconRefreshOutline16,
+  IconRightUpOutline16,
+  IconSearchOutline16,
+  IconWarningOutline16,
+  Input,
+  Pill,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   InstalledPlugin,
@@ -35,6 +43,8 @@ type CatalogState =
   | { readonly status: 'error' }
   | { readonly status: 'ready'; readonly catalog: MarketCatalog }
 
+type Tab = 'discover' | 'installed'
+
 type BusyOp = { kind: 'install' | 'uninstall'; id: string } | null
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null
@@ -53,6 +63,14 @@ function installedNameFor(item: MarketItem, plugins: InstalledPlugin[]): string 
   return bySpec ? bySpec.name : null
 }
 
+/** The catalog row backing one installed plugin, or null when uncatalogued. */
+function catalogItemFor(plugin: InstalledPlugin, items: MarketItem[]): MarketItem | null {
+  const byName = items.find(item => item.packageName === plugin.name)
+  if (byName) return byName
+  const spec = plugin.spec.toLowerCase()
+  return items.find(item => spec.includes(`${item.owner}/${item.repo}`.toLowerCase())) ?? null
+}
+
 /** Whether one catalog row matches the local search query. */
 function matches(item: MarketItem, normalizedQuery: string): boolean {
   if (normalizedQuery.length === 0) return true
@@ -61,9 +79,67 @@ function matches(item: MarketItem, normalizedQuery: string): boolean {
 }
 
 /**
- * Marketplace settings section: curated catalog browse/search with per-row
- * install/uninstall, allow-builds approval, and progress lines. All engine
- * work happens in the desktop main process behind the injected callbacks.
+ * Plugin owner's GitHub avatar (no API call, browser-cached), falling back
+ * to an initial-letter tile when the image cannot load.
+ * @param props.owner - GitHub owner login; empty skips the network image.
+ * @param props.repo - repository name feeding the fallback initial.
+ * @returns a 16px decorative avatar node.
+ */
+function OwnerAvatar({ owner, repo }: { owner: string; repo: string }): ReactNode {
+  const [failed, setFailed] = useState(false)
+  if (failed || owner === '') {
+    return (
+      <span className={css.avatarFallback} aria-hidden="true">
+        {(repo.replace(/^dsh[-_]/i, '').charAt(0) || 'P').toUpperCase()}
+      </span>
+    )
+  }
+  return (
+    <img
+      className={css.avatar}
+      src={`https://github.com/${encodeURIComponent(owner)}.png?size=96`}
+      alt=""
+      loading="lazy"
+      onError={() => { setFailed(true) }}
+    />
+  )
+}
+
+/** One installed-pane group: a localized category heading plus its rows. */
+type InstalledGroup = {
+  key: string
+  label: string
+  rows: { plugin: InstalledPlugin; item: MarketItem | null }[]
+}
+
+/**
+ * Group installed rows by their catalog category, keeping catalog order;
+ * rows without a catalog match land in a trailing ungrouped section.
+ */
+function installedGroups(
+  plugins: InstalledPlugin[],
+  catalog: MarketCatalog,
+  ungroupedLabel: string,
+): InstalledGroup[] {
+  const categories = catalog.categories.filter(row => row.id !== 'all')
+  const rows = plugins.map(plugin => ({ plugin, item: catalogItemFor(plugin, catalog.items) }))
+  const groups: InstalledGroup[] = []
+  for (const category of categories) {
+    const members = rows.filter(row => row.item !== null && row.item.category === category.id)
+    if (members.length > 0) groups.push({ key: category.id, label: category.label, rows: members })
+  }
+  const grouped = new Set(groups.flatMap(group => group.rows.map(row => row.plugin.name)))
+  const rest = rows.filter(row => !grouped.has(row.plugin.name))
+  if (rest.length > 0) groups.push({ key: 'ungrouped', label: ungroupedLabel, rows: rest })
+  return groups
+}
+
+/**
+ * Marketplace settings section: a Discover tab (curated catalog browse/search
+ * with per-card install) and an Installed tab (profile rows grouped by catalog
+ * category with uninstall), plus allow-builds approval and progress lines.
+ * All engine work happens in the desktop main process behind the injected
+ * callbacks.
  * @param props - composed slot props plus the desktop inject face.
  * @returns the section content.
  */
@@ -77,6 +153,7 @@ export function MarketSection({
 }: MarketSectionProps): ReactNode {
   const [state, setState] = useState<CatalogState>({ status: 'loading' })
   const [installed, setInstalled] = useState<InstalledPlugin[]>([])
+  const [tab, setTab] = useState<Tab>('discover')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [busy, setBusy] = useState<BusyOp>(null)
@@ -162,8 +239,8 @@ export function MarketSection({
     )
   }, [install, runOp, t])
 
-  const startUninstall = useCallback((item: MarketItem, name: string) => {
-    void runOp({ kind: 'uninstall', id: item.id }, () => uninstall(name), t('uninstallDone'))
+  const startUninstall = useCallback((opId: string, name: string) => {
+    void runOp({ kind: 'uninstall', id: opId }, () => uninstall(name), t('uninstallDone'))
   }, [runOp, t, uninstall])
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -174,57 +251,66 @@ export function MarketSection({
     ))
   }, [category, normalizedQuery, state])
 
+  const categoryLabels = useMemo(() => {
+    if (state.status !== 'ready') return new Map<string, string>()
+    return new Map(state.catalog.categories.map(row => [row.id, row.label]))
+  }, [state])
+
+  const groups = useMemo(() => (
+    state.status === 'ready' ? installedGroups(installed, state.catalog, t('ungrouped')) : []
+  ), [installed, state, t])
+
+  const isBusy = busy !== null
+  const installedTabLabel = installed.length > 0
+    ? `${t('tabInstalled')} (${installed.length})`
+    : t('tabInstalled')
+
   return (
     <div className={css.section} aria-busy={state.status === 'loading'}>
+      <header className={css.heading}>
+        <div className={css.headingText}>
+          <h2 className={css.title}>{t('heading')}</h2>
+          <p className={css.intro}>{t('intro')}</p>
+        </div>
+        <div className={css.headingActions}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={css.iconAction}
+            icon={<IconRefreshOutline16 />}
+            aria-label={t('refresh')}
+            disabled={isBusy || state.status === 'loading'}
+            onClick={() => { void load(true) }}
+          />
+        </div>
+      </header>
       {state.status === 'loading' ? <p className={css.status} role="status">{t('loading')}</p> : null}
       {state.status === 'error' ? (
-        <div className={css.failure}>
+        <div className={css.loadFailure}>
           <p role="alert">{t('loadError')}</p>
-          <button type="button" onClick={() => { void load(true) }}>{t('retry')}</button>
+          <Button size="sm" variant="outline" onClick={() => { void load(true) }}>{t('retry')}</Button>
         </div>
       ) : null}
       {state.status === 'ready' ? (
-        <div className={css.catalog}>
-          <div className={css.toolbar}>
-            <label className={css.search}>
-              <IconSearchOutline16 aria-hidden="true" />
-              <span className={css.visuallyHidden}>{t('search')}</span>
-              <input
-                type="search"
-                value={query}
-                placeholder={t('search')}
-                aria-label={t('search')}
-                onChange={(event) => { setQuery(event.currentTarget.value) }}
-              />
-            </label>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy !== null}
-              onClick={() => { void load(true) }}
+        <>
+          <div className={css.tabs} role="tablist" aria-label={t('heading')}>
+            <Pill
+              role="tab"
+              aria-selected={tab === 'discover'}
+              active={tab === 'discover'}
+              onClick={() => { setTab('discover') }}
             >
-              {t('refresh')}
-            </Button>
+              {t('tabDiscover')}
+            </Pill>
+            <Pill
+              role="tab"
+              aria-selected={tab === 'installed'}
+              active={tab === 'installed'}
+              onClick={() => { setTab('installed') }}
+            >
+              {installedTabLabel}
+            </Pill>
           </div>
-          {state.catalog.categories.length > 1 ? (
-            <div className={css.categories} role="radiogroup" aria-label={t('heading')}>
-              {state.catalog.categories.map(row => (
-                <button
-                  key={row.id}
-                  type="button"
-                  className={css.category}
-                  role="radio"
-                  aria-checked={category === row.id}
-                  data-active={category === row.id || undefined}
-                  onClick={() => { setCategory(row.id) }}
-                >
-                  {row.label}
-                  <span className={css.categoryCount}>{row.count}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {state.catalog.warning ? <p className={css.warning} role="status">{state.catalog.warning}</p> : null}
           {notice ? (
             <p
               className={css.notice}
@@ -253,61 +339,161 @@ export function MarketSection({
               {progress.map((line, position) => <code key={`${position}-${line}`}>{line}</code>)}
             </div>
           ) : null}
-          <div className={css.catalogHeading}>
-            <h3>{t('heading')}</h3>
-            <span data-market-count={items.length}>{t('count', { count: String(items.length) })}</span>
+          <div key={tab} data-dsh-motion="swap" className={css.pane}>
+            {tab === 'discover' ? (
+              <>
+                <div className={css.toolbar}>
+                  <Input
+                    className={css.search}
+                    type="search"
+                    icon={<IconSearchOutline16 />}
+                    value={query}
+                    placeholder={t('search')}
+                    aria-label={t('search')}
+                    onChange={(event) => { setQuery(event.currentTarget.value) }}
+                  />
+                </div>
+                {state.catalog.categories.length > 1 ? (
+                  <div className={css.categories} role="radiogroup" aria-label={t('heading')}>
+                    {state.catalog.categories.map(row => (
+                      <Pill
+                        key={row.id}
+                        role="radio"
+                        aria-checked={category === row.id}
+                        active={category === row.id}
+                        onClick={() => { setCategory(row.id) }}
+                      >
+                        {row.label}
+                        <span className={css.categoryCount}>{row.count}</span>
+                      </Pill>
+                    ))}
+                  </div>
+                ) : null}
+                {state.catalog.warning ? (
+                  <p className={css.warning} role="status">
+                    <IconWarningOutline16 aria-hidden="true" />
+                    <span>{state.catalog.warning}</span>
+                  </p>
+                ) : null}
+                <p className={css.resultCount} data-market-count={items.length}>
+                  {t('count', { count: String(items.length) })}
+                </p>
+                {state.catalog.items.length === 0 ? <p className={css.empty}>{t('empty')}</p> : null}
+                {state.catalog.items.length > 0 && items.length === 0
+                  ? <p className={css.empty}>{t('emptySearch')}</p>
+                  : null}
+                {items.length > 0 ? (
+                  <ul className={css.cards}>
+                    {items.map((item) => {
+                      const installedName = installedNameFor(item, installed)
+                      const busyKind = busy !== null && busy.id === item.id ? busy.kind : null
+                      return (
+                        <li className={css.card} key={item.id} data-market-item={item.id}>
+                          <div className={css.cardHead}>
+                            <div className={css.cardIdentity}>
+                              <span className={css.cardTitleRow}>
+                                <strong className={css.cardTitle} title={item.id}>{item.repo}</strong>
+                                {item.deprecated ? <span className={css.deprecatedTag}>{t('deprecated')}</span> : null}
+                              </span>
+                              <span className={css.cardByline}>
+                                <OwnerAvatar owner={item.owner} repo={item.repo} />
+                                <span className={css.cardOwner}>{item.owner}</span>
+                                {item.stars > 0 ? (
+                                  <span className={css.cardStars} title={t('stars', { count: String(item.stars) })}>
+                                    ★ {item.stars}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </div>
+                            {item.homepage ? (
+                              <a
+                                className={css.cardLink}
+                                href={item.homepage}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={t('homepage')}
+                                title={t('homepage')}
+                              >
+                                <IconRightUpOutline16 />
+                              </a>
+                            ) : null}
+                          </div>
+                          <p className={css.cardDescription}>{item.description}</p>
+                          <div className={css.cardFoot}>
+                            {item.category ? (
+                              <Pill className={css.categoryTag}>
+                                {categoryLabels.get(item.category) ?? item.category}
+                              </Pill>
+                            ) : null}
+                            <span className={css.grow} />
+                            {installedName ? (
+                              <>
+                                <span className={css.installedTag}>{t('installed')}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={isBusy}
+                                  onClick={() => { startUninstall(item.id, installedName) }}
+                                >
+                                  {busyKind === 'uninstall' ? t('uninstalling') : t('uninstall')}
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                disabled={isBusy}
+                                onClick={() => { startInstall(item) }}
+                              >
+                                {busyKind === 'install' ? t('installing') : t('install')}
+                              </Button>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {installed.length === 0 ? (
+                  <p className={css.empty}>{t('installedEmpty')}</p>
+                ) : (
+                  groups.map(group => (
+                    <section key={group.key} className={css.installedGroup} aria-label={group.label}>
+                      <h3 className={css.groupTitle}>{group.label}</h3>
+                      <ul className={css.installedRows}>
+                        {group.rows.map(({ plugin, item }) => {
+                          const opId = item ? item.id : plugin.name
+                          return (
+                            <li className={css.installedRow} key={plugin.name}>
+                              <div className={css.installedIdentity}>
+                                <span className={css.installedName}>
+                                  {plugin.name}
+                                  {plugin.dropped ? <span className={css.deprecatedTag}>{t('dropped')}</span> : null}
+                                </span>
+                                <code className={css.installedSpec}>{plugin.spec}</code>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={isBusy}
+                                onClick={() => { startUninstall(opId, plugin.name) }}
+                              >
+                                {busy?.kind === 'uninstall' && busy.id === opId ? t('uninstalling') : t('uninstall')}
+                              </Button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </section>
+                  ))
+                )}
+              </>
+            )}
           </div>
-          {state.catalog.items.length === 0 ? <p className={css.status}>{t('empty')}</p> : null}
-          {state.catalog.items.length > 0 && items.length === 0
-            ? <p className={css.status}>{t('emptySearch')}</p>
-            : null}
-          {items.length > 0 ? (
-            <ul className={css.cards}>
-              {items.map((item) => {
-                const installedName = installedNameFor(item, installed)
-                const isBusy = busy !== null
-                const isThis = busy?.id === item.id
-                return (
-                  <li className={css.card} key={item.id} data-market-item={item.id}>
-                    <div className={css.cardBody}>
-                      <div className={css.cardHead}>
-                        <strong className={css.cardTitle} title={item.id}>{item.repo}</strong>
-                        <span className={css.cardOwner}>{item.owner}</span>
-                        {installedName ? <span className={css.installedTag}>{t('installed')}</span> : null}
-                      </div>
-                      {item.description ? <p className={css.cardDescription}>{item.description}</p> : null}
-                      <div className={css.cardMeta}>
-                        {item.category ? <span className={css.metaTag}>{item.category}</span> : null}
-                        <span className={css.metaStars}>{t('stars', { count: String(item.stars) })}</span>
-                      </div>
-                    </div>
-                    <div className={css.cardActions}>
-                      {installedName ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={isBusy}
-                          onClick={() => { startUninstall(item, installedName) }}
-                        >
-                          {isThis && busy?.kind === 'uninstall' ? t('uninstalling') : t('uninstall')}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          disabled={isBusy}
-                          onClick={() => { startInstall(item) }}
-                        >
-                          {isThis && busy?.kind === 'install' ? t('installing') : t('install')}
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : null}
-        </div>
+        </>
       ) : null}
     </div>
   )

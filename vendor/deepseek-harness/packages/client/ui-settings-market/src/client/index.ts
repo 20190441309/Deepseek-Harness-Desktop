@@ -47,10 +47,10 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   const activeLocale = (): string => ctx.locale.getLocale().active
   const injected = (): MarketSectionInjected => ({
-    listCatalog: async (options) => shell.listMarketplace({ ...options, locale: activeLocale() }),
+    listCatalog: async options => shell.listMarketplace({ ...options, locale: activeLocale() }),
     listInstalled: async () => {
       const payload = await shell.listInstalledPlugins()
-      return payload?.plugins ?? []
+      return payload.plugins ?? []
     },
     install: (id, options) => shell.installMarketplacePlugin(id, options),
     uninstall: name => shell.uninstallPlugin(name),
