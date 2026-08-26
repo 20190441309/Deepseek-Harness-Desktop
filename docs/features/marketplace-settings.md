@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — 市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底），vendor `ui-settings-market` client specs 21/21 绿 + 包级 tsc/oxlint 干净；`qa:source` 全走查绿（`ok:true, failed:[]`，含 market.section / market.discover / market.installed PASS；Linux xvfb 源码运行）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — PR #46 评审跟进：未安装卡片的安装按钮与主进程白名单对齐（`deprecated` 或空 `installSpec` 不出安装入口）、页签补全 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮加 `title`、已安装匹配改为 `spec-match.ts` 的 owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）。vendor `ui-settings-market` vitest 4 文件 37/37 绿（market-section.client.spec 24、spec-match.client.spec 8、browser-plugin 4、invariant 1），包目录 oxlint 干净。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）；`qa:source` 全走查绿（含 market.section / market.discover / market.installed PASS；Linux xvfb 源码运行，评审跟进提交后未重跑——见 Gates）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
@@ -26,6 +26,10 @@
   （受管 patch 块、`desktop-plugins/dshmarket` 副本、预置 symlink）。
 - 市场是设置内 section，**无**独立 Electron 市场窗。
 - 安装走桌面 IPC / catalog id（`shell:install-marketplace-plugin`），不往 Composer 塞安装草稿。
+- 未安装卡片只在可安装时提供「安装」按钮：`deprecated` 或空 `installSpec` 的行不出安装入口
+  （与主进程安装白名单一致；已装行不受影响，仍显示「已安装」标记 + 卸载）。
+- 已安装 ↔ 目录行的规格匹配走 `spec-match.ts` 的 owner/repo 整段边界匹配
+  （`packageName` 精确匹配优先），不做子串 `includes`。
 - 安装落点是桌面 `dsh-home/profiles/web`，不是官方 `~/.dsh`（见 [dsh-home](dsh-home.md)）。
 - 重启归 HarnessController（`restartAfterProfileWrite` → `startHarness`），无游离 dshmarket 重启路径。
 - Harness 未就绪时不以空市场窗硬装。

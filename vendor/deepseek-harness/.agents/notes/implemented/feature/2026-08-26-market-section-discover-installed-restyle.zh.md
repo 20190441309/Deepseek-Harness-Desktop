@@ -12,8 +12,8 @@
 
 把 `ui-settings-market` 重排到官方设置语言、对齐原市场的 UX 密度，但不恢复插件：
 
-- **结构**：16/24 分区标题 + 说明行 + 28px 刷新图标动作（`McpSection` 模式），下接 `Pill` 页签对——发现与已安装（后者标签带已装数量后缀）。页签切换走官方 `data-dsh-motion="swap"` recipe（以 tab 为 key）。
-- **发现页**：`Input` 原语搜索（替换手写输入框）、`Pill` 分类 chips（保留 `radiogroup`/`radio` 语义）、带 `IconWarningOutline16` 的警告条、结果计数行（保留 `data-market-count`）、auto-fill 280px 卡片网格。每张卡片展示作者 GitHub 头像（`https://github.com/<owner>.png`，浏览器缓存，失败回退首字母——上游 dsh-market 的做法）、仓库名、★ 星标、两行截断描述、本地化分类标签、目录 `deprecated` 字段驱动的已弃用徽标，以及由桌面窗口处理器转交系统浏览器的主页链接。已装行显示成功色标记 + ghost 卸载；其余为 primary 安装。
+- **结构**：16/24 分区标题 + 说明行 + 28px 刷新图标动作（`McpSection` 模式，`aria-label` 加同文案 `title` 供悬停提示），下接 `Pill` 页签对——发现与已安装（后者标签带已装数量后缀）。页签带稳定 id（`market-tab-discover` / `market-tab-installed`），`aria-controls` 指向唯一渲染的窗格；窗格是 `role="tabpanel"`，带对应 `market-panel-*` id 和指回页签的 `aria-labelledby`。页签切换走官方 `data-dsh-motion="swap"` recipe（以 tab 为 key）。
+- **发现页**：`Input` 原语搜索（替换手写输入框）、`Pill` 分类 chips（保留 `radiogroup`/`radio` 语义）、带 `IconWarningOutline16` 的警告条、结果计数行（保留 `data-market-count`）、auto-fill 280px 卡片网格。每张卡片展示作者 GitHub 头像（`https://github.com/<owner>.png`，浏览器缓存，失败回退首字母——上游 dsh-market 的做法）、仓库名、★ 星标、两行截断描述、本地化分类标签、目录 `deprecated` 字段驱动的已弃用徽标，以及由桌面窗口处理器转交系统浏览器的主页链接。已装行显示成功色标记 + ghost 卸载（行已弃用时同样如此）；其余行只在可安装时显示 primary 安装——`deprecated` 或引擎解析出空 `installSpec` 的行不从卡片提供安装入口，与本就拒绝它们的主进程白名单一致。已装 ↔ 目录匹配优先 `packageName` 精确命中，否则用 `spec-match.ts` 的 owner/repo 整段边界匹配，`github:acme/demo-extra` 不再误配目录的 `acme/demo`。
 - **已安装页**：profile 行按目录分类、按目录顺序分组，目录之外的行归入「未分组」置底；发丝线行列表（border-l1 上下 + 交互 hover token），行内展示名称、代码字体的安装规格、`DROPPED` 行的「已退役」徽标和逐行卸载。空态指回发现页，文案与 QA 走查匹配的上游文案一致。
 - **只走 token**：全部颜色为 `--dsw-alias-*`；两处引用不存在的 `--dsw-alias-state-warning-primary`（此前静默落到 fallback）改正为 `--dsw-alias-state-warn-primary`。
 
@@ -31,4 +31,4 @@
 
 ## 测试
 
-`packages/client/ui-settings-market` client specs 从 13 增至 21：页签对与数量后缀、逐卡作者 / 星标 / 分类 / 主页、头像失败回退、已弃用与已退役徽标、警告 + 结果计数、已安装分组顺序、已安装页卸载、空已安装文案，加上原有的搜索 / 过滤 / 安装 / allowBuilds / 进度 / 失败 specs。桌面 `qa:source` 发布走查对重排后的分区端到端全绿（`market.section` / `market.discover` / `market.installed` PASS，Linux xvfb 源码运行）。
+`packages/client/ui-settings-market` vitest：4 个文件、37 个测试全绿——`market-section.client.spec.tsx` 24 个（页签对与数量后缀、tab/tabpanel ARIA 关联、逐卡作者 / 星标 / 分类 / 主页、头像失败回退、已弃用与已退役徽标、已弃用与空 `installSpec` 行的安装门禁、已装弃用行卸载、刷新 label/title、通过已装标记与分组验证的边界规格匹配、警告 + 结果计数、已安装分组顺序、已安装页卸载、空已安装文案，加上搜索 / 过滤 / 安装 / allowBuilds / 进度 / 失败 specs），`spec-match.client.spec.ts` 8 个纯函数用例，另有 browser-plugin（4）与 invariant（1）套件。桌面 `qa:source` 发布走查对重排后的分区端到端全绿（`market.section` / `market.discover` / `market.installed` PASS，Linux xvfb 源码运行）。
