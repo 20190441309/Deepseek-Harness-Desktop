@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — `workspace-fs.writeFile` 增加 `.git` 段拦截（安全审查 L-4），`workspace-fs.test.js` 9/9 绿。此前同日（合并树 `ea659884`，consolidation #39 落地后）— desktop `npm test` 997/0/3 绿；harness `test:gui` 409 文件 5338 绿（`node-half.client.spec.ts` 源面解析修复后 0 红）；`qa:source` surfaces/terminal/files/diff/agents 步骤全 PASS（同日第二轮：壁纸三步归因为 walk 英文匹配缺口并修复后，qa:source 整表全绿 exit 0）。此前同日：硬化计划 PR-A~D（保存竞态串行化、preview-automation 全链删除、preview-workspace 流式+上限、每搜索会话一次 walk + 批量 check-ignore、persist 死字段清除、gitInit 后 Diff 门重探、草稿上限按字节） |
+| **last verified** | 2026-08-26 — 空态卡片压扁为紧凑矩形（图标与标题同行、描述占满下行，`min-height` 112→64px，padding 16→10/12px；仅 `EmptyState.module.css`，令牌不变），ui-surfaces 11 文件 88 测试全绿。此前 2026-08-25 — `workspace-fs.writeFile` 增加 `.git` 段拦截（安全审查 L-4），`workspace-fs.test.js` 9/9 绿。此前同日（合并树 `ea659884`，consolidation #39 落地后）— desktop `npm test` 997/0/3 绿；harness `test:gui` 409 文件 5338 绿（`node-half.client.spec.ts` 源面解析修复后 0 红）；`qa:source` surfaces/terminal/files/diff/agents 步骤全 PASS（同日第二轮：壁纸三步归因为 walk 英文匹配缺口并修复后，qa:source 整表全绿 exit 0）。此前同日：硬化计划 PR-A~D（保存竞态串行化、preview-automation 全链删除、preview-workspace 流式+上限、每搜索会话一次 walk + 批量 check-ignore、persist 死字段清除、gitInit 后 Diff 门重探、草稿上限按字节） |
 
 ## User paths
 
