@@ -279,6 +279,23 @@ test('installMarketplacePlugin rejects a DROPPED catalog plugin before invoking 
   assert.equal(calls.length, 0);
 });
 
+test('installMarketplacePlugin rejects a deprecated catalog row before invoking the CLI', async () => {
+  writeDiskRegistry([{
+    ...githubRow(
+      'acme',
+      'dsh-olddemo',
+      'https://github.com/acme/dsh-olddemo',
+      'github:acme/dsh-olddemo',
+    ),
+    deprecated: true,
+  }]);
+  const { calls, runPlugin } = recordRunner();
+  const result = await installMarketplacePlugin('acme/dsh-olddemo', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /弃用/);
+  assert.equal(calls.length, 0);
+});
+
 test('installMarketplacePlugin rejects invalid allowBuilds before invoking the CLI', async () => {
   const { calls, runPlugin } = recordRunner();
   const result = await installMarketplacePlugin(NPM_ID, { allowBuilds: ['../prepare'], runPlugin });
