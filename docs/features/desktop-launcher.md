@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — H-1/M-3 回归护栏落地：静态断言钉死「index.js 无 `globalShortcut`、DevTools 走 `web-contents-created` 窗口级门禁」与「两条安装通道 + 冷启动闸门都接 `confirmUnverified`，确认框 `defaultId/cancelId=1` fail-safe」；非 Windows 分支单测（`launchUninstaller` linux/darwin 源码运行 → `source-run-no-install`、packaged → `uninstaller-not-found`，绝不 spawn、不查注册表）。同日早些：无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
+| **last verified** | 2026-08-26 — 「跳过用户插件」救生启动修复：skip 启动只随 `--patch` 传桌面自有 `desktop-plugins/install-dsh-plugin/skip-user-plugins.patch.yml`（仅 install 插件 insert），不再把整份 profile `cordis.patch.yml` 当 overlay 复活用户层（CLI 在 `--skip-user-plugins` 下仍应用 `--patch`，旧行为使 skip 完全失效）；`isPluginTreeFailure` 识别 Node ESM `ERR_MODULE_NOT_FOUND / Cannot find package … imported from …profiles/web/`（Loader 以 profile 目录为 parent 导入每个插件行）；`buildLaunch` 启动前探测 `DESKTOP_PACKAGES` 内置组件包缺失（两锚点：CLI + bundle manifest），缺失时给出可操作错误（setup:harness / 重装）而不是无限重试；`npm test` 1068/0 绿。此前 2026-08-25 — H-1/M-3 回归护栏落地：静态断言钉死「index.js 无 `globalShortcut`、DevTools 走 `web-contents-created` 窗口级门禁」与「两条安装通道 + 冷启动闸门都接 `confirmUnverified`，确认框 `defaultId/cancelId=1` fail-safe」；非 Windows 分支单测（`launchUninstaller` linux/darwin 源码运行 → `source-run-no-install`、packaged → `uninstaller-not-found`，绝不 spawn、不查注册表）。同日早些：无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
 
 ## User paths
 
@@ -37,6 +37,8 @@
 - 「启动桌面端」清除「跳过用户插件」sticky 时必须 `forceRestart`；`HarnessController.restart()` 不得把旧 in-flight Promise 交给新调用方（先 await 再开新 `replaceOperation`）。
 - 插件排查禁用/启用写盘后若内核在跑，只经 `startHarness`/`restartWithCleanup` 对齐，不得经 `startDesktopFromLauncher`（避免 `quitAfterStart` 关掉排查窗）。批量禁用可疑走 `shell:disable-plugins`（一次写盘 + 一次 align）。
 - 「跳过用户插件」救生启动不 ensure market/usage/dshbot；dshbot 是独立插件，任何启动都只 `removeDshbotPreset` 清残留（config `dshbotPreset: true` 且非 skip 时才跑开发预置，log-only）。desktop-install 仍 required。可选桌面预置不得拖垮恢复通道。
+- skip 启动的 `--patch` 只允许桌面自有 `skip-user-plugins.patch.yml`（`ensureDesktopInstallPlugin` 每次启动重生成，仅含 `dshd-desktop-plugin-install` insert）；**绝不**把 profile 的 `cordis.patch.yml` 传给 `--patch`——CLI 在 `--skip-user-plugins` 下仍应用 overlay，传整份用户层等于没跳过。
+- skip 只能救用户层（profile patch / manifest bundles）；模板 bundle 挂载的内置组件包（`DESKTOP_PACKAGES`）缺失属运行时损坏，`buildLaunch` 启动前探测并报可操作错误（源码运行 → `npm run setup:harness`；安装包 → 重装），不进入无效 skip 循环。
 - Recovery Board 在 sticky skip、`lastStart.ok===false`、desktop error、genericCause、pluginTreeFailure 或存在 suspects 时于首页展开。
 - `shell:stop-desktop`（启动器专用）取消 harness 自动恢复与在途 restart/start、停止 dsh 内核、清理 PTY/预览并销毁主窗；托盘在内核未运行时打开启动器；不退出 Electron 进程、不关启动器。
 - 版本页 `listReleases` 附带 `installed`（运行模式、注册表 Setup 版本/路径、是否可卸载）；卸载优先 NSIS `Uninstall*.exe`，否则打开「设置 → 应用」；源码运行且无注册表安装时隐藏卸载按钮并给出明确说明。
