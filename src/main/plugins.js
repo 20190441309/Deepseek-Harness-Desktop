@@ -24,6 +24,7 @@ const DESKTOP_INSTALL_FILES = [
   'install-dsh-plugin.mjs',
   'install-dsh-plugin-client.js',
 ];
+const SKIP_OVERLAY_FILENAME = 'skip-user-plugins.patch.yml';
 const OFFICIAL_TEMPLATE_BUNDLES = new Set([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
@@ -166,7 +167,12 @@ function hostPluginDir() {
 
 /**
  * Copy the desktop-only install_dsh_plugin Host plugin into the web profile
- * and keep a managed cordis.patch.yml insert pointing at the copy.
+ * and keep a managed cordis.patch.yml insert pointing at the copy. Also keep
+ * a standalone skip-user-plugins overlay beside the copy: `--skip-user-plugins`
+ * starts must mount the install plugin through `--patch` without resurrecting
+ * the rest of the user layer, so the overlay carries ONLY this insert (passing
+ * the whole cordis.patch.yml would re-apply every user row the skip exists to
+ * bypass).
  * @param options - optional sourceDir / profileDir overrides for tests.
  */
 function ensureDesktopInstallPlugin(options = {}) {
@@ -200,11 +206,26 @@ function ensureDesktopInstallPlugin(options = {}) {
     DESKTOP_INSTALL_END,
     body,
   );
+  const skipPatchFile = path.join(destDir, SKIP_OVERLAY_FILENAME);
+  const skipContents = [
+    '# Desktop-managed overlay for --skip-user-plugins starts: only the',
+    '# install plugin insert, never the profile user layer. Regenerated on',
+    '# every start; do not edit.',
+    body,
+    '',
+  ].join('\n');
+  const existingSkip = fs.existsSync(skipPatchFile)
+    ? fs.readFileSync(skipPatchFile, 'utf8')
+    : '';
+  if (existingSkip !== skipContents) {
+    writeAtomic(skipPatchFile, skipContents);
+  }
   return {
     ok: true,
     destDir,
     href,
     patchFile,
+    skipPatchFile,
     patchChanged: patchChanged || strippedLegacy,
   };
 }
