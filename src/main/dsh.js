@@ -338,13 +338,35 @@ function quoteWindowsCommand(command) {
   return value;
 }
 
-function spawnHarness(command, args, options) {
-  const isWin = process.platform === 'win32';
+/**
+ * Spawn plan for the harness child. Windows `.cmd`/`.bat` shims need
+ * `shell: true`, and under a shell Node joins the args verbatim — an
+ * unquoted path with spaces (overlay files live under `AppData\Roaming\…`)
+ * would split into separate tokens, so every whitespace-bearing arg gets the
+ * same quoting as the command.
+ * @param {string} command
+ * @param {string[]} args
+ * @param {boolean} [isWin]
+ * @returns {{ command: string, args: string[], shell: boolean }}
+ */
+function harnessSpawnPlan(command, args, isWin = process.platform === 'win32') {
   const needsShell = isWin && /\.(cmd|bat)$/i.test(command);
-  return spawn(needsShell ? quoteWindowsCommand(command) : command, args, {
+  if (!needsShell) {
+    return { command, args, shell: false };
+  }
+  return {
+    command: quoteWindowsCommand(command),
+    args: args.map(quoteWindowsCommand),
+    shell: true,
+  };
+}
+
+function spawnHarness(command, args, options) {
+  const plan = harnessSpawnPlan(command, args);
+  return spawn(plan.command, plan.args, {
     ...options,
     windowsHide: true,
-    shell: needsShell,
+    shell: plan.shell,
   });
 }
 
@@ -1043,4 +1065,5 @@ module.exports = {
   ensureOwnedPort,
   connectHost,
   readyUrlPattern,
+  harnessSpawnPlan,
 };

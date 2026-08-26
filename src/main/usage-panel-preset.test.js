@@ -35,7 +35,7 @@ function writeSource(dir) {
   return dir;
 }
 
-test('ensureUsagePanelPlugin copies the bundled package and inserts a managed patch', () => {
+test('ensureUsagePanelPlugin copies the bundled package and writes a desktop overlay', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-panel-src-')));
   try {
@@ -48,11 +48,43 @@ test('ensureUsagePanelPlugin copies the bundled package and inserts a managed pa
     assert.equal(fs.existsSync(path.join(dest, 'lib', 'client.js')), true);
     const linked = path.join(profileDir, 'node_modules', 'dsh-usage-panel');
     assert.equal(fs.existsSync(path.join(linked, 'package.json')), true);
+    // The insert lives in the overlay; cordis.patch.yml stays user-owned
+    // (never created by the desktop).
+    assert.equal(result.overlayFile, path.join(dest, 'desktop-usage-panel.patch.yml'));
+    const overlay = fs.readFileSync(result.overlayFile, 'utf8');
+    assert.ok(overlay.includes('id: usage-stats'));
+    assert.match(overlay, /name: ['"]dsh-usage-panel['"]/);
+    assert.equal(fs.existsSync(path.join(profileDir, 'cordis.patch.yml')), false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('ensureUsagePanelPlugin migrates the legacy managed block out of the user patch', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-panel-src-')));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+      '- id: message-edit',
+      '  disabled: true',
+      '',
+      USAGE_PANEL_BEGIN,
+      '- insert:',
+      '    - id: usage-stats',
+      '      name: "dsh-usage-panel"',
+      USAGE_PANEL_END,
+      '',
+    ].join('\n'), 'utf8');
+    const result = ensureUsagePanelPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
     const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.ok(patch.includes(USAGE_PANEL_BEGIN));
-    assert.ok(patch.includes(USAGE_PANEL_END));
-    assert.ok(patch.includes('id: usage-stats'));
-    assert.match(patch, /name: ['"]dsh-usage-panel['"]/);
+    assert.equal(patch.includes(USAGE_PANEL_BEGIN), false);
+    assert.equal(patch.includes('id: usage-stats'), false);
+    assert.ok(patch.includes('- id: message-edit'));
+    assert.ok(fs.readFileSync(result.overlayFile, 'utf8').includes('id: usage-stats'));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
@@ -64,22 +96,23 @@ test('ensureUsagePanelPlugin refreshes the bundled copy on later starts', () => 
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-panel-src-')));
   try {
     const profileDir = path.join(home, 'profiles', 'web');
-    ensureUsagePanelPlugin({ sourceDir: source, profileDir });
+    const first = ensureUsagePanelPlugin({ sourceDir: source, profileDir });
+    const firstOverlay = fs.readFileSync(first.overlayFile, 'utf8');
     fs.writeFileSync(path.join(source, 'lib', 'index.js'), 'export const name = "updated"\n', 'utf8');
     const again = ensureUsagePanelPlugin({ sourceDir: source, profileDir });
     assert.equal(again.ok, true);
     assert.equal(again.added, false);
     const dest = path.join(profileDir, 'desktop-plugins', 'dsh-usage-panel', 'lib', 'index.js');
     assert.equal(fs.readFileSync(dest, 'utf8'), 'export const name = "updated"\n');
-    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.equal(patch.split(USAGE_PANEL_BEGIN).length, 2);
+    // Idempotent overlay: unchanged content is not rewritten differently.
+    assert.equal(fs.readFileSync(again.overlayFile, 'utf8'), firstOverlay);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
 });
 
-test('ensureUsagePanelPlugin skips the patch insert when the profile already lists the bundle', () => {
+test('ensureUsagePanelPlugin removes the overlay when the profile already lists the bundle', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-panel-src-')));
   try {
@@ -97,9 +130,15 @@ test('ensureUsagePanelPlugin skips the patch insert when the profile already lis
       USAGE_PANEL_END,
       '',
     ].join('\n'), 'utf8');
+    // A stale overlay from a previous non-bundle start must go away too.
+    const overlayFile = path.join(profileDir, 'desktop-plugins', 'dsh-usage-panel', 'desktop-usage-panel.patch.yml');
+    fs.mkdirSync(path.dirname(overlayFile), { recursive: true });
+    fs.writeFileSync(overlayFile, '- insert: []\n', 'utf8');
     const result = ensureUsagePanelPlugin({ sourceDir: source, profileDir });
     assert.equal(result.ok, true);
     assert.equal(result.added, false);
+    assert.equal(result.overlayFile, undefined);
+    assert.equal(fs.existsSync(overlayFile), false);
     const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
     assert.equal(patch.includes(USAGE_PANEL_BEGIN), false);
     assert.equal(patch.includes('id: usage-stats'), false);

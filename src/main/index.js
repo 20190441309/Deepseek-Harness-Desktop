@@ -417,7 +417,14 @@ if (!gotLock) {
       startDesktop: startDesktopFromLauncher,
       stopDesktopCleanup: cleanupDesktopResources,
       remote,
-      onOpenLauncher: () => openLauncher(),
+      onOpenLauncher: async (options = {}) => {
+        await openLauncher();
+        // Boot-page bridge: land on the home tab so the Recovery Board is
+        // in view (same show-tab path the failed-start flow uses).
+        if (options && options.tab) {
+          sendToLauncher('shell:show-tab', { tab: options.tab });
+        }
+      },
     });
     buildMenu({
       onOpenWorkspace: () => ignoreFailure(pickWorkspace()),

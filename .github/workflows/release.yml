@@ -34,6 +34,31 @@ jobs:
       - name: Build NSIS setup installer
         run: npm run dist
 
+      # Release acceptance for the actual artifact: boot dist/win-unpacked —
+      # the exact tree the NSIS Setup installs — with the embedded DSH_SMOKE
+      # assertions (window + titlebar hit-testing + PTY echo + dsh-home
+      # isolation). This is NOT a repeat of test.yml quality gates: it can
+      # only exist after `npm run dist` produced the artifact, so it lives in
+      # the release chain and BLOCKS publishing — a Setup that cannot boot
+      # must not ship, and a red gate here never blocks PR merges (release is
+      # tag/dispatch-triggered).
+      # Flake policy: the step makes two attempts — one retry absorbs a
+      # single-shot flake (slow runner, first-boot caches); two consecutive
+      # failures fail the job. Re-run the job for infra-level noise;
+      # recurring red means a real packaging regression. Validate this step
+      # itself via workflow_dispatch once before tagging a release.
+      - name: Packaged smoke gate (win-unpacked, blocking, 2 attempts)
+        shell: pwsh
+        env:
+          # CI cold starts are slower than the 300s local default.
+          DSH_SMOKE_TIMEOUT_MS: '600000'
+        run: |
+          npm run smoke:packaged
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::warning::Packaged smoke attempt 1 failed; retrying once per the documented flake policy.'
+            npm run smoke:packaged
+          }
+
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:

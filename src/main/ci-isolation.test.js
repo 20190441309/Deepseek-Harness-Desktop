@@ -86,15 +86,36 @@ test('desktop unit tests do not pin DSH_HARNESS_ROOT to vendor/deepseek-harness'
   assert.deepEqual(hits, []);
 });
 
-test('release workflow builds artifacts without repeating quality or viewport-dependent gates', () => {
+test('release workflow builds artifacts without repeating test.yml quality gates', () => {
   const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.doesNotMatch(yml, /\bnpm test\b/);
   assert.doesNotMatch(yml, /\bpnpm run test:gui\b/);
-  assert.doesNotMatch(yml, /\bsmoke:packaged\b/);
   assert.doesNotMatch(yml, /pnpm\/action-setup/);
   assert.match(yml, /node scripts\/setup-harness\.js/);
   assert.match(yml, /npm run dist\b/);
   assert.match(yml, /npm run dist:mac\b/);
+});
+
+test('windows release job smokes the packaged artifact: blocking, after dist, two attempts', () => {
+  // Not a repeated quality gate: smoke:packaged needs dist/win-unpacked,
+  // which only exists in the release chain — it is artifact acceptance.
+  // The step sits between `npm run dist` and the artifact upload so a
+  // Setup that cannot boot never reaches the publish job. Flake policy:
+  // two in-step attempts; only two consecutive failures fail the job.
+  const yml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+  const windowsJob = yml.slice(yml.indexOf('\n  windows:'), yml.indexOf('\n  macos:'));
+  const distAt = windowsJob.indexOf('npm run dist');
+  const smokeAt = windowsJob.indexOf('npm run smoke:packaged');
+  const uploadAt = windowsJob.indexOf('Upload installer artifacts');
+  assert.ok(distAt >= 0, 'windows job must build the installer');
+  assert.ok(smokeAt > distAt, 'packaged smoke must run after npm run dist');
+  assert.ok(uploadAt > smokeAt, 'a red smoke must block the artifact upload (and so the release)');
+  const retryAt = windowsJob.indexOf('npm run smoke:packaged', smokeAt + 1);
+  assert.ok(retryAt > smokeAt, 'the documented two-attempt flake policy needs a second attempt');
+  assert.doesNotMatch(windowsJob, /continue-on-error/);
+  // The macOS job stays best-effort and does not gate on the smoke.
+  const macosJob = yml.slice(yml.indexOf('\n  macos:'), yml.indexOf('\n  release:'));
+  assert.doesNotMatch(macosJob, /smoke:packaged/);
 });
 
 test('release job requires a green same-SHA Desktop tests run before publishing', () => {

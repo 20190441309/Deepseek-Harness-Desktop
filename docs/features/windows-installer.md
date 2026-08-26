@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `windows-installer` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — 第三轮：`customUnWelcomePage` 修复卸载欢迎页 3 行标题裁字（契约决策 A，机制核对到 MUI2 源码；wine+Xvfb 修后截图见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)），门禁 8/8、`npm test` 全绿；完成页/真实 `/S`/zh_CN 仍待 CI windows artifact 实机走查，清单固化在 [TC-INST-RUNBOOK.md](../qa/results/2026-08-25/installer-branding/TC-INST-RUNBOOK.md)（workflow dispatch 云代理 403，须人触发） |
+| **last verified** | 2026-08-26 — D4 发布链验收：release.yml windows job 在 `npm run dist` 与 artifact 上传之间新增**阻断式** packaged smoke 门禁（`npm run smoke:packaged` 实启 `dist/win-unpacked`，两次尝试吸收单次 flake，策略写进 workflow 注释；macos job 保持 best-effort 无 smoke）；该步骤是**产物验收**而非重复 test.yml 质量门（smoke 需要 dist 产物，只能存在于发布链），推翻 d9481ce7 的「release 不跑 smoke:packaged」钉子，新位置由 `ci-isolation.test.js` 钉死（dist 之后、上传之前、含重试、无 continue-on-error）。**首个 tag 前须经 `workflow_dispatch` 手动跑一轮 windows job 验证该步骤本身（本轮在 Linux VM 上未实跑 Windows smoke，不作已验证声称）。** 此前 2026-08-25 — 第三轮：`customUnWelcomePage` 修复卸载欢迎页 3 行标题裁字（契约决策 A，机制核对到 MUI2 源码；wine+Xvfb 修后截图见 [QA 证据](../qa/results/2026-08-25/installer-branding/EXECUTION-REPORT.md)），门禁 8/8、`npm test` 全绿；完成页/真实 `/S`/zh_CN 仍待 CI windows artifact 实机走查，清单固化在 [TC-INST-RUNBOOK.md](../qa/results/2026-08-25/installer-branding/TC-INST-RUNBOOK.md)（workflow dispatch 云代理 403，须人触发） |
 
 ## User paths
 
@@ -21,6 +21,7 @@
 - 安装器语言 zh_CN（首位 = 兜底）+ en_US；产品中文文案走 MUI 本地化串，不烙进位图。
 - 许可页读根 `LICENSE`（MIT）原文。
 - 安装器/卸载器图标 = `assets/icon.ico`（与应用同一鲸标）。
+- 发布链产物验收：windows job 的 packaged smoke 门禁（`smoke:packaged` on `dist/win-unpacked`）位于 `npm run dist` 之后、artifact 上传之前，**阻断**发版；步骤内置两次尝试（连续两次失败=真问题），不设 `continue-on-error`；macos job 不加 smoke（best-effort 政策不变）。不得把该步骤改造成重复 test.yml 的质量门（`npm test` / `test:gui` 仍禁止进 release.yml）。
 
 ## Allowed touch
 
@@ -28,6 +29,7 @@
 - `build/` — `installer.nsh` 与生成的 BMP
 - `scripts/render-installer-assets.js`、`scripts/run-render-installer-assets.js` — 位图生成
 - `src/main/installer-branding.test.js` — 自动门禁
+- `.github/workflows/release.yml` windows job 的 packaged smoke 步骤与 `src/main/ci-isolation.test.js` 对应钉子（2026-08-26 扩入，理由：发布链产物验收属本卡；上传 globs / SHA512SUMS 流仍在 Do not touch）
 - 本卡与 [build-release handbook](../handbook/modules/build-release.md)
 
 ## Do not touch
@@ -40,7 +42,7 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `node --test src/main/installer-branding.test.js`（随 `npm test`）：nsis 契约、BMP 几何/位深、nsh 宏白名单、release.yml glob 对齐 |
+| Automated | `node --test src/main/installer-branding.test.js`（随 `npm test`）：nsis 契约、BMP 几何/位深、nsh 宏白名单、release.yml glob 对齐；`ci-isolation.test.js` 钉 packaged smoke 门禁位置（dist 后、上传前、两次尝试、无 continue-on-error）；release CI 实跑 `smoke:packaged`（win-unpacked 实启 + 内嵌 DSH_SMOKE 断言，阻断发版） |
 | Manual / QA | `TC-INST-001`（GUI 安装走查）、`TC-INST-009`（`/S` 覆盖升级）、`TC-INST-010`（卸载）、`TC-INST-012/013` in [production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md)；每次改品牌位图后对 CI windows artifact 目检欢迎/许可/目录/完成/卸载五页——实机执行清单（artifact 下载/SHA256/逐页 checklist/zh_CN）固化在 [TC-INST-RUNBOOK.md](../qa/results/2026-08-25/installer-branding/TC-INST-RUNBOOK.md) |
 
 ## Sources

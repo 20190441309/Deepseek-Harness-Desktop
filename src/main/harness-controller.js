@@ -427,6 +427,16 @@ class HarnessController extends EventEmitter {
     if (desktopInstall && desktopInstall.ok === false) {
       throw new Error(`桌面安装插件写入失败：${desktopInstall.reason || 'unknown'}`);
     }
+    // Desktop-owned rows ride --patch overlays on EVERY start; the profile's
+    // cordis.patch.yml is purely user-owned (ensure only strips legacy
+    // managed blocks). Never pass that file to --patch: overlays still apply
+    // under --skip-user-plugins, so it would re-mount every user row the
+    // skip exists to bypass. The install overlay is required on all starts;
+    // the usage overlay joins below on full starts only.
+    const patchFiles = [];
+    if (desktopInstall?.overlayFile) {
+      patchFiles.push(desktopInstall.overlayFile);
+    }
     // The marketplace is desktop-owned (settings section `market` +
     // main-process curated engine); every start only clears legacy
     // dshmarket preset residue, log-only on failure.
@@ -447,6 +457,8 @@ class HarnessController extends EventEmitter {
         this.assertOperationCurrent(generation);
         if (usage && usage.ok === false) {
           this.dsh.log(`预置用量统计失败：${usage.error || 'unknown'}`, 'app');
+        } else if (usage?.overlayFile) {
+          patchFiles.push(usage.overlayFile);
         }
       } catch (error) {
         this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
@@ -516,14 +528,7 @@ class HarnessController extends EventEmitter {
     const startOptions = {
       ...target,
       skipUserPlugins,
-      // Skip mode must not hand the CLI the profile's own cordis.patch.yml:
-      // `--patch` overlays still apply under --skip-user-plugins, so passing
-      // that file would re-mount every user row the skip exists to bypass.
-      // Only the desktop-owned overlay with the install-plugin insert rides
-      // along (desktop-install stays required in recovery starts).
-      patchFiles: skipUserPlugins && desktopInstall?.skipPatchFile
-        ? [desktopInstall.skipPatchFile]
-        : [],
+      patchFiles,
     };
     const url = await this.dsh.start(startOptions);
       this.assertOperationCurrent(generation);

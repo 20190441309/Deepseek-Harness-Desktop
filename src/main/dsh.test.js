@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { DshManager, missingDesktopForkPackages } = require('./dsh');
+const { DshManager, missingDesktopForkPackages, harnessSpawnPlan } = require('./dsh');
 const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
 const { readPin } = require('../shared/harness-upstream');
 const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
@@ -477,13 +477,12 @@ test('launcher recovery flags stay before host and port', () => {
   ]);
 });
 
-test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.ts contract)', () => {
-  // The CLI parser consumes launcher flags until the FIRST token it does not
-  // recognize; everything from there on is app args (passThroughOptions). A
-  // skip flag that drifts behind `--host` would be silently swallowed by the
-  // app — a start WITH user plugins the desktop believes is skipped. Derive
-  // the launcher-owned flag set from the vendored args.ts web subcommand so
-  // this test tracks the real grammar instead of a copy of today's argv.
+/**
+ * Launcher-owned flag set of the vendored args.ts web subcommand:
+ * flag → whether it declares a value. Fail-loud extraction — the walk in the
+ * contract tests would silently pass on an empty set.
+ */
+function extractWebLauncherFlags() {
   const argsTs = fs.readFileSync(
     path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness', 'apps', 'cli', 'src', 'args.ts'),
     'utf8',
@@ -497,12 +496,33 @@ test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.t
   for (let match = optionPattern.exec(webBlock); match; match = optionPattern.exec(webBlock)) {
     launcherFlags.set(match[1], Boolean(match[2]));
   }
-  // Fail loud on extraction drift: the web alias must still declare the two
-  // flags the desktop skip start relies on (a silent empty set here would
-  // turn the walk below into a no-op).
+  // The web alias must still declare the two flags every desktop start
+  // relies on (a silent empty set would turn the walk into a no-op).
   assert.equal(launcherFlags.get('--skip-user-plugins'), false, 'web alias lost --skip-user-plugins');
   assert.equal(launcherFlags.get('--patch'), true, 'web alias lost --patch <path>');
+  return launcherFlags;
+}
 
+/** Walk argv exactly as the CLI does: launcher flags end at the first unknown token. */
+function grammarPrefixFlags(launcherFlags, args) {
+  assert.equal(args[0], 'web');
+  let index = 1;
+  const inPrefix = new Set();
+  while (index < args.length && launcherFlags.has(args[index])) {
+    inPrefix.add(args[index]);
+    index += launcherFlags.get(args[index]) ? 2 : 1;
+  }
+  return { inPrefix, appArgs: args.slice(index) };
+}
+
+test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.ts contract)', () => {
+  // The CLI parser consumes launcher flags until the FIRST token it does not
+  // recognize; everything from there on is app args (passThroughOptions). A
+  // skip flag that drifts behind `--host` would be silently swallowed by the
+  // app — a start WITH user plugins the desktop believes is skipped. Derive
+  // the launcher-owned flag set from the vendored args.ts web subcommand so
+  // this test tracks the real grammar instead of a copy of today's argv.
+  const launcherFlags = extractWebLauncherFlags();
   const manager = new DshManager({
     sourceHarnessStatus: () => ({ present: false }),
     resolveDshBin: () => 'dsh',
@@ -515,20 +535,55 @@ test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.t
     skipUserPlugins: true,
     patchFiles: ['C:/desktop-install.yml', 'C:/extra.yml'],
   });
-  assert.equal(launch.args[0], 'web');
-  // Walk the grammar prefix exactly as the CLI does: launcher flags (and
-  // their declared values) end at the first unknown token.
-  let index = 1;
-  const inPrefix = new Set();
-  while (index < launch.args.length && launcherFlags.has(launch.args[index])) {
-    inPrefix.add(launch.args[index]);
-    index += launcherFlags.get(launch.args[index]) ? 2 : 1;
-  }
+  const { inPrefix, appArgs } = grammarPrefixFlags(launcherFlags, launch.args);
   assert.ok(inPrefix.has('--skip-user-plugins'), '--skip-user-plugins fell into app args — the CLI would ignore it');
   assert.ok(inPrefix.has('--patch'), '--patch fell into app args — the overlay would never mount');
-  const appArgs = launch.args.slice(index);
   assert.equal(appArgs.includes('--skip-user-plugins'), false);
   assert.equal(appArgs.includes('--patch'), false);
+});
+
+test('full-start argv keeps the desktop overlay --patch inside the CLI grammar prefix', () => {
+  // Since the single-overlay convergence, EVERY start (not only skip) rides
+  // `--patch`; a drift behind `--host` would silently drop the install
+  // plugin from full starts too.
+  const launcherFlags = extractWebLauncherFlags();
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => 'dsh',
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+  });
+  const launch = manager.buildLaunch({
+    host: '127.0.0.1',
+    port: 3080,
+    patchFiles: [
+      'C:/profiles/web/desktop-plugins/install-dsh-plugin/desktop-install.patch.yml',
+      'C:/profiles/web/desktop-plugins/dsh-usage-panel/desktop-usage-panel.patch.yml',
+    ],
+  });
+  const { inPrefix, appArgs } = grammarPrefixFlags(launcherFlags, launch.args);
+  assert.ok(inPrefix.has('--patch'), '--patch fell into app args — desktop overlays would never mount');
+  assert.equal(appArgs.includes('--patch'), false);
+  assert.equal(launch.args.includes('--skip-user-plugins'), false);
+});
+
+test('harnessSpawnPlan quotes whitespace-bearing args under the Windows .cmd shell', () => {
+  const overlay = 'C:\\Users\\John Doe\\AppData\\Roaming\\dshd\\desktop-install.patch.yml';
+  const plan = harnessSpawnPlan('C:\\Program Files\\nodejs\\dsh.cmd', ['web', '--patch', overlay], true);
+  assert.equal(plan.shell, true);
+  assert.equal(plan.command, '"C:\\Program Files\\nodejs\\dsh.cmd"');
+  // Under shell:true Node joins args verbatim — an unquoted path with spaces
+  // splits into tokens and the CLI sees a truncated overlay path.
+  assert.deepEqual(plan.args, ['web', '--patch', `"${overlay}"`]);
+
+  // Non-shell spawn (node binary, all packaged/source starts) stays verbatim.
+  const direct = harnessSpawnPlan('C:\\Program Files\\nodejs\\node.exe', ['bin.js', 'web', '--patch', overlay], true);
+  assert.equal(direct.shell, false);
+  assert.deepEqual(direct.args, ['bin.js', 'web', '--patch', overlay]);
+
+  // Non-Windows never shells out.
+  const posix = harnessSpawnPlan('/usr/bin/dsh.cmd', ['web'], false);
+  assert.equal(posix.shell, false);
 });
 
 function makeSourceLaunchManager(overrides = {}) {

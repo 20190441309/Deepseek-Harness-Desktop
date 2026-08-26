@@ -60,6 +60,7 @@ function bootApi(renderer) {
     restart: invoke(renderer, 'shell:restart'),
     cancelRestart: invoke(renderer, 'shell:cancel-restart'),
     saveBootLog: invoke(renderer, 'shell:save-boot-log'),
+    openLauncher: invoke(renderer, 'shell:open-launcher'),
     onState: subscribe(renderer, 'shell:state'),
     onLog: subscribe(renderer, 'shell:log'),
     onPluginBoot: subscribe(renderer, 'shell:plugin-boot'),
