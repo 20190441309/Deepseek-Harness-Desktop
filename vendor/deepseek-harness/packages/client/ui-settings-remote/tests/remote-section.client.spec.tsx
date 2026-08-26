@@ -172,7 +172,7 @@ describe('RemoteSection', () => {
 
   it('offers bind-scope options in LAN mode and saves the narrowed bind address', async () => {
     const props = renderRemote({
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ bindAddress: patch.remoteBindAddress })),
+      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ bindAddress: patch.remoteBindAddress ?? '0.0.0.0' })),
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
@@ -203,7 +203,7 @@ describe('RemoteSection', () => {
 
   it('switches LAN transport to self-signed HTTPS and swaps the warning for the TLS hint', async () => {
     const props = renderRemote({
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ lanTls: patch.remoteLanTls })),
+      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ lanTls: patch.remoteLanTls ?? false })),
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
