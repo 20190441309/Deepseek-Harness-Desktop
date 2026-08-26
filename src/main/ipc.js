@@ -47,6 +47,9 @@ const LAUNCHER_ONLY = [IPC_ROLES.LAUNCHER];
 const CONFIG_SURFACES = [IPC_ROLES.HARNESS];
 const ALL_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS, IPC_ROLES.LAUNCHER];
 const UPDATE_SURFACES = [IPC_ROLES.HARNESS, IPC_ROLES.LAUNCHER];
+// Boot page and harness may summon the launcher window; the launcher itself
+// never needs to (it IS the launcher).
+const OPEN_LAUNCHER_SURFACES = [IPC_ROLES.BOOT, IPC_ROLES.HARNESS];
 
 function configLocale(config = loadConfig()) {
   return config.locale === 'en' ? 'en' : 'zh';
@@ -257,11 +260,17 @@ function registerIpc({
 
   handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
 
-  handle('shell:open-launcher', HARNESS_ONLY, async () => {
+  handle('shell:open-launcher', OPEN_LAUNCHER_SURFACES, async (event) => {
     if (typeof onOpenLauncher !== 'function') {
       return { ok: false, reason: 'unavailable' };
     }
-    await onOpenLauncher();
+    // The boot page bridges startup failures to the launcher home tab, where
+    // the Recovery Board owns ALL plugin-level recovery (attribution,
+    // per-plugin disable, skip). The boot page itself only keeps transient
+    // actions (retry / cancel auto-restart / download log) and never grows
+    // its own recovery copy.
+    const role = assertIpcSender(event, OPEN_LAUNCHER_SURFACES);
+    await onOpenLauncher(role === IPC_ROLES.BOOT ? { tab: 'home' } : {});
     return { ok: true };
   });
 

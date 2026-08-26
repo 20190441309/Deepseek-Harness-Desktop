@@ -1322,21 +1322,27 @@ test('launcher-only stop-desktop rejects boot and harness senders', async () => 
   }
 });
 
-test('harness open-launcher invokes onOpenLauncher and rejects launcher sender', async () => {
-  let calls = 0;
+test('open-launcher serves harness and boot (boot lands on home tab), rejects launcher sender', async () => {
+  const calls = [];
   const ipc = loadIpc({
-    onOpenLauncher: async () => {
-      calls += 1;
+    onOpenLauncher: async (options) => {
+      calls.push(options);
     },
   });
   try {
     const result = await ipc.invoke('shell:open-launcher', harnessEvent());
     assert.equal(result.ok, true);
-    assert.equal(calls, 1);
+    assert.deepEqual(calls, [{}]);
+    // Boot-page bridge: startup failures route to the launcher home tab so
+    // the Recovery Board (the ONLY plugin-level recovery surface) is in view.
+    const bridged = await ipc.invoke('shell:open-launcher', bootEvent());
+    assert.equal(bridged.ok, true);
+    assert.deepEqual(calls, [{}, { tab: 'home' }]);
     await assert.rejects(
       () => ipc.invoke('shell:open-launcher', launcherEvent()),
       (error) => error.code === 'ERR_DSH_IPC_SENDER',
     );
+    assert.equal(calls.length, 2);
   } finally {
     ipc.restore();
   }
