@@ -62,4 +62,28 @@ D2 现状：`performStartOnce` 链 = stripDroppedPlugins / healDanglingBundles /
 
 ## 执行与验证记录
 
-（执行后回填。）
+执行提交（本分支，`feature(<id>)` 逐项）：
+
+| 项 | 提交 | 内容 |
+| --- | --- | --- |
+| D1 | `1f6c3da0` | `ensureDesktopInstallPlugin` strip（新旧两代记号）+ 空文件归一化 `[]` + `desktop-install.patch.yml` overlay + 删旧名 `skip-user-plugins.patch.yml`；`ensureUsagePanelPlugin` 同规则（`desktop-usage-panel.patch.yml`，禁用/失败/市场 bundle 接管时删 overlay）；控制器所有启动传 install overlay、全量另传 usage overlay；`harnessSpawnPlan` Windows `.cmd` shell 参数引号；契约脚本双轮传 overlay + 迁移回放 + 恰好一次断言 |
+| D3 | `5deaedf3` | `shell:open-launcher` 放开 BOOT 角色（boot 发起 → home tab）、launcher 角色仍拒；boot preload 暴露 `openLauncher`；boot 页错误态「回启动器排查」按钮（仅 settled error 态，自动重启排程/进行中不出现）；`boot-recovery.js` 纯函数 + 单测钉死动作行 |
+| D4 | `92e8c76a` | release.yml windows job `npm run dist` 与上传之间新增阻断式 `smoke:packaged` 步骤（pwsh 两次尝试、`DSH_SMOKE_TIMEOUT_MS=600000`、策略写注释）；推翻 `d9481ce7` 的「release 不跑 smoke:packaged」钉子并在 `ci-isolation.test.js` 重钉新位置（dist 后、上传前、含重试、无 continue-on-error、macos 不加）；`packaged-p0.test.js` 改为只禁 `qa:packaged` 进 release |
+| 卡/rules | `b8c26e65` | desktop-launcher / boot-page / windows-installer / usage-stats 卡 + 三个 `.cursor/rules` + plugin-recovery handbook 流程同步 |
+
+Phase E 实现自审中发现并处理：
+
+- `ci-isolation.test.js` 与 `packaged-p0.test.js` **双钉** `smoke:packaged` 不进 release.yml（`d9481ce7`「分离质量验证与安装包构建」）。裁决：D4 本质就是推翻该钉——但推翻是**收窄的**：`npm test` / `test:gui` 仍禁止进 release（那才是「重复质量门」）；smoke 需要 dist 产物、只能存在于发布链，属产物验收。两处钉子改写为钉新不变量而非删除断言。
+- usage ensure 失败时返回值可能带 `overlayFile`（磁盘上可能残留）——控制器只在 `ok !== false` 时收编 overlay，且 ensure 失败路径主动删 overlay 文件（防陈旧 overlay 复活），单测钉死。
+
+Phase F 实证（本 Linux 云 VM，Node 22.22.2 / nvm，vendor `build:lib` + `apps/web build` 后）：
+
+1. **`npm test` 全绿**：1094 tests，1091 pass / 0 fail / 3 skipped（skip 为环境性跳过，与本轮改动无关）。
+2. **真 CLI 契约门禁**：`node scripts/check-skip-compose-contract.js vendor/deepseek-harness` 通过——fixture 预埋 canary 用户行 + 旧受管块，run 内断言迁移后 `cordis.patch.yml` 无受管记号且 canary 保留；skip 轮 canary 消失 + install 行在；full 轮（传 overlay）canary 回来 + install 行**恰好一次**。
+3. **迁移边缘实证（真 CLI）**：模板型 profile（注释 + 受管块、无用户行——旧 upsert 已吃掉模板 `[]` 的最常见存量形态）经 ensure 迁移后 = 注释 + `[]`；`bin.js web --patch <overlay> --dump-config` exit 0、install 行恰好 1——证明 strip 归一化对 `parsePatchList` 安全、无双挂载。
+4. **near-real GUI 冒烟（真 Electron + 真 dsh web，Xvfb :1）**：`npm run smoke:source` PASS（UI frame / titlebar 六键 / hit-testing surfaces+branch+git / PTY echo 全健康）——该冒烟走的就是 D1 后的全量启动路径（install + usage 双 overlay 经 `--patch`）。`DSH_SMOKE_KEEP=1` 复跑后检查现场 profile：`cordis.patch.yml` = CLI 自写的纯用户模板（注释+`[]`，桌面未写一字）；`desktop-install.patch.yml` / `desktop-usage-panel.patch.yml` 内容与设计一致。
+5. **release.yml**：YAML 解析通过（python yaml.safe_load）；`ci-isolation.test.js` / `packaged-p0.test.js` 新钉全绿。
+
+**诚实边界**：Windows NSIS Setup 的 packaged smoke（D4 新步骤本体）未在本 VM 实跑（Linux 环境）；已在卡与 workflow 注释写明「首个 tag 前须 `workflow_dispatch` 手动跑一轮 windows job 验证」。Windows 引号修复由 `harnessSpawnPlan` 单测（isWin 注入）覆盖，非实机。
+
+**再次推迟（维持 Phase C 裁决）**：D2（清道夫链版本戳化——会把「dshmarket 永不挂载」等持续性不变量降级为一次性检查，备份还原/外部写入即漏）；P2-4（控制器无效 skip 重试——超出卡片允许面，`buildLaunch` 预检已挡主路径）。
