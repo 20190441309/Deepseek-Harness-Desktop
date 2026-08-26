@@ -1,6 +1,7 @@
 'use strict';
 
 const { OFFICIAL_TEMPLATE_BUNDLES } = require('./plugins');
+const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
 
 const GENERIC_OOM = /heap out of memory|js heap|allocation failed|oom\b/i;
 const GENERIC_PORT = /eaddrinuse|address already in use/i;
@@ -17,6 +18,28 @@ const EVIDENCE_PATTERNS = [
 // channels (vendor/dsh-im) but still appears on the Recovery Board toggle list.
 const PRESET_PLUGINS = new Set(['dsh-usage-panel', '@xmanrui/dsh-im', 'dsh-im', 'xmanrui-dsh-im']);
 const EVIDENCE_LINE_MAX = 240;
+
+const IN_BOX_PACKAGE_NAMES = new Set(DESKTOP_PACKAGES.map((pkg) => pkg.name));
+
+/**
+ * A suspect that names an in-box desktop fork package (exactly or via a
+ * subpath specifier like `@scope/pkg/client`) is harness runtime damage, not a
+ * user plugin: disabling plugins or skipping the user layer cannot repair it.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isInBoxPackageName(name) {
+  const text = String(name || '');
+  if (IN_BOX_PACKAGE_NAMES.has(text)) {
+    return true;
+  }
+  for (const pkg of IN_BOX_PACKAGE_NAMES) {
+    if (text.startsWith(`${pkg}/`)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function classifyGenericFailure(text) {
   const blob = String(text || '');
@@ -97,6 +120,7 @@ function buildForensicsSummary(forensics) {
     suspectCount: suspects.length + orphans.length,
     pluginTreeFailure: Boolean(forensics.pluginTreeFailure),
     hasOrphans: orphans.length > 0,
+    desktopRuntimeDamage: Boolean(forensics.desktopRuntimeDamage),
   };
 }
 
@@ -141,10 +165,14 @@ function inspectPlugins({
       disabled: disabled.has(name),
       suspect: true,
       orphan: true,
+      // Only names ABSENT from the profile can be in-box damage: a user
+      // plugin that shadows an in-box name stays a normal disableable row.
+      inBox: isInBoxPackageName(name),
     }));
   const evidence = extractEvidence(corpus);
   const payload = {
     genericCause: genericCause || null,
+    desktopRuntimeDamage: orphanSuspects.some((row) => row.inBox),
     pluginTreeFailure: Boolean(pluginTreeFailure),
     recovery: recovery && typeof recovery === 'object'
       ? {
@@ -176,4 +204,5 @@ module.exports = {
   buildForensicsSummary,
   inspectPlugins,
   isPresetPlugin,
+  isInBoxPackageName,
 };

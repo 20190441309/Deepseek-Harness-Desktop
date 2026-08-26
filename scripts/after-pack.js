@@ -1,7 +1,9 @@
 const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { missingRuntimeFiles } = require('../src/main/plugin-runtime-files');
+const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
+const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
+const { runSkipComposeContract } = require('./check-skip-compose-contract');
 const {
   ensureGhosttyAssetsInHarness,
   harnessHasGhosttyAssets,
@@ -682,6 +684,40 @@ function assertNodePtyPrebuild(harnessDest, platform = process.platform, arch = 
   }
 }
 
+/**
+ * Every registered desktop fork package must ship resolvable in the packaged
+ * runtime with its declared runtime entries on disk. The shipped web
+ * composition mounts these rows unconditionally (skip-user-plugins included),
+ * so a runtime missing one dies on every start with an ESM
+ * `ERR_MODULE_NOT_FOUND … imported from …profiles/web/` that no recovery
+ * path can fix — a stale deploy dir must fail the build here instead.
+ * @param {string} harnessDest
+ */
+function assertDesktopForkRuntime(harnessDest) {
+  const problems = [];
+  for (const pkg of DESKTOP_PACKAGES) {
+    const dir = path.join(harnessDest, 'node_modules', ...pkg.name.split('/'));
+    const manifestFile = path.join(dir, 'package.json');
+    if (!fs.existsSync(manifestFile)) {
+      problems.push(pkg.name);
+      continue;
+    }
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    } catch {
+      problems.push(`${pkg.name}/package.json`);
+      continue;
+    }
+    for (const rel of missingDeclaredEntries(dir, manifest)) {
+      problems.push(`${pkg.name}/${rel}`);
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`安装包缺少桌面组件包运行时：${problems.join(', ')}`);
+  }
+}
+
 function assertHarnessRuntime(harnessDest, pin) {
   const requiredFiles = [
     path.join('apps', 'cli', 'lib', 'bin.js'),
@@ -701,6 +737,7 @@ function assertHarnessRuntime(harnessDest, pin) {
   if (missing.length > 0) {
     throw new Error(`安装包缺少 Harness 运行时产物：${missing.join(', ')}`);
   }
+  assertDesktopForkRuntime(harnessDest);
 
   // Root client tsdown does not run copy-ghostty-assets; fill lib/assets before the gate.
   ensureGhosttyAssetsInHarness(harnessDest);
@@ -790,6 +827,12 @@ module.exports = async function afterPack(context) {
     `${JSON.stringify(pin, null, 2)}\n`,
   );
   assertHarnessRuntime(harnessDest, pin);
+  // Skip compose contract against the REAL packaged CLI: unit tests mock
+  // dsh.start, so this dist-path gate is the only automated place where the
+  // shipped runtime proves `--skip-user-plugins` drops the user layer while
+  // the desktop-owned `--patch` overlay still mounts the install plugin.
+  console.log('校验 skip compose 契约（真实 CLI dump-config，skip + full 双轮）…');
+  runSkipComposeContract(harnessDest, { log: (line) => console.log(line) });
 
   const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
   console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
@@ -815,6 +858,7 @@ module.exports.copyFiles = copyFiles;
 module.exports.deployCliEntries = deployCliEntries;
 module.exports.resolveDeployDir = resolveDeployDir;
 module.exports.resolveResourcesDir = resolveResourcesDir;
+module.exports.assertDesktopForkRuntime = assertDesktopForkRuntime;
 module.exports.assertHarnessRuntime = assertHarnessRuntime;
 module.exports.assertHarnessVersions = assertHarnessVersions;
 module.exports.assertNodePtyPrebuild = assertNodePtyPrebuild;

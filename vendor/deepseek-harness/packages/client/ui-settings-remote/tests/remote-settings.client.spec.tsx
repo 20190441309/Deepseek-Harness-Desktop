@@ -24,7 +24,10 @@ const t = ((key: RemoteLocaleKey, vars?: Record<string, string>): string => {
   return text
 }) as GatewaySettingsTabProps['t']
 
-const SNAP: RemoteSnapshot = {
+// `satisfies` keeps every field's definite type so mock echoes like
+// `patch.remoteRelayUrl ?? SNAP.relayUrl` stay assignable under
+// exactOptionalPropertyTypes.
+const SNAP = {
   enabled: true,
   listening: true,
   port: 3180,
@@ -38,7 +41,7 @@ const SNAP: RemoteSnapshot = {
   relayConfigured: true,
   urls: [],
   devices: [],
-}
+} satisfies RemoteSnapshot
 
 async function bench() {
   const ctx = new Context()
@@ -46,6 +49,19 @@ async function bench() {
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
   return { ctx, slots: ctx.get('slots') as SlotRegistry, locale }
+}
+
+function renderGateway(overrides: Partial<GatewaySettingsTabProps> = {}) {
+  const props = {
+    close: () => {},
+    t,
+    getRemote: vi.fn(async () => SNAP),
+    saveRemote: vi.fn(async () => SNAP),
+    rotateRemoteToken: vi.fn(async () => SNAP),
+    ...overrides,
+  } as GatewaySettingsTabProps
+  render(<GatewaySettingsTab {...props} />)
+  return props
 }
 
 function declareShell(slots: SlotRegistry): () => void {
@@ -82,15 +98,7 @@ describe('ui-settings-remote settings section', () => {
 
 describe('GatewaySettingsTab', () => {
   it('orders relay credentials before connection mode (T1)', async () => {
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => SNAP)}
-        saveRemote={vi.fn(async () => SNAP)}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway()
     const root = await screen.findByLabelText(en.relayUrl).then((el) => el.closest('[data-dsh-remote-gateway]')!)
     const text = root.textContent || ''
     const urlAt = text.indexOf(en.relayUrl)
@@ -107,20 +115,15 @@ describe('GatewaySettingsTab', () => {
       relayUrl: patch.remoteRelayUrl ?? SNAP.relayUrl,
       relayConfigured: Boolean((patch.remoteRelayUrl ?? SNAP.relayUrl) && SNAP.relayTokenSet),
     }))
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => ({
-          ...SNAP,
-          relayUrl: '',
-          relayTokenSet: false,
-          relayConfigured: false,
-        }))}
-        saveRemote={saveRemote}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({
+      getRemote: vi.fn(async () => ({
+        ...SNAP,
+        relayUrl: '',
+        relayTokenSet: false,
+        relayConfigured: false,
+      })),
+      saveRemote,
+    })
     fireEvent.click(await screen.findByRole('button', { name: en.relayUseDefault }))
     await waitFor(() => {
       expect(saveRemote).toHaveBeenCalledWith({ remoteRelayUrl: SNAP.defaultRelayUrl })
@@ -128,20 +131,14 @@ describe('GatewaySettingsTab', () => {
   })
 
   it('shows relayNeedsBoth when neither credential exists (T2)', async () => {
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => ({
-          ...SNAP,
-          relayUrl: '',
-          relayTokenSet: false,
-          relayConfigured: false,
-        }))}
-        saveRemote={vi.fn(async () => SNAP)}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({
+      getRemote: vi.fn(async () => ({
+        ...SNAP,
+        relayUrl: '',
+        relayTokenSet: false,
+        relayConfigured: false,
+      })),
+    })
     expect(await screen.findByText(en.relayNeedsBoth)).toBeTruthy()
     const relay = await screen.findByRole('radio', { name: en.modeRelay }) as HTMLButtonElement
     expect(relay.disabled).toBe(true)
@@ -149,20 +146,15 @@ describe('GatewaySettingsTab', () => {
 
   it('shows relayNeedsToken when only URL is set (T3)', async () => {
     const blocked = vi.fn(async () => SNAP)
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => ({
-          ...SNAP,
-          relayUrl: 'https://relay.example',
-          relayTokenSet: false,
-          relayConfigured: false,
-        }))}
-        saveRemote={blocked}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({
+      getRemote: vi.fn(async () => ({
+        ...SNAP,
+        relayUrl: 'https://relay.example',
+        relayTokenSet: false,
+        relayConfigured: false,
+      })),
+      saveRemote: blocked,
+    })
     expect(await screen.findByText(en.relayNeedsToken)).toBeTruthy()
     const relay = await screen.findByRole('radio', { name: en.modeRelay }) as HTMLButtonElement
     expect(relay.disabled).toBe(true)
@@ -175,15 +167,7 @@ describe('GatewaySettingsTab', () => {
       ...SNAP,
       mode: patch.remoteMode ?? SNAP.mode,
     }))
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => SNAP)}
-        saveRemote={saveRemote}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({ saveRemote })
     const group = await screen.findByRole('radiogroup', { name: en.mode })
     const radios = within(group).getAllByRole('radio')
     expect(radios).toHaveLength(2)
@@ -199,15 +183,7 @@ describe('GatewaySettingsTab', () => {
       relayTokenSet: patch.remoteRelayToken === '' ? false : SNAP.relayTokenSet,
       relayConfigured: patch.remoteRelayToken === '' ? false : SNAP.relayConfigured,
     }))
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => SNAP)}
-        saveRemote={saveRemote}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({ saveRemote })
     await screen.findByLabelText(en.relayUrl)
     fireEvent.change(screen.getByLabelText(en.relayUrl), { target: { value: 'https://relay.example/path' } })
     fireEvent.click(screen.getAllByRole('button', { name: en.save })[0]!)
@@ -232,15 +208,7 @@ describe('GatewaySettingsTab', () => {
       bindAddress: patch.remoteBindAddress ?? SNAP.bindAddress,
       lanTls: patch.remoteLanTls ?? SNAP.lanTls,
     }))
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => SNAP)}
-        saveRemote={saveRemote}
-        rotateRemoteToken={vi.fn(async () => SNAP)}
-      />,
-    )
+    renderGateway({ saveRemote })
     await screen.findByLabelText(en.bindScope)
     fireEvent.click(screen.getByRole('radio', { name: en.transportTls }))
     await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteLanTls: true }) })
@@ -248,15 +216,7 @@ describe('GatewaySettingsTab', () => {
 
   it('rotates the pairing token through rotateRemoteToken', async () => {
     const rotateRemoteToken = vi.fn(async () => SNAP)
-    render(
-      <GatewaySettingsTab
-        close={() => {}}
-        t={t}
-        getRemote={vi.fn(async () => SNAP)}
-        saveRemote={vi.fn(async () => SNAP)}
-        rotateRemoteToken={rotateRemoteToken}
-      />,
-    )
+    renderGateway({ rotateRemoteToken })
     fireEvent.click(await screen.findByRole('button', { name: en.rotateTokenConfirm }))
     await waitFor(() => { expect(rotateRemoteToken).toHaveBeenCalled() })
   })

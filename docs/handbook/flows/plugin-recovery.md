@@ -8,6 +8,7 @@
 4. 「再试桌面端」先清 sticky skip，再全插件启动。问诊删/禁完之前，仍可「先跳过用户插件启动」进桌面（sticky `--skip-user-plugins` 保留）。
 5. 跳过成功后进入主界面（功能可能缺用户插件）；可再调「再试完整插件」`retryFullPlugins`。
 6. Harness 运行中崩溃：可回故障页 + 自动重启倒计时；用户可取消倒计时。
+7. boot 页（主窗）失败面只有瞬时动作：重试 / 取消自动重启 / 下载日志，外加「回启动器排查」跳板（`shell:open-launcher` BOOT 角色 → 启动器 home tab 的 Recovery Board）。插件级恢复（归因、逐项/批量禁用、skip）只在 Recovery Board 一处。
 
 ```mermaid
 flowchart TD

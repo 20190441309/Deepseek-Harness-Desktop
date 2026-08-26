@@ -87,6 +87,10 @@ function bench(options: {
       agent: parent,
       dispose: vi.fn(async () => {}),
     })),
+    create: vi.fn(async () => ({
+      agent: parent,
+      dispose: vi.fn(async () => {}),
+    })),
   })
   ctx.provide('subagents', { listChildren, followup, interrupt })
   ctx.provide('sessions', {

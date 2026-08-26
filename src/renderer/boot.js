@@ -6,6 +6,7 @@ const actionsEl = document.getElementById('actions');
 const logEl = document.getElementById('log');
 const retryEl = document.getElementById('retry');
 const cancelRestartEl = document.getElementById('cancel-restart');
+const openLauncherEl = document.getElementById('open-launcher');
 const saveLogEl = document.getElementById('save-log');
 const stampEl = document.getElementById('stamp');
 const stampCodeEl = document.getElementById('stamp-code');
@@ -37,7 +38,7 @@ const STAMPS = {
 let latestSnapshot = null;
 let countdownTimer = null;
 let pluginBoot = null;
-let logSaveNotice = '';
+let actionNotice = '';
 
 function invoke(method, ...args) {
   try {
@@ -93,11 +94,11 @@ function recoveryText(snapshot) {
 }
 
 function refreshCountdown() {
-  if (!latestSnapshot && !logSaveNotice) {
+  if (!latestSnapshot && !actionNotice) {
     return;
   }
   const recovery = latestSnapshot ? recoveryText(latestSnapshot) : '';
-  const text = [recovery, logSaveNotice].filter(Boolean).join(' ');
+  const text = [recovery, actionNotice].filter(Boolean).join(' ');
   recoveryEl.textContent = text;
   recoveryEl.hidden = !text;
 }
@@ -185,7 +186,7 @@ function renderState(snapshot) {
 
   const canAct = state === 'error' || recoveryScheduled || recoveryBusy;
   if (!canAct) {
-    logSaveNotice = '';
+    actionNotice = '';
   }
   refreshCountdown();
   manageCountdown(snapshot);
@@ -198,6 +199,14 @@ function renderState(snapshot) {
   saveLogEl.textContent = globalThis.BootRecovery?.downloadLogLabel
     ? globalThis.BootRecovery.downloadLogLabel()
     : '下载日志';
+  // Plugin-level recovery lives on the launcher Recovery Board; the boot
+  // page only bridges there on a settled failure.
+  openLauncherEl.textContent = globalThis.BootRecovery?.openLauncherLabel
+    ? globalThis.BootRecovery.openLauncherLabel()
+    : '回启动器排查';
+  openLauncherEl.hidden = !(globalThis.BootRecovery?.showLauncherBridge
+    ? globalThis.BootRecovery.showLauncherBridge(state)
+    : state === 'error');
   cancelRestartEl.hidden = !recoveryScheduled;
   cancelRestartEl.disabled = recoveryBusy;
 
@@ -243,7 +252,7 @@ function appendLog(line) {
 }
 
 retryEl.addEventListener('click', () => {
-  logSaveNotice = '';
+  actionNotice = '';
   retryEl.disabled = true;
   cancelRestartEl.hidden = true;
   renderState({ state: 'starting', recovery: { status: 'inactive' } });
@@ -276,6 +285,19 @@ cancelRestartEl.addEventListener('click', () => {
     });
 });
 
+openLauncherEl.addEventListener('click', () => {
+  openLauncherEl.disabled = true;
+  invoke('openLauncher')
+    .then(() => {
+      openLauncherEl.disabled = false;
+    })
+    .catch((error) => {
+      openLauncherEl.disabled = false;
+      actionNotice = `打开启动器失败：${error.message || String(error)}`;
+      refreshCountdown();
+    });
+});
+
 saveLogEl.addEventListener('click', () => {
   invoke('saveBootLog')
     .then((result) => {
@@ -283,14 +305,14 @@ saveLogEl.addEventListener('click', () => {
         return;
       }
       if (result.ok) {
-        logSaveNotice = `日志已保存：${result.path}`;
+        actionNotice = `日志已保存：${result.path}`;
       } else {
-        logSaveNotice = `保存日志失败：${result.error || '未知错误'}`;
+        actionNotice = `保存日志失败：${result.error || '未知错误'}`;
       }
       refreshCountdown();
     })
     .catch((error) => {
-      logSaveNotice = `保存日志失败：${error.message || String(error)}`;
+      actionNotice = `保存日志失败：${error.message || String(error)}`;
       refreshCountdown();
     });
 });

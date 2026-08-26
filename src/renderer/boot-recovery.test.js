@@ -9,6 +9,8 @@ const {
   startupErrorLabel,
   retryActionLabel,
   downloadLogLabel,
+  openLauncherLabel,
+  showLauncherBridge,
   isImportantBootLog,
 } = require('./boot-recovery');
 
@@ -24,6 +26,28 @@ test('recovery-fail label is 启动失败 and retry stays 重试', () => {
   assert.equal(retryActionLabel(false), '重试');
   assert.equal(retryActionLabel(true), '立即重启');
   assert.equal(downloadLogLabel(), '下载日志');
+});
+
+test('launcher bridge shows only on a settled startup failure', () => {
+  assert.equal(openLauncherLabel(), '回启动器排查');
+  assert.equal(showLauncherBridge('error'), true);
+  // Starting / ready / stopping never show the bridge — plugin-level
+  // recovery lives on the launcher Recovery Board, reached from failures.
+  for (const state of ['idle', 'starting', 'ready', 'stopping']) {
+    assert.equal(showLauncherBridge(state), false, state);
+  }
+});
+
+test('boot page error actions are transient-only plus the launcher bridge', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'boot.html'), 'utf8');
+  const actions = html.slice(html.indexOf('id="actions"'), html.indexOf('</div>', html.indexOf('id="actions"')));
+  assert.match(actions, /id="retry"/);
+  assert.match(actions, /id="cancel-restart"/);
+  assert.match(actions, /id="open-launcher"[^>]*hidden/);
+  assert.match(actions, /id="save-log"/);
+  // No plugin-level recovery controls on the boot page — the Recovery Board
+  // owns attribution / per-plugin disable / skip.
+  assert.doesNotMatch(actions, /disable|skip|forensic/i);
 });
 
 test('boot log filter keeps plugin-tree lines', () => {

@@ -73,6 +73,8 @@ test('boot preload exposes recovery but no workspace mutation', () => {
   assert.equal(typeof api.restart, 'function');
   assert.equal(typeof api.getState, 'function');
   assert.equal(typeof api.saveBootLog, 'function');
+  // The launcher bridge: boot failures jump to the Recovery Board.
+  assert.equal(typeof api.openLauncher, 'function');
   assert.equal(api.writeFile, undefined);
   assert.equal(api.installPlugin, undefined);
   assert.equal(api.saveConfig, undefined);

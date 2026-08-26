@@ -50,12 +50,30 @@ function shouldShowRecovery(lastStart, recovery, forensics, desktop) {
 }
 
 /**
+ * @param {{ desktopRuntimeDamage?: boolean, orphanSuspects?: Array<{name:string, inBox?:boolean}> }|null|undefined} forensics
+ * @returns {string}
+ */
+function desktopRuntimeDamageVerdict(forensics) {
+  const names = (forensics?.orphanSuspects || [])
+    .filter((row) => row.inBox)
+    .map((row) => row.name)
+    .join('、');
+  return `检测到桌面内置组件损坏${names ? `：${names}` : ''}。禁用插件或跳过用户插件都无法修复；请重新安装桌面端安装包（源码运行则执行 npm run setup:harness）。`;
+}
+
+/**
  * @param {{ ok?: boolean|null, error?: string }|null|undefined} lastStart
  * @param {{ skipUserPlugins?: boolean, reason?: string }|null|undefined} recovery
- * @param {{ genericCause?: string|null, suspects?: Array<{name:string}>, pluginTreeFailure?: boolean }|null|undefined} forensics
+ * @param {{ genericCause?: string|null, desktopRuntimeDamage?: boolean, suspects?: Array<{name:string}>, orphanSuspects?: Array<{name:string, inBox?:boolean}>, pluginTreeFailure?: boolean }|null|undefined} forensics
  * @returns {string}
  */
 function recoveryVerdict(lastStart, recovery, forensics) {
+  // In-box damage outranks the sticky-skip banner: neither「恢复完整插件」nor
+  // per-plugin disable can repair a broken harness runtime, so saying so first
+  // is the only honest verdict.
+  if (forensics?.desktopRuntimeDamage) {
+    return desktopRuntimeDamageVerdict(forensics);
+  }
   if (recovery?.skipUserPlugins) {
     return '当前在跳过用户插件模式下运行；完整加载请点「恢复完整插件并启动」。禁用单项不会自动加载全部用户插件。';
   }
@@ -75,17 +93,18 @@ function recoveryVerdict(lastStart, recovery, forensics) {
 }
 
 /**
- * @param {Array<{ name: string, suspect?: boolean, preset?: boolean, officialTemplate?: boolean, disabled?: boolean, orphan?: boolean }>} rows
+ * @param {Array<{ name: string, suspect?: boolean, preset?: boolean, officialTemplate?: boolean, disabled?: boolean, orphan?: boolean, inBox?: boolean }>} rows
  * @returns {typeof rows}
  */
 function sortPluginRows(rows) {
   const list = Array.isArray(rows) ? [...rows] : [];
   const rank = (row) => {
-    if (row.orphan) return 0;
-    if (row.suspect) return 1;
-    if (row.officialTemplate) return 4;
-    if (row.preset) return 3;
-    return 2;
+    if (row.inBox) return 0;
+    if (row.orphan) return 1;
+    if (row.suspect) return 2;
+    if (row.officialTemplate) return 5;
+    if (row.preset) return 4;
+    return 3;
   };
   list.sort((a, b) => {
     const delta = rank(a) - rank(b);
@@ -100,6 +119,7 @@ const launcherRecovery = {
   PLUGIN_ERROR_LABELS,
   pluginErrorLabel,
   shouldShowRecovery,
+  desktopRuntimeDamageVerdict,
   recoveryVerdict,
   sortPluginRows,
 };

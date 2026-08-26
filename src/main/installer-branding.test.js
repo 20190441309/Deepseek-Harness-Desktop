@@ -91,7 +91,9 @@ test('installer.nsh customizes GUI pages only and stays silent-install (/S) safe
   // re-define the 3-line title, because MUI2 unsets MUI_WELCOMEPAGE_* after
   // every page and the installer-side define never reaches the uninstaller
   // (that was the clipped "…Uninstall" third line).
-  const unWelcome = nsh.match(/^!macro customUnWelcomePage\n([\s\S]*?)^!macroend/m);
+  // \r?\n: Windows CI checks out with autocrlf (no .gitattributes), so the
+  // file arrives CRLF there while local/macOS/Linux trees keep LF.
+  const unWelcome = nsh.match(/^!macro customUnWelcomePage\r?\n([\s\S]*?)^!macroend/m);
   assert.ok(unWelcome, 'customUnWelcomePage macro body');
   assert.match(unWelcome[1], /!define MUI_WELCOMEPAGE_TITLE_3LINES/);
   assert.match(unWelcome[1], /!insertmacro MUI_UNPAGE_WELCOME/);

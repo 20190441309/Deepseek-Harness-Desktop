@@ -88,7 +88,7 @@ function sourceDir() {
   return dir;
 }
 
-test('ensureDesktopInstallPlugin copies the Host plugin and upserts the managed patch', () => {
+test('ensureDesktopInstallPlugin copies the Host plugin and keeps cordis.patch.yml user-owned', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = sourceDir();
   try {
@@ -97,47 +97,80 @@ test('ensureDesktopInstallPlugin copies the Host plugin and upserts the managed 
     assert.equal(first.ok, true);
     const dest = path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin');
     assert.equal(fs.existsSync(path.join(dest, 'install-dsh-plugin.mjs')), true);
-    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.ok(patch.includes(DESKTOP_INSTALL_BEGIN));
-    assert.ok(patch.includes(DESKTOP_INSTALL_END));
-    assert.ok(patch.includes('id: dshd-desktop-plugin-install'));
-    assert.ok(patch.includes(first.href));
+    // A missing user patch file stays missing: the desktop never creates it.
+    assert.equal(fs.existsSync(path.join(profileDir, 'cordis.patch.yml')), false);
+    const overlay = fs.readFileSync(first.overlayFile, 'utf8');
+    assert.ok(overlay.includes('id: dshd-desktop-plugin-install'));
+    assert.ok(overlay.includes(first.href));
     fs.writeFileSync(path.join(source, 'install-dsh-plugin.mjs'), 'export const name = "updated"\n', 'utf8');
     ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
     assert.equal(fs.readFileSync(path.join(dest, 'install-dsh-plugin.mjs'), 'utf8'), 'export const name = "updated"\n');
-    const again = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.equal(again.split(DESKTOP_INSTALL_BEGIN).length, 2);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
 });
 
-test('ensureDesktopInstallPlugin replaces the shipped empty [] patch instead of appending', () => {
+test('ensureDesktopInstallPlugin writes one overlay holding only the install insert', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = sourceDir();
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    // A profile user layer with a user row that skip mode must not resurrect.
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+      '- insert:',
+      '    - id: broken-user-plugin',
+      '      name: "some-broken-user-plugin"',
+      '',
+    ].join('\n'), 'utf8');
+    const result = ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.overlayFile,
+      path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin', 'desktop-install.patch.yml'),
+    );
+    const overlay = fs.readFileSync(result.overlayFile, 'utf8');
+    assert.ok(overlay.includes('id: dshd-desktop-plugin-install'));
+    assert.ok(overlay.includes(result.href));
+    assert.equal(overlay.includes('broken-user-plugin'), false);
+    assert.equal(overlay.includes(DESKTOP_INSTALL_BEGIN), false);
+    // The user row survives untouched — the file is user-owned.
+    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
+    assert.ok(patch.includes('broken-user-plugin'));
+    assert.equal(patch.includes('dshd-desktop-plugin-install'), false);
+    // Idempotent: unchanged content is not rewritten with a different value.
+    const again = ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(fs.readFileSync(again.overlayFile, 'utf8'), overlay);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('ensureDesktopInstallPlugin leaves the shipped empty [] patch template untouched', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = sourceDir();
   try {
     const profileDir = path.join(home, 'profiles', 'web');
     fs.mkdirSync(profileDir, { recursive: true });
-    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+    const template = [
       '# Your patch layer for this dsh profile, applied after every bundle layer:',
       '# a top-level YAML array of loader patch entries (id-targeted config',
       '# overrides, disables, and insert lists; `!!js` expressions allowed).',
       '[]',
       '',
-    ].join('\n'), 'utf8');
+    ].join('\n');
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), template, 'utf8');
     ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
-    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.equal(/^\s*\[\]\s*$/m.test(patch), false);
-    assert.match(patch, /^# Your patch layer/m);
-    assert.match(patch, /\n- insert:\n {4}- id: dshd-desktop-plugin-install/);
+    assert.equal(fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8'), template);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
   }
 });
 
-test('ensureDesktopInstallPlugin strips the legacy desktop-install patch block', () => {
+test('ensureDesktopInstallPlugin migrates both managed-block generations out of the user patch', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = sourceDir();
   try {
@@ -165,11 +198,64 @@ test('ensureDesktopInstallPlugin strips the legacy desktop-install patch block',
     assert.equal(result.ok, true);
     assert.equal(result.patchChanged, true);
     const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
+    // Both generations are gone; the user's own row survives.
     assert.equal(patch.includes(LEGACY_DESKTOP_INSTALL_BEGIN), false);
-    assert.equal(patch.includes('id: dsh-desktop-plugin-install'), false);
-    assert.equal(patch.split('install-dsh-plugin.mjs').length - 1, 1);
-    assert.ok(patch.includes(DESKTOP_INSTALL_BEGIN));
-    assert.ok(patch.includes('id: dshd-desktop-plugin-install'));
+    assert.equal(patch.includes(DESKTOP_INSTALL_BEGIN), false);
+    assert.equal(patch.includes('install-dsh-plugin.mjs'), false);
+    assert.ok(patch.includes('- id: message-edit'));
+    // The insert now lives only in the overlay.
+    const overlay = fs.readFileSync(result.overlayFile, 'utf8');
+    assert.ok(overlay.includes('id: dshd-desktop-plugin-install'));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('migrating a template-based patch (comments + block only) restores the [] terminal', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = sourceDir();
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    // What a default profile looks like after the old upsert removed the
+    // template's lone []: comments, then the managed block, nothing else.
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+      '# Your patch layer for this dsh profile, applied after every bundle layer:',
+      '# a top-level YAML array of loader patch entries (id-targeted config',
+      '# overrides, disables, and insert lists; `!!js` expressions allowed).',
+      '',
+      DESKTOP_INSTALL_BEGIN,
+      '- insert:',
+      '    - id: dshd-desktop-plugin-install',
+      '      name: "file:///stale/install-dsh-plugin.mjs"',
+      DESKTOP_INSTALL_END,
+      '',
+    ].join('\n'), 'utf8');
+    ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
+    // Comments-only YAML parses to null and the CLI rejects non-array patch
+    // lists, so the strip must leave a valid empty array document.
+    assert.equal(patch.includes(DESKTOP_INSTALL_BEGIN), false);
+    assert.match(patch, /^\[\]$/m);
+    assert.match(patch, /^# Your patch layer/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('ensureDesktopInstallPlugin removes the retired skip-user-plugins overlay', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = sourceDir();
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    const dest = path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin');
+    fs.mkdirSync(dest, { recursive: true });
+    const legacyOverlay = path.join(dest, 'skip-user-plugins.patch.yml');
+    fs.writeFileSync(legacyOverlay, '- insert: []\n', 'utf8');
+    ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(fs.existsSync(legacyOverlay), false);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });

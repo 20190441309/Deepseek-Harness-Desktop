@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarketSection } from '../src/client/MarketSection.tsx'
 import type { MarketSectionProps } from '../src/client/MarketSection.tsx'
@@ -84,6 +84,7 @@ describe('MarketSection', () => {
       ])),
     })
     await screen.findByText('demo')
+    expect(screen.getByRole('radiogroup', { name: en.categories })).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/ }))
     await waitFor(() => { expect(screen.queryByText('paint')).toBeNull() })
     expect(screen.getByText('demo')).toBeTruthy()
@@ -132,6 +133,17 @@ describe('MarketSection', () => {
     await screen.findByText(en.installDone)
   })
 
+  it('closes the allow-builds ask on cancel without a second install call', async () => {
+    const install = vi.fn()
+      .mockResolvedValueOnce({ ok: false, needsAllowBuilds: true, allowBuilds: ['demo'] })
+    const props = renderMarket({ install: install as unknown as MarketSectionProps['install'] })
+    fireEvent.click(await screen.findByRole('button', { name: en.install }))
+    await screen.findByRole('alertdialog')
+    fireEvent.click(screen.getByRole('button', { name: en.allowBuildsCancel }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(props.install).toHaveBeenCalledTimes(1)
+  })
+
   it('offers uninstall for installed rows and reports harness-down failures', async () => {
     const props = renderMarket({
       listInstalled: vi.fn(async () => [{ name: 'demo', spec: '1.0.0' }]),
@@ -143,11 +155,245 @@ describe('MarketSection', () => {
     expect(alert.textContent).toBe(en.harnessDown)
   })
 
-  it('streams progress lines during an install', async () => {
-    let publish: ((payload: { phase: string, line?: string }) => void) | null = null
-    let resolveInstall: ((value: { ok: boolean, harnessStarted: boolean }) => void) | null = null
+  it('shows the section heading, intro, and a discover/installed tab pair', async () => {
+    renderMarket({ listInstalled: vi.fn(async () => [{ name: 'demo', spec: '1.0.0' }]) })
+    await screen.findByText('demo')
+    expect(screen.getByRole('heading', { name: en.heading })).toBeTruthy()
+    expect(screen.getByText(en.intro)).toBeTruthy()
+    expect(screen.getByRole('tab', { name: en.tabDiscover }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: `${en.tabInstalled} (1)` })).toBeTruthy()
+  })
+
+  it('renders owner, stars, category tag, and a homepage link on each card', async () => {
+    renderMarket({ listCatalog: vi.fn(async () => catalog([item({ stars: 42 })])) })
+    await screen.findByText('demo')
+    expect(screen.getByText('acme')).toBeTruthy()
+    expect(screen.getByText('★ 42')).toBeTruthy()
+    const card = screen.getByText('demo').closest('li')!
+    expect(within(card).getByText('Workflow')).toBeTruthy()
+    const link = screen.getByRole('link', { name: en.homepage })
+    expect(link.getAttribute('href')).toBe('https://github.com/acme/demo')
+    expect(link.getAttribute('target')).toBe('_blank')
+  })
+
+  it('falls back to an initial-letter avatar when the owner image fails', async () => {
+    renderMarket()
+    await screen.findByText('demo')
+    const avatar = document.querySelector('img')!
+    expect(avatar.getAttribute('src')).toContain('github.com/acme.png')
+    fireEvent.error(avatar)
+    await waitFor(() => { expect(document.querySelector('img')).toBeNull() })
+    expect(screen.getByText('D')).toBeTruthy()
+  })
+
+  it('marks deprecated catalog rows and skips zero-star and empty-homepage chrome', async () => {
     renderMarket({
-      onProgress: vi.fn((listener: (payload: { phase: string, line?: string }) => void) => {
+      listCatalog: vi.fn(async () => catalog([
+        item({ deprecated: true, stars: 0, homepage: '' }),
+      ])),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText(en.deprecated)).toBeTruthy()
+    expect(screen.queryByText(/★/)).toBeNull()
+    expect(screen.queryByRole('link', { name: en.homepage })).toBeNull()
+  })
+
+  it('shows the catalog warning and the filtered result count', async () => {
+    renderMarket({
+      listCatalog: vi.fn(async () => catalog([item()], { source: 'cache', warning: '离线目录' })),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText('离线目录')).toBeTruthy()
+    const count = screen.getByText(en.count.replace('{count}', '1'))
+    expect(count.getAttribute('data-market-count')).toBe('1')
+  })
+
+  it('groups the installed tab by catalog category with uncatalogued rows last', async () => {
+    renderMarket({
+      listInstalled: vi.fn(async () => [
+        { name: 'demo', spec: '1.0.0' },
+        { name: 'mystery', spec: 'file:../mystery' },
+      ]),
+    })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('tab', { name: `${en.tabInstalled} (2)` }))
+    expect(screen.getByRole('heading', { name: 'Workflow' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: en.ungrouped })).toBeTruthy()
+    expect(screen.getByText('mystery')).toBeTruthy()
+    expect(screen.getByText('file:../mystery')).toBeTruthy()
+    const headings = screen.getAllByRole('heading', { level: 3 }).map(node => node.textContent)
+    expect(headings.indexOf(en.ungrouped)).toBeGreaterThan(headings.indexOf('Workflow'))
+  })
+
+  it('uninstalls from the installed tab and flags dropped rows', async () => {
+    const props = renderMarket({
+      listInstalled: vi.fn(async () => [
+        { name: 'mystery', spec: 'file:../mystery', dropped: true },
+      ]),
+    })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('tab', { name: `${en.tabInstalled} (1)` }))
+    expect(screen.getByText(en.dropped)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.uninstall }))
+    await waitFor(() => { expect(props.uninstall).toHaveBeenCalledWith('mystery') })
+    await screen.findByText(en.uninstallDone)
+  })
+
+  it('shows the installed empty copy pointing back to Discover', async () => {
+    renderMarket()
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('tab', { name: en.tabInstalled }))
+    expect(screen.getByText(en.installedEmpty)).toBeTruthy()
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: en.tabDiscover }))
+    expect(screen.getByRole('searchbox', { name: en.search })).toBeTruthy()
+  })
+
+  it('offers no install button on deprecated rows while normal rows keep theirs', async () => {
+    renderMarket({
+      listCatalog: vi.fn(async () => catalog([
+        item({ id: 'acme/old', repo: 'old', packageName: 'old', deprecated: true }),
+        item(),
+      ])),
+    })
+    await screen.findByText('old')
+    expect(screen.getByText(en.deprecated)).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: en.install })).toHaveLength(1)
+    const deprecatedCard = screen.getByText('old').closest('li')!
+    expect(within(deprecatedCard).queryByRole('button', { name: en.install })).toBeNull()
+    const normalCard = screen.getByText('demo').closest('li')!
+    expect(within(normalCard).getByRole('button', { name: en.install })).toBeTruthy()
+  })
+
+  it('offers no install button when the engine resolved no install spec', async () => {
+    renderMarket({
+      listCatalog: vi.fn(async () => catalog([
+        item({ installSpec: '' }),
+        item({ id: 'acme/blank', repo: 'blank', packageName: 'blank', installSpec: '   ' }),
+      ])),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText('blank')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.install })).toBeNull()
+  })
+
+  it('keeps the installed marker and uninstall on an already-installed deprecated row', async () => {
+    const props = renderMarket({
+      listCatalog: vi.fn(async () => catalog([item({ deprecated: true })])),
+      listInstalled: vi.fn(async () => [{ name: 'demo', spec: '1.0.0' }]),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText(en.installed)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.install })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.uninstall }))
+    await waitFor(() => { expect(props.uninstall).toHaveBeenCalledWith('demo') })
+  })
+
+  it('links each tab to its panel with tab/tabpanel semantics', async () => {
+    renderMarket()
+    await screen.findByText('demo')
+    expect(screen.getByRole('tablist', { name: en.heading })).toBeTruthy()
+    const discoverTab = screen.getByRole('tab', { name: en.tabDiscover })
+    expect(discoverTab.id).toBe('market-tab-discover')
+    expect(discoverTab.getAttribute('aria-controls')).toBe('market-panel-discover')
+    expect(discoverTab.getAttribute('aria-selected')).toBe('true')
+    const discoverPanel = screen.getByRole('tabpanel')
+    expect(discoverPanel.id).toBe('market-panel-discover')
+    expect(discoverPanel.getAttribute('aria-labelledby')).toBe('market-tab-discover')
+    fireEvent.click(screen.getByRole('tab', { name: en.tabInstalled }))
+    const installedTab = screen.getByRole('tab', { name: en.tabInstalled })
+    expect(installedTab.id).toBe('market-tab-installed')
+    expect(installedTab.getAttribute('aria-controls')).toBe('market-panel-installed')
+    expect(installedTab.getAttribute('aria-selected')).toBe('true')
+    expect(discoverTab.getAttribute('aria-selected')).toBe('false')
+    const installedPanel = screen.getByRole('tabpanel')
+    expect(installedPanel.id).toBe('market-panel-installed')
+    expect(installedPanel.getAttribute('aria-labelledby')).toBe('market-tab-installed')
+  })
+
+  it('labels and titles the refresh control with the same copy', async () => {
+    renderMarket()
+    await screen.findByText('demo')
+    const refresh = screen.getByRole('button', { name: en.refresh })
+    expect(refresh.getAttribute('aria-label')).toBe(en.refresh)
+    expect(refresh.getAttribute('title')).toBe(en.refresh)
+  })
+
+  it('keeps the shown catalog and offers retry when a refresh fails', async () => {
+    const listCatalog = vi.fn()
+      .mockResolvedValueOnce(catalog([item()]))
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(catalog([item()]))
+    renderMarket({ listCatalog: listCatalog as unknown as MarketSectionProps['listCatalog'] })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe(en.loadError)
+    expect(screen.getByText('demo')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
+    expect(screen.getByText('demo')).toBeTruthy()
+    expect(listCatalog).toHaveBeenCalledTimes(3)
+  })
+
+  it('disables and relabels the refresh control while a reload is in flight', async () => {
+    let resolveRefresh: ((value: MarketCatalog) => void) | null = null
+    const listCatalog = vi.fn()
+      .mockResolvedValueOnce(catalog([item()]))
+      .mockImplementationOnce(() => new Promise<MarketCatalog>((resolve) => { resolveRefresh = resolve }))
+    renderMarket({ listCatalog: listCatalog as unknown as MarketSectionProps['listCatalog'] })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    const refreshing = await screen.findByRole('button', { name: en.refreshing })
+    expect((refreshing as HTMLButtonElement).disabled).toBe(true)
+    resolveRefresh!(catalog([item()]))
+    const refresh = await screen.findByRole('button', { name: en.refresh })
+    expect((refresh as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('does not mark a row installed from a longer repo-name spec', async () => {
+    renderMarket({
+      listInstalled: vi.fn(async () => [
+        { name: 'demo-extra', spec: 'github:acme/demo-extra' },
+      ]),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByRole('button', { name: en.install })).toBeTruthy()
+    expect(screen.queryByText(en.installed)).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: `${en.tabInstalled} (1)` }))
+    expect(screen.getByRole('heading', { name: en.ungrouped })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Workflow' })).toBeNull()
+  })
+
+  it('marks a row installed from its exact github path spec', async () => {
+    const props = renderMarket({
+      listCatalog: vi.fn(async () => catalog([item({ packageName: '' })])),
+      listInstalled: vi.fn(async () => [
+        { name: 'demo-pkg', spec: 'github:acme/demo#path:/x' },
+      ]),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText(en.installed)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.uninstall }))
+    await waitFor(() => { expect(props.uninstall).toHaveBeenCalledWith('demo-pkg') })
+  })
+
+  it('prefers the exact package-name match over any spec fallback', async () => {
+    renderMarket({
+      listInstalled: vi.fn(async () => [
+        { name: 'demo', spec: 'github:other/thing' },
+      ]),
+    })
+    await screen.findByText('demo')
+    expect(screen.getByText(en.installed)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.install })).toBeNull()
+  })
+
+  it('streams progress lines during an install', async () => {
+    let publish: ((payload: { phase: string; line?: string }) => void) | null = null
+    let resolveInstall: ((value: { ok: boolean; harnessStarted: boolean }) => void) | null = null
+    renderMarket({
+      onProgress: vi.fn((listener: (payload: { phase: string; line?: string }) => void) => {
         publish = listener
         return () => { publish = null }
       }) as unknown as MarketSectionProps['onProgress'],

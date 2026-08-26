@@ -29,6 +29,8 @@ const DESKTOP_INSTALL_FILES = [
   'install-dsh-plugin.mjs',
   'install-dsh-plugin-client.js',
 ];
+const DESKTOP_INSTALL_OVERLAY_FILENAME = 'desktop-install.patch.yml';
+const LEGACY_SKIP_OVERLAY_FILENAME = 'skip-user-plugins.patch.yml';
 const OFFICIAL_TEMPLATE_BUNDLES = new Set([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
@@ -148,12 +150,34 @@ function stripNamedBlock(text, begin, end) {
   return `${text.slice(0, start)}${text.slice(stop + end.length)}`.replace(/\n{3,}/g, '\n\n');
 }
 
+/** Whether the text carries any YAML document content (a non-comment line). */
+function hasYamlContent(text) {
+  return String(text).split(/\r?\n/).some((line) => {
+    const trimmed = line.trim();
+    return trimmed !== '' && !trimmed.startsWith('#');
+  });
+}
+
+/**
+ * A patch file whose managed blocks were stripped can end up comments-only,
+ * which parses to null — and the CLI's parsePatchList rejects anything that
+ * is not a top-level YAML array, failing every start. Restore the template's
+ * `[]` terminal so the file stays a valid (empty) patch list.
+ */
+function normalizeEmptyPatchDocument(text) {
+  if (hasYamlContent(text)) {
+    return text;
+  }
+  const prefix = String(text).trimEnd();
+  return prefix ? `${prefix}\n[]\n` : '[]\n';
+}
+
 function stripBlockFromFile(file, begin, end) {
   if (!fs.existsSync(file)) {
     return false;
   }
   const text = fs.readFileSync(file, 'utf8');
-  const next = stripNamedBlock(text, begin, end);
+  const next = normalizeEmptyPatchDocument(stripNamedBlock(text, begin, end));
   if (next === text) {
     return false;
   }
@@ -171,7 +195,15 @@ function hostPluginDir() {
 
 /**
  * Copy the desktop-only install_dsh_plugin Host plugin into the web profile
- * and keep a managed cordis.patch.yml insert pointing at the copy.
+ * and keep its insert in a single desktop-owned overlay beside the copy.
+ * EVERY start (full and skip) mounts the plugin through `--patch <overlay>`;
+ * the profile's `cordis.patch.yml` is purely user-owned — this function only
+ * strips the managed blocks earlier desktop versions wrote there (both marker
+ * generations) and never writes one back. The strip and the overlay write
+ * happen in the same call before every spawn, so no start can compose both
+ * copies (the CLI's `insert` does not dedupe by id — two copies would
+ * double-mount). Skip starts stay exact by construction: user layer =
+ * profile patch + home patch, and neither is ever passed to `--patch`.
  * @param options - optional sourceDir / profileDir overrides for tests.
  */
 function ensureDesktopInstallPlugin(options = {}) {
@@ -194,23 +226,46 @@ function ensureDesktopInstallPlugin(options = {}) {
     LEGACY_DESKTOP_INSTALL_BEGIN,
     LEGACY_DESKTOP_INSTALL_END,
   );
+  const strippedManaged = stripBlockFromFile(
+    patchFile,
+    DESKTOP_INSTALL_BEGIN,
+    DESKTOP_INSTALL_END,
+  );
   const body = [
     '- insert:',
     '    - id: dshd-desktop-plugin-install',
     `      name: ${JSON.stringify(href)}`,
   ].join('\n');
-  const patchChanged = upsertManagedBlock(
-    patchFile,
-    DESKTOP_INSTALL_BEGIN,
-    DESKTOP_INSTALL_END,
+  const overlayFile = path.join(destDir, DESKTOP_INSTALL_OVERLAY_FILENAME);
+  const overlayContents = [
+    '# Desktop-managed overlay passed to every start (full and skip) via',
+    '# --patch: only the install plugin insert, never the profile user layer.',
+    '# Regenerated on every start; do not edit.',
     body,
-  );
+    '',
+  ].join('\n');
+  const existingOverlay = fs.existsSync(overlayFile)
+    ? fs.readFileSync(overlayFile, 'utf8')
+    : '';
+  if (existingOverlay !== overlayContents) {
+    writeAtomic(overlayFile, overlayContents);
+  }
+  const legacyOverlay = path.join(destDir, LEGACY_SKIP_OVERLAY_FILENAME);
+  if (fs.existsSync(legacyOverlay)) {
+    try {
+      fs.unlinkSync(legacyOverlay);
+    } catch {
+      // Stale skip-era overlay; never passed to --patch anymore, so a locked
+      // file is only cosmetic residue.
+    }
+  }
   return {
     ok: true,
     destDir,
     href,
     patchFile,
-    patchChanged: patchChanged || strippedLegacy,
+    overlayFile,
+    patchChanged: strippedManaged || strippedLegacy,
   };
 }
 

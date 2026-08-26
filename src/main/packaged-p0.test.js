@@ -185,8 +185,9 @@ test('packaged P0 is wired into smoke when DSH_SMOKE_SIBLING is set', () => {
 test('qa:packaged is a local rehearsal script and not a GitHub Release job', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
   assert.equal(pkg.scripts['qa:packaged'], 'node scripts/run-packaged-p0.mjs');
+  // smoke:packaged IS the windows release acceptance gate (ci-isolation
+  // pins its placement); the sibling-repo P0 drill stays a local rehearsal.
   const release = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'release.yml'), 'utf8');
-  assert.doesNotMatch(release, /\bsmoke:packaged\b/);
   assert.doesNotMatch(release, /\bqa:packaged\b/);
   const runner = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'run-packaged-p0.mjs'), 'utf8');
   assert.match(runner, /DSH_SMOKE_SIBLING/);

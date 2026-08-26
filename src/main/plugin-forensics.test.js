@@ -9,6 +9,7 @@ const {
   buildForensicsSummary,
   inspectPlugins,
   isPresetPlugin,
+  isInBoxPackageName,
 } = require('./plugin-forensics');
 
 test('extractSuspectNames reads bundle, package, and compose failures', () => {
@@ -77,4 +78,47 @@ test('inspectPlugins surfaces orphan suspects, evidence, and summary', () => {
   assert.equal(inspected.summary.suspectCount, 4);
   assert.equal(inspected.summary.hasOrphans, true);
   assert.deepEqual(buildForensicsSummary(inspected).suspectCount, 4);
+});
+
+test('in-box fork package suspects are flagged as desktop runtime damage', () => {
+  assert.equal(isInBoxPackageName('@deepseek-ai/dsh-client-ui-settings-market'), true);
+  assert.equal(isInBoxPackageName('@deepseek-ai/dsh-client-ui-settings-market/client'), true);
+  assert.equal(isInBoxPackageName('@acme/unrelated'), false);
+
+  const inspected = inspectPlugins({
+    logs: "Cannot find package '@deepseek-ai/dsh-client-ui-settings-market' imported from /profiles/web/",
+    pluginTreeFailure: true,
+    plugins: [{ name: 'good', spec: '1.0.0' }],
+    bundles: ['good'],
+  });
+  assert.equal(inspected.desktopRuntimeDamage, true);
+  assert.equal(inspected.summary.desktopRuntimeDamage, true);
+  const row = inspected.orphanSuspects.find(
+    (item) => item.name === '@deepseek-ai/dsh-client-ui-settings-market',
+  );
+  assert.equal(row.inBox, true);
+  assert.equal(row.orphan, true);
+});
+
+test('a profile plugin shadowing an in-box name stays a disableable suspect', () => {
+  const inspected = inspectPlugins({
+    logs: "Cannot find package '@deepseek-ai/dsh-client-ui-settings-market'",
+    plugins: [{ name: '@deepseek-ai/dsh-client-ui-settings-market', spec: '1.0.0' }],
+    bundles: [],
+  });
+  assert.equal(inspected.desktopRuntimeDamage, false);
+  assert.equal(inspected.summary.desktopRuntimeDamage, false);
+  assert.equal(inspected.orphanSuspects.length, 0);
+  assert.equal(inspected.plugins[0].suspect, true);
+  assert.equal(inspected.plugins[0].inBox, undefined);
+});
+
+test('non in-box orphans do not raise the runtime damage flag', () => {
+  const inspected = inspectPlugins({
+    logs: 'cannot resolve profile bundle "ghost-pack"',
+    plugins: [],
+    bundles: [],
+  });
+  assert.equal(inspected.desktopRuntimeDamage, false);
+  assert.equal(inspected.orphanSuspects[0].inBox, false);
 });

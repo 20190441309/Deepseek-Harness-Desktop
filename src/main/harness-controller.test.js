@@ -387,20 +387,67 @@ test('logs and continues when the dshbot dev preset fails', async () => {
   assert.ok(f.dsh.logs.some((line) => /dshbot（开发模式）失败/.test(line) && /missing-source/.test(line)));
 });
 
-test('plugin-tree startup failure retries once with the official template overlay', async () => {
+test('plugin-tree startup failure retries once with the desktop overlay on both rounds', async () => {
   const first = Object.assign(new Error('dsh exited'), { pluginTree: true });
+  const installOverlay = 'C:/profiles/web/desktop-plugins/install-dsh-plugin/desktop-install.patch.yml';
   const f = fixture({
-    ensureDesktopInstallPlugin: () => ({ ok: true, patchFile: 'C:/desktop-install.yml' }),
+    ensureDesktopInstallPlugin: () => ({
+      ok: true,
+      patchFile: 'C:/profiles/web/cordis.patch.yml',
+      overlayFile: installOverlay,
+    }),
   });
   f.dsh.startResults.push(first);
   await f.controller.start();
 
   assert.equal(f.dsh.startCalls, 2);
   assert.equal(f.dsh.startOptions[0].skipUserPlugins, false);
-  assert.deepEqual(f.dsh.startOptions[0].patchFiles, []);
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, [installOverlay]);
   assert.equal(f.dsh.startOptions[1].skipUserPlugins, true);
-  assert.deepEqual(f.dsh.startOptions[1].patchFiles, ['C:/desktop-install.yml']);
+  // Never the profile's own cordis.patch.yml: --patch overlays still apply
+  // under --skip-user-plugins, so that file would resurrect the user layer.
+  assert.deepEqual(f.dsh.startOptions[1].patchFiles, [installOverlay]);
   assert.equal(f.controller.snapshot().pluginRecovery.skipUserPlugins, true);
+});
+
+test('full start rides the usage overlay after the install overlay; skip start drops it', async () => {
+  const installOverlay = 'C:/profiles/web/desktop-plugins/install-dsh-plugin/desktop-install.patch.yml';
+  const usageOverlay = 'C:/profiles/web/desktop-plugins/dsh-usage-panel/desktop-usage-panel.patch.yml';
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, overlayFile: installOverlay }),
+    ensureUsagePanelPlugin: async () => ({ ok: true, added: false, overlayFile: usageOverlay }),
+  });
+  await f.controller.start();
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, [installOverlay, usageOverlay]);
+
+  const skipped = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, overlayFile: installOverlay }),
+    ensureUsagePanelPlugin: async () => ({ ok: true, added: false, overlayFile: usageOverlay }),
+  });
+  skipped.controller.writePluginSkip(new Error('recovery'));
+  await skipped.controller.start();
+  assert.equal(skipped.dsh.startOptions[0].skipUserPlugins, true);
+  assert.deepEqual(skipped.dsh.startOptions[0].patchFiles, [installOverlay]);
+});
+
+test('a failed usage-panel ensure never contributes a stale overlay path', async () => {
+  const installOverlay = 'C:/profiles/web/desktop-plugins/install-dsh-plugin/desktop-install.patch.yml';
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, overlayFile: installOverlay }),
+    ensureUsagePanelPlugin: async () => ({ ok: false, error: 'missing-zod', overlayFile: 'C:/stale.yml' }),
+  });
+  await f.controller.start();
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, [installOverlay]);
+});
+
+test('skip start without a desktop-owned overlay passes no patch files', async () => {
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, patchFile: 'C:/profiles/web/cordis.patch.yml' }),
+  });
+  f.controller.writePluginSkip(new Error('recovery'));
+  await f.controller.start();
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, []);
 });
 
 test('sticky plugin recovery starts skip mode and retryFullPlugins clears it', async () => {

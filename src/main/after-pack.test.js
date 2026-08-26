@@ -186,6 +186,20 @@ test('resolveDeployDir ignores local caches unless a deploy directory is explici
   assert.equal(resolveDeployDir('.pack-release'), path.resolve('.pack-release'));
 });
 
+const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
+
+function writeDesktopForkPackages(root) {
+  for (const pkg of DESKTOP_PACKAGES) {
+    const dir = path.join(root, 'node_modules', ...pkg.name.split('/'));
+    fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      `${JSON.stringify({ name: pkg.name, main: 'lib/index.js' })}\n`,
+    );
+    fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'export {}\n');
+  }
+}
+
 function writeGhosttyTerminalPackage(root) {
   const base = path.join(root, 'node_modules', '@deepseek-ai', 'dsh-client-ui-user-terminal', 'lib');
   fs.mkdirSync(path.join(base, 'assets'), { recursive: true });
@@ -240,11 +254,76 @@ test('assertHarnessRuntime accepts a complete compatible host', (t) => {
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
   writeNodePtyPrebuild(root);
+  writeDesktopForkPackages(root);
   writeGhosttyTerminalPackage(root);
   writeMcpSdk(root);
   writeAjv(path.join(root, 'node_modules', '@modelcontextprotocol', 'sdk', 'node_modules', 'ajv'), '8.17.1');
 
   assert.doesNotThrow(() => assertHarnessRuntime(root, RC7_PIN));
+});
+
+test('assertHarnessRuntime rejects a runtime missing a registered desktop fork package', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-fork-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = new Map([
+    [path.join('apps', 'cli', 'lib', 'bin.js'), 'export {}\n'],
+    [path.join('apps', 'cli', 'lib', 'plugin.js'), 'missingHostFeatures parseCompatibilityFeatures\n'],
+    [path.join('apps', 'web', 'dist', 'index.html'), '<!doctype html>\n'],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'features.js'),
+      'conversation.chat.user-actions session.fork.beforeSeq session.fork.blank\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-modules', 'lib', 'index.js'),
+      'missingHostFeatures parseCompatibilityFeatures\n',
+    ],
+    [
+      path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-conversation', 'lib', 'client.js'),
+      'conversation.chat.user-actions\n',
+    ],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-mcp-servers-file', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-mcp-servers', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-host-skill-inventory', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-mcp', 'lib', 'client.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'index.js'), 'export {}\n'],
+    [path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-skills', 'lib', 'client.js'), 'export {}\n'],
+  ]);
+  for (const [relative, content] of files) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  writeDesktopForkPackages(root);
+  // A stale deploy dir from before the desktop-owned market shipped: the
+  // package is absent while every older gate file still exists.
+  fs.rmSync(
+    path.join(root, 'node_modules', '@deepseek-ai', 'dsh-client-ui-settings-market'),
+    { recursive: true, force: true },
+  );
+  writeRuntimeVersions(root, RC7_PIN.npm);
+  writeNodePtyPrebuild(root);
+  writeGhosttyTerminalPackage(root);
+
+  assert.throws(
+    () => assertHarnessRuntime(root, RC7_PIN),
+    /dsh-client-ui-settings-market/,
+  );
+});
+
+test('assertHarnessRuntime rejects a fork package whose runtime entry is missing', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-fork-entry-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  writeDesktopForkPackages(root);
+  fs.rmSync(
+    path.join(root, 'node_modules', '@deepseek-ai', 'dsh-client-ui-settings-market', 'lib', 'index.js'),
+    { force: true },
+  );
+  const { assertDesktopForkRuntime } = require('../../scripts/after-pack');
+  assert.throws(
+    () => assertDesktopForkRuntime(root),
+    /dsh-client-ui-settings-market\/lib\/index\.js/,
+  );
 });
 
 test('assertHarnessRuntime rejects a host missing Ghostty terminal assets', (t) => {
@@ -285,6 +364,7 @@ test('assertHarnessRuntime rejects a host missing Ghostty terminal assets', (t) 
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
   writeNodePtyPrebuild(root);
+  writeDesktopForkPackages(root);
 
   assert.throws(
     () => assertHarnessRuntime(root, RC7_PIN),
@@ -372,6 +452,7 @@ test('assertHarnessRuntime rejects pin.npm mismatch', (t) => {
   }
   writeRuntimeVersions(root, '0.1.0-rc.5');
   writeNodePtyPrebuild(root);
+  writeDesktopForkPackages(root);
   writeGhosttyTerminalPackage(root);
   assert.throws(
     () => assertHarnessRuntime(root, { npm: '0.1.0-rc.7' }),
@@ -412,6 +493,7 @@ test('assertHarnessRuntime rejects a missing node-pty prebuild', (t) => {
     fs.writeFileSync(file, content);
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
+  writeDesktopForkPackages(root);
   writeGhosttyTerminalPackage(root);
   assert.throws(
     () => assertHarnessRuntime(root, RC7_PIN),
@@ -702,6 +784,7 @@ test('assertHarnessRuntime rejects MCP SDK resolving ajv major 6', (t) => {
   }
   writeRuntimeVersions(root, RC7_PIN.npm);
   writeNodePtyPrebuild(root);
+  writeDesktopForkPackages(root);
   writeGhosttyTerminalPackage(root);
   writeMcpSdk(root);
   writeAjv(path.join(root, 'node_modules', 'ajv'), '6.15.0');
