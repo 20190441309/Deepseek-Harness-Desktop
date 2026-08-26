@@ -1,7 +1,7 @@
 const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { missingRuntimeFiles, declaredEntryRelatives } = require('../src/main/plugin-runtime-files');
+const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
 const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
 const {
   ensureGhosttyAssetsInHarness,
@@ -708,13 +708,8 @@ function assertDesktopForkRuntime(harnessDest) {
       problems.push(`${pkg.name}/package.json`);
       continue;
     }
-    for (const rel of declaredEntryRelatives(manifest)) {
-      if (rel.endsWith('.d.ts') || rel === 'package.json') {
-        continue;
-      }
-      if (!fs.existsSync(path.join(dir, rel))) {
-        problems.push(`${pkg.name}/${rel}`);
-      }
+    for (const rel of missingDeclaredEntries(dir, manifest)) {
+      problems.push(`${pkg.name}/${rel}`);
     }
   }
   if (problems.length > 0) {

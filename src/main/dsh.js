@@ -6,6 +6,7 @@ const { spawn, execFileSync } = require('child_process');
 const EventEmitter = require('events');
 const { loadConfig, configPath } = require('./config');
 const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
+const { missingDeclaredEntries } = require('./plugin-runtime-files');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 const { childSpawnEnv } = require('../shared/child-spawn-env');
@@ -157,18 +158,20 @@ function forkPackageDirFromAnchor(anchor, packageName) {
 
 /**
  * Registered desktop fork packages the shipped web composition mounts but the
- * harness install cannot resolve. The dsh Loader imports every composed row
+ * harness install cannot load. The dsh Loader imports every composed row
  * with the profile directory as parent and relies on the healed
  * `profiles/node_modules` fallback, which silently skips unresolvable names —
  * a missing in-box package then dies deep in Node's ESM loader
  * (`ERR_MODULE_NOT_FOUND … imported from …profiles/web/`) on every start,
- * including --skip-user-plugins recovery starts. Probing before spawn turns
- * that loop into one actionable startup error. Resolution mirrors the
- * runtime's anchors: the CLI install anchor first, then each shipped bundle's
- * own manifest (pnpm's isolated layout keeps bundle dependencies beside the
- * bundle, not beside the CLI).
+ * including --skip-user-plugins recovery starts. A resolvable manifest whose
+ * declared entries were never built (vendor pull without setup:harness) dies
+ * the same way, so the probe checks entries too via the same predicate as the
+ * packaging gate. Probing before spawn turns that loop into one actionable
+ * startup error. Resolution mirrors the runtime's anchors: the CLI install
+ * anchor first, then each shipped bundle's own manifest (pnpm's isolated
+ * layout keeps bundle dependencies beside the bundle, not beside the CLI).
  * @param {string} root - harness root (source tree or extracted runtime).
- * @returns {string[]} unresolvable package names; empty when the anchor itself is absent.
+ * @returns {string[]} unloadable package names or `name/entry` paths; empty when the anchor itself is absent.
  */
 function missingDesktopForkPackages(root) {
   const cliAnchor = path.join(root, 'apps', 'cli', 'package.json');
@@ -184,8 +187,29 @@ function missingDesktopForkPackages(root) {
   }
   const missing = [];
   for (const pkg of DESKTOP_PACKAGES) {
-    if (!anchors.some((anchor) => forkPackageDirFromAnchor(anchor, pkg.name))) {
+    let dir = '';
+    for (const anchor of anchors) {
+      dir = forkPackageDirFromAnchor(anchor, pkg.name);
+      if (dir) {
+        break;
+      }
+    }
+    if (!dir) {
       missing.push(pkg.name);
+      continue;
+    }
+    let manifest = null;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    } catch {
+      // An unreadable manifest cannot declare entries; reported as the manifest itself below.
+    }
+    if (!manifest) {
+      missing.push(`${pkg.name}/package.json`);
+      continue;
+    }
+    for (const rel of missingDeclaredEntries(dir, manifest)) {
+      missing.push(`${pkg.name}/${rel}`);
     }
   }
   return missing;

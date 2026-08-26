@@ -581,6 +581,29 @@ test('missingDesktopForkPackages resolves flattened and bundle-nested layouts', 
   assert.deepEqual(missingDesktopForkPackages(path.join(root, 'nowhere')), []);
 });
 
+test('missingDesktopForkPackages reports declared entries that were never built', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-fork-entries-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const writePkg = (dir, manifest) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest)}\n`);
+  };
+  writePkg(path.join(root, 'apps', 'cli'), { name: '@deepseek-ai/dsh' });
+  const nm = path.join(root, 'node_modules');
+  for (const pkg of DESKTOP_PACKAGES) {
+    const dir = path.join(nm, ...pkg.name.split('/'));
+    writePkg(dir, { name: pkg.name, main: 'lib/index.js' });
+    fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'export {}\n');
+  }
+  assert.deepEqual(missingDesktopForkPackages(root), []);
+  // Vendor pull without setup:harness: the manifest resolves but lib/ was
+  // never rebuilt — the Loader dies in ESM exactly like an absent package.
+  const stale = DESKTOP_PACKAGES.find((pkg) => pkg.name.endsWith('ui-settings-market'));
+  fs.rmSync(path.join(nm, ...stale.name.split('/'), 'lib', 'index.js'), { force: true });
+  assert.deepEqual(missingDesktopForkPackages(root), [`${stale.name}/lib/index.js`]);
+});
+
 test('source launch refuses when Ghostty assets are incomplete', () => {
   const manager = makeSourceLaunchManager({
     ensureGhosttyAssetsInHarness: () => ({ ok: false, roots: [], detail: 'missing source' }),
