@@ -4,14 +4,14 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-25（合并树 `ea659884`）— consolidation #39 落地后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS。此前同日：Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — 市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底），vendor `ui-settings-market` client specs 21/21 绿 + 包级 tsc/oxlint 干净；QA 走查 `market.discover` / `market.installed` 断言的页签结构由本分区直接满足。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
-1. 设置 → 市场（`market`，由桌面自有包 `ui-settings-market` 注册）：浏览目录、搜索、分类过滤、刷新。
+1. 设置 → 市场（`market`，由桌面自有包 `ui-settings-market` 注册）：「发现」页浏览目录、搜索、分类过滤、刷新；卡片带作者头像、星标、分类标签、主页链接与已弃用徽标。
 2. 按 catalog id 安装 → 见进度行 → 成功则卡片标「已安装」；失败有 `role="alert"` 反馈。
 3. `needsAllowBuilds` 时出现内联确认（列出 allowBuilds key），允许后自动重试。
-4. 卸载插件后列表更新且应用仍可用。
+4. 「已安装」页签（标签带数量）按目录分类分组列出 profile 插件行（目录外归「未分组」），逐行卸载后列表更新且应用仍可用；空态指回「发现」页。
 5. 托盘 / 菜单「插件市场」进入设置市场分区，不出现独立 BrowserWindow。
 
 ## Invariants

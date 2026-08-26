@@ -13,7 +13,10 @@
 
 - UI：`vendor/deepseek-harness/packages/client/ui-settings-market`（桌面 fork 包，登记于
   `src/shared/harness-desktop-forks.js`），仅当 `window.shell` 暴露市场 API 时注册
-  `settings.section` id `market`；纯 `dsh web` 浏览器无此分区。
+  `settings.section` id `market`；纯 `dsh web` 浏览器无此分区。分区为「发现 / 已安装」
+  双页签：发现页是搜索 + 分类 chips + 卡片网格（头像 / 星标 / 分类 / 主页 / 已弃用徽标），
+  已安装页按目录分类分组 profile 插件行并逐行卸载（QA 走查 `market.discover` /
+  `market.installed` 断言这套结构）。
 - 目录 / 安装：`marketplace-catalog.js`、`marketplace-install.js`、`marketplace-spec.js`、`marketplace-allowbuilds.js`。
 - 与上游分离：`dshmarket` 在 `DROPPED`（不挂载、目录隐藏、拒绝安装）；
   `dshmarket-preset.js` 只剩 `removeDshMarketPreset` 清理旧预置残留；
