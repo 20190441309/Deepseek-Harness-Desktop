@@ -4,13 +4,13 @@
 | --- | --- |
 | **id** | `boot-page` |
 | **status** | `active` |
-| **last verified** | 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
+| **last verified** | 2026-08-26 — D3 双恢复面收敛：错误态新增「回启动器排查」跳板（`shell:open-launcher` 放开 BOOT 角色、boot 发起附带 show-tab home 直达 Recovery Board）；boot 页动作固定为瞬时三件（重试 / 取消自动重启 / 下载日志）+ 跳板，插件级恢复只在 Recovery Board。此前 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
 
 ## User paths
 
 1. 冷启动先开启动器（更新 / 导入 / 版本 / 问诊）。启动桌面端后，主窗见仪器画布：标志、品牌名、状态戳、等宽日志；插件进度留在此页。
 2. 就绪后露出官方 Web UI；不切到官方「正在加载插件」页代替 boot。
-3. 失败：ERROR 态、重试、导出日志；用户插件弄挂可跳过插件树后再试完整插件。
+3. 失败：ERROR 态、重试、导出日志，另有「回启动器排查」跳板打开启动器 home tab（Recovery Board）；用户插件弄挂可跳过插件树后再试完整插件。插件级排查（归因、逐项/批量禁用）在 Recovery Board 做，不在 boot 页。
 
 ## Invariants
 
@@ -18,6 +18,7 @@
 - 禁止 NERV / MAGI / SEELE / EVA 等商标或官方标志挪用。
 - 插件装载进度留在 boot 画布。
 - 恢复动作与 [plugin-recovery 流程](../handbook/flows/plugin-recovery.md) 一致。
+- boot 页动作面 = 瞬时动作（重试 / 取消自动重启 / 下载日志）+「回启动器排查」跳板，仅此四件；插件级恢复操作**只**存在于启动器 Recovery Board，boot 页不得长出自己的副本（`boot-recovery.test.js` 钉死动作行内容）。跳板仅在 settled `error` 态出现（自动重启排程/进行中不出现），经 `shell:open-launcher`（BOOT 角色 → 启动器 home tab）。
 - 覆盖安装同一桌面版本时，`userData/runtime/<version>` 必须与安装包 Harness pin + 归档大小一致；无戳或戳不匹配则重新解压。不得只因 `bin.js` 存在而沿用旧 runtime。
 
 ## Allowed touch

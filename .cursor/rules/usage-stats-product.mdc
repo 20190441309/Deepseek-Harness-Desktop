@@ -5,6 +5,6 @@ alwaysApply: true
 
 # Usage stats
 
-Settings section `usage-stats` is the desktop restyle of `dsh-usage-panel`. Tokens / `ui-primitives` only; no billing, CNY, or `/user/balance`. UTC day buckets in v1. Desktop `desktop-plugins` copy wins over a marketplace install of the same package. Empty state is no billed usage (blank-only sessions included) with no scan failures; light heatmap empty cells must stay visible.
+Settings section `usage-stats` is the desktop restyle of `dsh-usage-panel`. Tokens / `ui-primitives` only; no billing, CNY, or `/user/balance`. UTC day buckets in v1. Desktop `desktop-plugins` copy wins over a marketplace install of the same package. Empty state is no billed usage (blank-only sessions included) with no scan failures; light heatmap empty cells must stay visible. Mounting rides the desktop overlay `desktop-usage-panel.patch.yml` (`--patch`, full starts only) — never a managed block in the user-owned `cordis.patch.yml`; the overlay is deleted when disabled, ensure fails, or a marketplace bundle already mounts the package.
 
 Full card: [docs/features/usage-stats.md](../../docs/features/usage-stats.md)
