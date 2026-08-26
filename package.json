@@ -14,6 +14,7 @@
     "setup:harness": "node scripts/setup-harness.js",
     "sync:harness": "node scripts/sync-upstream.js",
     "pack": "node scripts/run-electron-builder.cjs --dir --publish never",
+    "installer:assets": "node scripts/run-render-installer-assets.js",
     "smoke:source": "node scripts/run-source-smoke.mjs",
     "qa:source": "node scripts/run-source-qa.mjs",
     "qa:composer": "node scripts/run-composer-official-qa.mjs",
@@ -96,7 +97,18 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Deepseek-Harness-Desktop",
-      "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}"
+      "artifactName": "Deepseek-Harness-Desktop-Setup-${version}.${ext}",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "license": "LICENSE",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "include": "build/installer.nsh"
     },
     "mac": {
       "icon": "assets/icon.png",
