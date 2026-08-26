@@ -77,7 +77,7 @@ export type PluginProgress = {
 
 /** The preload-exposed desktop API used by the marketplace section. */
 export type DesktopShell = {
-  listMarketplace?: (options?: { refresh?: boolean, locale?: string }) => Promise<MarketCatalog>
+  listMarketplace?: (options?: { refresh?: boolean; locale?: string }) => Promise<MarketCatalog>
   listInstalledPlugins?: () => Promise<InstalledPayload>
   installMarketplacePlugin?: (id: string, options?: { allowBuilds?: string[] }) => Promise<PluginOpResult>
   uninstallPlugin?: (name: string) => Promise<PluginOpResult>

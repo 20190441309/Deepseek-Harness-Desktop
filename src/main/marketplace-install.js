@@ -635,6 +635,9 @@ async function installMarketplacePlugin(id, options = {}) {
     if (!plugin) {
       return { ok: false, error: '未收录该插件' };
     }
+    if (plugin.deprecated === true) {
+      return { ok: false, error: '该插件已弃用，不再提供安装' };
+    }
     const spec = plugin.installSpec;
     if (typeof spec !== 'string' || !spec || !isAllowedMarketplaceSpec(spec, plugin)) {
       return { ok: false, error: '安装规格不受支持' };
