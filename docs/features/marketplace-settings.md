@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — PR #46 评审跟进：未安装卡片的安装按钮与主进程白名单对齐（`deprecated` 或空 `installSpec` 不出安装入口）、页签补全 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮加 `title`、已安装匹配改为 `spec-match.ts` 的 owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）。vendor `ui-settings-market` vitest 4 文件 37/37 绿（market-section.client.spec 24、spec-match.client.spec 8、browser-plugin 4、invariant 1），包目录 oxlint 干净。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）；`qa:source` 全走查绿（含 market.section / market.discover / market.installed PASS；Linux xvfb 源码运行，评审跟进提交后未重跑——见 Gates）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — PR #46 评审跟进：未安装卡片的安装按钮与主进程白名单对齐（`deprecated` 或空 `installSpec` 不出安装入口）、页签补全 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮加 `title`、已安装匹配改为 `spec-match.ts` 的 owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）。vendor `ui-settings-market` vitest 4 文件 37/37 绿（market-section.client.spec 24、spec-match.client.spec 8、browser-plugin 4、invariant 1），包目录 oxlint 干净。`qa:source` 在跟进提交后复跑全绿：73 PASS / 3 SKIP（均与市场无关）/ 0 FAIL，含 market.section / market.discover / market.installed PASS（Linux xvfb 源码运行，[结果](../qa/results/2026-08-26/market-follow-up-qa-source.md)）。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
