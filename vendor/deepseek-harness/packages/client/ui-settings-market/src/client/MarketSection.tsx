@@ -42,7 +42,8 @@ export type MarketSectionProps =
 type CatalogState =
   | { readonly status: 'loading' }
   | { readonly status: 'error' }
-  | { readonly status: 'ready'; readonly catalog: MarketCatalog }
+  /** `refreshFailed` keeps the shown catalog when a later reload throws. */
+  | { readonly status: 'ready'; readonly catalog: MarketCatalog; readonly refreshFailed?: boolean }
 
 type Tab = 'discover' | 'installed'
 
@@ -161,6 +162,7 @@ export function MarketSection({
   onProgress,
 }: MarketSectionProps): ReactNode {
   const [state, setState] = useState<CatalogState>({ status: 'loading' })
+  const [reloading, setReloading] = useState(false)
   const [installed, setInstalled] = useState<InstalledPlugin[]>([])
   const [tab, setTab] = useState<Tab>('discover')
   const [query, setQuery] = useState('')
@@ -183,12 +185,21 @@ export function MarketSection({
   }, [listInstalled])
 
   const load = useCallback(async (refresh: boolean) => {
+    setReloading(true)
     setState(current => (current.status === 'ready' ? current : { status: 'loading' }))
     try {
       const catalog = await listCatalog(refresh ? { refresh: true } : undefined)
       if (alive.current) setState({ status: 'ready', catalog })
     } catch {
-      if (alive.current) setState({ status: 'error' })
+      // A failed reload keeps the shown catalog (per the marketplace failure
+      // conventions); only the first load may land on the bare error state.
+      if (alive.current) {
+        setState(current => (current.status === 'ready'
+          ? { ...current, refreshFailed: true }
+          : { status: 'error' }))
+      }
+    } finally {
+      if (alive.current) setReloading(false)
     }
     void reloadInstalled()
   }, [listCatalog, reloadInstalled])
@@ -287,9 +298,9 @@ export function MarketSection({
             variant="outline"
             className={css.iconAction}
             icon={<IconRefreshOutline16 />}
-            aria-label={t('refresh')}
-            title={t('refresh')}
-            disabled={isBusy || state.status === 'loading'}
+            aria-label={reloading ? t('refreshing') : t('refresh')}
+            title={reloading ? t('refreshing') : t('refresh')}
+            disabled={isBusy || reloading}
             onClick={() => { void load(true) }}
           />
         </div>
@@ -303,6 +314,12 @@ export function MarketSection({
       ) : null}
       {state.status === 'ready' ? (
         <>
+          {state.refreshFailed ? (
+            <div className={css.loadFailure}>
+              <p role="alert">{t('loadError')}</p>
+              <Button size="sm" variant="outline" onClick={() => { void load(true) }}>{t('retry')}</Button>
+            </div>
+          ) : null}
           <div className={css.tabs} role="tablist" aria-label={t('heading')}>
             <Pill
               role="tab"
@@ -375,7 +392,7 @@ export function MarketSection({
                   />
                 </div>
                 {state.catalog.categories.length > 1 ? (
-                  <div className={css.categories} role="radiogroup" aria-label={t('heading')}>
+                  <div className={css.categories} role="radiogroup" aria-label={t('categories')}>
                     {state.catalog.categories.map(row => (
                       <Pill
                         key={row.id}

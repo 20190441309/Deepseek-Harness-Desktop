@@ -84,6 +84,7 @@ describe('MarketSection', () => {
       ])),
     })
     await screen.findByText('demo')
+    expect(screen.getByRole('radiogroup', { name: en.categories })).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/ }))
     await waitFor(() => { expect(screen.queryByText('paint')).toBeNull() })
     expect(screen.getByText('demo')).toBeTruthy()
@@ -130,6 +131,17 @@ describe('MarketSection', () => {
       })
     })
     await screen.findByText(en.installDone)
+  })
+
+  it('closes the allow-builds ask on cancel without a second install call', async () => {
+    const install = vi.fn()
+      .mockResolvedValueOnce({ ok: false, needsAllowBuilds: true, allowBuilds: ['demo'] })
+    const props = renderMarket({ install: install as unknown as MarketSectionProps['install'] })
+    fireEvent.click(await screen.findByRole('button', { name: en.install }))
+    await screen.findByRole('alertdialog')
+    fireEvent.click(screen.getByRole('button', { name: en.allowBuildsCancel }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(props.install).toHaveBeenCalledTimes(1)
   })
 
   it('offers uninstall for installed rows and reports harness-down failures', async () => {
@@ -305,6 +317,38 @@ describe('MarketSection', () => {
     const refresh = screen.getByRole('button', { name: en.refresh })
     expect(refresh.getAttribute('aria-label')).toBe(en.refresh)
     expect(refresh.getAttribute('title')).toBe(en.refresh)
+  })
+
+  it('keeps the shown catalog and offers retry when a refresh fails', async () => {
+    const listCatalog = vi.fn()
+      .mockResolvedValueOnce(catalog([item()]))
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(catalog([item()]))
+    renderMarket({ listCatalog: listCatalog as unknown as MarketSectionProps['listCatalog'] })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe(en.loadError)
+    expect(screen.getByText('demo')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
+    expect(screen.getByText('demo')).toBeTruthy()
+    expect(listCatalog).toHaveBeenCalledTimes(3)
+  })
+
+  it('disables and relabels the refresh control while a reload is in flight', async () => {
+    let resolveRefresh: ((value: MarketCatalog) => void) | null = null
+    const listCatalog = vi.fn()
+      .mockResolvedValueOnce(catalog([item()]))
+      .mockImplementationOnce(() => new Promise<MarketCatalog>((resolve) => { resolveRefresh = resolve }))
+    renderMarket({ listCatalog: listCatalog as unknown as MarketSectionProps['listCatalog'] })
+    await screen.findByText('demo')
+    fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+    const refreshing = await screen.findByRole('button', { name: en.refreshing })
+    expect((refreshing as HTMLButtonElement).disabled).toBe(true)
+    resolveRefresh!(catalog([item()]))
+    const refresh = await screen.findByRole('button', { name: en.refresh })
+    expect((refresh as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('does not mark a row installed from a longer repo-name spec', async () => {
