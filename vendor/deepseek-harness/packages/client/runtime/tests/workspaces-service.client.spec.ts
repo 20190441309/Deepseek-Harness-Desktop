@@ -585,6 +585,23 @@ describe('WorkspaceRuntime', () => {
     await expect(workspaces.unarchiveSession(sid('ghost'))).rejects.toThrow(/session unarchive failed: session-not-found/)
     expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-idle'])
 
+    api.onDelete = () => Promise.resolve(ok({
+      deletedSessionIds: [sid('s-idle')],
+      archivedSessionIds: [],
+    }))
+    await expect(workspaces.deleteSession(sid('s-idle'))).resolves.toBeUndefined()
+    expect(api.callsOf('session.delete')).toEqual([{ sessionId: 's-idle' }])
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+    expect(sessions.list.getSnapshot().byId[sid('s-idle')]).toBeUndefined()
+
+    api.onDelete = () => Promise.resolve(err({
+      code: 'session-not-archived',
+      message: 'not archived',
+      details: { sessionId: sid('s-open') },
+    }))
+    await expect(workspaces.deleteSession(sid('s-open'))).rejects.toMatchObject({ code: 'session-not-archived' })
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+
     // The changed frame and the list baseline both re-install the full set.
     workspaces.handleHostEnvelope({
       rpcId: 'frame' as never,

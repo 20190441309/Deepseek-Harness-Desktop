@@ -758,6 +758,11 @@ module.exports = async function afterPack(context) {
   restoreVendoredPluginNodeModules(projectDir, resources, 'dsh-usage-panel');
   installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-usage-panel'), { skipIfComplete: true });
   assertVendoredPluginRuntimeDeps(resources, 'dsh-usage-panel');
+  restoreVendoredPluginNodeModules(projectDir, resources, 'dsh-im');
+  // Force install when any runtime export is missing (skipIfComplete can leave
+  // a half-broken tree that silently drops Settings → Remote → Channels).
+  installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-im'), { skipIfComplete: false });
+  assertVendoredPluginRuntimeDeps(resources, 'dsh-im');
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();

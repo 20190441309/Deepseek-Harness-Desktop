@@ -7,6 +7,7 @@
 | `appearance` | 外观、主题、壁纸行 | `ui-theme` |
 | `market` | 插件市场 | 桌面自有 `ui-settings-market`（fork 包）；**无**独立 BrowserWindow |
 | `usage-stats` | 用量统计 | 预置改版 `dsh-usage-panel`；跨会话 Token，无余额 |
+| `remote` | 远程 | 双标签：网关高级项 + 预置 `@xmanrui/dsh-im` 消息渠道；配对仍在侧栏弹窗 |
 | 模型 / Models | 提供方与模型 | QA §2；具体 id 以界面/插件为准 |
 | MCP | MCP 服务器 | QA `TC-EXT-006` |
 | Skills | 技能 | 同上 |

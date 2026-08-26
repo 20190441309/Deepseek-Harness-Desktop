@@ -61,6 +61,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'settings.plugins.tab': { kind: 'list'; scope: 'root'; owner: SettingsPluginsTabOwnerProps }
     /**
+     * One page inside the desktop Remote settings section (gateway advanced
+     * knobs and IM channel config). Declared at runtime by ui-settings-remote;
+     * the type lives here so the preset dsh-im client can inject the channels
+     * tab without depending on the Remote package.
+     */
+    'settings.remote.tab': { kind: 'list'; scope: 'root'; owner: SettingsRemoteTabOwnerProps }
+    /**
      * Root-scoped onboarding steps contributed by settings features. The
      * shell mounts one ordered step at a time; the active registrant either
      * completes itself or keeps ownership until the user completes its sole
@@ -122,6 +129,15 @@ export interface SettingsInterfaceItemOwnerProps {
  * `close`, so a tab can leave Settings and open a session the way a section can.
  */
 export interface SettingsPluginsTabOwnerProps {
+  /** Close the settings panel (the shell owns the open state). */
+  close: () => void
+}
+
+/**
+ * Owner share of a Remote settings tab. Forwards the settings shell's `close`
+ * the same way Plugins tabs do.
+ */
+export interface SettingsRemoteTabOwnerProps {
   /** Close the settings panel (the shell owns the open state). */
   close: () => void
 }

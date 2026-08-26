@@ -1,6 +1,9 @@
 const os = require('os');
 const { encodeOffer } = require('./offer');
 
+/** Product default public relay (HTTP). Only this origin may skip HTTPS. */
+const DEFAULT_RELAY_ORIGIN = 'http://125.124.85.212:8411';
+
 function isIpv4(address, family) {
   return family === 'IPv4' || family === 4 || /^\d{1,3}(\.\d{1,3}){3}$/.test(address);
 }
@@ -23,6 +26,11 @@ function listLanAddresses() {
   return found;
 }
 
+/**
+ * Normalize a relay origin: HTTPS always; HTTP only for the desktop default relay.
+ * @param {string} value - user-entered relay URL.
+ * @returns {string} origin or empty string.
+ */
 function normalizeRelayOrigin(value) {
   const raw = String(value || '').trim();
   if (!raw) {
@@ -30,10 +38,13 @@ function normalizeRelayOrigin(value) {
   }
   try {
     const url = new URL(raw);
-    if (url.protocol !== 'https:') {
-      return '';
+    if (url.protocol === 'https:') {
+      return url.origin;
     }
-    return url.origin;
+    if (url.protocol === 'http:' && url.origin === DEFAULT_RELAY_ORIGIN) {
+      return url.origin;
+    }
+    return '';
   } catch {
     return '';
   }
@@ -86,6 +97,7 @@ function reachableAddresses(bindAddress, addresses = listLanAddresses()) {
 }
 
 module.exports = {
+  DEFAULT_RELAY_ORIGIN,
   listLanAddresses,
   normalizeRelayOrigin,
   pairingUrl,

@@ -39,6 +39,12 @@ export type RemoteSnapshot = {
   /** Every LAN IPv4 the desktop currently has (bind-scope options). */
   addresses?: string[]
   relayUrl?: string
+  /** Built-in public relay origin (may be HTTP for the desktop default host). */
+  defaultRelayUrl?: string
+  /** True when a host token is stored (never the token itself). */
+  relayTokenSet?: boolean
+  /** True when both HTTPS relay origin and host token are configured. */
+  relayConfigured?: boolean
   relayConnected?: boolean
   relayError?: string
   error?: string
@@ -54,6 +60,8 @@ export type RemotePatch = {
   remoteBindAddress?: string
   remoteLanTls?: boolean
   remoteRelayUrl?: string
+  /** Host token for the outbound relay; empty string clears the stored secret. */
+  remoteRelayToken?: string
 }
 
 /** The preload-exposed desktop API used by the Remote popup. */

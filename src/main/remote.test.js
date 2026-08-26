@@ -184,6 +184,9 @@ test('offer encode/decode round-trips and rejects junk', () => {
   assert.equal(decodeOffer(encodeOffer({ v: 2, token: 'x' })), null);
   assert.equal(normalizeRelayOrigin('ftp://nope'), '');
   assert.equal(normalizeRelayOrigin('http://relay.example'), '');
+  assert.equal(normalizeRelayOrigin('http://125.124.85.212:8411'), 'http://125.124.85.212:8411');
+  assert.equal(normalizeRelayOrigin('http://125.124.85.212:8411/path'), 'http://125.124.85.212:8411');
+  assert.equal(normalizeRelayOrigin('https://relay.example'), 'https://relay.example');
   assert.equal(normalizeRelayOrigin('not a url'), '');
 });
 

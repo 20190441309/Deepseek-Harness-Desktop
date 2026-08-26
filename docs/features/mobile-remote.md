@@ -4,11 +4,11 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — LAN 绑定地址可配置（全部网卡 / 仅本机 / 指定网卡 IP）+ LAN 自签 TLS 可选开启（配对 URL 携带 `https` 与证书指纹 `fp`）；单测 `remote.test.js` / `remote-tls.test.js` / `config.test.js` 与 `ui-settings-remote` vitest 全绿。此前：明文警示 `lanPlaintextWarning`；桌面门禁 `run-remote-gate-qa.mjs`（NEG/REM-001）Pass；真机见 [remote-phone-real.md](../qa/results/2026-08-25/remote-phone-real.md)：已装 APK + 浏览器 SPA / Android 粘贴 `#offer=` 配对 + 发 `phone-native-qa-ping`（`adb reverse`；本 AP 无纯 Wi‑Fi LAN） |
+| **last verified** | 2026-08-26 — 连接方式与高级项均在设置→远程→网关；侧栏仅开关+设备+二维码；消息渠道为桌面内置 dsh-im（见 [remote-settings](remote-settings.md)）。 |
 
 ## User paths
 
-1. 侧栏底部手机图标打开 **远程** 弹窗 → 开 → 局域网（或 HTTPS 中继）→ 二维码。
+1. 设置 → 远程 → **网关**：点「使用默认中继」或填自建 HTTPS 地址 → 保存宿主令牌 → 选服务器中继（未齐凭据时禁用）→ 侧栏底部手机图标打开 **远程** 弹窗 → 开 → 二维码。
 2. 系统相机 / 浏览器扫码（`#offer=`）→ 登录 → `mobile/web` SPA：列会话、发消息、审批允许一次 / 拒绝；SPA 内可再扫码（`BarcodeDetector` + `getUserMedia`，仅 secure context；LAN 明文页降级为粘贴）、发图、停止运行、工作区 Git 胶囊与文件插入。设置为分组钻取 Hub。
 3. Android 安装包（`mobile/android`）扫**同一条**二维码 → JSON 登录拿设备令牌 → Compose 对话 / 审批 / 传图 / 工作区 Git 胶囊。
 4. 关远程后 3180 不再监听；默认 `remoteEnabled` 为关，不会在用户未打开时占口。
@@ -16,14 +16,16 @@
 ## Invariants
 
 - 认证后的 HTML 是 `mobile/web` SPA，不是官方四栏 `dsh web`。`/api/*` 与 WebSocket 仍反代 `127.0.0.1:3080`。
-- Token 只在 `#offer=`。Web 用 Cookie `dsh_remote`；Android 用 `Authorization: Bearer` 设备令牌（Keystore）。中继 origin 必须是 HTTPS。
+- Token 只在 `#offer=`。Web 用 Cookie `dsh_remote`；Android 用 `Authorization: Bearer` 设备令牌（Keystore）。
+- 中继 origin 一般为 HTTPS；桌面内置默认中继 `http://125.124.85.212:8411` 是唯一允许的 HTTP 例外（网关「使用默认中继」）。自建中继仍须 HTTPS。
 - `rewriteProxyHeaders` 去掉 `cookie` / `authorization`，设备令牌不进 loopback harness。
 - 已登录 `POST /__remote__/shell/<name>` 只映射白名单 git / `listDir` / `openSettings` / `openGallery` / `getConfig` / `saveConfig`。无 PTY、`writeFile`、Browser preview。
 - 侧栏 `ui-settings-remote` 已加载；preload 暴露 `getRemote` / `saveRemote` / `rotateRemoteToken` / `unbindRemoteDevice`。
 - 主进程构造 `RemoteGateway`，不走 `createDisabledRemote`。未开启时 `listening !== true`。
-- LAN 监听范围可配置（`remoteBindAddress`：默认 `0.0.0.0` 全部网卡，可收窄为 `127.0.0.1` 或指定网卡 IPv4）：远程弹窗 LAN 模式渲染「监听范围」选择器；快照 `urls` 只列绑定可达地址；中继本地回连用 `localConnectHost`（通配归一回环）。
-- LAN 传输可选自签 TLS（`remoteLanTls`，默认关闭=明文 HTTP）：开启后网关走 HTTPS（ECDSA P-256 自签证书持久于 `userData/remote-tls`，零依赖 `remote-tls.js` 生成），配对 URL 换 `https` 且 offer 携带证书指纹 `fp`（供 Android 后续证书固定）。中继模式绝不套 LAN TLS（中继 origin 本身已是 HTTPS）。浏览器首访自签证书会出警示页；Android 客户端在证书固定落地前不支持 LAN TLS——UI 提示（`lanTlsHint`）必须写明这两点。
-- 明文警示矩阵：「已开启 + LAN + 明文 + 非仅本机绑定」必须常驻 `lanPlaintextWarning`（仅限可信局域网）；开 TLS 换成 `lanTlsHint`（短指纹）；绑 `127.0.0.1` 换成 `bindLoopbackHint`（本机/`adb reverse` 可用）。handbook「安全边界」段与本卡为该限制的文档来源。
+- LAN 监听范围可配置（`remoteBindAddress`）：只在设置→远程→网关改；快照 `urls` 只列绑定可达地址；中继本地回连用 `localConnectHost`（通配归一回环）。
+- LAN 传输可选自签 TLS（`remoteLanTls`，默认关闭=明文 HTTP）：只在设置→远程→网关改；中继模式绝不套 LAN TLS。浏览器首访自签证书会出警示页；Android 客户端在证书固定落地前不支持 LAN TLS——设置网关页提示（`lanTlsHint`）必须写明这两点。
+- 端口、连接方式（LAN/中继）、中继 URL·令牌、轮换 pairing token、绑定、TLS 只在设置→远程→网关（[remote-settings](remote-settings.md)）；侧栏弹窗只留开关、二维码、设备。
+- 明文警示矩阵：设置网关页在「明文 + 非仅本机」时展示 `lanPlaintextWarning`；开 TLS 换成 `lanTlsHint`；绑 `127.0.0.1` 换成 `bindLoopbackHint`。
 - 手机 SPA 与 Android Compose 抄 `--dsw-alias-*`，不挂官方插件树，不用启动页 `--boot-*`。Android 不套 WebView。
 - Android 外观只改本机；电脑项走 shell / Host 请求。Git 胶囊 action 标签英文。
 

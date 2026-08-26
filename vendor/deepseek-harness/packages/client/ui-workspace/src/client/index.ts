@@ -17,6 +17,7 @@ import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contra
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
+import { ShowArchivedListRow } from './ShowArchivedListRow.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type {
@@ -105,15 +106,7 @@ export function apply(ctx: ClientContext): void {
     },
     archiveSession: async (sessionId) => { await ctx.workspaces.archiveSession(sessionId) },
     unarchiveSession: async (sessionId) => { await ctx.workspaces.unarchiveSession(sessionId) },
-    deleteSession: async (sessionId) => {
-      const { result } = await connection.api.sessions.delete({ sessionId })
-      if (!result.ok) {
-        throw Object.assign(
-          new Error(`session delete failed: ${result.error.code}: ${result.error.message}`),
-          { code: result.error.code },
-        )
-      }
-    },
+    deleteSession: async (sessionId) => { await ctx.workspaces.deleteSession(sessionId) },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
@@ -124,13 +117,16 @@ export function apply(ctx: ClientContext): void {
     createWorkspace: input => ctx.workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  // One handle shared by the sidebar browser and the Interface Settings row so
+  // showArchivedList stays one persisted identity.
+  const viewStore = createWorkspaceViewStore()
   // Each registration declares its directory-flow child in the same call;
   // slot injection follows both the owner and declaration HMR lifetimes.
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
     {
       name: 'sidebar.workspaces',
       children: { 'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' } },
-      store: createWorkspaceViewStore(),
+      store: viewStore,
       inject: browserInjected,
       locale: NS,
     },
@@ -144,5 +140,15 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
     },
     WorkspacePicker,
+  ))
+  ctx.slots.inject('settings.interface.item', () => ctx.slots.register(
+    {
+      name: 'settings.interface.item',
+      id: 'show-archived-list',
+      order: 90,
+      locale: NS,
+      store: viewStore,
+    },
+    ShowArchivedListRow,
   ))
 }

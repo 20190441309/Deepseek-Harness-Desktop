@@ -56,6 +56,7 @@
 - [壁纸与外观桥接](modules/wallpaper.md)
 - [dshbot](modules/dshbot.md)
 - [托盘、关闭与更新](modules/tray-update.md)
+- [远程设置](modules/remote-settings.md)
 - [手机远程](modules/mobile-remote.md)
 - [插件启动恢复](modules/plugin-recovery.md)
 - [构建、钉版与发版](modules/build-release.md)

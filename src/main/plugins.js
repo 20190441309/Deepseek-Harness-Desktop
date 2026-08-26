@@ -13,6 +13,11 @@ const DROPPED = [
   // would register a second `market` section, so it stays out of the
   // composition; its files are never deleted by this list.
   'dshmarket',
+  // Settings → Remote → Channels ships first-party from vendor/dsh-im.
+  // Reject marketplace installs of the same package to avoid a second mount.
+  '@xmanrui/dsh-im',
+  'dsh-im',
+  'xmanrui-dsh-im',
 ];
 const PATCH_BEGIN = '# --- dshd-gui-plugin-toggles ---';
 const PATCH_END = '# --- end dshd-gui-plugin-toggles ---';

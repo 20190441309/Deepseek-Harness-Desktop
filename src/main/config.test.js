@@ -112,6 +112,11 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     normalizeRemotePatch({ remoteBindAddress: ' 192.168.1.20 ' }),
     { remoteBindAddress: '192.168.1.20' },
   );
+  assert.deepEqual(
+    normalizeRemotePatch({ remoteRelayToken: 'a'.repeat(32) }),
+    { remoteRelayToken: 'a'.repeat(32) },
+  );
+  assert.deepEqual(normalizeRemotePatch({ remoteRelayToken: '' }), { remoteRelayToken: '' });
   for (const patch of [
     { apiKey: 'sk-stolen' },
     { workspace: 'C:\\' },
@@ -120,7 +125,6 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     { autoStartDesktop: true },
     { askOnUpdate: false },
     { remoteToken: 'pair-me' },
-    { remoteRelayToken: 'a'.repeat(32) },
     { closeToTray: false },
     { remoteEnabled: 'yes' },
     { remoteMode: 'https' },
@@ -159,7 +163,7 @@ test('remote bind address and LAN TLS normalize with safe fallbacks', () => {
   saveConfig({ remoteBindAddress: '0.0.0.0', remoteLanTls: false });
 });
 
-test('remote feature is enabled and strips HTTP relay origins', () => {
+test('remote feature keeps the desktop default HTTP relay and strips other HTTP origins', () => {
   assert.equal(REMOTE_FEATURE_ENABLED, true);
   const httpRelay = saveConfig({
     remoteEnabled: true,
@@ -170,6 +174,14 @@ test('remote feature is enabled and strips HTTP relay origins', () => {
   assert.equal(httpRelay.remoteEnabled, true);
   assert.equal(httpRelay.remoteMode, 'lan');
   assert.equal(httpRelay.remoteRelayUrl, '');
+  const defaultRelay = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remoteRelayUrl: 'http://125.124.85.212:8411/x',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(defaultRelay.remoteMode, 'relay');
+  assert.equal(defaultRelay.remoteRelayUrl, 'http://125.124.85.212:8411');
   const httpsRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',

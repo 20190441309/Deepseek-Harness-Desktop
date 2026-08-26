@@ -15,7 +15,7 @@ const {
   tokensEqual,
   matchingToken,
 } = require('../shared/remote-auth');
-const { listLanAddresses, pairingUrl, publicUrl, reachableAddresses } = require('../shared/lan');
+const { listLanAddresses, pairingUrl, publicUrl, reachableAddresses, DEFAULT_RELAY_ORIGIN } = require('../shared/lan');
 const { createDevice, normalizeDevices, publicDevices } = require('../shared/remote-devices');
 const { generateTlsMaterial } = require('./remote-tls');
 const { RelayClient } = require('./relay-client');
@@ -354,6 +354,9 @@ class RemoteGateway extends EventEmitter {
       tlsFingerprint: fingerprint,
       addresses,
       relayUrl,
+      defaultRelayUrl: DEFAULT_RELAY_ORIGIN,
+      relayTokenSet: Boolean(config.remoteRelayToken),
+      relayConfigured: Boolean(relayUrl && config.remoteRelayToken),
       relayConnected: Boolean(relay.connected),
       relayError: mode === 'relay' ? (relay.error || '') : '',
       error: relay.connected

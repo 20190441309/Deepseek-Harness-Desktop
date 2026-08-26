@@ -60,12 +60,31 @@ function walkExportValue(files, value) {
 
 function declaredEntryRelatives(pkg) {
   const files = new Set();
+  // Prefer package exports when present: many modern packages declare a stale
+  // `main` (e.g. dist/index.js) while only shipping .cjs/.mjs via exports.
   if (pkg.exports !== undefined) {
     walkExportValue(files, pkg.exports);
+    if (files.size > 0) {
+      return [...files];
+    }
   }
   addRelativeFile(files, pkg.module);
   addRelativeFile(files, pkg.main);
   return [...files];
+}
+
+/** True when rel exists as-is or with a Node-style resolution extension. */
+function entryExists(depDir, rel) {
+  const base = path.join(depDir, rel);
+  if (fs.existsSync(base)) {
+    return true;
+  }
+  for (const ext of ['.js', '.mjs', '.cjs', '.json', '.node']) {
+    if (fs.existsSync(base + ext)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function readPackageJson(file) {
@@ -115,7 +134,7 @@ function missingRuntimeFiles(packageDir, options = {}) {
       continue;
     }
     for (const rel of declaredEntryRelatives(depPkg)) {
-      if (!fs.existsSync(path.join(depDir, rel))) {
+      if (!entryExists(depDir, rel)) {
         missing.push(posixJoin(name, rel.split(path.sep).join('/')));
       }
     }

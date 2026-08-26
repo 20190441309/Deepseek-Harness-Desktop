@@ -413,6 +413,14 @@ export class SessionRuntime implements ISessions {
   }
 
   /**
+   * Drop one destroyed session from the list mirror.
+   * @param sessionId - durable log that Host confirmed gone.
+   */
+  applyDeleted(sessionId: SessionId): void {
+    this.manager.applyDeleted(sessionId)
+  }
+
+  /**
    * Clear the current selection so the layout shows the no-session empty
    * state (new-session affordance and the workspace preselection flow).
    * Wipes the persisted selection too — a reload stays on empty until the

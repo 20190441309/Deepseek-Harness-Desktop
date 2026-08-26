@@ -105,4 +105,10 @@ export interface IWorkspaces {
    * @param sessionId - session to unarchive.
    */
   unarchiveSession(sessionId: SessionId): Promise<void>
+  /**
+   * Destroy an archived session's durable log (Host-orchestrated cascade).
+   * On success installs the archive-set echo and drops deleted summaries.
+   * @param sessionId - archived root to delete.
+   */
+  deleteSession(sessionId: SessionId): Promise<void>
 }

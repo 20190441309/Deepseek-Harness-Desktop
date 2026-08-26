@@ -14,7 +14,7 @@ Status: implemented
 
 ### 产品界面
 
-活会话行菜单只有归档、重命名和 fork，没有删除。恢复与销毁只出现在底部 **已归档** / **Archived** 分区。点击已归档行仍会先取消归档再打开；删除仅在该行仍处于归档时经菜单暴露（`⋯` → **删除会话** / **Delete session**，`danger: true`）。确认 Modal 与 Workspace 注册删除同款：pending 期间禁用取消与确认；失败保持对话框打开；提交前 Escape / 取消 / 关闭不会调用 `session.delete`；仅当归档集合回声不再包含已提交 id 时才关闭对话框。文案声明对话记录永久消失，工作区文件夹不受影响。`session-running` 映射为 `delete.session.running`；其他失败以消息文本展示。
+活会话行菜单只有归档、重命名和 fork，没有删除。恢复与销毁只出现在底部 **已归档** / **Archived** 分区。点击已归档行仍会先取消归档再打开；删除仅在该行仍处于归档时经菜单暴露（`⋯` → **删除会话** / **Delete session**，`danger: true`）。确认 Modal 与 Workspace 注册删除同款：pending 期间禁用取消与确认；失败保持对话框打开；提交前 Escape / 取消 / 关闭不会调用 `session.delete`；仅当归档集合回声不再包含已提交 id 时才关闭对话框。文案声明对话记录永久消失，工作区文件夹不受影响。已知 Host 错误码（`session-running`、`session-not-archived`、`session-not-found`、`session-live-unowned`、`session-delete-partial`、`session-delete-incomplete`、`session-delete-in-progress`）映射为本地化删除文案；其他失败以消息文本展示。
 
 ### 可删除集合
 
@@ -22,15 +22,28 @@ Status: implemented
 
 ### 实时句柄与先 dispose 再删除
 
-Host 在每次成功的 `ctx.agents.create` / `resume` 上填充 `Map<SessionId, AgentHandle>`，包括 `ensureSession` 的 create/resume、fork create，以及对 `ctx.agents.resume` 的包装，使 GUI 打开（经 `agentFor` 读历史 / 模型）也保留 `session.delete` 所需句柄。同一实时 agent 已在映射中时 `retainHandle` 幂等。dispose 会去掉映射条目。存在 `ctx.agents.get(id)` 却无句柄时，整次调用以 `session-live-unowned` 失败——Host 不在 `AgentRegistry` 上另做一套拆解。无实时 agent 的冷归档会话跳过 dispose。空闲实时 owner 经 `AgentHandle.dispose()` **先于**持久删除释放；持久化从不回调运行时。
+Host 在每次成功的 `ctx.agents.create` / `resume` 上填充 `Map<SessionId, AgentHandle>`，包括 `ensureSession` 的 create/resume、fork create，以及对 **`ctx.agents.create` 与 `ctx.agents.resume` 的全局包装**，使进程内 subagent create 与 GUI 冷打开都保留 `session.delete` 所需句柄。同一实时 agent 已在映射中时 `retainHandle` 幂等。dispose 会去掉映射条目。存在 `ctx.agents.get(id)` 却无句柄时，整次调用以 `session-live-unowned` 失败——Host 不在 `AgentRegistry` 上另做一套拆解。无实时 agent 的冷归档会话跳过 dispose。按叶到根顺序，对每个 id **先** dispose 该 id 的句柄（若有），**再**对该 id 做持久删除。
 
 ### 持久化与提交
 
-持久删除按叶到根。`persist.delete` 仅在后续 `list()` 显示该 id 已不存在时跳过拒绝（崩溃恢复）。若 id 仍在列表中，或 list 本身失败，则抛出原错误：RPC 不取消归档、不 detach、不发布成功。耐久提交之后 Host 对根执行 `unarchiveSession`，从每个 workspace `detachSession` 整个集合，再按每个已删 id 发布 `host/session-deleted`。这些 id 仍在 `deletingIds` 中时，`session/disposed` **不会**发出 `host/session-removed`。成功值为 `{ deletedSessionIds, archivedSessionIds }`。不回收附件 blob。不级联 message-feedback sidecar。
+持久删除按叶到根。`persist.delete` 仅在后续 `list()` 显示该 id 已不存在时跳过拒绝（崩溃恢复）。若 id 仍在列表中，或 list 本身失败，则该 id 不计为 gone。
+
+**补偿（fail-closed，不是事务回滚）：**
+
+| 情况 | `host/session-deleted` | unarchive 根 | detach | RPC |
+| --- | --- | --- | --- | --- |
+| 全集 gone 且 registry/detach 成功 | 每个 gone id，**先于** unarchive | 是 | gone 集 | `ok` |
+| 首个 persist 失败、gone 空、日志仍在 | 无 | 否 | 否 | 抛错（与补偿前一致） |
+| 部分子已 gone、根仍 listed | 仅 gone | **否** | 仅 gone | `err` `session-delete-partial` + `details.deletedSessionIds` |
+| 全集 gone 但 unarchive/detach 失败 | 已发布 | 尽力 | 尽力 | `err` `session-delete-incomplete` |
+
+确认 durable id 已 gone 后，Host 对每个 gone id 发布 `host/session-deleted`，**然后** `unarchiveSession(root)` 与 workspace `detachSession`。这些 id 仍在 `deletingIds` 中时，`session/disposed` **不会**发出 `host/session-removed`；同时 `workspace.archiveSession` / `unarchiveSession` 以 `session-delete-in-progress` 拒绝。成功值为 `{ deletedSessionIds, archivedSessionIds }`。不回收附件 blob。不级联 message-feedback sidecar。
+
+`workspace.list` 与删除结算可修剪「persist.list 与 live 皆无」的归档集成员（list 失败则 fail-closed、零写入）。修剪从不调用 `persist.delete`。
 
 ### 帧
 
-`host/session-deleted` 表示持久日志销毁。Client 对每个已删 id（含原 subagent）一律 `recordMutation({ kind: 'remove', sessionId })` 并丢掉摘要，不走 `host/session-removed` 的持久 subagent 空闲路径。
+`host/session-deleted` 表示持久日志销毁。Client 对每个已删 id（含原 subagent）丢掉摘要（unary `ok` 时 `applyDeleted` 与 host 帧共用同一路径），不走 `host/session-removed` 的持久 subagent 空闲路径。unary 删除成功时 workspace manager 还会 `installArchived` 回声。删除对话框仍**仅当** committed id 离开 `archivedSessionIds` 时关闭。
 
 ## 已考虑的替代方案
 
@@ -50,11 +63,11 @@ Host 在每次成功的 `ctx.agents.create` / `resume` 上填充 `Map<SessionId,
 
 ## 测试
 
-持久化约定测试钉住 `delete`（未知 id 拒绝；未物化 create 取消；已存储 id 离开 `load`/`list`）。Host `api-proxy-session-delete` 钉住未归档、幽灵 id、运行中（什么都不删）、递归纳入 `origin === 'subagent'` 并排除 fork/`dshbot`、叶到根持久顺序、空闲实时 dispose、register 而不 resume 时的 `session-live-unowned`、删除失败但日志仍在、缺失 id 跳过，以及 `ctx.agents.resume` 保留句柄后归档再删除。Client 运行时在 `host/session-deleted` 上丢掉每条摘要。ui-workspace 组件测试钉住确认 / 取消 / 活行无删除 / 已归档 danger 删除 / `session-running` 文案。workspace-management e2e 钉住归档 → 确认删除 → 重载：行消失、id 不在 `sessionPersistence.list()`、JSONL 会话目录 `ENOENT`、工作区文件不变。生产 `TC-CHAT-013` 待 0.2.8 之后在 CI Setup 上执行。
+持久化约定测试钉住 `delete`。Host `api-proxy-session-delete` 另钉 **`session-deleted` 先于 `archived-sessions-changed`**、级联 `session-delete-partial`、`ctx.agents.create` 保留句柄、删除中 `session-delete-in-progress`。Client：`applyDeleted` / delete ok 时装归档回声。ui-workspace：本地化删除错误码、缺失会话占位菜单、关显示开关完全隐藏已归档。生产 `TC-CHAT-013` 待装包补测（含确认后不闪回）。
 
 ## 后果
 
-在「已归档」确认删除会永久去掉对话记录目录（JSONL `sessionDir`）以及嵌套的 `origin === 'subagent'` 日志；工作区文件夹以及该根的 fork 子会话仍在。打开 → 归档 → 删除可行，因为 Host 把 `ctx.agents.resume` 包进句柄映射。附件 blob 与 message-feedback 行可以在日志删除后仍留下，直到那些 domain 有自己的 GC。
+在「已归档」确认删除会永久去掉对话记录目录以及嵌套的 `origin === 'subagent'` 日志；工作区文件夹以及该根的 fork 子会话仍在。打开 → 归档 → 删除可行，因为 Host 把 `ctx.agents.create` 与 `ctx.agents.resume` 都包进句柄映射。附件 blob 与 message-feedback 行可以在日志删除后仍留下，直到那些 domain 有自己的 GC。
 
 ## 相关
 

@@ -1,0 +1,5 @@
+# remote-settings product
+
+Settings section `remote` has two tabs: **gateway** (relay URL·token first, then LAN/relay mode as equal-width segment, port, bind, LAN TLS, rotate pairing token) and **channels** (first-party `vendor/dsh-im` — full nine channels + AI Office; no store brand/GitHub; CTAs use capsule + `--dsw-alias-button-primary-*`, not Ant blue). Sidebar phone popup stays on/off + QR + devices. Marketplace install of `@xmanrui/dsh-im` is rejected (`DROPPED`). Missing IM deps block Harness start. Tokens / `ui-primitives` for gateway; channel shell is token-equivalent CSS.
+
+Full card: [docs/features/remote-settings.md](../../docs/features/remote-settings.md)

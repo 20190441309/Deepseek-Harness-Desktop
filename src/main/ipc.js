@@ -255,7 +255,7 @@ function registerIpc({
     });
   });
 
-  handle('shell:open-settings', HARNESS_ONLY, () => openHarnessSettings());
+  handle('shell:open-settings', HARNESS_ONLY, (_event, sectionId) => openHarnessSettings(sectionId));
 
   handle('shell:open-launcher', HARNESS_ONLY, async () => {
     if (typeof onOpenLauncher !== 'function') {

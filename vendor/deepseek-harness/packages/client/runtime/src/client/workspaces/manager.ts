@@ -244,6 +244,21 @@ export class WorkspaceManager {
   }
 
   /**
+   * Destroy an archived session log, install the archive-set echo, and return
+   * the Host result so callers can drop summaries from `deletedSessionIds`.
+   * @param sessionId - archived root to delete.
+   * @returns the wire result.
+   */
+  async deleteSession(sessionId: SessionId): Promise<RpcResult<{
+    deletedSessionIds: SessionId[]
+    archivedSessionIds: SessionId[]
+  }>> {
+    const { result } = await this.api.sessions.delete({ sessionId })
+    if (result.ok) this.installArchived(result.value.archivedSessionIds)
+    return result
+  }
+
+  /**
    * Host-frame entry. Non-workspace frames are ignored so the runtime can
    * fan one host stream out to both object managers.
    * @param envelope - host stream envelope.

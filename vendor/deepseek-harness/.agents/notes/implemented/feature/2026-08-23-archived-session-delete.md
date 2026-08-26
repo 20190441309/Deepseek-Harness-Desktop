@@ -14,7 +14,7 @@ Archive hides a session from every grouping surface while leaving its durable lo
 
 ### Product surface
 
-The live session row menu offers archive, rename, and fork only — no Delete. Restore and destroy appear only under the bottom **Archived** / **已归档** section. Clicking an archived row still unarchives then opens; Delete is menu-only while the row remains archived (`⋯` → **Delete session** / **删除会话**, `danger: true`). The confirmation Modal matches Workspace registration deletion: pending disables Cancel and Confirm; failure keeps the dialog open; Escape / Cancel / Close before submit do not call `session.delete`; the dialog closes only after the archive-set echo no longer contains the committed id. Copy states that the conversation log is gone forever and that the workspace folder is unchanged. `session-running` maps to `delete.session.running`; other failures show as message text.
+The live session row menu offers archive, rename, and fork only — no Delete. Restore and destroy appear only under the bottom **Archived** / **已归档** section. Clicking an archived row still unarchives then opens; Delete is menu-only while the row remains archived (`⋯` → **Delete session** / **删除会话**, `danger: true`). The confirmation Modal matches Workspace registration deletion: pending disables Cancel and Confirm; failure keeps the dialog open; Escape / Cancel / Close before submit do not call `session.delete`; the dialog closes only after the archive-set echo no longer contains the committed id. Copy states that the conversation log is gone forever and that the workspace folder is unchanged. Known Host codes (`session-running`, `session-not-archived`, `session-not-found`, `session-live-unowned`, `session-delete-partial`, `session-delete-incomplete`, `session-delete-in-progress`) map to localized delete copy; other failures show as message text.
 
 ### Deletable set
 
@@ -22,15 +22,28 @@ The live session row menu offers archive, rename, and fork only — no Delete. R
 
 ### Live handles and dispose-then-delete
 
-Host keeps `Map<SessionId, AgentHandle>` populated on every successful `ctx.agents.create` / `resume`, including `ensureSession` create/resume, fork create, and a wrap of `ctx.agents.resume` so GUI open (history / models via `agentFor`) retains the handle `session.delete` needs. `retainHandle` is idempotent when the mapped agent is already that live instance. Dispose removes the map entry. A live `ctx.agents.get(id)` without a handle fails the whole call with `session-live-unowned` — Host does not invent a second teardown on `AgentRegistry`. Cold archived sessions with no live agent skip dispose. Idle live owners are disposed through `AgentHandle.dispose()` **before** persistence delete; persistence never calls into runtime.
+Host keeps `Map<SessionId, AgentHandle>` populated on every successful `ctx.agents.create` / `resume`, including `ensureSession` create/resume, fork create, and **global wraps** of both `ctx.agents.create` and `ctx.agents.resume` so in-process subagent creates and GUI cold open retain the handle `session.delete` needs. `retainHandle` is idempotent when the mapped agent is already that live instance. Dispose removes the map entry. A live `ctx.agents.get(id)` without a handle fails the whole call with `session-live-unowned` — Host does not invent a second teardown on `AgentRegistry`. Cold archived sessions with no live agent skip dispose. For each id in leaf-to-root order, Host disposes that id's handle (if any) **immediately before** that id's persistence delete.
 
 ### Persistence and commit
 
-Persistence delete is leaf-to-root. `persist.delete` skip-on-rejection happens only when a follow-up `list()` shows the id gone (crash resume). If the id is still listed, or listing itself fails, the original error is rethrown: the RPC does not unarchive, detach, or publish success. After durable commit Host `unarchiveSession(root)`, `detachSession`s the whole set from every workspace, then publishes `host/session-deleted` per deleted id. `session/disposed` does **not** emit `host/session-removed` while those ids are in `deletingIds`. Success is `{ deletedSessionIds, archivedSessionIds }`. Attachment blobs are not garbage-collected. Message-feedback sidecars are not cascaded.
+Persistence delete is leaf-to-root. `persist.delete` skip-on-rejection happens only when a follow-up `list()` shows the id gone (crash resume). If the id is still listed, or listing itself fails, that id is not marked gone.
+
+**Compensation (fail-closed, not transactional rollback):**
+
+| Situation | `host/session-deleted` | unarchive root | detach | RPC |
+| --- | --- | --- | --- | --- |
+| Full set gone + registry/detach ok | every gone id, **before** unarchive | yes | gone set | `ok` |
+| First persist fail, gone empty, log remains | none | no | no | throw (same as pre-compensation) |
+| Some children gone, root still listed | gone only | **no** | gone only | `err` `session-delete-partial` + `details.deletedSessionIds` |
+| Full set gone but unarchive/detach fails | already published | best effort | best effort | `err` `session-delete-incomplete` |
+
+After durable ids are known gone, Host publishes `host/session-deleted` per gone id **before** `unarchiveSession(root)` and workspace `detachSession`. `session/disposed` does **not** emit `host/session-removed` while those ids are in `deletingIds`. While `deletingIds` holds an id, `workspace.archiveSession` / `unarchiveSession` refuse with `session-delete-in-progress`. Success is `{ deletedSessionIds, archivedSessionIds }`. Attachment blobs are not garbage-collected. Message-feedback sidecars are not cascaded.
+
+`workspace.list` and delete settlement may prune archive-set members that are absent from both `persist.list()` and live sessions (list faults fail closed — zero writes). Prune never calls `persist.delete`.
 
 ### Frames
 
-`host/session-deleted` means durable log destruction. Clients always `recordMutation({ kind: 'remove', sessionId })` and drop the summary for every deleted id, including former subagents. They do not use the durable-subagent idle path of `host/session-removed`.
+`host/session-deleted` means durable log destruction. Clients always drop the summary for every deleted id (unary `applyDeleted` on ok and the host-frame path share one remove), including former subagents. They do not use the durable-subagent idle path of `host/session-removed`. On unary delete success the workspace manager also `installArchived` from the echo. The delete dialog still closes **only** when the committed id leaves `archivedSessionIds`.
 
 ## Alternatives considered
 
@@ -50,11 +63,11 @@ Persistence delete is leaf-to-root. `persist.delete` skip-on-rejection happens o
 
 ## Testing
 
-Persistence contract tests pin `delete` (unknown id rejects; un-materialized create cancels; stored id leaves `load`/`list`). Host `api-proxy-session-delete` pins not-archived, ghost id, running (nothing deleted), recursive `origin === 'subagent'` inclusion with fork/`dshbot` exclusion, leaf-to-root persist order, live idle dispose, `session-live-unowned` on register-without-resume, persist-failure that leaves the log, missing-id skip, and `ctx.agents.resume` retain then archive then delete. Client runtime drops every summary on `host/session-deleted`. ui-workspace component tests pin confirm / cancel / live-row-no-delete / archived danger Delete / `session-running` copy. workspace-management e2e pins archive → confirm delete → reload: row gone, id absent from `sessionPersistence.list()`, JSONL session directory `ENOENT`, workspace file unchanged. Production `TC-CHAT-013` is pending on CI Setup after 0.2.8.
+Persistence contract tests pin `delete` (unknown id rejects; un-materialized create cancels; stored id leaves `load`/`list`). Host `api-proxy-session-delete` pins not-archived, ghost id, running (nothing deleted), recursive `origin === 'subagent'` inclusion with fork/`dshbot` exclusion, leaf-to-root persist order with **`session-deleted` before `archived-sessions-changed`**, live idle dispose, `session-live-unowned` on register-without-resume, persist-failure that leaves the log (zero publish), cascade partial (`session-delete-partial`), `ctx.agents.create` retain then archive then delete, and `session-delete-in-progress` while deleting. Client runtime drops every summary on `host/session-deleted` / `applyDeleted`; workspaces `deleteSession` installs the archive echo on ok only. ui-workspace component tests pin confirm / cancel / live-row-no-delete / archived danger Delete / localized delete codes / missing archived placeholder with menu / showArchivedList off hides the section entirely. workspace-management e2e pins archive → confirm delete → reload: row gone, id absent from `sessionPersistence.list()`, JSONL session directory `ENOENT`, workspace file unchanged. Production `TC-CHAT-013` is pending on CI Setup after 0.2.8.
 
 ## Consequences
 
-Confirmed Archived delete permanently removes the conversation log directory (JSONL `sessionDir`) and nested `origin === 'subagent'` logs; the workspace folder and fork children of that root remain. Open → archive → delete works because Host wraps `ctx.agents.resume` into the handle map. Attachment blobs and message-feedback rows can outlive the deleted log until those domains gain their own GC.
+Confirmed Archived delete permanently removes the conversation log directory (JSONL `sessionDir`) and nested `origin === 'subagent'` logs; the workspace folder and fork children of that root remain. Open → archive → delete works because Host wraps both `ctx.agents.create` and `ctx.agents.resume` into the handle map. Attachment blobs and message-feedback rows can outlive the deleted log until those domains gain their own GC.
 
 ## Related
 

@@ -36,6 +36,25 @@ export interface RpcErrorDetailsMap {
   'session-not-archived': { sessionId: SessionId }
   'session-running': { sessionId: SessionId }
   'session-live-unowned': { sessionId: SessionId }
+  /**
+   * Cascade delete destroyed some durable logs but not the archived root.
+   * Clients must treat this as failure; `deletedSessionIds` are already gone.
+   */
+  'session-delete-partial': {
+    sessionId: SessionId
+    deletedSessionIds: SessionId[]
+    cause: string
+  }
+  /**
+   * The archived root's durable log is gone, but unarchive/detach did not
+   * fully commit. Clients still drop summaries from `deletedSessionIds`.
+   */
+  'session-delete-incomplete': {
+    sessionId: SessionId
+    deletedSessionIds: SessionId[]
+  }
+  /** Archive/unarchive refused because `session.delete` holds the id. */
+  'session-delete-in-progress': { sessionId: SessionId }
   'model-unavailable': { provider: string; model: string }
   'session-conflict': { sessionId: SessionId; requestedCwd: string; existingCwd?: string }
   'invalid-time-zone': { value: string }

@@ -7,6 +7,7 @@ const { HarnessController } = require('./harness-controller');
 const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
 const { removeDshMarketPreset } = require('./dshmarket-preset');
 const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
+const { ensureDshImPlugin } = require('./dsh-im-desktop');
 const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
@@ -284,6 +285,7 @@ const harness = new HarnessController({
   ensureDesktopInstallPlugin,
   removeDshMarketPreset,
   ensureUsagePanelPlugin,
+  ensureDshImPlugin,
   ensureDshbotPlugin,
   removeDshbotPreset,
   applyDisabledBundles,

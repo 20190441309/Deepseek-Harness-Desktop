@@ -425,6 +425,15 @@ describe('subagent catalogs', () => {
     expect(manager.getListSnapshot().items.find(item => item.sessionId === S1)).toBeUndefined()
   })
 
+  it('applyDeleted shares the host/session-deleted remove path', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({ items: [summary(S1)] as never[] }))
+    const manager = new SessionManager(api, fakeRemote())
+    await manager.refreshList()
+    manager.applyDeleted(S1)
+    expect(manager.getListSnapshot().items.find(item => item.sessionId === S1)).toBeUndefined()
+  })
+
   it('refetches debounced membership only while the parent catalog is open', async () => {
     vi.useFakeTimers()
     try {

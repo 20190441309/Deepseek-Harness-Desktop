@@ -298,22 +298,34 @@ export function deriveFlat(
 }
 
 /**
- * Derive archived session rows in registry-set order. Missing summaries and
- * subagent-origin ids are skipped; this path does not use sessionVisible
- * (archived ids stay out of groups, the flat list, and search).
+ * Derive archived session rows in registry-set order. Subagent-origin ids are
+ * skipped. Ids with no summary become non-blank placeholders so Unarchive /
+ * Delete stay reachable (Host prune removes true ghosts on list).
  * @param list - session list snapshot.
  * @param archivedSessionIds - registry-global archive set.
+ * @param missingTitle - localized title for summary-less archive rows.
  * @returns archived rows in set order.
  */
 export function deriveArchived(
   list: SessionListState,
   archivedSessionIds: readonly SessionId[],
+  missingTitle = 'Missing session',
 ): SessionNode[] {
   const descendants = indexSubagentDescendants(list.byId)
   const rows: SessionSummary[] = []
   for (const id of archivedSessionIds) {
     const s = list.byId[id]
-    if (s === undefined || s.origin === 'subagent') continue
+    if (s?.origin === 'subagent') continue
+    if (s === undefined) {
+      rows.push({
+        id,
+        displayTitle: missingTitle,
+        running: false,
+        blank: false,
+        updatedAt: 0,
+      })
+      continue
+    }
     rows.push(s)
   }
   return rows.map(session => sessionNode(session, descendants))

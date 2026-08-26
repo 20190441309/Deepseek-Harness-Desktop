@@ -266,14 +266,21 @@ describe('deriveFlat', () => {
 })
 
 describe('deriveArchived', () => {
-  it('preserves archive-set order and skips missing and subagent-origin ids', () => {
+  it('preserves archive-set order, skips subagents, and emits placeholders for missing summaries', () => {
     const first = summary('first', 1)
     const second = summary('second', 2)
     const subagent = { ...summary('sub', 3), origin: 'subagent' as const }
     const live = summary('live', 4)
     const sessions = list(second, first, subagent, live)
-    expect(deriveArchived(sessions, archived('second', 'missing', 'sub', 'first')).map(row => row.id))
-      .toEqual([second.id, first.id])
+    expect(deriveArchived(sessions, archived('second', 'missing', 'sub', 'first'), '缺失会话').map(row => ({
+      id: row.id,
+      title: row.title,
+      blank: row.blank,
+    }))).toEqual([
+      { id: second.id, title: second.displayTitle, blank: false },
+      { id: sid('missing'), title: '缺失会话', blank: false },
+      { id: first.id, title: first.displayTitle, blank: false },
+    ])
   })
 
   it('does not feed archived ids through sessionVisible for groups, flat, or search', () => {
@@ -436,15 +443,18 @@ describe('createWorkspaceViewStore', () => {
     const store = createWorkspaceViewStore().create()
     expect(store.getSnapshot().groupBy).toBe('workspace')
     expect(store.getSnapshot().orderBy).toBe('updated')
+    expect(store.getSnapshot().showArchivedList).toBe(true)
     store.actions.setGroupBy('flat')
     store.actions.setOrderBy('updated')
     store.actions.setGroupExpanded('alpha', true)
+    store.actions.setShowArchivedList(false)
     store.actions.syncSessionOrderAccount('alpha', ['two', 'one'], { one: 1, two: 2 })
     store.actions.setSessionOrder('alpha', ['one', 'two'])
     expect(store.getSnapshot().groupBy).toBe('flat')
     expect(store.getSnapshot()).toMatchObject({
       orderBy: 'updated',
       groupExpansion: { alpha: true },
+      showArchivedList: false,
       sessionOrderByAccount: { alpha: ['one', 'two'] },
       sessionUpdatedAtByAccount: { alpha: { one: 1, two: 2 } },
     })

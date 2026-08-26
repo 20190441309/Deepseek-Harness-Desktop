@@ -351,9 +351,12 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
     expect(archiveSession).toHaveBeenCalledWith(sid('gone-s'))
 
-    // The archive-set echo hides the row from live groups and shows it under 已归档.
+    // The archive-set echo hides the row from live groups and shows the
+    // collapsed 已归档 header; rows appear only after expand.
     rerender(b, { useWorkspaces: hook(workspaceState([workspace('alpha', ['kept-s', 'gone-s'])], [sid('gone-s')])) })
     expect(screen.getByText('已归档')).toBeTruthy()
+    expect(screen.queryByText('gone-s')).toBeNull()
+    fireEvent.click(screen.getByText('已归档'))
     expect(screen.getByText('gone-s')).toBeTruthy()
     expect(screen.getByText('gone-s').closest('[role="treeitem"]')?.getAttribute('draggable')).not.toBe('true')
     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
@@ -362,6 +365,31 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByText('已归档')).toBeTruthy()
     expect(screen.getByText('gone-s')).toBeTruthy()
     expect(screen.getByText('gone-s').closest('[role="treeitem"]')?.getAttribute('draggable')).not.toBe('true')
+  })
+
+  it('keeps the archived section collapsed by default and expands on header click', () => {
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+    })
+    const header = screen.getByText('已归档').closest('[role="treeitem"]')
+    expect(header?.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('gone-s')).toBeNull()
+    fireEvent.click(screen.getByText('已归档'))
+    expect(screen.getByText('已归档').closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('gone-s')).toBeTruthy()
+  })
+
+  it('hides the archived section entirely when showArchivedList is off', () => {
+    const b = mount({
+      useSessions: hook(sessionState([summary('gone-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+    })
+    expect(screen.getByText('已归档')).toBeTruthy()
+    act(() => { b.store.actions.setShowArchivedList(false) })
+    b.view.rerender(<WorkspaceBrowser {...b.props} />)
+    expect(screen.queryByText('已归档')).toBeNull()
+    expect(screen.queryByText('gone-s')).toBeNull()
   })
 
   it('does not render the archived section when the set is empty', () => {
@@ -408,6 +436,7 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
       deleteSession,
     })
+    fireEvent.click(screen.getByText('已归档'))
     fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
     const dialog = screen.getByRole('dialog', { name: '删除会话' })
@@ -442,6 +471,7 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
       deleteSession,
     })
+    fireEvent.click(screen.getByText('已归档'))
     fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
     fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
@@ -453,6 +483,52 @@ describe('WorkspaceBrowser', () => {
     expect(screen.queryByRole('dialog', { name: '删除会话' })).toBeNull()
   })
 
+  it('maps additional session delete host error codes to localized copy', async () => {
+    const codes: Array<{ code: string; message: string }> = [
+      { code: 'session-not-archived', message: '只能删除已归档的会话。' },
+      { code: 'session-not-found', message: '找不到该会话。' },
+      { code: 'session-live-unowned', message: '会话仍在运行且无法安全结束，请重试或重启后再删。' },
+      { code: 'session-delete-partial', message: '部分子会话已删除，但根会话仍在。请重试删除。' },
+      { code: 'session-delete-incomplete', message: '会话日志已删除，但归档状态未能完全更新。请刷新后检查。' },
+      { code: 'session-delete-in-progress', message: '该会话正在删除中，请稍后再试。' },
+    ]
+    const deleteSession = vi.fn()
+    for (const { code } of codes) {
+      deleteSession.mockRejectedValueOnce(
+        Object.assign(new Error(`session delete failed: ${code}`), { code }),
+      )
+    }
+    mount({
+      useSessions: hook(sessionState([summary('gone-s', 1, { displayTitle: 'Gone' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByText('已归档'))
+    for (const { message } of codes) {
+      fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+      fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+      await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe(message) })
+      fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    }
+  })
+
+  it('shows a missing archived placeholder with delete and unarchive actions', async () => {
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])], [sid('ghost-s')])),
+      deleteSession,
+    })
+    fireEvent.click(screen.getByText('已归档'))
+    expect(screen.getByText('缺失会话')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '会话“缺失会话”的操作' }))
+    expect(screen.getByRole('menuitem', { name: '取消归档' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(deleteSession).toHaveBeenCalledWith(sid('ghost-s')) })
+  })
+
   it('Cancel, Escape, and Close dismiss session deletion without calling the action', () => {
     const deleteSession = vi.fn(async () => {})
     mount({
@@ -460,6 +536,7 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['gone-s'])], [sid('gone-s')])),
       deleteSession,
     })
+    fireEvent.click(screen.getByText('已归档'))
     const open = () => {
       fireEvent.click(screen.getByRole('button', { name: '会话“Gone”的操作' }))
       fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
@@ -483,13 +560,14 @@ describe('WorkspaceBrowser', () => {
       unarchiveSession,
       open,
     })
+    fireEvent.click(screen.getByText('已归档'))
     fireEvent.click(screen.getByRole('button', { name: '会话“gone-s”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '取消归档' }))
     expect(unarchiveSession).toHaveBeenCalledWith(sid('gone-s'))
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('unarchives then opens when the archived row is clicked', async () => {
+  it('does not unarchive or open when the archived row is clicked', async () => {
     const unarchiveSession = vi.fn(async () => {})
     const open = vi.fn()
     mount({
@@ -498,11 +576,12 @@ describe('WorkspaceBrowser', () => {
       unarchiveSession,
       open,
     })
+    fireEvent.click(screen.getByText('已归档'))
     fireEvent.click(screen.getByText('gone-s'))
     await Promise.resolve()
     await Promise.resolve()
-    expect(unarchiveSession).toHaveBeenCalledWith(sid('gone-s'))
-    expect(open).toHaveBeenCalledWith(sid('gone-s'))
+    expect(unarchiveSession).not.toHaveBeenCalled()
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('logs and keeps the tree when the archive call rejects', async () => {

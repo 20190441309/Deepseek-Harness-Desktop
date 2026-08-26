@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, IconChevronRightOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -41,8 +41,8 @@ function formatStamp(value: string, unknown: string): string {
 }
 
 /**
- * Sidebar-foot Remote control: a phone trigger plus a popup with On/Off,
- * LAN versus server relay, the pairing QR, and bound-device management.
+ * Sidebar-foot Remote control: turn on, scan the QR, manage devices.
+ * Connection mode and gateway knobs live under Settings → Remote → Gateway.
  * @param props - composed slot props plus the desktop inject face.
  * @returns the trigger and optional popup.
  */
@@ -58,7 +58,6 @@ export function RemoteSection({
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
   const [devicesOpen, setDevicesOpen] = useState(false)
-  const modeWrites = useRef(0)
 
   const applySnap = useCallback((next: RemoteSnapshot | null) => {
     const value = next ?? EMPTY
@@ -78,7 +77,6 @@ export function RemoteSection({
   }, [applySnap, getRemote])
 
   const refresh = useCallback(async () => {
-    if (modeWrites.current > 0) return
     try {
       applySnap(await getRemote())
     } catch (caught) {
@@ -111,26 +109,6 @@ export function RemoteSection({
   }, [open, devicesOpen])
 
   const save = useCallback(async (patch: RemotePatch) => {
-    // A local const keeps the narrowing alive inside the setState closure.
-    const nextMode = patch.remoteMode
-    if (nextMode) {
-      modeWrites.current += 1
-      setSnap(current => (current === null ? null : { ...current, mode: nextMode }))
-      try {
-        applySnap(await saveRemote(patch))
-      } catch (caught) {
-        const message = caught instanceof Error ? caught.message : String(caught)
-        try {
-          applySnap(await getRemote())
-        } catch {
-          /* The optimistic mode stays until the next refresh. */
-        }
-        setError(message)
-      } finally {
-        modeWrites.current -= 1
-      }
-      return
-    }
     setBusy(true)
     try {
       applySnap(await saveRemote(patch))
@@ -139,7 +117,7 @@ export function RemoteSection({
     } finally {
       setBusy(false)
     }
-  }, [applySnap, getRemote, saveRemote])
+  }, [applySnap, saveRemote])
 
   const unbind = useCallback(async (id: string) => {
     setBusy(true)
@@ -155,22 +133,7 @@ export function RemoteSection({
   const pairingUrl = snap?.urls?.[0]?.pairingUrl || ''
   const qr = useMemo(() => qrSvg(pairingUrl), [pairingUrl])
   const enabled = Boolean(snap?.enabled)
-  const mode = snap?.mode === 'relay' ? 'relay' : 'lan'
   const devices = snap?.devices ?? []
-  const bindAddress = snap?.bindAddress || '0.0.0.0'
-  const lanTls = Boolean(snap?.lanTls)
-  const bindOptions = useMemo(() => {
-    const nics = (snap?.addresses ?? []).filter(address => address !== '127.0.0.1')
-    const options = ['0.0.0.0', '127.0.0.1', ...nics]
-    // A configured NIC that just went away stays selectable so the user can
-    // see and change what the gateway is still bound to.
-    return options.includes(bindAddress) ? options : [...options, bindAddress]
-  }, [snap?.addresses, bindAddress])
-  const bindLabel = (option: string): string => {
-    if (option === '0.0.0.0') return t('bindAll')
-    if (option === '127.0.0.1') return t('bindLoopback')
-    return option
-  }
 
   return (
     <div className={wide ? css.layer : `${css.layer} ${css.rail}`}>
@@ -225,83 +188,6 @@ export function RemoteSection({
                     {t('enabledOff')}
                   </Button>
                 </div>
-                <div className={css.modes} role="radiogroup" aria-label={t('mode')}>
-                  <Button
-                    size="sm"
-                    variant={mode === 'lan' ? 'primary' : 'ghost'}
-                    className={css.modeButton}
-                    role="radio"
-                    aria-checked={mode === 'lan'}
-                    onClick={() => { void save({ remoteMode: 'lan' }) }}
-                  >
-                    {t('modeLan')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={mode === 'relay' ? 'primary' : 'ghost'}
-                    className={css.modeButton}
-                    role="radio"
-                    aria-checked={mode === 'relay'}
-                    onClick={() => { void save({ remoteMode: 'relay' }) }}
-                  >
-                    {t('modeRelay')}
-                  </Button>
-                </div>
-                {mode === 'lan' ? (
-                  <>
-                    <div className={css.scopeGroup} role="radiogroup" aria-label={t('bindScope')}>
-                      {bindOptions.map(option => (
-                        <Button
-                          key={option}
-                          size="sm"
-                          variant={bindAddress === option ? 'primary' : 'ghost'}
-                          className={css.scopeButton}
-                          role="radio"
-                          aria-checked={bindAddress === option}
-                          disabled={busy}
-                          onClick={() => { if (bindAddress !== option) void save({ remoteBindAddress: option }) }}
-                        >
-                          {bindLabel(option)}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className={css.modes} role="radiogroup" aria-label={t('lanTransport')}>
-                      <Button
-                        size="sm"
-                        variant={lanTls ? 'ghost' : 'primary'}
-                        className={css.modeButton}
-                        role="radio"
-                        aria-checked={!lanTls}
-                        disabled={busy}
-                        onClick={() => { if (lanTls) void save({ remoteLanTls: false }) }}
-                      >
-                        {t('transportPlain')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={lanTls ? 'primary' : 'ghost'}
-                        className={css.modeButton}
-                        role="radio"
-                        aria-checked={lanTls}
-                        disabled={busy}
-                        onClick={() => { if (!lanTls) void save({ remoteLanTls: true }) }}
-                      >
-                        {t('transportTls')}
-                      </Button>
-                    </div>
-                  </>
-                ) : null}
-                {enabled && mode === 'lan' && lanTls ? (
-                  <p className={css.hint} role="note" data-dsh-remote-tls-hint="">
-                    {t('lanTlsHint', { fp: (snap?.tlsFingerprint || '').slice(0, 16) })}
-                  </p>
-                ) : null}
-                {enabled && mode === 'lan' && !lanTls && bindAddress !== '127.0.0.1' ? (
-                  <p className={css.hint} role="note" data-dsh-remote-lan-warning="">{t('lanPlaintextWarning')}</p>
-                ) : null}
-                {enabled && mode === 'lan' && bindAddress === '127.0.0.1' ? (
-                  <p className={css.hint} role="note" data-dsh-remote-loopback-hint="">{t('bindLoopbackHint')}</p>
-                ) : null}
                 <button
                   type="button"
                   className={css.devices}

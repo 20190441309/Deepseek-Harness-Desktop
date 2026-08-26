@@ -22,7 +22,8 @@ const SNAP: RemoteSnapshot = {
   bindAddress: '0.0.0.0',
   lanTls: false,
   addresses: ['10.0.0.4'],
-  relayUrl: 'http://125.124.85.212:8411',
+  relayUrl: 'https://relay.example',
+  relayConfigured: true,
   relayConnected: false,
   urls: [
     { address: '10.0.0.4', url: 'http://10.0.0.4:3180/', pairingUrl: 'http://10.0.0.4:3180/#offer=abc' },
@@ -61,86 +62,17 @@ describe('RemoteSection', () => {
     expect(screen.getByRole('button', { name: en.trigger }).hasAttribute('data-on')).toBe(true)
   })
 
-  it('opens a popup with LAN/relay and the pairing QR, without leaking the URL', async () => {
+  it('opens a popup with on/off and the pairing QR, without LAN/relay or leaking the URL', async () => {
     renderRemote()
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
     expect(screen.getByRole('radio', { name: en.enabledOn })).toBeTruthy()
     expect(screen.getByRole('radio', { name: en.enabledOff })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: en.modeLan })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: en.modeRelay })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: en.modeLan })).toBeNull()
+    expect(screen.queryByRole('radio', { name: en.modeRelay })).toBeNull()
     expect(screen.getByRole('img', { name: en.qr })).toBeTruthy()
     expect(screen.queryByText(/#offer=/)).toBeNull()
     expect(screen.queryByText('3180')).toBeNull()
-  })
-
-  it('switches to relay from the popup', async () => {
-    const props = renderRemote({
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ mode: patch.remoteMode ?? 'lan' })),
-    })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    fireEvent.click(await screen.findByRole('radio', { name: en.modeRelay }))
-    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
-    cleanup()
-    const back = renderRemote({
-      getRemote: vi.fn(async () => snap({ mode: 'relay' })),
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ mode: patch.remoteMode ?? 'relay' })),
-    })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    fireEvent.click(await screen.findByRole('radio', { name: en.modeLan }))
-    await waitFor(() => { expect(back.saveRemote).toHaveBeenCalledWith({ remoteMode: 'lan' }) })
-  })
-
-  it('keeps the enable buttons live while a mode save is in flight', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    try {
-      let finish: (value: RemoteSnapshot) => void = () => {}
-      const getRemote = vi.fn(async () => SNAP)
-      const saveRemote = vi.fn(() => new Promise<RemoteSnapshot>((resolve) => { finish = resolve }))
-      renderRemote({ getRemote, saveRemote })
-      fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-      await screen.findByRole('img', { name: en.qr })
-      const enableOn = screen.getByRole('radio', { name: en.enabledOn }) as HTMLButtonElement
-      const enableOff = screen.getByRole('radio', { name: en.enabledOff }) as HTMLButtonElement
-      expect(enableOn.disabled).toBe(false)
-      expect(enableOff.disabled).toBe(false)
-      fireEvent.click(screen.getByRole('radio', { name: en.modeRelay }))
-      expect(enableOn.disabled).toBe(false)
-      expect(enableOff.disabled).toBe(false)
-      expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
-      const calls = getRemote.mock.calls.length
-      await vi.advanceTimersByTimeAsync(2000)
-      expect(getRemote.mock.calls.length).toBe(calls)
-      expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
-      finish(snap({ mode: 'relay' }))
-      await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('reverts an optimistic mode change when save fails and a reread succeeds', async () => {
-    const getRemote = vi.fn(async () => SNAP)
-    const saveRemote = vi.fn(async () => { throw 'write failed' })
-    renderRemote({ getRemote, saveRemote })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    fireEvent.click(await screen.findByRole('radio', { name: en.modeRelay }))
-    await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
-    await screen.findByText('Remote error: write failed')
-    expect(screen.getByRole('radio', { name: en.modeLan }).getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('keeps the optimistic mode when both save and the reread fail', async () => {
-    const getRemote = vi.fn()
-      .mockResolvedValueOnce(SNAP)
-      .mockRejectedValueOnce(new Error('offline'))
-    const saveRemote = vi.fn(async () => { throw new Error('save exploded') })
-    renderRemote({ getRemote, saveRemote })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    fireEvent.click(await screen.findByRole('radio', { name: en.modeRelay }))
-    await waitFor(() => { expect(saveRemote).toHaveBeenCalledWith({ remoteMode: 'relay' }) })
-    await screen.findByText('Remote error: save exploded')
-    expect(screen.getByRole('radio', { name: en.modeRelay }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('shows the off hint until the gateway is enabled', async () => {
@@ -151,81 +83,21 @@ describe('RemoteSection', () => {
     await screen.findByText(en.offHint)
   })
 
-  it('warns about plaintext LAN only while enabled in LAN mode', async () => {
+  it('keeps connection mode, bind scope, and LAN TLS off the pairing popup', async () => {
     renderRemote()
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
-    expect(screen.getByText(en.lanPlaintextWarning)).toBeTruthy()
-    cleanup()
-
-    renderRemote({ getRemote: vi.fn(async () => snap({ mode: 'relay' })) })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
-    cleanup()
-
-    renderRemote({ getRemote: vi.fn(async () => snap({ enabled: false, listening: false, urls: [] })) })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
-  })
-
-  it('offers bind-scope options in LAN mode and saves the narrowed bind address', async () => {
-    const props = renderRemote({
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ bindAddress: patch.remoteBindAddress })),
-    })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    const all = screen.getByRole('radio', { name: en.bindAll })
-    expect(all.getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: '10.0.0.4' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('radio', { name: en.bindLoopback }))
-    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteBindAddress: '127.0.0.1' }) })
-    cleanup()
-
-    // Relay mode has no LAN listener rows.
-    renderRemote({ getRemote: vi.fn(async () => snap({ mode: 'relay' })) })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.queryByRole('radio', { name: en.modeLan })).toBeNull()
+    expect(screen.queryByRole('radio', { name: en.modeRelay })).toBeNull()
+    expect(screen.queryByText(en.relayNeedsBoth)).toBeNull()
+    expect(screen.queryByText(en.relayNeedsToken)).toBeNull()
+    expect(screen.queryByText(en.relayNeedsUrl)).toBeNull()
     expect(screen.queryByRole('radio', { name: en.bindAll })).toBeNull()
+    expect(screen.queryByRole('radio', { name: en.bindLoopback })).toBeNull()
+    expect(screen.queryByRole('radio', { name: en.transportPlain })).toBeNull()
     expect(screen.queryByRole('radio', { name: en.transportTls })).toBeNull()
-  })
-
-  it('keeps a vanished configured NIC selectable instead of widening the scope', async () => {
-    renderRemote({
-      getRemote: vi.fn(async () => snap({ bindAddress: '172.16.0.9', addresses: ['10.0.0.4'] })),
-    })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    const gone = screen.getByRole('radio', { name: '172.16.0.9' })
-    expect(gone.getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('switches LAN transport to self-signed HTTPS and swaps the warning for the TLS hint', async () => {
-    const props = renderRemote({
-      saveRemote: vi.fn(async (patch: RemotePatch) => snap({ lanTls: patch.remoteLanTls })),
-    })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    expect(screen.getByRole('radio', { name: en.transportPlain }).getAttribute('aria-checked')).toBe('true')
-    fireEvent.click(screen.getByRole('radio', { name: en.transportTls }))
-    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteLanTls: true }) })
-    cleanup()
-
-    const fp = 'ab'.repeat(32)
-    renderRemote({ getRemote: vi.fn(async () => snap({ lanTls: true, tlsFingerprint: fp })) })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
     expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
-    expect(screen.getByText(en.lanTlsHint.replace('{fp}', fp.slice(0, 16)))).toBeTruthy()
-  })
-
-  it('replaces the subnet warning with the loopback hint when bound to this machine only', async () => {
-    renderRemote({ getRemote: vi.fn(async () => snap({ bindAddress: '127.0.0.1' })) })
-    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
-    await screen.findByRole('dialog', { name: en.heading })
-    expect(screen.queryByText(en.lanPlaintextWarning)).toBeNull()
-    expect(screen.getByText(en.bindLoopbackHint)).toBeTruthy()
+    expect(screen.queryByText('10.0.0.4')).toBeNull()
   })
 
   it('shows loading while the first read is in flight', async () => {

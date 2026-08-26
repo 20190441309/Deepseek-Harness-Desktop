@@ -25,6 +25,8 @@ type WorkspaceViewState = {
   sessionOrderByAccount: Record<string, string[]>
   /** Last observed update timestamps per order account for one-time promotion events. */
   sessionUpdatedAtByAccount: Record<string, Record<string, number>>
+  /** Whether the sidebar renders the Archived section at all (Interface Settings). */
+  showArchivedList: boolean
 }
 
 /**
@@ -43,6 +45,7 @@ type WorkspaceViewActions = {
     updatedAt: Record<string, number>,
   ) => void
   setSessionOrder: (draft: WorkspaceViewState, accountKey: string, order: string[]) => void
+  setShowArchivedList: (draft: WorkspaceViewState, show: boolean) => void
 }
 
 /**
@@ -57,8 +60,11 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       groupExpansion: {},
       sessionOrderByAccount: {},
       sessionUpdatedAtByAccount: {},
+      showArchivedList: true,
     }),
-    persist: 'dsh.workspace.view.v5',
+    // v6: showArchivedList. Archived expand is session-local in the browser
+    // (not persisted) so reloads always start collapsed.
+    persist: 'dsh.workspace.view.v6',
     actions: {
       setGroupBy: (d, mode: SessionGroupBy) => { d.groupBy = mode },
       setOrderBy: (d, mode: SessionOrderBy) => { d.orderBy = mode },
@@ -82,6 +88,7 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       setSessionOrder: (d, accountKey: string, order: string[]) => {
         d.sessionOrderByAccount[accountKey] = order
       },
+      setShowArchivedList: (d, show: boolean) => { d.showArchivedList = show },
     },
   })
 }

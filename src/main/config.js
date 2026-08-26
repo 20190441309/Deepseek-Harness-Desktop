@@ -4,6 +4,7 @@ const { app, safeStorage } = require('electron');
 const { projectRoot } = require('./paths');
 const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
+const { normalizeRelayOrigin } = require('../shared/lan');
 const { normalizeRemotePatch } = require('./remote-patch');
 
 const REMOTE_FEATURE_ENABLED = true;
@@ -100,19 +101,6 @@ function normalizeRendererConfigPatch(patch) {
     throw new Error(`Config field is not renderer-writable: ${key}`);
   }
   return next;
-}
-
-function normalizeRelayOrigin(value) {
-  const raw = String(value || '').trim();
-  if (!raw) {
-    return '';
-  }
-  try {
-    const url = new URL(raw);
-    return url.protocol === 'https:' ? url.origin : '';
-  } catch {
-    return '';
-  }
 }
 
 /**

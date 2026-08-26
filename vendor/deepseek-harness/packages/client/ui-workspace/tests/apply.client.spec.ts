@@ -30,21 +30,14 @@ async function bench() {
   const connectNoDirectory = vi.fn(async () => 's-none' as never)
   const archiveSession = vi.fn(async () => {})
   const unarchiveSession = vi.fn(async () => {})
-  const deleteSession = vi.fn(async (): Promise<{
-    result:
-      | { ok: true; value: { deletedSessionIds: never[]; archivedSessionIds: never[] } }
-      | { ok: false; error: { code: string; message: string } }
-  }> => ({
-    result: { ok: true, value: { deletedSessionIds: [], archivedSessionIds: [] } },
-  }))
+  const deleteSession = vi.fn(async () => {})
   ctx.provide('workspaces', {
     create, startSession, connectNoDirectory, rename, insertSessionBefore,
-    archiveSession, unarchiveSession,
+    archiveSession, unarchiveSession, deleteSession,
   } as never)
   ctx.provide('sessions', { open, clear, search, searchResultLimit: 20, binding, fork } as never)
   ctx.provide('connection', {
     hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
-    api: { sessions: { delete: deleteSession } },
   } as never)
   const locale = new LocaleRuntime(ctx)
   // These specs assert the shipped Chinese copy. There is no jsdom `window`
@@ -131,7 +124,7 @@ describe('ui-workspace apply', () => {
     await browser.unarchiveSession('session' as never)
     expect(b.unarchiveSession).toHaveBeenCalledWith('session')
     await browser.deleteSession('session' as never)
-    expect(b.deleteSession).toHaveBeenCalledWith({ sessionId: 'session' })
+    expect(b.deleteSession).toHaveBeenCalledWith('session')
 
     const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     await picker.createWorkspace({ path: '/tmp/project' })
@@ -140,9 +133,10 @@ describe('ui-workspace apply', () => {
 
   it('throws session delete failures with the host error code', async () => {
     const b = await bench()
-    b.deleteSession.mockResolvedValueOnce({
-      result: { ok: false as const, error: { code: 'session-running', message: 'busy' } },
-    })
+    b.deleteSession.mockRejectedValueOnce(Object.assign(
+      new Error('session delete failed: session-running: busy'),
+      { code: 'session-running' },
+    ))
     declare(b.slots, 'sidebar.workspaces')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
@@ -189,6 +183,18 @@ describe('ui-workspace apply', () => {
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
     await expect(browser.searchSessions('needle', new AbortController().signal))
       .rejects.toThrow('index unavailable')
+  })
+
+  it('registers the show-archived Interface Settings row', async () => {
+    const b = await bench()
+    b.slots.register({
+      name: 'root',
+      children: { 'settings.interface.item': { kind: 'list', scope: 'root' } },
+    } as never, () => null)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const row = b.slots.entries('settings.interface.item').find(entry => entry.options.id === 'show-archived-list')
+    expect(row).toBeDefined()
+    expect(row!.locale).toBe('workspace')
   })
 
   it('unregisters every entry on teardown', async () => {

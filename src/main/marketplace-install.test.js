@@ -257,6 +257,14 @@ test('installImportPlugin rejects a DROPPED plugin name before the CLI', async (
   assert.equal(calls.length, 0);
 });
 
+test('installImportPlugin rejects first-party dsh-im (Settings → Remote channels)', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const result = await installImportPlugin('@xmanrui/dsh-im@3.0.1', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /退役/);
+  assert.equal(calls.length, 0);
+});
+
 test('uninstallPlugin rejects shell syntax before invoking the CLI', async () => {
   const result = await uninstallPlugin('safe-package & calc.exe');
   assert.equal(result.ok, false);

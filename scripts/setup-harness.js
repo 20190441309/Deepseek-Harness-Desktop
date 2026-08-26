@@ -71,10 +71,16 @@ if (!harnessHasGhosttyAssets(vendor)) {
 }
 console.log(`Ghostty assets: ${ghostty.detail}`);
 
-const { installPluginRuntimeDeps } = require('./after-pack');
+const { installPluginRuntimeDeps, assertVendoredPluginRuntimeDeps } = require('./after-pack');
 const usagePanel = path.join(root, 'vendor', 'dsh-usage-panel');
 if (fs.existsSync(path.join(usagePanel, 'package.json'))) {
   installPluginRuntimeDeps(usagePanel, { skipIfComplete: true });
+}
+const dshIm = path.join(root, 'vendor', 'dsh-im');
+if (fs.existsSync(path.join(dshIm, 'package.json'))) {
+  // Never skip a half-broken tree: incomplete exports must force reinstall.
+  installPluginRuntimeDeps(dshIm, { skipIfComplete: false });
+  assertVendoredPluginRuntimeDeps(root, 'dsh-im');
 }
 
 console.log(`官方源码已就绪：${vendor}`);

@@ -26,6 +26,7 @@ function isBindableIpv4(value) {
  *   remoteBindAddress?: string,
  *   remoteLanTls?: boolean,
  *   remoteRelayUrl?: string,
+ *   remoteRelayToken?: string,
  * }}
  */
 function normalizeRemotePatch(patch) {
@@ -74,6 +75,13 @@ function normalizeRemotePatch(patch) {
         throw new TypeError('remoteRelayUrl must be a valid string');
       }
       next.remoteRelayUrl = value.trim();
+      continue;
+    }
+    if (key === 'remoteRelayToken') {
+      if (typeof value !== 'string' || value.length > 512) {
+        throw new TypeError('remoteRelayToken must be a string up to 512 characters');
+      }
+      next.remoteRelayToken = value.trim();
       continue;
     }
     throw new Error(`Config field is not renderer-writable: ${key}`);

@@ -49,6 +49,8 @@ class HarnessController extends EventEmitter {
       || (async () => ({ ok: true, changed: false }));
     this.ensureUsagePanelPlugin = options.ensureUsagePanelPlugin
       || (async () => ({ ok: true, added: false }));
+    this.ensureDshImPlugin = options.ensureDshImPlugin
+      || (async () => ({ ok: true, added: false }));
     this.ensureDshbotPlugin = options.ensureDshbotPlugin
       || (async () => ({ ok: true, added: false }));
     this.removeDshbotPreset = options.removeDshbotPreset
@@ -451,6 +453,26 @@ class HarnessController extends EventEmitter {
       }
     } else {
       this.dsh.log('跳过用户插件：不预置用量统计插件', 'app');
+    }
+    // dsh-im is first-party Settings → Remote → Channels — not an optional
+    // user plugin. Wire it on every start (including skipUserPlugins recovery)
+    // unless the user explicitly disabled it; missing vendor deps fail start.
+    try {
+      const im = await this.ensureDshImPlugin();
+      this.assertOperationCurrent(generation);
+      if (im && im.disabled) {
+        this.dsh.log('已按禁用名单跳过桌面内置 dsh-im（消息渠道）', 'app');
+      } else if (im && im.ok === false) {
+        throw new Error(`桌面内置 dsh-im 失败：${im.error || 'unknown'}`);
+      } else if (im && im.ok) {
+        this.dsh.log(im.added ? '已接入桌面内置 dsh-im（消息渠道）' : '桌面内置 dsh-im 已就绪', 'app');
+      }
+    } catch (error) {
+      if (isCancellation(error)) throw error;
+      if (error instanceof Error && error.message.startsWith('桌面内置 dsh-im 失败：')) {
+        throw error;
+      }
+      throw new Error(`桌面内置 dsh-im 失败：${errorMessage(error)}`);
     }
     // dshbot is a standalone plugin: never force-ensured, never blocks start.
     // Default starts only clean legacy desktop-preset residue (user installs

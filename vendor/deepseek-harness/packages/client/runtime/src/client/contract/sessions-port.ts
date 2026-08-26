@@ -59,4 +59,10 @@ export interface SessionsPort {
   open(id: SessionId): void
   /** Clear the current selection into the no-session view state. */
   clear(): void
+  /**
+   * Drop one destroyed session from the list mirror (shared by unary delete
+   * success and `host/session-deleted`).
+   * @param sessionId - durable log that Host confirmed gone.
+   */
+  applyDeleted(sessionId: SessionId): void
 }

@@ -1192,6 +1192,36 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return agentHandles.get(options.resumeSessionId) ?? handle
   }) as typeof ctx.agents.resume
 
+  // In-process subagent drivers call agents.create directly; retain that
+  // handle so archived-root delete can dispose idle live children.
+  const nativeCreate = ctx.agents.create.bind(ctx.agents)
+  ctx.agents.create = (async (options) => {
+    const handle = await nativeCreate(options)
+    retainHandle(options.sessionId, handle)
+    return agentHandles.get(options.sessionId) ?? handle
+  }) as typeof ctx.agents.create
+
+  /**
+   * Drop archive-set membership for ids with no durable log and no live
+   * session. Persistence list faults fail closed (zero writes). Never calls
+   * persist.delete — compensation only.
+   */
+  async function pruneMissingArchived(): Promise<void> {
+    const persist = ctx.get('sessionPersistence')
+    let listed: SessionHeader[]
+    try {
+      listed = persist === undefined ? [] : await persist.list()
+    } catch {
+      return
+    }
+    const known = new Set<SessionId>(listed.map(header => header.id))
+    for (const session of ctx.sessions.list()) known.add(session.id)
+    for (const id of [...ctx.workspaceRegistry.archivedSessionIds]) {
+      if (known.has(id)) continue
+      await ctx.workspaceRegistry.unarchiveSession(id)
+    }
+  }
+
   /** Serialize image admission with model selection for one agent. */
   function serializeImageAdmission<T>(agent: Agent, operation: () => Promise<T>): Promise<T> {
     const result = (imageAdmissionChains.get(agent) ?? Promise.resolve()).then(operation)
@@ -2792,25 +2822,79 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const ordered = persistDeleteOrder(deletable, headers)
         for (const id of deletable) deletingIds.add(id)
         try {
+          // Re-check after acquiring deletingIds so a concurrent unarchive
+          // that won the race before the mutex still fails closed.
+          if (!ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)) {
+            return err(request, {
+              code: 'session-not-archived',
+              message: `session "${sessionId}" is not archived`,
+              details: { sessionId },
+            })
+          }
+
+          const gone: SessionId[] = []
+          let firstError: unknown
           for (const id of ordered) {
-            const handle = agentHandles.get(id)
-            if (handle !== undefined) await handle.dispose()
+            try {
+              const handle = agentHandles.get(id)
+              if (handle !== undefined) await handle.dispose()
+              if (persist !== undefined) await persistDeleteOrResume(persist, id)
+              gone.push(id)
+            } catch (error: unknown) {
+              firstError = error
+              break
+            }
           }
-          if (persist !== undefined) {
-            for (const id of ordered) await persistDeleteOrResume(persist, id)
-          }
-          await ctx.workspaceRegistry.unarchiveSession(sessionId)
-          for (const workspace of ctx.workspaceRegistry.list()) {
-            for (const id of ordered) await workspace.detachSession(id)
-          }
-          for (const id of ordered) {
+
+          for (const id of gone) {
             for (const queue of hostQueues) {
               queue.push(frame({ type: 'host/session-deleted', sessionId: id }))
             }
           }
-          return ok(request, {
-            deletedSessionIds: ordered,
-            archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds],
+
+          const rootGone = gone.includes(sessionId)
+          if (rootGone) {
+            let registryError: unknown
+            try {
+              await ctx.workspaceRegistry.unarchiveSession(sessionId)
+            } catch (error: unknown) {
+              registryError = error
+            }
+            try {
+              for (const workspace of ctx.workspaceRegistry.list()) {
+                for (const id of gone) await workspace.detachSession(id)
+              }
+            } catch (error: unknown) {
+              registryError ??= error
+            }
+            await pruneMissingArchived()
+            if (registryError !== undefined) {
+              return err(request, {
+                code: 'session-delete-incomplete',
+                message: registryError instanceof Error
+                  ? registryError.message
+                  : `session delete incomplete for "${sessionId}"`,
+                details: { sessionId, deletedSessionIds: [...gone] },
+              })
+            }
+            return ok(request, {
+              deletedSessionIds: ordered,
+              archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds],
+            })
+          }
+
+          for (const workspace of ctx.workspaceRegistry.list()) {
+            for (const id of gone) await workspace.detachSession(id)
+          }
+          await pruneMissingArchived()
+          if (gone.length === 0) {
+            throw firstError instanceof Error ? firstError : new Error(String(firstError))
+          }
+          const cause = firstError instanceof Error ? firstError.message : String(firstError)
+          return err(request, {
+            code: 'session-delete-partial',
+            message: `session delete partially applied for "${sessionId}": ${cause}`,
+            details: { sessionId, deletedSessionIds: [...gone], cause },
           })
         } finally {
           for (const id of deletable) deletingIds.delete(id)
@@ -2985,11 +3069,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     workspace: {
-      list(request) {
-        return Promise.resolve(ok(request, {
+      async list(request) {
+        await pruneMissingArchived()
+        return ok(request, {
           items: ctx.workspaceRegistry.list().map(workspaceView),
           archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds],
-        }))
+        })
       },
 
       async create(request) {
@@ -3089,6 +3174,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async archiveSession(request) {
         const { sessionId } = request.payload
+        if (deletingIds.has(sessionId)) {
+          return err(request, {
+            code: 'session-delete-in-progress',
+            message: `session "${sessionId}" is being deleted`,
+            details: { sessionId },
+          })
+        }
         try {
           await ctx.workspaceRegistry.archiveSession(sessionId)
         } catch (error: unknown) {
@@ -3106,6 +3198,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async unarchiveSession(request) {
         const { sessionId } = request.payload
+        if (deletingIds.has(sessionId)) {
+          return err(request, {
+            code: 'session-delete-in-progress',
+            message: `session "${sessionId}" is being deleted`,
+            details: { sessionId },
+          })
+        }
         try {
           await ctx.workspaceRegistry.unarchiveSession(sessionId)
         } catch (error: unknown) {

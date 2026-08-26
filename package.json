@@ -65,7 +65,8 @@
         "from": "vendor",
         "to": "vendor",
         "filter": [
-          "dsh-usage-panel/**"
+          "dsh-usage-panel/**",
+          "dsh-im/**"
         ]
       }
     ],

@@ -650,6 +650,35 @@ export class SessionManager {
     } })
   }
 
+  /**
+   * Drop one destroyed session from the list mirror (unary delete echo and
+   * `host/session-deleted` share this path).
+   * @param sessionId - durable log that Host confirmed gone.
+   */
+  applyDeleted(sessionId: SessionId): void {
+    this.recordMutation({ kind: 'remove', sessionId })
+    this.updateCatalogActivity(sessionId, false)
+    this.sessions.get(sessionId)?.handleRemoved()
+    this.pendingBuffers.delete(sessionId)
+    this.pendingInteractions.delete(sessionId)
+    this.jobsBySession.delete(sessionId)
+    this.projectionStores.delete(sessionId)
+    this.addresses.delete(sessionId)
+    const inflightCatalog = this.catalogInflight.get(sessionId)
+    if (inflightCatalog !== undefined) {
+      inflightCatalog.parentAvailableOverride = false
+      this.catalogStale.add(sessionId)
+    }
+    const ownedCatalog = this.catalogs.get(sessionId)
+    if (ownedCatalog !== undefined && ownedCatalog.parentAvailable) {
+      this.catalogs.set(sessionId, { ...ownedCatalog, parentAvailable: false })
+    }
+    for (const [childId, address] of this.addresses) {
+      if (address.parentSessionId !== sessionId) continue
+      this.sessions.get(childId)?.handleSubagentParentAvailable(false)
+    }
+  }
+
   /** Apply immediately and retain for replay when a list response is in flight. */
   private recordMutation(mutation: SessionListMutation): void {
     this.listMutations?.push(mutation)
@@ -841,27 +870,7 @@ export class SessionManager {
         return
       }
       case 'host/session-deleted': {
-        this.recordMutation({ kind: 'remove', sessionId: frame.sessionId })
-        this.updateCatalogActivity(frame.sessionId, false)
-        this.sessions.get(frame.sessionId)?.handleRemoved()
-        this.pendingBuffers.delete(frame.sessionId)
-        this.pendingInteractions.delete(frame.sessionId)
-        this.jobsBySession.delete(frame.sessionId)
-        this.projectionStores.delete(frame.sessionId)
-        this.addresses.delete(frame.sessionId)
-        const inflightCatalog = this.catalogInflight.get(frame.sessionId)
-        if (inflightCatalog !== undefined) {
-          inflightCatalog.parentAvailableOverride = false
-          this.catalogStale.add(frame.sessionId)
-        }
-        const ownedCatalog = this.catalogs.get(frame.sessionId)
-        if (ownedCatalog !== undefined && ownedCatalog.parentAvailable) {
-          this.catalogs.set(frame.sessionId, { ...ownedCatalog, parentAvailable: false })
-        }
-        for (const [childId, address] of this.addresses) {
-          if (address.parentSessionId !== frame.sessionId) continue
-          this.sessions.get(childId)?.handleSubagentParentAvailable(false)
-        }
+        this.applyDeleted(frame.sessionId)
         return
       }
       case 'host/session-removed': {

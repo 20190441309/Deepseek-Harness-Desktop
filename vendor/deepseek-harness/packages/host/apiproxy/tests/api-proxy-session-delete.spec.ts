@@ -258,6 +258,11 @@ describe('session.delete', () => {
     expect(seen.filter(type => type === 'host/session-deleted')).toHaveLength(3)
     expect(seen).toContain('host/archived-sessions-changed')
     expect(seen).not.toContain('host/session-removed')
+    const firstDeleted = seen.indexOf('host/session-deleted')
+    const firstArchivedChanged = seen.indexOf('host/archived-sessions-changed')
+    expect(firstDeleted).toBeGreaterThanOrEqual(0)
+    expect(firstArchivedChanged).toBeGreaterThanOrEqual(0)
+    expect(firstDeleted).toBeLessThan(firstArchivedChanged)
     abort.abort()
 
     expect(persist.deleted).toEqual([grandId, childId, rootId])
@@ -353,5 +358,116 @@ describe('session.delete', () => {
     expect(listed.items[0]?.sessionIds).toContain(sessionId)
     const leftover = await stream.next()
     expect(leftover.done === true || leftover.value?.payload.type !== 'host/session-deleted').toBe(true)
+  })
+
+  it('returns session-delete-partial when a child is gone but the root persist fails', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'partial') }))).workspace
+    const rootId = SessionId('session-partial-root')
+    const childId = SessionId('session-partial-child')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId: rootId })))
+    await persist.create(ctx.sessions.get(rootId)!.header)
+    await persist.create(persistHeader({
+      id: childId, cwd: root, origin: 'subagent', parentSession: rootId,
+    }))
+    expectOk(await api.workspace.archiveSession(request({ sessionId: rootId })))
+    persist.failDelete = id => id === rootId
+      ? Object.assign(new Error('EPERM: root locked'), { code: 'EPERM' })
+      : undefined
+
+    const abort = new AbortController()
+    const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    const response = await api.sessions.delete(request({ sessionId: rootId }))
+    expect(response.result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'session-delete-partial',
+        details: { sessionId: rootId, deletedSessionIds: [childId] },
+      },
+    })
+
+    const seen: HostFrame['type'][] = []
+    for (let i = 0; i < 4; i++) {
+      const next = await stream.next()
+      if (next.done === true) break
+      seen.push(next.value.payload.type)
+      if (seen.includes('host/session-deleted')) break
+    }
+    abort.abort()
+    expect(seen.filter(type => type === 'host/session-deleted')).toEqual(['host/session-deleted'])
+    expect(seen).not.toContain('host/archived-sessions-changed')
+    expect(persist.deleted).toEqual([childId])
+    expect((await persist.list()).map(item => item.id)).toContain(rootId)
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).toContain(rootId)
+  })
+
+  it('retains a handle from ctx.agents.create so a live subagent child deletes with the root', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'create-retain') }))).workspace
+    const rootId = SessionId('session-create-retain-root')
+    const childId = SessionId('session-create-retain-child')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId: rootId })))
+    await persist.create(ctx.sessions.get(rootId)!.header)
+    await ctx.agents.create({
+      sessionId: childId,
+      meta: { cwd: root, origin: 'subagent', parentSession: rootId },
+    })
+    await persist.create(ctx.sessions.get(childId)!.header)
+    expect(ctx.agents.get(childId)).toBeDefined()
+    expectOk(await api.workspace.archiveSession(request({ sessionId: rootId })))
+
+    const result = expectOk(await api.sessions.delete(request({ sessionId: rootId })))
+    expect(result.deletedSessionIds).toEqual(expect.arrayContaining([rootId, childId]))
+    expect(ctx.agents.get(rootId)).toBeUndefined()
+    expect(ctx.agents.get(childId)).toBeUndefined()
+    expect((await persist.list()).map(item => item.id)).toEqual([])
+  })
+
+  it('rejects unarchive while session.delete holds deletingIds', async () => {
+    const { api, ctx, persist, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'mutex') }))).workspace
+    const sessionId = SessionId('session-delete-mutex')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    await persist.create(ctx.sessions.get(sessionId)!.header)
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+
+    let releaseGate!: () => void
+    const gate = new Promise<void>(resolve => { releaseGate = resolve })
+    let enteredPersist = false
+    const originalDelete = persist.delete.bind(persist)
+    persist.delete = async (id: SessionId) => {
+      if (id === sessionId) {
+        enteredPersist = true
+        await gate
+      }
+      return originalDelete(id)
+    }
+
+    const deletePromise = api.sessions.delete(request({ sessionId }))
+    for (let i = 0; i < 200 && !enteredPersist; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    expect(enteredPersist).toBe(true)
+
+    const blocked = await api.workspace.unarchiveSession(request({ sessionId }))
+    expect(blocked.result).toMatchObject({
+      ok: false,
+      error: { code: 'session-delete-in-progress', details: { sessionId } },
+    })
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).toContain(sessionId)
+
+    releaseGate()
+    const result = expectOk(await deletePromise)
+    expect(result.deletedSessionIds).toEqual([sessionId])
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).not.toContain(sessionId)
+  })
+
+  it('prunes archived ids whose durable log and live agent are both gone', async () => {
+    const { api, persist, root } = await harness()
+    const ghostId = SessionId('session-archive-ghost')
+    await persist.create(persistHeader({ id: ghostId, cwd: root }))
+    expectOk(await api.workspace.archiveSession(request({ sessionId: ghostId })))
+    await persist.delete(ghostId)
+    expect(expectOk(await api.workspace.list(request({}))).archivedSessionIds).not.toContain(ghostId)
   })
 })

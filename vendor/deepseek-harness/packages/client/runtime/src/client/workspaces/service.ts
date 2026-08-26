@@ -373,6 +373,22 @@ export class WorkspaceRuntime implements IWorkspaces {
   }
 
   /**
+   * Destroy an archived session log. On success installs the archive echo and
+   * drops every deleted summary; failures leave the archive set untouched.
+   * @param sessionId - archived root to delete.
+   */
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.deleteSession(sessionId)
+    if (!result.ok) {
+      throw Object.assign(
+        new Error(`session delete failed: ${result.error.code}: ${result.error.message}`),
+        { code: result.error.code },
+      )
+    }
+    for (const id of result.value.deletedSessionIds) this.sessions.applyDeleted(id)
+  }
+
+  /**
    * Move a session within its Workspace's manual order (DOM-insertBefore-like).
    * @param workspaceId - owning workspace.
    * @param sessionId - accounted session to move.

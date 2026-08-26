@@ -13,9 +13,9 @@ const EVIDENCE_PATTERNS = [
   { kind: 'compose', regex: /failed to compose[^\n]*['"](@?[\w./-]+)['"]/gi },
 ];
 
-// dshbot is a standalone user plugin and the marketplace is desktop-owned
-// code now; the usage panel is the only remaining desktop preset.
-const PRESET_PLUGINS = new Set(['dsh-usage-panel']);
+// Usage panel remains a soft desktop preset; dsh-im is first-party Remote
+// channels (vendor/dsh-im) but still appears on the Recovery Board toggle list.
+const PRESET_PLUGINS = new Set(['dsh-usage-panel', '@xmanrui/dsh-im', 'dsh-im', 'xmanrui-dsh-im']);
 const EVIDENCE_LINE_MAX = 240;
 
 function classifyGenericFailure(text) {

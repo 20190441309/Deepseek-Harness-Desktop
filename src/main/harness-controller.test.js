@@ -288,6 +288,10 @@ test('config dshbotPreset opts into the dev preset without blocking start', asyn
       order.push('usage-panel');
       return { ok: true, added: true };
     },
+    ensureDshImPlugin: async () => {
+      order.push('dsh-im');
+      return { ok: true, added: true };
+    },
     ensureDshbotPlugin: async () => {
       order.push('dshbot-ensure');
       return { ok: true, added: true };
@@ -307,7 +311,7 @@ test('config dshbotPreset opts into the dev preset without blocking start', asyn
     return origStart(options);
   };
   await f.controller.start();
-  assert.deepEqual(order, ['desktop-install', 'dshmarket-cleanup', 'usage-panel', 'dshbot-ensure', 'disabled-bundles', 'start']);
+  assert.deepEqual(order, ['desktop-install', 'dshmarket-cleanup', 'usage-panel', 'dsh-im', 'dshbot-ensure', 'disabled-bundles', 'start']);
   assert.ok(f.dsh.logs.some((line) => /已预置 dshbot（开发模式）/.test(line)));
 });
 
@@ -337,6 +341,40 @@ test('logs and continues when the usage-panel preset fails', async () => {
   await f.controller.start();
   assert.equal(f.dsh.startCalls, 1);
   assert.ok(f.dsh.logs.some((line) => /用量统计/.test(line) && /missing-zod/.test(line)));
+});
+
+test('skip-user-plugins still wires first-party dsh-im', async () => {
+  const order = [];
+  const f = fixture({
+    ensureUsagePanelPlugin: async () => {
+      order.push('usage-panel');
+      return { ok: true };
+    },
+    ensureDshImPlugin: async () => {
+      order.push('dsh-im');
+      return { ok: true, added: false };
+    },
+  });
+  f.controller.writePluginSkip(new Error('recovery'));
+  await f.controller.start();
+  assert.deepEqual(order, ['dsh-im']);
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
+  assert.ok(f.dsh.logs.some((line) => /桌面内置 dsh-im/.test(line)));
+});
+
+test('dsh-im failure blocks Harness start', async () => {
+  const f = fixture({
+    ensureDshImPlugin: async () => ({ ok: false, error: 'missing-source:node_modules:zod' }),
+  });
+  await assert.rejects(
+    () => f.controller.start(),
+    (error) => {
+      assert.match(String(error.message), /桌面内置 dsh-im 失败/);
+      assert.match(String(error.message), /missing-source/);
+      return true;
+    },
+  );
+  assert.equal(f.dsh.startCalls, 0);
 });
 
 test('logs and continues when the dshbot dev preset fails', async () => {

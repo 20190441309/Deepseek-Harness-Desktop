@@ -57,10 +57,17 @@ function toggled(list: readonly string[], key: string): string[] {
   return list.includes(key) ? list.filter(k => k !== key) : [...list, key]
 }
 
-/** Dialog error slot: map the Host running refusal; other failures pass through. */
+/** Dialog error slot: map known Host delete refusals; other failures pass through. */
 function sessionDeleteErrorText(reason: unknown, t: WorkspaceBrowserProps['t']): string {
-  if (typeof reason === 'object' && reason !== null && 'code' in reason && reason.code === 'session-running') {
-    return t('delete.session.running')
+  if (typeof reason === 'object' && reason !== null && 'code' in reason) {
+    const code = (reason as { code: unknown }).code
+    if (code === 'session-running') return t('delete.session.running')
+    if (code === 'session-not-archived') return t('delete.session.notArchived')
+    if (code === 'session-not-found') return t('delete.session.notFound')
+    if (code === 'session-live-unowned') return t('delete.session.liveUnowned')
+    if (code === 'session-delete-partial') return t('delete.session.partial')
+    if (code === 'session-delete-incomplete') return t('delete.session.incomplete')
+    if (code === 'session-delete-in-progress') return t('delete.session.inProgress')
   }
   return reason instanceof Error ? reason.message : String(reason)
 }
@@ -318,12 +325,13 @@ function GroupedSessionList({
 }
 
 function ArchivedSessionSection({
-  nodes, currentId, now, onOpen, onUnarchive, onDelete, t,
+  nodes, currentId, now, expanded, onToggle, onUnarchive, onDelete, t,
 }: {
   nodes: readonly SessionNode[]
   currentId: SessionId | undefined
   now: number
-  onOpen: (id: SessionNode['id']) => void
+  expanded: boolean
+  onToggle: () => void
   onUnarchive: (id: SessionNode['id']) => void
   onDelete: (id: SessionNode['id'], title: string) => void
   t: WorkspaceBrowserProps['t']
@@ -331,14 +339,13 @@ function ArchivedSessionSection({
   if (nodes.length === 0) return null
   return (
     <div className={css.groupSection}>
-      <ArchivedSectionHeader t={t} />
-      {nodes.map(node => (
+      <ArchivedSectionHeader expanded={expanded} onToggle={onToggle} t={t} />
+      {expanded && nodes.map(node => (
         <ArchivedSessionNodeItem
           key={node.id}
           node={node}
           currentId={currentId}
           now={now}
-          onOpen={onOpen}
           onUnarchive={onUnarchive}
           onDelete={onDelete}
           t={t}
@@ -370,6 +377,12 @@ type SessionTreeProps = Pick<
   setSessionOrder: (accountKey: string, order: string[]) => void
   /** Registry-global archive set (hidden rows). */
   archivedSessionIds: readonly SessionNode['id'][]
+  /** Whether the Archived section is drawn at all. */
+  showArchivedList: boolean
+  /** Whether the Archived section body is expanded. */
+  archivedExpanded: boolean
+  /** Toggle the Archived section expand/collapse. */
+  onToggleArchived: () => void
   /** Open the browser-owned rename dialog for a real Workspace group. */
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned delete-confirmation dialog for a real Workspace group. */
@@ -378,8 +391,6 @@ type SessionTreeProps = Pick<
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
   onSessionArchive: (sessionId: SessionNode['id']) => void
-  /** Unarchive then open (archived row click). */
-  onOpenArchived: (sessionId: SessionNode['id']) => void
   /** Unarchive without opening (archived row menu). */
   onSessionUnarchive: (sessionId: SessionNode['id']) => void
   /** Open the browser-owned delete confirmation for an archived session. */
@@ -391,8 +402,9 @@ type SessionTreeProps = Pick<
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
 function SessionTree({
   useSessions, startSession, connectNoDirectory, open, forkSession, workspaces, archivedSessionIds,
+  showArchivedList, archivedExpanded, onToggleArchived,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
-  onOpenArchived, onSessionUnarchive, onSessionDelete,
+  onSessionUnarchive, onSessionDelete,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
@@ -474,8 +486,8 @@ function SessionTree({
   const projectGroups = groups.filter(group => group.workspaceId !== undefined)
   const taskGroup = groups.find(group => group.workspaceId === undefined)
   const archivedNodes = useMemo(
-    () => deriveArchived(list, archivedSessionIds),
-    [list, archivedSessionIds],
+    () => deriveArchived(list, archivedSessionIds, t('archived.missingTitle')),
+    [list, archivedSessionIds, t],
   )
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
@@ -683,10 +695,11 @@ function SessionTree({
           </div>
         )}
         <ArchivedSessionSection
-          nodes={archivedNodes}
+          nodes={showArchivedList ? archivedNodes : []}
           currentId={current}
           now={now}
-          onOpen={onOpenArchived}
+          expanded={archivedExpanded}
+          onToggle={onToggleArchived}
           onUnarchive={onSessionUnarchive}
           onDelete={onSessionDelete}
           t={t}
@@ -700,7 +713,8 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, open, forkSession, onSessionRename, onSessionArchive,
-  onOpenArchived, onSessionUnarchive, onSessionDelete, archivedSessionIds,
+  onSessionUnarchive, onSessionDelete, archivedSessionIds,
+  showArchivedList, archivedExpanded, onToggleArchived,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: Pick<
   SessionTreeProps,
@@ -709,10 +723,12 @@ function FlatList({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
-  | 'onOpenArchived'
   | 'onSessionUnarchive'
   | 'onSessionDelete'
   | 'archivedSessionIds'
+  | 'showArchivedList'
+  | 'archivedExpanded'
+  | 'onToggleArchived'
   | 'orderBy'
   | 'sessionOrderByAccount'
   | 'sessionUpdatedAtByAccount'
@@ -773,8 +789,8 @@ function FlatList({
     setSessionOrder(FLAT_SESSION_ORDER_KEY, nextOrder.map(id => id as string))
   }
   const archivedNodes = useMemo(
-    () => deriveArchived(list, archivedSessionIds),
-    [list, archivedSessionIds],
+    () => deriveArchived(list, archivedSessionIds, t('archived.missingTitle')),
+    [list, archivedSessionIds, t],
   )
   const now = Date.now()
   return (
@@ -820,10 +836,11 @@ function FlatList({
           )
         })}
         <ArchivedSessionSection
-          nodes={archivedNodes}
+          nodes={showArchivedList ? archivedNodes : []}
           currentId={list.current}
           now={now}
-          onOpen={onOpenArchived}
+          expanded={archivedExpanded}
+          onToggle={onToggleArchived}
           onUnarchive={onSessionUnarchive}
           onDelete={onSessionDelete}
           t={t}
@@ -949,6 +966,11 @@ export function WorkspaceBrowser({
   const groupExpansion = useStore(s => s.groupExpansion)
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   const sessionUpdatedAtByAccount = useStore(s => s.sessionUpdatedAtByAccount)
+  const showArchivedList = useStore(s => s.showArchivedList)
+  // Session-local only: always start collapsed so a prior expand cannot stick
+  // across reloads and fight the "默认折叠" product default.
+  const [archivedExpanded, setArchivedExpanded] = useState(false)
+  const onToggleArchived = () => { setArchivedExpanded(open => !open) }
   const currentBlankSessionId = useSessions((state) => {
     const current = state.current
     return current !== undefined && state.byId[current]?.blank === true ? current : undefined
@@ -1146,12 +1168,6 @@ export function WorkspaceBrowser({
 
   const onSessionUnarchive = (sessionId: SessionNode['id']) => {
     unarchiveSession(sessionId).catch((reason: unknown) => {
-      console.warn('session unarchive rejected:', reason)
-    })
-  }
-
-  const onOpenArchived = (sessionId: SessionNode['id']) => {
-    unarchiveSession(sessionId).then(() => { open(sessionId) }).catch((reason: unknown) => {
       console.warn('session unarchive rejected:', reason)
     })
   }
@@ -1376,9 +1392,12 @@ export function WorkspaceBrowser({
               <FlatList
                 useSessions={useSessions} open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
-                onOpenArchived={onOpenArchived} onSessionUnarchive={onSessionUnarchive}
+                onSessionUnarchive={onSessionUnarchive}
                 onSessionDelete={onSessionDeleteRequest}
                 archivedSessionIds={archivedSessionIds}
+                showArchivedList={showArchivedList}
+                archivedExpanded={archivedExpanded}
+                onToggleArchived={onToggleArchived}
                 orderBy={orderBy}
                 sessionOrderByAccount={sessionOrderByAccount}
                 sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
@@ -1392,7 +1411,6 @@ export function WorkspaceBrowser({
                 useSessions={useSessions}
                 onSessionRename={onSessionRename}
                 onSessionArchive={onSessionArchive}
-                onOpenArchived={onOpenArchived}
                 onSessionUnarchive={onSessionUnarchive}
                 onSessionDelete={onSessionDeleteRequest}
                 forkSession={forkSession}
@@ -1404,6 +1422,9 @@ export function WorkspaceBrowser({
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
+                showArchivedList={showArchivedList}
+                archivedExpanded={archivedExpanded}
+                onToggleArchived={onToggleArchived}
                 startSession={startSession}
                 connectNoDirectory={connectNoDirectory}
                 open={open}

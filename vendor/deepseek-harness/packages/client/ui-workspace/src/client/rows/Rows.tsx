@@ -556,14 +556,29 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
 }
 
 /**
- * Archived-section header: static title, no create control, always expanded.
+ * Archived-section header: chevron + localized title; no create control.
+ * Defaults collapsed; expand is session-local in the browser.
+ * @param props.expanded - whether archived session rows below are shown.
+ * @param props.onToggle - expand/collapse.
  * @param props.t - the browser root's locale seat.
  * @returns the section header row.
  */
-export function ArchivedSectionHeader({ t }: { t: RowTranslate }) {
+export function ArchivedSectionHeader({ expanded, onToggle, t }: {
+  expanded: boolean
+  onToggle: () => void
+  t: RowTranslate
+}) {
   const label = t('section.archived')
   return (
-    <div className={clsx(css.projectRow, css.tasksSection)} role="treeitem" aria-expanded="true">
+    <div
+      className={clsx(css.projectRow, css.tasksSection)}
+      role="treeitem"
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      <span className={clsx(css.slot, css.chevron, css.tasksChevron)}>
+        <IconTriangleRightFill14 className={clsx(css.arrow, expanded && css.arrowOpen)} />
+      </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>
@@ -573,22 +588,20 @@ export function ArchivedSectionHeader({ t }: { t: RowTranslate }) {
 
 /**
  * Archived session row: not draggable; menu is unarchive plus danger delete.
- * Clicking the row asks the browser to unarchive then open; delete is
- * menu-only while the row is still archived.
+ * Row click is inert — restore and destroy stay menu-only so a casual click
+ * cannot unarchive into the live list.
  * @param props.node - archived session node.
  * @param props.currentId - selected session id.
  * @param props.now - clock for the relative-time label.
- * @param props.onOpen - unarchive-then-open (row click).
  * @param props.onUnarchive - unarchive without opening (menu).
  * @param props.onDelete - open the browser-owned delete confirmation (menu).
  * @param props.t - the browser root's locale seat.
  * @returns the archived session row.
  */
-export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarchive, onDelete, t }: {
+export function ArchivedSessionNodeItem({ node, currentId, now, onUnarchive, onDelete, t }: {
   node: SessionNode
   currentId: string | undefined
   now: number
-  onOpen: (id: SessionNode['id']) => void
   onUnarchive: (id: SessionNode['id']) => void
   onDelete: (id: SessionNode['id'], title: string) => void
   t: RowTranslate
@@ -609,7 +622,6 @@ export function ArchivedSessionNodeItem({ node, currentId, now, onOpen, onUnarch
       className={clsx(css.sessionRow, selected && css.selected, menuOpen && css.menuOpen)}
       role="treeitem"
       aria-selected={selected}
-      onClick={() => { onOpen(node.id) }}
     >
       <span className={css.slot}>
         {showStatus && <SessionStatusDots statuses={statuses} />}
