@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
 const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
+const { runSkipComposeContract } = require('./check-skip-compose-contract');
 const {
   ensureGhosttyAssetsInHarness,
   harnessHasGhosttyAssets,
@@ -821,6 +822,12 @@ module.exports = async function afterPack(context) {
     `${JSON.stringify(pin, null, 2)}\n`,
   );
   assertHarnessRuntime(harnessDest, pin);
+  // Skip compose contract against the REAL packaged CLI: unit tests mock
+  // dsh.start, so this dist-path gate is the only automated place where the
+  // shipped runtime proves `--skip-user-plugins` drops the user layer while
+  // the desktop-owned `--patch` overlay still mounts the install plugin.
+  console.log('校验 skip compose 契约（真实 CLI dump-config，skip + full 双轮）…');
+  runSkipComposeContract(harnessDest, { log: (line) => console.log(line) });
 
   const archive = path.join(resources, 'vendor', 'deepseek-harness.tar');
   console.log('打包运行时为单个 tar，减少 NSIS 解压文件数…');
