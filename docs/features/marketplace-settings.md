@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — PR #46 评审跟进：未安装卡片的安装按钮与主进程白名单对齐（`deprecated` 或空 `installSpec` 不出安装入口）、页签补全 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮加 `title`、已安装匹配改为 `spec-match.ts` 的 owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）。vendor `ui-settings-market` vitest 4 文件 37/37 绿（market-section.client.spec 24、spec-match.client.spec 8、browser-plugin 4、invariant 1），包目录 oxlint 干净。`qa:source` 在跟进提交后复跑全绿：73 PASS / 3 SKIP（均与市场无关）/ 0 FAIL，含 market.section / market.discover / market.installed PASS（Linux xvfb 源码运行，[结果](../qa/results/2026-08-26/market-follow-up-qa-source.md)）。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — PR #46 全面复审（第二轮）：主进程 `installMarketplacePlugin` 补上已弃用行拒绝（此前只有 UI 隐藏安装按钮，引擎可被直接 IPC 绕过），目录刷新抛错时保留已展示目录并给出可重试 `role="alert"`（对齐市场失败约定「抛错保留上一份卡片」），刷新进行中禁用按钮并改标「刷新中…」（启用此前闲置的 `refreshing` 文案），分类 chips 组改用独立「分类」aria-label（不再与页签 tablist 同名）；README 已装匹配描述从「子串」更正为边界匹配。vendor `ui-settings-market` vitest 4 文件 40/40 绿（market-section 27、spec-match 8、browser-plugin 4、invariant 1），vendor `test:gui` 全绿（410 文件 / 5373 测试），desktop marketplace 引擎测试 48/48 绿，包目录 oxlint 干净。此前同日评审跟进：安装按钮门禁（`deprecated` / 空 `installSpec`）、页签 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮 `title`、`spec-match.ts` owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）；`qa:source` 复跑全绿：73 PASS / 3 SKIP（均与市场无关）/ 0 FAIL，含 market.section / market.discover / market.installed PASS（Linux xvfb 源码运行，[结果](../qa/results/2026-08-26/market-follow-up-qa-source.md)）。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
@@ -26,14 +26,17 @@
   （受管 patch 块、`desktop-plugins/dshmarket` 副本、预置 symlink）。
 - 市场是设置内 section，**无**独立 Electron 市场窗。
 - 安装走桌面 IPC / catalog id（`shell:install-marketplace-plugin`），不往 Composer 塞安装草稿。
-- 未安装卡片只在可安装时提供「安装」按钮：`deprecated` 或空 `installSpec` 的行不出安装入口
-  （与主进程安装白名单一致；已装行不受影响，仍显示「已安装」标记 + 卸载）。
+- 未安装卡片只在可安装时提供「安装」按钮：`deprecated` 或空 `installSpec` 的行不出安装入口；
+  主进程 `installMarketplacePlugin` 在进 CLI 之前同样拒绝已弃用行与无法解析的规格
+  （已装行不受影响，仍显示「已安装」标记 + 卸载）。
 - 已安装 ↔ 目录行的规格匹配走 `spec-match.ts` 的 owner/repo 整段边界匹配
   （`packageName` 精确匹配优先），不做子串 `includes`。
 - 安装落点是桌面 `dsh-home/profiles/web`，不是官方 `~/.dsh`（见 [dsh-home](dsh-home.md)）。
 - 重启归 HarnessController（`restartAfterProfileWrite` → `startHarness`），无游离 dshmarket 重启路径。
 - Harness 未就绪时不以空市场窗硬装。
 - 失败可见（`role="alert"` / 进度行），不静默；「已写入 profile 但 Harness 未起」也要提示。
+  目录刷新失败时保留已展示的目录并给出可重试的 `role="alert"` 行（只有首次加载才落纯错误态）；
+  刷新进行中按钮禁用并改标「刷新中…」。
 
 ## Deferred（v1 明确不移植 — 产品裁剪）
 
