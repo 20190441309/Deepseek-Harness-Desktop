@@ -12,7 +12,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { DshManager } = require('./dsh');
+const { DshManager, missingDesktopForkPackages } = require('./dsh');
+const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
 const { readPin } = require('../shared/harness-upstream');
 const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
@@ -531,6 +532,53 @@ test('source launch copies Ghostty assets beside client.js', () => {
   const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(launch.kind, 'source');
   assert.equal(ensuredRoot, 'C:/harness');
+});
+
+test('source launch refuses when in-box desktop fork packages are missing', () => {
+  const manager = makeSourceLaunchManager({
+    missingDesktopForkPackages: () => ['@deepseek-ai/dsh-client-ui-settings-market'],
+  });
+  assert.throws(
+    () => manager.buildLaunch({ host: '127.0.0.1', port: 3080 }),
+    (error) => {
+      assert.match(String(error.message), /dsh-client-ui-settings-market/);
+      assert.match(String(error.message), /setup:harness/);
+      assert.match(String(error.message), /跳过用户插件/);
+      return true;
+    },
+  );
+});
+
+test('missingDesktopForkPackages resolves flattened and bundle-nested layouts', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-forks-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const writePkg = (dir, name) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name })}\n`);
+  };
+  writePkg(path.join(root, 'apps', 'cli'), '@deepseek-ai/dsh');
+  const nm = path.join(root, 'node_modules');
+  writePkg(path.join(nm, '@deepseek-ai', 'dsh-base'), '@deepseek-ai/dsh-base');
+  writePkg(path.join(nm, '@deepseek-ai', 'dsh-web-app'), '@deepseek-ai/dsh-web-app');
+  // Anchor without any fork packages: every registered name is missing.
+  assert.deepEqual(
+    missingDesktopForkPackages(root),
+    DESKTOP_PACKAGES.map((pkg) => pkg.name),
+  );
+  // Flattened (packaged) layout: fork packages beside the bundles.
+  for (const pkg of DESKTOP_PACKAGES.slice(1)) {
+    writePkg(path.join(nm, ...pkg.name.split('/')), pkg.name);
+  }
+  // Isolated (pnpm dev) layout: the remaining package resolves only through
+  // the web-app bundle's own node_modules, mirroring the runtime's anchors.
+  const nested = DESKTOP_PACKAGES[0];
+  writePkg(
+    path.join(nm, '@deepseek-ai', 'dsh-web-app', 'node_modules', ...nested.name.split('/')),
+    nested.name,
+  );
+  assert.deepEqual(missingDesktopForkPackages(root), []);
+  // A root without the CLI anchor cannot be probed and never blocks launch.
+  assert.deepEqual(missingDesktopForkPackages(path.join(root, 'nowhere')), []);
 });
 
 test('source launch refuses when Ghostty assets are incomplete', () => {
