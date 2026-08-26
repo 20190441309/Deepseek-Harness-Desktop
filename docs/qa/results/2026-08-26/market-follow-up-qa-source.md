@@ -29,3 +29,20 @@ PR #46（marketplace-settings 重排）评审跟进提交后的源码发布走�
   `packages/client/ui-settings-remote/tests/remote-section.client.spec.tsx` 两处既有
   `exactOptionalPropertyTypes` 错误挡住（不在本次 Allowed touch 内），QA 期间用本地
   两行 `?? ""` / `?? false` 补丁绕过并在提交前还原，未入库。
+
+## 第二轮复审复跑 — ✅ PASS
+
+| 项 | 值 |
+| --- | --- |
+| 执行日期 | 2026-08-26 |
+| 分支 / SHA | `cursor/marketplace-ui-polish-0559` @ `6e4db7fd`（+ 同上的本地 `ui-settings-remote` 测试 tsc 补丁，跑完即还原） |
+| 命令 | `xvfb-run -a npm run qa:source` |
+
+- 总计仍为 **73 PASS / 3 SKIP / 0 FAIL**，`Source release QA passed`（exit 0）；
+  SKIP 三项与首轮相同、均与市场无关。
+- 市场步骤全过：`market.section` / `market.discover` / `market.installed` PASS，
+  `plugin.dshbot.market` PASS（standalone plugin, not installed on this profile）。
+- 本轮覆盖第二轮复审修复：主进程拒绝已弃用行安装、刷新失败保留目录 +
+  `role="alert"` 重试、刷新进行中禁用改标、分类 radiogroup 独立 aria-label。
+  配套：vendor `ui-settings-market` vitest 40/40、vendor `test:gui` 全绿
+  （410 文件 / 5373 测试）、desktop marketplace 引擎测试 48/48。
