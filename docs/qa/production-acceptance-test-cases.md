@@ -777,6 +777,8 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** dshbot 是独立可发布插件：桌面从不预置、从不因它启动失败；卸载无残留（feature 卡 `dshbot`）。
 
+**2026-08-26 源码实机（不填本表 Pass）：** 云端 Linux X11 GUI 对源码 Electron 完整轮换 A/B(自动)/C 三相：未装分支 walk 全绿 → `dsh plugin add github:…#path:/vendor/dshbot`（钉到 `7972a34`）后探针翻转（Bots 页签出现、已安装列出、`dshbot-room` preset 自装）→ remove + 重启回未装分支且三处残留全净。9 个 dshbot 套件 95/95、全仓 1099/0。B 相手工建群因无 `DEEPSEEK_API_KEY` BLOCKED；Windows 安装包三相维持 BLOCKED。报告：[results/2026-08-26/tc-ext-007-dshbot.md](results/2026-08-26/tc-ext-007-dshbot.md)。
+
 ### TC-EXT-008 · 设置内用量统计 · P0
 
 **步骤：**
@@ -1064,7 +1066,7 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-EXT-004 | P1 |  |  | 未安装市场插件 | Trent | 2026-08-23 |
 | TC-EXT-005 | P1 |  |  |  | Trent | 2026-08-23 |
 | TC-EXT-006 | P1 | Pass | CI SHA + 已装 exe | 设置有 MCP/技能 | Trent | 2026-08-23 |
-| TC-EXT-007 | P1 | 待测 | 待绑 CI SHA + 已装 exe | 独立插件：默认无页签；可选市场一键装/卸（不得用 2026-08-23 停放 Pass）。执行手册就绪：[tc-ext-007-dshbot-install-smoke.md](tc-ext-007-dshbot-install-smoke.md)；阻塞：云端 Linux 无法跑 Windows 安装包 |  |  |
+| TC-EXT-007 | P1 | 待测 | 待绑 CI SHA + 已装 exe | 独立插件：默认无页签；可选市场一键装/卸（不得用 2026-08-23 停放 Pass）。执行手册就绪：[tc-ext-007-dshbot-install-smoke.md](tc-ext-007-dshbot-install-smoke.md)；阻塞：云端 Linux 无法跑 Windows 安装包。2026-08-26 Linux 源码级三相轮换 PASS（不填本表 Pass）：[results/2026-08-26/tc-ext-007-dshbot.md](results/2026-08-26/tc-ext-007-dshbot.md) |  |  |
 | TC-EXT-008 | P0 |  | 源码实机 53709（非 CI 包） | 设置有「用量统计」；零用量 KPI；安装包未测 | Trent | 2026-08-23 |
 | TC-DESK-001 | P0 | Pass | CI SHA + 已装 exe | 关窗无标题；进程与 3080 仍在 | Trent | 2026-08-23 |
 | TC-DESK-002 | P0 | Pass | CI SHA `47ad187` + 已装 exe | `run-installed-shell-p0.mjs` invokeTrayAction 五项 | Trent | 2026-08-24 |

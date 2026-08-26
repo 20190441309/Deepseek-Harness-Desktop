@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-25 — npm 发布链路落地（publishConfig+LICENSE、`publish-dshbot.yml` tag 触发、`check-dshbot-publish.mjs` 预检、`dshbot-publish-manifest.test.js` 门禁）；TC-EXT-007 执行手册 `docs/qa/tc-ext-007-dshbot-install-smoke.md` 就绪，实机仍阻塞（见 Open follow-ups）。此前：standalone 拆除 + 市场第一方行 + inbox/epoch 韧性 |
+| **last verified** | 2026-08-26 — 云端 Linux 源码级 GUI 三相轮换 PASS（未装分支 → `dsh plugin add github:…#path:` 探针翻转 + `dshbot-room` 自装 → remove 后回未装分支且残留全净；9 套件 95/95，报告 `docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）；TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups）。此前：npm 发布链路落地 + standalone 拆除 + 市场第一方行 + inbox/epoch 韧性 |
 
 ## User paths
 
@@ -44,7 +44,7 @@
 
 | Pri | 项 | 验收 |
 | --- | --- | --- |
-| P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」。**阻塞原因（2026-08-25）：** 云端 Linux 环境跑不了 Windows NSIS 安装包/GUI；执行手册已脚本化到「拿到下一 CI artifact 一键执行」：[docs/qa/tc-ext-007-dshbot-install-smoke.md](../qa/tc-ext-007-dshbot-install-smoke.md)（A/C 两相走 `run-packaged-smoke.mjs` 的 `plugin.dshbot.*` 探针，建群冒烟为唯一手工步骤） | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
+| P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」。**阻塞原因（2026-08-25，2026-08-26 复核仍在）：** 云端 Linux 环境跑不了 Windows NSIS 安装包/GUI（无 wine），且无 `DEEPSEEK_API_KEY` 做建群轮转发言；执行手册已脚本化到「拿到下一 CI artifact 一键执行」：[docs/qa/tc-ext-007-dshbot-install-smoke.md](../qa/tc-ext-007-dshbot-install-smoke.md)。**已缩小的风险面（2026-08-26）：** Linux 源码级 GUI 三相轮换（同规格安装通道 + 同 walk 探针 + 残留抽查）全 PASS：[docs/qa/results/2026-08-26/tc-ext-007-dshbot.md](../qa/results/2026-08-26/tc-ext-007-dshbot.md)；真正未覆盖 = NSIS 安装器 + Windows 打包运行时 + 手工建群 | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
 | P1 | **npm 独立发布** `dshbot@<semver>`：发布链路已落地——`publishConfig.access=public` + LICENSE、tag `dshbot-v<semver>` 触发 `.github/workflows/publish-dshbot.yml`（预检 `scripts/check-dshbot-publish.mjs` + `npm publish --provenance`）、桌面套件 `dshbot-publish-manifest.test.js` 锁 manifest。**剩余缺口：** 仓库未配 `NPM_TOKEN` secret（无 registry 凭证），workflow 会明确报错而非半发；配好 token 后推 tag 即发 | 首个 `dshbot-v0.2.0` tag 发布成功；README / 发布说明写清 `dsh plugin add dshbot@x.y.z` 规格；registry 收录后第一方行可删或让位 |
 | P1 | ~~**设计 spec 废弃段**~~ | **已落地（2026-08-25）：** spec 文首与决定 2 标 Deprecated；以 Grok-aligned 段与本卡为准 |
 | P2 | **成员全工具房间**：解 `toolFilter` 限制时同步改 `buildGroupMemberSystemPrompt`；另开 feature 卡，本史诗不做 | 新卡 + 单测锁 prompt/toolFilter 同口径 |
