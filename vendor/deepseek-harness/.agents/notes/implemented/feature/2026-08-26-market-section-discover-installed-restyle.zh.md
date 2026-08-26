@@ -31,4 +31,4 @@
 
 ## 测试
 
-`packages/client/ui-settings-market` client specs 从 13 增至 21：页签对与数量后缀、逐卡作者 / 星标 / 分类 / 主页、头像失败回退、已弃用与已退役徽标、警告 + 结果计数、已安装分组顺序、已安装页卸载、空已安装文案，加上原有的搜索 / 过滤 / 安装 / allowBuilds / 进度 / 失败 specs。
+`packages/client/ui-settings-market` client specs 从 13 增至 21：页签对与数量后缀、逐卡作者 / 星标 / 分类 / 主页、头像失败回退、已弃用与已退役徽标、警告 + 结果计数、已安装分组顺序、已安装页卸载、空已安装文案，加上原有的搜索 / 过滤 / 安装 / allowBuilds / 进度 / 失败 specs。桌面 `qa:source` 发布走查对重排后的分区端到端全绿（`market.section` / `market.discover` / `market.installed` PASS，Linux xvfb 源码运行）。

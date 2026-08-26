@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-26-market-section-discover-installed-restyle.md
-2026-08-26-market-section-discover-installed-restyle.md: c45ad14c985856f160b4424096aa444d6e9b2a66
-2026-08-26-market-section-discover-installed-restyle.zh.md: deaec913f4ba056902b1f190dd1174d5d97e529e
+2026-08-26-market-section-discover-installed-restyle.md: 7e97567f1f67be386f7e9749819daa9533fce4ed
+2026-08-26-market-section-discover-installed-restyle.zh.md: 91f82df0a9a290623aa918d929b5140c794049b5

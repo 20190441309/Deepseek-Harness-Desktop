@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — 市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底），vendor `ui-settings-market` client specs 21/21 绿 + 包级 tsc/oxlint 干净；QA 走查 `market.discover` / `market.installed` 断言的页签结构由本分区直接满足。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — 市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底），vendor `ui-settings-market` client specs 21/21 绿 + 包级 tsc/oxlint 干净；`qa:source` 全走查绿（`ok:true, failed:[]`，含 market.section / market.discover / market.installed PASS；Linux xvfb 源码运行）。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 

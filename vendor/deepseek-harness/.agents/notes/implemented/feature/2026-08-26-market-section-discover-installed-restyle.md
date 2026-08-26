@@ -31,4 +31,4 @@ Settings → 市场 now reads as an official settings page with the original mar
 
 ## Testing
 
-`packages/client/ui-settings-market` client specs grew from 13 to 21: tab pair and count suffix, per-card owner/stars/category/homepage, avatar error fallback, deprecated and dropped badges, warning + result count, installed grouping order, installed-tab uninstall, and the empty-installed copy, alongside the existing search/filter/install/allow-builds/progress/failure specs.
+`packages/client/ui-settings-market` client specs grew from 13 to 21: tab pair and count suffix, per-card owner/stars/category/homepage, avatar error fallback, deprecated and dropped badges, warning + result count, installed grouping order, installed-tab uninstall, and the empty-installed copy, alongside the existing search/filter/install/allow-builds/progress/failure specs. The desktop `qa:source` release walk ran green end-to-end against the restyled section (`market.section` / `market.discover` / `market.installed` PASS, Linux xvfb source run).
