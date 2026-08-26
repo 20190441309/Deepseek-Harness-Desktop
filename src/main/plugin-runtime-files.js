@@ -87,6 +87,30 @@ function entryExists(depDir, rel) {
   return false;
 }
 
+/**
+ * Declared runtime entry files (main/module/exports, excluding type
+ * declarations and the manifest itself) missing from an installed package
+ * directory. Shared by the packaging gate and the launch pre-flight so both
+ * reject the same partially built package: a resolvable manifest whose lib
+ * entries were never built dies in Node's ESM loader exactly like an absent
+ * package.
+ * @param {string} dir - the installed package directory.
+ * @param {object} pkg - the parsed package.json of that directory.
+ * @returns {string[]} missing entry paths relative to dir.
+ */
+function missingDeclaredEntries(dir, pkg) {
+  const missing = [];
+  for (const rel of declaredEntryRelatives(pkg)) {
+    if (rel.endsWith('.d.ts') || rel === 'package.json') {
+      continue;
+    }
+    if (!entryExists(dir, rel)) {
+      missing.push(rel);
+    }
+  }
+  return missing;
+}
+
 function readPackageJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -149,5 +173,6 @@ function missingRuntimeFiles(packageDir, options = {}) {
 
 module.exports = {
   declaredEntryRelatives,
+  missingDeclaredEntries,
   missingRuntimeFiles,
 };

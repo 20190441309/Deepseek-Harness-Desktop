@@ -12,7 +12,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { DshManager } = require('./dsh');
+const { DshManager, missingDesktopForkPackages } = require('./dsh');
+const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
 const { readPin } = require('../shared/harness-upstream');
 const { setDesktopDshHome, clearDesktopDshHome } = require('../shared/dsh-home');
 
@@ -476,6 +477,60 @@ test('launcher recovery flags stay before host and port', () => {
   ]);
 });
 
+test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.ts contract)', () => {
+  // The CLI parser consumes launcher flags until the FIRST token it does not
+  // recognize; everything from there on is app args (passThroughOptions). A
+  // skip flag that drifts behind `--host` would be silently swallowed by the
+  // app — a start WITH user plugins the desktop believes is skipped. Derive
+  // the launcher-owned flag set from the vendored args.ts web subcommand so
+  // this test tracks the real grammar instead of a copy of today's argv.
+  const argsTs = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness', 'apps', 'cli', 'src', 'args.ts'),
+    'utf8',
+  );
+  const webStart = argsTs.indexOf("program.command('web')");
+  const webEnd = argsTs.indexOf("program.command('plugin')");
+  assert.ok(webStart !== -1 && webEnd > webStart, 'args.ts web subcommand block not found');
+  const webBlock = argsTs.slice(webStart, webEnd);
+  const launcherFlags = new Map();
+  const optionPattern = /\.option\('(--[a-z-]+)( <[^>]+>)?'/g;
+  for (let match = optionPattern.exec(webBlock); match; match = optionPattern.exec(webBlock)) {
+    launcherFlags.set(match[1], Boolean(match[2]));
+  }
+  // Fail loud on extraction drift: the web alias must still declare the two
+  // flags the desktop skip start relies on (a silent empty set here would
+  // turn the walk below into a no-op).
+  assert.equal(launcherFlags.get('--skip-user-plugins'), false, 'web alias lost --skip-user-plugins');
+  assert.equal(launcherFlags.get('--patch'), true, 'web alias lost --patch <path>');
+
+  const manager = new DshManager({
+    sourceHarnessStatus: () => ({ present: false }),
+    resolveDshBin: () => 'dsh',
+    resolveNpx: () => 'npx',
+    resolveNodeBin: () => process.execPath,
+  });
+  const launch = manager.buildLaunch({
+    host: '127.0.0.1',
+    port: 3080,
+    skipUserPlugins: true,
+    patchFiles: ['C:/desktop-install.yml', 'C:/extra.yml'],
+  });
+  assert.equal(launch.args[0], 'web');
+  // Walk the grammar prefix exactly as the CLI does: launcher flags (and
+  // their declared values) end at the first unknown token.
+  let index = 1;
+  const inPrefix = new Set();
+  while (index < launch.args.length && launcherFlags.has(launch.args[index])) {
+    inPrefix.add(launch.args[index]);
+    index += launcherFlags.get(launch.args[index]) ? 2 : 1;
+  }
+  assert.ok(inPrefix.has('--skip-user-plugins'), '--skip-user-plugins fell into app args — the CLI would ignore it');
+  assert.ok(inPrefix.has('--patch'), '--patch fell into app args — the overlay would never mount');
+  const appArgs = launch.args.slice(index);
+  assert.equal(appArgs.includes('--skip-user-plugins'), false);
+  assert.equal(appArgs.includes('--patch'), false);
+});
+
 function makeSourceLaunchManager(overrides = {}) {
   return new DshManager({
     sourceHarnessStatus: () => ({
@@ -531,6 +586,76 @@ test('source launch copies Ghostty assets beside client.js', () => {
   const launch = manager.buildLaunch({ host: '127.0.0.1', port: 3080 });
   assert.equal(launch.kind, 'source');
   assert.equal(ensuredRoot, 'C:/harness');
+});
+
+test('source launch refuses when in-box desktop fork packages are missing', () => {
+  const manager = makeSourceLaunchManager({
+    missingDesktopForkPackages: () => ['@deepseek-ai/dsh-client-ui-settings-market'],
+  });
+  assert.throws(
+    () => manager.buildLaunch({ host: '127.0.0.1', port: 3080 }),
+    (error) => {
+      assert.match(String(error.message), /dsh-client-ui-settings-market/);
+      assert.match(String(error.message), /setup:harness/);
+      assert.match(String(error.message), /跳过用户插件/);
+      return true;
+    },
+  );
+});
+
+test('missingDesktopForkPackages resolves flattened and bundle-nested layouts', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-forks-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const writePkg = (dir, name) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name })}\n`);
+  };
+  writePkg(path.join(root, 'apps', 'cli'), '@deepseek-ai/dsh');
+  const nm = path.join(root, 'node_modules');
+  writePkg(path.join(nm, '@deepseek-ai', 'dsh-base'), '@deepseek-ai/dsh-base');
+  writePkg(path.join(nm, '@deepseek-ai', 'dsh-web-app'), '@deepseek-ai/dsh-web-app');
+  // Anchor without any fork packages: every registered name is missing.
+  assert.deepEqual(
+    missingDesktopForkPackages(root),
+    DESKTOP_PACKAGES.map((pkg) => pkg.name),
+  );
+  // Flattened (packaged) layout: fork packages beside the bundles.
+  for (const pkg of DESKTOP_PACKAGES.slice(1)) {
+    writePkg(path.join(nm, ...pkg.name.split('/')), pkg.name);
+  }
+  // Isolated (pnpm dev) layout: the remaining package resolves only through
+  // the web-app bundle's own node_modules, mirroring the runtime's anchors.
+  const nested = DESKTOP_PACKAGES[0];
+  writePkg(
+    path.join(nm, '@deepseek-ai', 'dsh-web-app', 'node_modules', ...nested.name.split('/')),
+    nested.name,
+  );
+  assert.deepEqual(missingDesktopForkPackages(root), []);
+  // A root without the CLI anchor cannot be probed and never blocks launch.
+  assert.deepEqual(missingDesktopForkPackages(path.join(root, 'nowhere')), []);
+});
+
+test('missingDesktopForkPackages reports declared entries that were never built', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-fork-entries-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const writePkg = (dir, manifest) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest)}\n`);
+  };
+  writePkg(path.join(root, 'apps', 'cli'), { name: '@deepseek-ai/dsh' });
+  const nm = path.join(root, 'node_modules');
+  for (const pkg of DESKTOP_PACKAGES) {
+    const dir = path.join(nm, ...pkg.name.split('/'));
+    writePkg(dir, { name: pkg.name, main: 'lib/index.js' });
+    fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'export {}\n');
+  }
+  assert.deepEqual(missingDesktopForkPackages(root), []);
+  // Vendor pull without setup:harness: the manifest resolves but lib/ was
+  // never rebuilt — the Loader dies in ESM exactly like an absent package.
+  const stale = DESKTOP_PACKAGES.find((pkg) => pkg.name.endsWith('ui-settings-market'));
+  fs.rmSync(path.join(nm, ...stale.name.split('/'), 'lib', 'index.js'), { force: true });
+  assert.deepEqual(missingDesktopForkPackages(root), [`${stale.name}/lib/index.js`]);
 });
 
 test('source launch refuses when Ghostty assets are incomplete', () => {

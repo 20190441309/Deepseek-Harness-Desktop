@@ -1,9 +1,12 @@
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
+const { createRequire } = require('module');
 const { spawn, execFileSync } = require('child_process');
 const EventEmitter = require('events');
 const { loadConfig, configPath } = require('./config');
+const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
+const { missingDeclaredEntries } = require('./plugin-runtime-files');
 const { harnessRoot } = require('./paths');
 const { ensurePackagedHarness, harnessArchivePath } = require('./harness-extract');
 const { childSpawnEnv } = require('../shared/child-spawn-env');
@@ -136,6 +139,80 @@ function sourceHarnessStatus() {
     built: builtOnDisk || archived,
     bin: fs.existsSync(binJs) ? binJs : binTs,
   };
+}
+
+function forkPackageDirFromAnchor(anchor, packageName) {
+  try {
+    const searchPaths = createRequire(anchor).resolve.paths(packageName) || [];
+    for (const searchPath of searchPaths) {
+      const candidate = path.join(searchPath, packageName);
+      if (fs.existsSync(path.join(candidate, 'package.json'))) {
+        return candidate;
+      }
+    }
+  } catch {
+    // Invalid anchors resolve nothing; the caller treats that as missing.
+  }
+  return '';
+}
+
+/**
+ * Registered desktop fork packages the shipped web composition mounts but the
+ * harness install cannot load. The dsh Loader imports every composed row
+ * with the profile directory as parent and relies on the healed
+ * `profiles/node_modules` fallback, which silently skips unresolvable names —
+ * a missing in-box package then dies deep in Node's ESM loader
+ * (`ERR_MODULE_NOT_FOUND … imported from …profiles/web/`) on every start,
+ * including --skip-user-plugins recovery starts. A resolvable manifest whose
+ * declared entries were never built (vendor pull without setup:harness) dies
+ * the same way, so the probe checks entries too via the same predicate as the
+ * packaging gate. Probing before spawn turns that loop into one actionable
+ * startup error. Resolution mirrors the runtime's anchors: the CLI install
+ * anchor first, then each shipped bundle's own manifest (pnpm's isolated
+ * layout keeps bundle dependencies beside the bundle, not beside the CLI).
+ * @param {string} root - harness root (source tree or extracted runtime).
+ * @returns {string[]} unloadable package names or `name/entry` paths; empty when the anchor itself is absent.
+ */
+function missingDesktopForkPackages(root) {
+  const cliAnchor = path.join(root, 'apps', 'cli', 'package.json');
+  if (!fs.existsSync(cliAnchor)) {
+    return [];
+  }
+  const anchors = [cliAnchor];
+  for (const bundle of ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']) {
+    const dir = forkPackageDirFromAnchor(cliAnchor, bundle);
+    if (dir) {
+      anchors.push(path.join(dir, 'package.json'));
+    }
+  }
+  const missing = [];
+  for (const pkg of DESKTOP_PACKAGES) {
+    let dir = '';
+    for (const anchor of anchors) {
+      dir = forkPackageDirFromAnchor(anchor, pkg.name);
+      if (dir) {
+        break;
+      }
+    }
+    if (!dir) {
+      missing.push(pkg.name);
+      continue;
+    }
+    let manifest = null;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    } catch {
+      // An unreadable manifest cannot declare entries; reported as the manifest itself below.
+    }
+    if (!manifest) {
+      missing.push(`${pkg.name}/package.json`);
+      continue;
+    }
+    for (const rel of missingDeclaredEntries(dir, manifest)) {
+      missing.push(`${pkg.name}/${rel}`);
+    }
+  }
+  return missing;
 }
 
 function execTimed(command, args, timeoutMs = 2500) {
@@ -470,6 +547,7 @@ class DshManager extends EventEmitter {
       resolveDshBin: options.resolveDshBin || resolveDshBin,
       resolveNpx: options.resolveNpx || resolveNpx,
       resolveNodeBin: options.resolveNodeBin || resolveNodeBin,
+      missingDesktopForkPackages: options.missingDesktopForkPackages || missingDesktopForkPackages,
       readPin: options.readPin || defaultReadPin,
       ensureGhosttyAssetsInHarness: options.ensureGhosttyAssetsInHarness || ((root) => {
         const { ensureGhosttyAssetsInHarness } = require('../shared/ghostty-assets');
@@ -567,6 +645,14 @@ class DshManager extends EventEmitter {
       if (!ghostty || ghostty.ok !== true) {
         const detail = ghostty && ghostty.detail ? String(ghostty.detail) : 'ensure 未返回 ok';
         throw new Error(`终端 Ghostty 资源不完整，请运行 npm run setup:harness：${detail}`);
+      }
+      const missingForks = this._deps.missingDesktopForkPackages(source.root);
+      if (missingForks.length > 0) {
+        throw new Error(
+          `Harness 运行时缺少桌面组件包：${missingForks.join(', ')}。`
+          + '「跳过用户插件」无法修复内置组件缺失——源码运行请执行 npm run setup:harness；'
+          + '安装包请重新下载并重装当前版本。',
+        );
       }
       return {
         command: nodeBin,
@@ -951,6 +1037,7 @@ module.exports = {
   resolveNodeBin,
   resolveDshBin,
   sourceHarnessStatus,
+  missingDesktopForkPackages,
   probePort,
   findFreePort,
   ensureOwnedPort,

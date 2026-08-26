@@ -516,7 +516,14 @@ class HarnessController extends EventEmitter {
     const startOptions = {
       ...target,
       skipUserPlugins,
-      patchFiles: skipUserPlugins && desktopInstall?.patchFile ? [desktopInstall.patchFile] : [],
+      // Skip mode must not hand the CLI the profile's own cordis.patch.yml:
+      // `--patch` overlays still apply under --skip-user-plugins, so passing
+      // that file would re-mount every user row the skip exists to bypass.
+      // Only the desktop-owned overlay with the install-plugin insert rides
+      // along (desktop-install stays required in recovery starts).
+      patchFiles: skipUserPlugins && desktopInstall?.skipPatchFile
+        ? [desktopInstall.skipPatchFile]
+        : [],
     };
     const url = await this.dsh.start(startOptions);
       this.assertOperationCurrent(generation);

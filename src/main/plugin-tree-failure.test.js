@@ -18,3 +18,19 @@ test('isPluginTreeFailure matches composition diagnostics', () => {
   assert.equal(isPluginTreeFailure('listen EADDRINUSE: address already in use'), false);
   assert.equal(isPluginTreeFailure(''), false);
 });
+
+test('isPluginTreeFailure matches Node ESM plugin-resolution failures', () => {
+  assert.equal(
+    isPluginTreeFailure(
+      "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@deepseek-ai/dsh-client-ui-settings-market' "
+      + 'imported from C:\\Users\\a\\AppData\\Roaming\\Deepseek-Harness-Desktop\\dsh-home\\profiles\\web\\',
+    ),
+    true,
+  );
+  assert.equal(
+    isPluginTreeFailure("Cannot find module 'file:///C:/dsh-home/profiles/web/desktop-plugins/x/index.mjs' imported from C:/dsh-home/profiles/web/"),
+    true,
+  );
+  // Bare "cannot find module" without an importer is app code, not the Loader.
+  assert.equal(isPluginTreeFailure("Cannot find module './missing.json'"), false);
+});

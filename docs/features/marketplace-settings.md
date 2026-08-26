@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-25（合并树 `ea659884`）— consolidation #39 落地后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS。此前同日：Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-26 — 打包门禁补齐：`assertHarnessRuntime` 新增 `assertDesktopForkRuntime`，逐一校验 `DESKTOP_PACKAGES`（含 `ui-settings-market`）在打包运行时里 package.json + 声明入口文件齐全——此前门禁只点名 mcp/skills 旧包，陈旧 deploy 目录可打出缺 `ui-settings-market` 的 Setup，启动时 Loader 从 profile 目录导入该行直接 `ERR_MODULE_NOT_FOUND` 且 skip/恢复全部无效。此前 2026-08-25（合并树 `ea659884`）— consolidation #39 落地后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
@@ -42,6 +42,7 @@
 ## Allowed touch
 
 - `src/main/marketplace-*.js`、`dshmarket-preset.js`（清理模块）、`desktop-install-control.js`、`plugins.js`（DROPPED 行）
+- `scripts/after-pack.js` 的 `assertDesktopForkRuntime` 打包门禁（只加断言，不动装配逻辑）
 - `src/host/install-dsh-plugin-client.js`
 - `vendor/deepseek-harness/packages/client/ui-settings-market/`（桌面自有市场 UI）
 - `src/shared/harness-desktop-forks.js`（登记行）与 web-app bundle 的注册三件套

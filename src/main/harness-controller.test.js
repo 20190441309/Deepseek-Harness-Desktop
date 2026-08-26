@@ -390,7 +390,11 @@ test('logs and continues when the dshbot dev preset fails', async () => {
 test('plugin-tree startup failure retries once with the official template overlay', async () => {
   const first = Object.assign(new Error('dsh exited'), { pluginTree: true });
   const f = fixture({
-    ensureDesktopInstallPlugin: () => ({ ok: true, patchFile: 'C:/desktop-install.yml' }),
+    ensureDesktopInstallPlugin: () => ({
+      ok: true,
+      patchFile: 'C:/profiles/web/cordis.patch.yml',
+      skipPatchFile: 'C:/profiles/web/desktop-plugins/install-dsh-plugin/skip-user-plugins.patch.yml',
+    }),
   });
   f.dsh.startResults.push(first);
   await f.controller.start();
@@ -399,8 +403,22 @@ test('plugin-tree startup failure retries once with the official template overla
   assert.equal(f.dsh.startOptions[0].skipUserPlugins, false);
   assert.deepEqual(f.dsh.startOptions[0].patchFiles, []);
   assert.equal(f.dsh.startOptions[1].skipUserPlugins, true);
-  assert.deepEqual(f.dsh.startOptions[1].patchFiles, ['C:/desktop-install.yml']);
+  // Never the profile's own cordis.patch.yml: --patch overlays still apply
+  // under --skip-user-plugins, so that file would resurrect the user layer.
+  assert.deepEqual(f.dsh.startOptions[1].patchFiles, [
+    'C:/profiles/web/desktop-plugins/install-dsh-plugin/skip-user-plugins.patch.yml',
+  ]);
   assert.equal(f.controller.snapshot().pluginRecovery.skipUserPlugins, true);
+});
+
+test('skip start without a desktop-owned skip overlay passes no patch files', async () => {
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, patchFile: 'C:/profiles/web/cordis.patch.yml' }),
+  });
+  f.controller.writePluginSkip(new Error('recovery'));
+  await f.controller.start();
+  assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, []);
 });
 
 test('sticky plugin recovery starts skip mode and retryFullPlugins clears it', async () => {

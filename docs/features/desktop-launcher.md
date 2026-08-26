@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-launcher` |
 | **status** | `active` |
-| **last verified** | 2026-08-25 — H-1/M-3 回归护栏落地：静态断言钉死「index.js 无 `globalShortcut`、DevTools 走 `web-contents-created` 窗口级门禁」与「两条安装通道 + 冷启动闸门都接 `confirmUnverified`，确认框 `defaultId/cancelId=1` fail-safe」；非 Windows 分支单测（`launchUninstaller` linux/darwin 源码运行 → `source-run-no-install`、packaged → `uninstaller-not-found`，绝不 spawn、不查注册表）。同日早些：无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
+| **last verified** | 2026-08-26 — 「跳过用户插件」救生启动修复 + 契约门禁收口：skip 启动只随 `--patch` 传桌面自有 `desktop-plugins/install-dsh-plugin/skip-user-plugins.patch.yml`（仅 install 插件 insert），不再把整份 profile `cordis.patch.yml` 当 overlay 复活用户层（CLI 在 `--skip-user-plugins` 下仍应用 `--patch`，旧行为使 skip 完全失效）；`isPluginTreeFailure` 识别 Node ESM `ERR_MODULE_NOT_FOUND / Cannot find package … imported from …profiles/web/`（Loader 以 profile 目录为 parent 导入每个插件行）；`buildLaunch` 启动前探测 `DESKTOP_PACKAGES` 内置组件包缺失（两锚点：CLI + bundle manifest；覆盖包不可解析与声明入口未构建，判定与打包门禁共用 `missingDeclaredEntries`），缺失时给出可操作错误（setup:harness / 重装）而不是无限重试。同日收口：after-pack 对**真实打包 CLI** 跑 skip/full 双轮 `dump-config` 契约（`scripts/check-skip-compose-contract.js`，canary 用户层 skip 轮必须消失、full 轮必须存在，install 插件两轮都在）；`dsh.test.js` argv 语法契约测试从 vendored `args.ts` 提取 web 子命令旗标集，钉死 `--skip-user-plugins`/`--patch` 落在 CLI 语法前缀内不被 app args 吞掉；Recovery Board 诚实化——suspect 命中 `DESKTOP_PACKAGES` 且不在 profile 清单 → `inBox` 行 + `desktopRuntimeDamage`，verdict 直说「内置组件损坏，禁用/跳过均无效」并压过 sticky skip 文案。此前 2026-08-25 — H-1/M-3 回归护栏落地：静态断言钉死「index.js 无 `globalShortcut`、DevTools 走 `web-contents-created` 窗口级门禁」与「两条安装通道 + 冷启动闸门都接 `confirmUnverified`，确认框 `defaultId/cancelId=1` fail-safe」；非 Windows 分支单测（`launchUninstaller` linux/darwin 源码运行 → `source-run-no-install`、packaged → `uninstaller-not-found`，绝不 spawn、不查注册表）。同日早些：无 `SHA512SUMS.txt` 的 Release 不再静默直装：必须经用户确认（拒绝即不下载），冷启动闸门与 `shell:install-update`/`shell:install-release` 均接确认框；`launchUninstaller`/`openWindowsAppsSettings` 去 `shell:true`，只 spawn 已验证存在的 exe 路径。此前：导入闸门 `probeImportHold` 浅探针；更新请求注入 `config.githubToken`；`runColdStartGate` 编排；`downloadFile` 断流/截断防护；v0.2.7 正式发布 |
 
 ## User paths
 
@@ -37,7 +37,12 @@
 - 「启动桌面端」清除「跳过用户插件」sticky 时必须 `forceRestart`；`HarnessController.restart()` 不得把旧 in-flight Promise 交给新调用方（先 await 再开新 `replaceOperation`）。
 - 插件排查禁用/启用写盘后若内核在跑，只经 `startHarness`/`restartWithCleanup` 对齐，不得经 `startDesktopFromLauncher`（避免 `quitAfterStart` 关掉排查窗）。批量禁用可疑走 `shell:disable-plugins`（一次写盘 + 一次 align）。
 - 「跳过用户插件」救生启动不 ensure market/usage/dshbot；dshbot 是独立插件，任何启动都只 `removeDshbotPreset` 清残留（config `dshbotPreset: true` 且非 skip 时才跑开发预置，log-only）。desktop-install 仍 required。可选桌面预置不得拖垮恢复通道。
+- skip 启动的 `--patch` 只允许桌面自有 `skip-user-plugins.patch.yml`（`ensureDesktopInstallPlugin` 每次启动重生成，仅含 `dshd-desktop-plugin-install` insert）；**绝不**把 profile 的 `cordis.patch.yml` 传给 `--patch`——CLI 在 `--skip-user-plugins` 下仍应用 overlay，传整份用户层等于没跳过。
+- skip 只能救用户层（profile patch / manifest bundles）；模板 bundle 挂载的内置组件包（`DESKTOP_PACKAGES`）缺失属运行时损坏，`buildLaunch` 启动前探测并报可操作错误（源码运行 → `npm run setup:harness`；安装包 → 重装），不进入无效 skip 循环。探测覆盖「包不可解析」与「manifest 在但声明入口未构建」两种（与打包门禁共用 `missingDeclaredEntries` 判定）。
+- skip compose 语义由打包门禁背书：after-pack 对打进 dist 的真实 CLI 跑 `dump-config` skip/full 双轮（`scripts/check-skip-compose-contract.js`，临时 DSH_HOME + 用户层 canary）——skip 轮 canary 必须消失且 install 插件仍挂载，full 轮 canary 必须回来；任一违反即打包失败。单测层不能替代此门禁（单测 mock 了 dsh.start）。
+- 启动器自有旗标（`--skip-user-plugins`、`--patch`）必须位于 CLI 语法前缀（首个未知 token 之前），否则被 CLI 当 app args 吞掉——桌面以为跳过、实际满载。`dsh.test.js` 从 vendored `args.ts` 的 web 子命令提取旗标集做语法行走断言，vendor 同步改语法会即刻红。
 - Recovery Board 在 sticky skip、`lastStart.ok===false`、desktop error、genericCause、pluginTreeFailure 或存在 suspects 时于首页展开。
+- Recovery Board 诚实化：suspect 命中 `DESKTOP_PACKAGES`（精确名或子路径 specifier）**且不在 profile 插件清单** → 行标 `inBox`（badge「内置组件」）、payload `desktopRuntimeDamage: true`；verdict 换成「内置组件损坏：禁用/跳过均无效，重装安装包或 `npm run setup:harness`」，并压过 sticky skip 文案（skip 修不了运行时损坏）。inBox 行不进批量禁用集合。同名用户插件**在** profile 清单时仍是普通可禁用 suspect。
 - `shell:stop-desktop`（启动器专用）取消 harness 自动恢复与在途 restart/start、停止 dsh 内核、清理 PTY/预览并销毁主窗；托盘在内核未运行时打开启动器；不退出 Electron 进程、不关启动器。
 - 版本页 `listReleases` 附带 `installed`（运行模式、注册表 Setup 版本/路径、是否可卸载）；卸载优先 NSIS `Uninstall*.exe`，否则打开「设置 → 应用」；源码运行且无注册表安装时隐藏卸载按钮并给出明确说明。
 - 导入重新扫描保留 session-rel / skill-id / plugin-name / mcp-id 勾选与会话分组折叠；扫描完成展示计数与时间戳。
@@ -48,7 +53,9 @@
 - `src/renderer/theme.js`、`src/main/chrome.js`、`src/shared/themes.js`
 - `src/main/launcher-gate.js`、`src/main/update.js`、`src/main/plugin-forensics.js`
 - `src/main/index.js` 冷启动闸门、`src/main/ipc.js`、`src/preload/index.js`、托盘/菜单
-- `src/main/harness-controller.js` 仅限 sticky skip 判定委托给 `launcher-gate.stickySkipActive`（不动生命周期语义）
+- `src/main/harness-controller.js` 仅限 sticky skip 判定委托与 skip 启动 `patchFiles` 组装（skip 时只传 `skipPatchFile`；不动其余生命周期语义）
+- skip 救生链路（2026-08-26 扩入，理由：skip 语义由这些文件共同实现）：`src/main/dsh.js`（`buildLaunch` argv/预检）、`src/main/plugins.js`（`ensureDesktopInstallPlugin` skip overlay）、`src/main/plugin-tree-failure.js`、`src/main/plugin-runtime-files.js`、`src/shared/launcher-recovery.js`
+- 契约门禁：`scripts/check-skip-compose-contract.js`、`scripts/after-pack.js`（仅 skip compose 契约调用与 `assertDesktopForkRuntime`；打包其余部分归 marketplace-settings / 打包卡）
 - 本卡与 QA `TC-LAUNCH-*`
 
 ## Do not touch
@@ -61,7 +68,7 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `launcher-gate`（含 `runColdStartGate` 编排 / `stickySkipActive` / `recordLastDesktopStart`）/ `update`（listReleases、downloadFile 断流/截断）/ `plugin-forensics` / IPC LAUNCHER 单测；`launcher-theme` / `officialShellBackground` / `windowBackgroundForShell`；`chrome-theme` watchSystemTheme |
+| Automated | `launcher-gate`（含 `runColdStartGate` 编排 / `stickySkipActive` / `recordLastDesktopStart`）/ `update`（listReleases、downloadFile 断流/截断）/ `plugin-forensics`（含 inBox/`desktopRuntimeDamage`）/ `launcher-recovery`（verdict 优先级 + 排序）/ IPC LAUNCHER 单测；`dsh.test.js` argv 语法契约（args.ts 提取）；`skip-compose-contract` 单测 + after-pack 真实 CLI `dump-config` skip/full 双轮门禁；`launcher-theme` / `officialShellBackground` / `windowBackgroundForShell`；`chrome-theme` watchSystemTheme |
 | Manual / QA | `TC-LAUNCH-001`…`008` |
 
 ## Sources

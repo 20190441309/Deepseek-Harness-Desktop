@@ -113,6 +113,39 @@ test('ensureDesktopInstallPlugin copies the Host plugin and upserts the managed 
   }
 });
 
+test('ensureDesktopInstallPlugin writes a skip overlay holding only the install insert', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = sourceDir();
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    // A profile user layer with a user row that skip mode must not resurrect.
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+      '- insert:',
+      '    - id: broken-user-plugin',
+      '      name: "some-broken-user-plugin"',
+      '',
+    ].join('\n'), 'utf8');
+    const result = ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.skipPatchFile,
+      path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin', 'skip-user-plugins.patch.yml'),
+    );
+    const overlay = fs.readFileSync(result.skipPatchFile, 'utf8');
+    assert.ok(overlay.includes('id: dshd-desktop-plugin-install'));
+    assert.ok(overlay.includes(result.href));
+    assert.equal(overlay.includes('broken-user-plugin'), false);
+    assert.equal(overlay.includes(DESKTOP_INSTALL_BEGIN), false);
+    // Idempotent: unchanged content is not rewritten with a different value.
+    const again = ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(fs.readFileSync(again.skipPatchFile, 'utf8'), overlay);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
 test('ensureDesktopInstallPlugin replaces the shipped empty [] patch instead of appending', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = sourceDir();
