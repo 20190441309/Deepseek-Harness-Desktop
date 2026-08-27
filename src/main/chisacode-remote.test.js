@@ -33,8 +33,13 @@ test('vendor tree includes full daemon sources and AGPL shipping docs', () => {
 
 test('desktop start and packaging prepare and ship the ChisaCode runtime', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(VENDOR_ROOT, '..', '..', 'package.json'), 'utf8'));
+  const prepareScript = fs.readFileSync(
+    path.join(VENDOR_ROOT, '..', '..', 'scripts', 'prepare-chisacode-remote.mjs'),
+    'utf8',
+  );
   assert.match(manifest.scripts.start, /prestart-ensure/);
   assert.match(manifest.scripts.pack, /prepare-chisacode-remote\.mjs --force --runtime/);
+  assert.match(prepareScript, /--install-links/);
   const resources = manifest.build.extraResources;
   assert.ok(resources.some((entry) => (
     entry.from === 'vendor/chisacode-remote'

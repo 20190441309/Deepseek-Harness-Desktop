@@ -65,6 +65,10 @@ if (force || mobileSourceMtime > mobileBuildMtime) {
 }
 
 if (buildRuntime) {
+  // npm otherwise represents local file dependencies as symlinks back into packages/.
+  // electron-builder does not preserve those links under extraResources, and npm does
+  // not assemble their transitive production dependencies in this standalone tree.
+  fs.rmSync(runtimeRoot, { recursive: true, force: true });
   fs.mkdirSync(runtimeRoot, { recursive: true });
   const manifest = {
     private: true,
@@ -83,7 +87,7 @@ if (buildRuntime) {
   console.log('[chisacode] assembling production daemon dependencies');
   run(
     npm,
-    ['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
+    ['install', '--install-links', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
     runtimeRoot,
   );
 }
