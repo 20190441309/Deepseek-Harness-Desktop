@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage, type AssistantMessage, type Message, type ToolResultMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { CallId, createAssistantMessage, createMessage, createToolResultMessage, createUserMessage, type AssistantMessage, type Message, type ToolResultMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import {
   Session,
   SessionId,
@@ -139,6 +139,27 @@ describe('normalizeToolTranscript', () => {
     })
     expect(normalized.messages[0]?.source).not.toHaveProperty('replayState')
     expect(normalized.messages[1]).toBe(goodResult)
+    expect(() => {
+      assertToolTranscriptValid(normalized.messages)
+    }).not.toThrow()
+  })
+
+  it('repairs a non-model assistant message without altering its source', () => {
+    const assistant = createMessage({
+      role: 'assistant' as const,
+      content: [
+        { type: 'tool-call' as const, id: CallId(''), name: 'read', arguments: '{}' },
+        { type: 'tool-call' as const, id: CallId('good'), name: 'read', arguments: '{}' },
+      ],
+      source: { kind: 'plugin' as const, plugin: 'relay' },
+    })
+    const normalized = normalizeToolTranscript([assistant, resultFor('good')], new Set([CallId('good')]))
+    expect(normalized.repaired).toBe(1)
+    expect(normalized.messages[0]).toMatchObject({
+      id: assistant.id,
+      content: [{ type: 'tool-call', id: CallId('good'), name: 'read' }],
+      source: { kind: 'plugin', plugin: 'relay' },
+    })
     expect(() => {
       assertToolTranscriptValid(normalized.messages)
     }).not.toThrow()
