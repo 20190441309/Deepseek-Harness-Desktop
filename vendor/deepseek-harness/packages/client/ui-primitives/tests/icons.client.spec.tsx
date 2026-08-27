@@ -43,6 +43,7 @@ describe('ic_ds_ icon set', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 16 16')
     expect(svg.getAttribute('fill')).toBe('none')
     expect(svg.querySelector('[stroke]')).toBeNull()
+    expect(svg.querySelector('[transform]')).toBeNull()
     expect([...svg.querySelectorAll('path')].every(path => path.getAttribute('fill') === 'currentColor')).toBe(true)
   })
 
