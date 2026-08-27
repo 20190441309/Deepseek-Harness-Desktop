@@ -25,6 +25,7 @@
 
 - 市场在设置内，无独立市场窗（见 [marketplace.md](marketplace.md)）。
 - 模型 / MCP / 技能写桌面 `dsh-home`，不写 `~/.dsh`（[dsh-home.md](dsh-home.md)）。
+- 设置侧栏导航按 section id 使用互异的 16px `currentColor` 线框图标，未知 id 回退齿轮；映射见[设置 section id 附录](../appendix/settings-sections.md)。
 
 ## 门槛
 

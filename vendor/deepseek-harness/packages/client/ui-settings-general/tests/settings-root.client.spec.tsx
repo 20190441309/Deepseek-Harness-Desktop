@@ -172,25 +172,37 @@ describe('SettingsPanel navigation', () => {
   })
 
   it('gives every section a nav glyph, distinct for the ids the shell knows', () => {
+    const known = [
+      ['general', 'General'],
+      ['interface', 'Interface'],
+      ['appearance', 'Appearance'],
+      ['models', 'Models'],
+      ['agent-presets', 'Agent presets'],
+      ['plugins', 'Plugins'],
+      ['skills', 'Skills'],
+      ['mcp', 'MCP'],
+      ['market', 'Market'],
+      ['remote', 'Remote'],
+      ['about', 'About'],
+      ['usage-stats', 'Usage stats'],
+    ] as const
     mount({
       rows: [
-        { id: 'general', order: 0, label: 'General' },
-        { id: 'models', order: 10, label: 'Models' },
-        { id: 'agent-presets', order: 20, label: 'Agent presets' },
-        { id: 'plugins', order: 30, label: 'Plugins' },
-        { id: 'contributed', order: 40, label: 'Contributed' },
+        ...known.map(([id, label], order) => ({ id, order, label })),
+        { id: 'contributed', order: known.length, label: 'Contributed' },
       ],
     })
     openPanel()
-    // Glyphs carry no id of their own, so the drawn paths are what tells them apart.
-    const glyphs = ['General', 'Models', 'Agent presets', 'Plugins', 'Contributed']
-      .map(name => screen.getByRole('button', { name }).querySelector('svg')?.innerHTML)
+    const glyphs = known.map(([, name]) => {
+      const svg = screen.getByRole('button', { name }).querySelector('svg')!
+      expect(svg.getAttribute('viewBox')).toBe('0 0 16 16')
+      expect(svg.innerHTML).not.toBe('')
+      return svg.innerHTML
+    })
+    const unknown = screen.getByRole('button', { name: 'Contributed' }).querySelector('svg')!
 
-    expect(glyphs.every(glyph => glyph !== undefined && glyph !== '')).toBe(true)
-    // The three ids the shell names get their own glyph; every other section —
-    // including one this package never heard of — shares the gear.
-    expect(new Set(glyphs.slice(0, 4)).size).toBe(4)
-    expect(glyphs[4]).toBe(glyphs[0])
+    expect(new Set(glyphs).size).toBe(known.length)
+    expect(unknown.innerHTML).toBe(glyphs[0])
   })
 
   it('switches the rendered section on nav click', () => {
