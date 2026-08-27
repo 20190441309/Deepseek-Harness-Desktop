@@ -7,6 +7,7 @@
  */
 
 import { assertNever } from './never.ts'
+import type { CallId } from './brand.ts'
 import { createMessage } from './message.ts'
 import type { Message, MessageSource } from './message.ts'
 import { requireValidToolCallIdentity } from './content.ts'

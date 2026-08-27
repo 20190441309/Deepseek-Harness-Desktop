@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { BlockAssembler, CallId, MALFORMED_RESPONSE_CODE, type StreamChunk } from '@deepseek-ai/dsh-llm'
 
+function expectMalformed(action: () => unknown, message: string): void {
+  try {
+    action()
+  } catch (error: unknown) {
+    expect(error).toMatchObject({
+      code: MALFORMED_RESPONSE_CODE,
+      message: expect.stringContaining(message),
+    })
+    return
+  }
+  expect.fail('expected malformed response error')
+}
+
 describe('BlockAssembler', () => {
   it('assembles interleaved text, reasoning, and tool-call deltas', () => {
     const chunks: StreamChunk[] = [
@@ -102,11 +115,8 @@ describe('BlockAssembler', () => {
 
   it('rejects a delta-only tool call instead of inventing an id or empty name', () => {
     const assembler = new BlockAssembler()
-    assembler.push({ type: 'tool-call-delta', index: 0, argumentsDelta: '{}' } as StreamChunk)
-    expect(() => assembler.blocks()).toThrow(expect.objectContaining({
-      code: MALFORMED_RESPONSE_CODE,
-      message: expect.stringContaining('call id'),
-    }))
+    assembler.push({ type: 'tool-call-delta', index: 0, argumentsDelta: '{}' })
+    expectMalformed(() => assembler.blocks(), 'call id')
   })
 
   it.each(['', 'with space', 'dot.name', 'x'.repeat(65)])(
@@ -118,10 +128,7 @@ describe('BlockAssembler', () => {
         index: 0,
         block: { type: 'tool-call', id: CallId('c1'), name, arguments: '{}' },
       })
-      expect(() => assembler.blocks()).toThrow(expect.objectContaining({
-        code: MALFORMED_RESPONSE_CODE,
-        message: expect.stringContaining('function name'),
-      }))
+      expectMalformed(() => assembler.blocks(), 'function name')
     },
   )
 
@@ -132,10 +139,7 @@ describe('BlockAssembler', () => {
       index: 0,
       block: { type: 'tool-call', id: CallId(''), name: 'echo', arguments: '{}' },
     })
-    expect(() => assembler.blocks()).toThrow(expect.objectContaining({
-      code: MALFORMED_RESPONSE_CODE,
-      message: expect.stringContaining('call id'),
-    }))
+    expectMalformed(() => assembler.blocks(), 'call id')
   })
 
   it('exposes usage via the getter when a usage chunk was received', () => {

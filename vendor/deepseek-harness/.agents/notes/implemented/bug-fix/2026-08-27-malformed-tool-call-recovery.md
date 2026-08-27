@@ -19,6 +19,14 @@ Tool-call identity has one shared contract: the provider call id is non-empty an
 - `Session.deriveMessages()` removes malformed calls and suppresses their results in projection. It preserves other content and valid calls, but drops adapter replay metadata from a changed message. Durable events remain untouched.
 - `ToolRuntime.register()` enforces the same name grammar at the producer boundary.
 
+## Alternatives considered
+
+**Reject only in `ToolRuntime.execute()`.** This is too late: the assistant call is already durable, and returning `UNKNOWN_TOOL` preserves the malformed identity in every later provider request.
+
+**Replace a missing name or id with a placeholder.** A fabricated identity can select no real capability and creates a false call/result pair. Classifying the response as malformed lets the bounded request-recovery policy obtain a valid response instead.
+
+**Rewrite poisoned session events.** Session events are append-only evidence. Repairing only the derived provider transcript recovers old sessions without changing durable history or tool-outcome records.
+
 ## Consequences
 
 New malformed responses retry without poisoning session history. Existing sessions containing empty-name calls recover on their next request. Direct consumers of `BlockAssembler` receive a structured protocol error and must handle it like any other failed model response.
