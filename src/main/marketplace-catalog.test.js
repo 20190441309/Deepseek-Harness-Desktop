@@ -471,6 +471,20 @@ test('a scope-renamed dropped plugin stays hidden (rename bypass closed)', async
   assert.equal(listed.items.some((item) => item.packageName === '@changfenhuang/dsh-genui'), false);
 });
 
+test('the shipped offline snapshot carries no dropped-family rows', () => {
+  // The snapshot exists so a first launch without network shows a non-empty
+  // Discover tab. Dropped rows would be filtered at render time anyway, so a
+  // retired plugin in the curated subset is pure dead weight — snapshot
+  // refreshes must not reintroduce one.
+  const { isDroppedPluginName } = require('./plugins');
+  const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'marketplace-registry-snapshot.json'), 'utf8'));
+  assert.ok(Array.isArray(snapshot.plugins) && snapshot.plugins.length > 0);
+  const dropped = snapshot.plugins.filter((row) => (
+    isDroppedPluginName(row.name) || (row.npm && isDroppedPluginName(row.npm))
+  ));
+  assert.deepEqual(dropped.map((row) => `${row.owner}/${row.name}`), []);
+});
+
 test('an oversized registry response is rejected and falls back', async () => {
   process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
   const { MAX_REGISTRY_BYTES, listMarketplace } = loadCatalog();

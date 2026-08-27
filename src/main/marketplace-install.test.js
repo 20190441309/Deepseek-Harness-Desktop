@@ -319,6 +319,13 @@ test('installMarketplacePlugin rejects an unknown catalog id before invoking the
 });
 
 test('installMarketplacePlugin rejects a DROPPED catalog plugin before invoking the CLI', async () => {
+  // The shipped offline snapshot carries no dropped rows (that invariant has
+  // its own test), so seed the dropped row through the disk registry — the
+  // live registry can always still list one.
+  writeDiskRegistry([{
+    ...githubRow('omdsh-dev', 'dsh-genui', 'https://github.com/omdsh-dev/dsh-genui', '@dsh-external/dsh-genui'),
+    npm: '@dsh-external/dsh-genui',
+  }]);
   const { calls, runPlugin } = recordRunner();
   const result = await installMarketplacePlugin(DROPPED_ID, { runPlugin });
   assert.equal(result.ok, false);

@@ -3,7 +3,7 @@
   "url": "https://awesome-dsh-plugin.com",
   "source": "https://github.com/awesome-dsh-plugin/awesome-dsh-plugin",
   "updated": "2026-08-18",
-  "count": 7,
+  "count": 6,
   "categories": {
     "ui": {
       "en": "UI Enhancements",
@@ -77,21 +77,6 @@
       "npm": null,
       "stars": 8,
       "install": "dsh plugin --profile web add github:0xsline/dsh-spotlight",
-      "added": "2026-08-13"
-    },
-    {
-      "name": "dsh-genui",
-      "owner": "omdsh-dev",
-      "url": "https://github.com/omdsh-dev/dsh-genui",
-      "page": "https://awesome-dsh-plugin.com/p/omdsh-dev/dsh-genui/",
-      "category": "ui",
-      "description": {
-        "en": "Interactive UI components rendered inline in replies.",
-        "zh": "助手回复内渲染交互式 UI 组件。"
-      },
-      "npm": "@dsh-external/dsh-genui",
-      "stars": 196,
-      "install": "dsh plugin --profile web add @dsh-external/dsh-genui",
       "added": "2026-08-13"
     },
     {
