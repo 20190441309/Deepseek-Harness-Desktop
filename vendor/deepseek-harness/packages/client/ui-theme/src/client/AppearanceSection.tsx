@@ -3,7 +3,7 @@
  * Registered as `settings.section` id `appearance` by this package.
  */
 import { useEffect, useState } from 'react'
-import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ThemeFamily } from '../theme-family.ts'
@@ -59,6 +59,8 @@ export interface AppearanceSectionInjected {
   previewTheme: (family: ThemeFamily | null) => void
   /** Persist glass-surface opacity. */
   setGlassOpacity: (value: number) => void
+  /** Persist the transparent-theme flag (透明主题). */
+  setTransparentTheme: (value: boolean) => void
   /** Persist wallpaper image and/or the two effect sliders. */
   setWallpaper: (
     patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>,
@@ -95,6 +97,7 @@ export function AppearanceSection({
   setCustomThemes,
   previewTheme,
   setGlassOpacity,
+  setTransparentTheme,
   setWallpaper,
   setWallpaperSources,
   setWallpaperFavorites,
@@ -107,6 +110,7 @@ export function AppearanceSection({
   const activeLightThemeId = useStore(s => s.activeLightThemeId)
   const activeDarkThemeId = useStore(s => s.activeDarkThemeId)
   const glassOpacity = useStore(s => s.glassOpacity)
+  const transparentTheme = useStore(s => s.transparentTheme)
   const wallpaperImage = useStore(s => s.wallpaperImage)
   const wallpaperBlur = useStore(s => s.wallpaperBlur)
   const wallpaperPixelate = useStore(s => s.wallpaperPixelate)
@@ -177,11 +181,25 @@ export function AppearanceSection({
           aria-valuemax={MAX_GLASS_OPACITY}
           aria-valuenow={glassOpacity}
           aria-label={t('glass.title')}
+          disabled={transparentTheme && wallpaperImage !== ''}
           onChange={(event) => { setGlassOpacity(Number(event.currentTarget.value)) }}
         />
         <Button type="button" variant="ghost" onClick={() => { setGlassOpacity(DEFAULT_GLASS_OPACITY) }}>
           {t('reset')}
         </Button>
+        <label className={css.switchRow}>
+          <Switch
+            checked={transparentTheme}
+            aria-label={t('glass.transparent')}
+            onChange={(event) => { setTransparentTheme(event.currentTarget.checked) }}
+          />
+          <span>{t('glass.transparent')}</span>
+        </label>
+        <p className={css.hint}>
+          {transparentTheme && wallpaperImage === ''
+            ? t('glass.transparentNeedsWallpaper')
+            : t('glass.transparentHint')}
+        </p>
       </section>
 
       <section className={css.block} aria-labelledby="appearance-type-heading">

@@ -23,11 +23,13 @@ import {
   DEFAULT_FAMILY_ID, type ThemeFamily, type ThemeTokens as FamilyTokens,
 } from '../theme-family.ts'
 import { listThemeFamilies, resolveThemeFamily } from '../builtin-families.ts'
-import { clampWallpaperEffect, isWallpaperDataUrl, mixWallpaperSurfaces } from '../wallpaper.ts'
+import {
+  TRANSPARENT_GLASS_SOLIDITY, clampWallpaperEffect, isWallpaperDataUrl, mixWallpaperSurfaces,
+} from '../wallpaper.ts'
 import {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, isThemePreference,
   THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
-  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE,
+  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, THEME_TRANSPARENT_FIELD,
   THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_BING_FIELD, THEME_WALLPAPER_CATALOGS_FIELD,
   THEME_WALLPAPER_FAVORITES_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
   THEME_WALLPAPER_SOURCES_FIELD,
@@ -106,6 +108,8 @@ export interface ThemeSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Transparent theme flag; effective only while a wallpaper is set. */
+  transparentTheme: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -380,6 +384,20 @@ export class ThemeRuntime {
   }
 
   /**
+   * Persist the transparent-theme flag (透明主题). While on and a wallpaper
+   * is set, every chrome surface drops to a 0% fill and the wallpaper dim
+   * mask is removed; the glass slider is bypassed. Without a wallpaper the
+   * flag is stored but the glass slider stays effective.
+   * @param transparentTheme - next flag value.
+   */
+  setTransparentTheme(transparentTheme: boolean): void {
+    if (this.settings.transparentTheme === transparentTheme) return
+    this.settings = { ...this.settings, transparentTheme }
+    this.queueWrite(THEME_TRANSPARENT_FIELD, transparentTheme)
+    this.publish()
+  }
+
+  /**
    * Persist wallpaper image and/or the two effect sliders.
    * @param patch - one or more wallpaper fields.
    */
@@ -547,6 +565,7 @@ export class ThemeRuntime {
       activeDarkThemeId: this.settings.activeDarkThemeId,
       customThemes: Object.freeze([...this.settings.customThemes]),
       glassOpacity: this.settings.glassOpacity,
+      transparentTheme: this.settings.transparentTheme,
       wallpaperImage: this.settings.wallpaperImage,
       wallpaperBlur: this.settings.wallpaperBlur,
       wallpaperPixelate: this.settings.wallpaperPixelate,
@@ -570,9 +589,16 @@ export class ThemeRuntime {
    */
   private composeActive(active: ThemeDefinition, mode: 'light' | 'dark'): ThemeDefinition {
     const tokens: ThemeTokens = { ...active.tokens }
-    tokens['--dsw-alias-glass-opacity'] = `${this.settings.glassOpacity}%`
-    if (isWallpaperDataUrl(this.settings.wallpaperImage)) {
-      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, this.settings.glassOpacity))
+    const wallpapered = isWallpaperDataUrl(this.settings.wallpaperImage)
+    // 透明主题 needs the wallpaper: fully transparent chrome over an opaque
+    // canvas would leave menus and dialogs invisible, so the flag is inert
+    // until an image is set.
+    const solidity = this.settings.transparentTheme && wallpapered
+      ? TRANSPARENT_GLASS_SOLIDITY
+      : this.settings.glassOpacity
+    tokens['--dsw-alias-glass-opacity'] = `${solidity}%`
+    if (wallpapered) {
+      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, solidity))
     }
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
@@ -594,6 +620,7 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.activeLightThemeId === right.activeLightThemeId
     && left.activeDarkThemeId === right.activeDarkThemeId
     && left.glassOpacity === right.glassOpacity
+    && left.transparentTheme === right.transparentTheme
     && left.wallpaperImage === right.wallpaperImage
     && left.wallpaperBlur === right.wallpaperBlur
     && left.wallpaperPixelate === right.wallpaperPixelate
@@ -673,6 +700,7 @@ export function apply(ctx: ClientContext): void {
       wallpaperImage: snapshot.wallpaperImage,
       wallpaperBlur: snapshot.wallpaperBlur,
       wallpaperPixelate: snapshot.wallpaperPixelate,
+      transparentTheme: snapshot.transparentTheme,
     })
   }
   extras(theme.getTheme())
@@ -695,6 +723,7 @@ export function apply(ctx: ClientContext): void {
       setCustomThemes: (families) => { theme.setCustomThemes(families) },
       previewTheme: (family) => { theme.setPreviewFamily(family) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
+      setTransparentTheme: (value) => { theme.setTransparentTheme(value) },
       setWallpaper: (patch) => { theme.setWallpaper(patch) },
       ...(desktopWallpaper ? {
         setWallpaperSources: (patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>) => {

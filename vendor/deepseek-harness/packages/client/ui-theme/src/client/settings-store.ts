@@ -26,6 +26,8 @@ export interface AppearanceSyncSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Transparent theme flag; effective only while a wallpaper is set. */
+  transparentTheme: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -70,6 +72,8 @@ export interface AppearanceRowState {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Transparent theme flag; effective only while a wallpaper is set. */
+  transparentTheme: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -113,6 +117,7 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   families: [],
   customThemes: [],
   glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+  transparentTheme: DEFAULT_THEME_SETTINGS.transparentTheme,
   wallpaperImage: '',
   wallpaperBlur: DEFAULT_THEME_SETTINGS.wallpaperBlur,
   wallpaperPixelate: DEFAULT_THEME_SETTINGS.wallpaperPixelate,
@@ -145,6 +150,7 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.families = snapshot.families
         d.customThemes = snapshot.customThemes
         d.glassOpacity = snapshot.glassOpacity
+        d.transparentTheme = snapshot.transparentTheme
         d.wallpaperImage = snapshot.wallpaperImage
         d.wallpaperBlur = snapshot.wallpaperBlur
         d.wallpaperPixelate = snapshot.wallpaperPixelate

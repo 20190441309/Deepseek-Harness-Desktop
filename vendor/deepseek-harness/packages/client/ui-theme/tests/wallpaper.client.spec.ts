@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
+  MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, TRANSPARENT_ATTR, TRANSPARENT_GLASS_SOLIDITY,
+  WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
   applyWallpaperLayer, clampWallpaperEffect, downscaleWallpaper, encodeWallpaperFile,
   isWallpaperDataUrl, mixWallpaperSurfaces, readFileAsDataUrl, wallpaperBlurPx,
   wallpaperCanvasSolidity, wallpaperPixelFactor,
@@ -76,6 +77,21 @@ describe('wallpaper helpers', () => {
     const css = readFileSync(join(process.cwd(), 'packages/client/ui-theme/src/styles/wallpaper.css'), 'utf8')
     expect(css).toMatch(/#dsh-wallpaper::after[\s\S]{0,220}--dsw-alias-bg-mask-1/)
     expect(css).not.toMatch(/--dsw-terminal-pane-blur/)
+  })
+
+  it('mixes every chrome surface to 0% at the transparent-theme solidity', () => {
+    const tokens = mixWallpaperSurfaces({}, 'light', TRANSPARENT_GLASS_SOLIDITY)
+    expect(tokens['--dsw-alias-bg-base']).toContain('0%')
+    expect(tokens['--dsw-alias-bg-layer-1']).toContain('0%')
+    expect(tokens['--dsw-alias-bg-layer-2']).toContain('0%')
+    expect(tokens['--dsw-specific-sidebar-fill']).toContain('0%')
+    expect(tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+  })
+
+  it('drops the wallpaper dim mask under the transparent-theme attribute', () => {
+    const css = readFileSync(join(process.cwd(), 'packages/client/ui-theme/src/styles/wallpaper.css'), 'utf8')
+    expect(css).toMatch(/html\[data-dsh-transparent\] #dsh-wallpaper::after[\s\S]{0,120}background: transparent/)
+    expect(TRANSPARENT_ATTR).toBe('data-dsh-transparent')
   })
 })
 

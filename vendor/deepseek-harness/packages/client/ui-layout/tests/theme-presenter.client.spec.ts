@@ -23,6 +23,7 @@ function snapshot(colorScheme: 'light' | 'dark', tokens: Record<string, string> 
     activeDarkThemeId: 'deepseek',
     customThemes: [],
     glassOpacity: 80,
+    transparentTheme: false,
     wallpaperImage: '',
     wallpaperBlur: 0,
     wallpaperPixelate: 0,

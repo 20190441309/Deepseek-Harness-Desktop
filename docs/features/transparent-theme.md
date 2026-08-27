@@ -1,0 +1,53 @@
+# Feature: 透明主题（Transparent theme）
+
+| Field | Value |
+| --- | --- |
+| **id** | `transparent-theme` |
+| **status** | `active` |
+| **last verified** | 2026-08-27 — vendor `pnpm run test:gui` 全绿（含 ui-theme 17 个 spec / 176 用例）；`tsc -b tsconfig.client.json` 与 main 相比零新增错误 |
+
+## User paths
+
+1. 设置 → 外观 → 「玻璃透明度」区块底部：「透明主题」开关。
+2. 已设背景图 + 开关开 → 侧栏、输入框、聊天画布、菜单、对话框、设置面板全部 0% 填充，壁纸压暗 mask 同时移除，壁纸色彩全量透出。
+3. 未设背景图时开关可以打开但不生效（提示「需要先设置背景图」），玻璃滑杆保持可用。
+4. 透明生效期间玻璃滑杆禁用（数值被旁路）；关掉开关立即恢复滑杆值。
+5. 可读性靠壁纸「毛玻璃程度 / 像素化」滑杆调节；提示文案指向毛玻璃。
+
+## Invariants
+
+- 持久化字段是 `ui-theme` 设置节的 `transparentTheme`（boolean，默认 false）；schema 在 `theme-settings.ts`。
+- **壁纸门控**：无有效壁纸 data URL 时 flag 惰性 —— `--dsw-alias-glass-opacity` 与表面混色仍走玻璃滑杆，否则菜单/对话框会在不透明画布上隐形。
+- 生效 = `mixWallpaperSurfaces(tokens, mode, TRANSPARENT_GLASS_SOLIDITY /* 0 */)` + `--dsw-alias-glass-opacity: 0%`；不是新皮肤，不新增 token 名。
+- 终端 pane（`--dsw-alias-terminal-pane`）保持实心回落 —— TUI SGR 不坐在壁纸玻璃上（沿用壁纸混色既有不变量）。
+- 根属性 `data-dsh-transparent`（`TRANSPARENT_ATTR`）只在「flag 开 + 壁纸活」时置上；`wallpaper.css` 借它把 `#dsh-wallpaper::after` 的 `--dsw-alias-bg-mask-1` 压暗层置透明。Modal / lightbox 的 mask-1 遮罩**不**受影响。
+- 启动脚本 payload（`buildThemeBootPayload`）在透明生效时嵌 0% 玻璃，避免预插件区间闪不透明 chrome。
+- 桌面启动器 / boot 页不感知此设置（launcher 用官方明暗表，规则见 desktop-launcher-product.mdc）。
+
+## Allowed touch
+
+- `vendor/deepseek-harness/packages/client/ui-theme/src/theme-settings.ts`、`wallpaper.ts`、`appearance-apply.ts`、`boot-theme.ts`
+- `vendor/deepseek-harness/packages/client/ui-theme/src/client/`（`index.ts` runtime、`AppearanceSection.tsx` + `.module.css`、`settings-store.ts`、`locales.ts`）
+- `vendor/deepseek-harness/packages/client/ui-theme/src/styles/wallpaper.css` — 仅 `data-dsh-transparent` 分支
+- `vendor/deepseek-harness/packages/client/ui-theme/tests/`（及 ui-layout `theme-presenter` spec 的快照字段）
+- 本卡
+
+## Do not touch
+
+- 不给 launcher / boot 页涂透明或壁纸色（`--boot-*` 与官方明暗表不动）
+- 不动 Modal / ImageLightbox / AppFrame 的 `--dsw-alias-bg-mask-1` 遮罩（对话框仍要可寻）
+- 不引入文字描边 / text-shadow 等第二套皮肤手段；可读性走毛玻璃滑杆
+- 不改玻璃滑杆的 40–100 范围或壁纸混色曲线本身
+
+## Gates
+
+| Kind | What |
+| --- | --- |
+| Automated | vendor `pnpm run test:gui`；重点 spec：`theme.client.spec.ts`（0% 混色 + 持久化）、`wallpaper.client.spec.ts`（mask 置透明 + 0% solidity）、`appearance-apply.client.spec.ts`（根属性门控）、`appearance-section.client.spec.tsx`（开关 + 滑杆禁用）、`boot-theme.client.spec.ts`（boot 0% 玻璃） |
+| Manual / QA | 设壁纸 → 开透明主题 → 侧栏/输入框/菜单全透、壁纸不再压暗；清壁纸 → 界面回不透明且提示需要壁纸 |
+
+## Sources
+
+- Design language: [docs/design-language.md](../design-language.md)
+- 上游 Agent Note（玻璃/壁纸混色背景）: [vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-14-theme-family-appearance-system.md](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-14-theme-family-appearance-system.md)
+- Implementation entry: `ThemeRuntime.setTransparentTheme` / `composeActive`（`ui-theme/src/client/index.ts`）、`TRANSPARENT_ATTR` / `TRANSPARENT_GLASS_SOLIDITY`（`ui-theme/src/wallpaper.ts`）
