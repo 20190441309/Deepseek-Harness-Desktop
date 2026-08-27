@@ -194,6 +194,95 @@ async function main() {
     );
   });
 
+  // —— stick-to-bottom: stream events must not fight reading history —— //
+  const emitTimelineText = (seq, text) => page.evaluate((eventSeq, eventText) => {
+    window.__qa.emitStream('agent-1', {
+      type: 'timeline',
+      item: { type: 'assistant_message', messageId: `m${eventSeq}`, text: eventText },
+    }, eventSeq);
+  }, seq, text);
+
+  await check('流事件：阅读历史时保持位置不拉底', async () => {
+    const before = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      log.scrollTop = 300;
+      return { rows: log.children.length, scrollTop: log.scrollTop };
+    });
+    await emitTimelineText(500, '阅读历史时到达的流事件');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#log .assistant')]
+        .some((node) => node.textContent.includes('阅读历史时到达的流事件')),
+      'stream row appended',
+    );
+    const after = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      return { rows: log.children.length, scrollTop: log.scrollTop };
+    });
+    assert(after.rows === before.rows + 1, `rows ${before.rows} → ${after.rows}`);
+    assert(after.scrollTop === before.scrollTop, `scrollTop yanked ${before.scrollTop} → ${after.scrollTop}`);
+  });
+
+  await check('流事件：位于底部时继续贴底', async () => {
+    await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      log.scrollTop = log.scrollHeight;
+    });
+    await emitTimelineText(501, '贴底时到达的流事件');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#log .assistant')]
+        .some((node) => node.textContent.includes('贴底时到达的流事件')),
+      'bottom stream row appended',
+    );
+    const gap = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      return log.scrollHeight - log.scrollTop - log.clientHeight;
+    });
+    assert(gap <= 2, `log not pinned to bottom, gap ${gap}`);
+  });
+
+  // —— openSession failure: stale timeline must clear —— //
+  await check('打开会话失败：清空旧内容并显示错误占位', async () => {
+    await page.click('#menu');
+    await page.evaluate(() => window.__qa.setFail('fetchAgentTimeline', 'timeline exploded'));
+    await clickByText(page, '#session-list .session', '会话 3');
+    await waitFor(
+      page,
+      () => Boolean(document.querySelector('#log .timeline-error')),
+      'error placeholder rendered',
+    );
+    const view = await page.evaluate(() => ({
+      rows: document.querySelector('#log').children.length,
+      placeholder: document.querySelector('#log .timeline-error')?.textContent || '',
+      staleAssistant: [...document.querySelectorAll('#log .assistant')].length,
+      banner: document.querySelector('#banner').textContent,
+      bannerHidden: document.querySelector('#banner').classList.contains('hidden'),
+    }));
+    assert(view.rows === 1, `stale rows still in log: ${view.rows}`);
+    assert(view.staleAssistant === 0, 'previous session rows leaked under the new session');
+    assert(view.placeholder.includes('载入会话失败'), `placeholder copy: ${view.placeholder}`);
+    assert(view.placeholder.includes('timeline exploded'), 'daemon error text missing from placeholder');
+    assert(!view.bannerHidden && view.banner.includes('timeline exploded'), 'banner missing');
+  });
+  await shot('mobile-web-phase3-open-failure');
+
+  await check('打开会话失败：重试恢复时间线并清 banner', async () => {
+    await clickByText(page, '#log .timeline-error button', '重试');
+    await waitFor(
+      page,
+      () => !document.querySelector('#log .timeline-error')
+        && document.querySelectorAll('#log > *').length >= 2,
+      'retry recovered the timeline',
+    );
+    const bannerHidden = await page.evaluate(() => document.querySelector('#banner').classList.contains('hidden'));
+    assert(bannerHidden, 'banner should clear after successful retry');
+    // Back to 会话 1 for the downstream checks.
+    await page.click('#menu');
+    await clickByText(page, '#session-list .session', '会话 1');
+    await waitFor(page, () => document.querySelectorAll('#log > *').length > 150, 'agent-1 reopened');
+  });
+
   // —— slash commands —— //
   await check('斜杠命令：/ 弹出、过滤、插入', async () => {
     await page.focus('#draft');

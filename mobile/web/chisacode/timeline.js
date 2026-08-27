@@ -78,8 +78,33 @@ function mergeOlderEntries(older, current) {
   return [...fresh, ...(current || [])];
 }
 
+/**
+ * Decide the scroll anchor for a log re-render. Explicit anchors pass
+ * through unchanged; 'auto' sticks to the bottom only when the viewport was
+ * already at (or near) the newest row before the render, so stream events
+ * appended while the user is reading history hold the current position
+ * instead of yanking the log back down.
+ * @param {object} options
+ * @param {'auto'|'bottom'|'preserve'|'hold'} [options.anchor]
+ * @param {number} options.scrollTop pre-render scrollTop
+ * @param {number} options.scrollHeight pre-render scrollHeight
+ * @param {number} options.clientHeight viewport height
+ * @param {number} [options.threshold] px slack still counted as "at bottom"
+ * @returns {'bottom'|'preserve'|'hold'}
+ */
+function resolveLogAnchor({
+  anchor = 'auto', scrollTop = 0, scrollHeight = 0, clientHeight = 0, threshold = 48,
+} = {}) {
+  if (anchor === 'bottom' || anchor === 'preserve' || anchor === 'hold') {
+    return anchor;
+  }
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+  return distanceFromBottom <= threshold ? 'bottom' : 'hold';
+}
+
 export {
   fetchOlderTimeline,
   mergeOlderEntries,
+  resolveLogAnchor,
   timelinePageInfo,
 };

@@ -75,6 +75,7 @@ import {
 import {
   fetchOlderTimeline,
   mergeOlderEntries,
+  resolveLogAnchor,
   timelinePageInfo,
 } from './chisacode/timeline.js';
 import {
@@ -192,6 +193,10 @@ const state = {
   agentsLoadingMore: false,
   timelinePage: { startCursor: null, hasOlder: false },
   timelineLoadingOlder: false,
+  timelineLoading: false,
+  // Daemon error from the open session's timeline fetch; renders an in-log
+  // placeholder with retry instead of leaving stale rows on screen.
+  timelineError: '',
   sessionMenu: '',
   sessionConfirm: null,
   sessionRename: null,
@@ -689,19 +694,56 @@ function logRowNode(row) {
   return node;
 }
 
+/** In-log placeholder when the open session's timeline fetch failed. */
+function timelineErrorNode() {
+  const node = document.createElement('div');
+  node.className = 'timeline-error';
+  const text = document.createElement('p');
+  text.className = 'log-error';
+  text.textContent = `载入会话失败：${state.timelineError}`;
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'ghost-btn';
+  retry.textContent = '重试';
+  retry.addEventListener('click', () => {
+    showBanner('');
+    openSession(state.sessionId).catch((error) => showBanner(error?.message || '电脑没有响应'));
+  });
+  node.append(text, retry);
+  return node;
+}
+
 /**
- * @param {{ anchor?: 'bottom' | 'preserve' }} options 'preserve' keeps the
- * visual scroll position across a prepend (load-older), 'bottom' follows the
- * newest message.
+ * @param {{ anchor?: 'auto' | 'bottom' | 'preserve' | 'hold' }} options
+ * 'preserve' keeps the visual scroll position across a prepend (load-older),
+ * 'bottom' follows the newest message, 'hold' keeps scrollTop as-is across an
+ * append, and 'auto' (default) resolves to 'bottom' only when the viewport
+ * was already at the bottom — stream events must not pull a user reading
+ * history back down.
  */
-function renderLog({ anchor = 'bottom' } = {}) {
+function renderLog({ anchor = 'auto' } = {}) {
   const rows = foldEvents(state.events);
-  blankEl.classList.toggle('hidden', rows.length > 0);
-  logEl.classList.toggle('hidden', rows.length === 0);
+  const placeholder = Boolean(state.timelineError) || state.timelineLoading;
+  blankEl.classList.toggle('hidden', rows.length > 0 || placeholder);
+  logEl.classList.toggle('hidden', rows.length === 0 && !placeholder);
   const prevHeight = logEl.scrollHeight;
   const prevTop = logEl.scrollTop;
+  const resolved = resolveLogAnchor({
+    anchor,
+    scrollTop: prevTop,
+    scrollHeight: prevHeight,
+    clientHeight: logEl.clientHeight,
+  });
   const nodes = [];
-  if (state.transport === 'chisacode' && state.timelinePage.hasOlder) {
+  if (state.timelineError) {
+    nodes.push(timelineErrorNode());
+  } else if (state.timelineLoading && !rows.length) {
+    const loading = document.createElement('p');
+    loading.className = 'meta-row';
+    loading.textContent = '正在载入会话…';
+    nodes.push(loading);
+  }
+  if (!state.timelineError && state.transport === 'chisacode' && state.timelinePage.hasOlder) {
     const older = document.createElement('button');
     older.type = 'button';
     older.className = 'load-older';
@@ -710,11 +752,15 @@ function renderLog({ anchor = 'bottom' } = {}) {
     older.addEventListener('click', () => loadOlderMessages());
     nodes.push(older);
   }
-  nodes.push(...rows.map(logRowNode));
+  if (!state.timelineError) {
+    nodes.push(...rows.map(logRowNode));
+  }
   logEl.replaceChildren(...nodes);
   if (!rows.length) return;
-  if (anchor === 'preserve') {
+  if (resolved === 'preserve') {
     logEl.scrollTop = prevTop + (logEl.scrollHeight - prevHeight);
+  } else if (resolved === 'hold') {
+    logEl.scrollTop = prevTop;
   } else {
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -858,6 +904,8 @@ function forceLogout(message) {
   state.agentsLoadingMore = false;
   state.timelinePage = { startCursor: null, hasOlder: false };
   state.timelineLoadingOlder = false;
+  state.timelineLoading = false;
+  state.timelineError = '';
   state.sessionMenu = '';
   state.sessionConfirm = null;
   state.sessionRename = null;
@@ -983,6 +1031,8 @@ function bindChisaCodeEvents(paired) {
         state.events = [];
         state.pendingApprovals = [];
         state.timelinePage = { startCursor: null, hasOlder: false };
+        state.timelineError = '';
+        state.timelineLoading = false;
         renderLog();
         renderApproval();
         renderComposer();
@@ -1065,13 +1115,15 @@ async function runReconnectResync() {
     if (timeline) {
       state.events = Array.isArray(timeline.entries) ? timeline.entries : [];
       state.timelinePage = timelinePageInfo(timeline);
+      state.timelineError = '';
+      state.timelineLoading = false;
       if (timeline.agent) updateChisaCodeAgent(timeline.agent);
       state.pendingApprovals = approvalsFromAgent(timeline.agent);
       state.cwd = currentRow()?.cwd || state.cwd;
     }
     renderSessions();
     renderHeader();
-    renderLog();
+    renderLog({ anchor: 'bottom' });
     renderApproval();
     renderComposer();
     setToast('已重新连接并同步');
@@ -1161,14 +1213,33 @@ async function openSession(sessionId) {
     state.attachments = draftStore?.loadAttachments(sessionId) || [];
     state.timelinePage = { startCursor: null, hasOlder: false };
     state.timelineLoadingOlder = false;
+    // Clear the previous session's rows before the fetch: if it fails, stale
+    // content must not sit under the new session's header.
+    state.events = [];
+    state.pendingApprovals = [];
+    state.timelineError = '';
+    state.timelineLoading = true;
     renderComposer();
     renderSlashPop();
-    const history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
-      direction: 'tail',
-      limit: 200,
-      projection: 'projected',
-    });
+    renderLog({ anchor: 'bottom' });
+    renderApproval();
+    renderHeader();
+    let history;
+    try {
+      history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
+        direction: 'tail',
+        limit: 200,
+        projection: 'projected',
+      });
+    } catch (error) {
+      if (state.sessionId !== sessionId) return;
+      state.timelineLoading = false;
+      state.timelineError = error?.message || '电脑没有响应';
+      renderLog({ anchor: 'bottom' });
+      throw error;
+    }
     if (state.sessionId !== sessionId) return;
+    state.timelineLoading = false;
     state.events = Array.isArray(history?.entries) ? history.entries : [];
     state.timelinePage = timelinePageInfo(history);
     // Capture before updateChisaCodeAgent, which already writes the new cwd.
@@ -1180,7 +1251,7 @@ async function openSession(sessionId) {
     if (state.cwd !== previousCwd) resetWorkPanes();
     renderHeader();
     renderSessions();
-    renderLog();
+    renderLog({ anchor: 'bottom' });
     renderApproval();
     renderComposer();
     return;
@@ -1194,7 +1265,7 @@ async function openSession(sessionId) {
   }
   renderHeader();
   renderSessions();
-  renderLog();
+  renderLog({ anchor: 'bottom' });
   renderApproval();
 }
 
@@ -1308,6 +1379,8 @@ function clearSessionView(sessionId) {
   state.events = [];
   state.pendingApprovals = [];
   state.timelinePage = { startCursor: null, hasOlder: false };
+  state.timelineError = '';
+  state.timelineLoading = false;
   renderLog();
   renderApproval();
   renderComposer();

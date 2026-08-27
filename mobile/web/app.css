@@ -632,6 +632,13 @@ button { cursor: pointer; }
   color: var(--dsw-alias-state-error-primary);
   font-size: 13px; line-height: 20px; white-space: pre-wrap;
 }
+/* openSession timeline-fetch failure placeholder (error text + retry). */
+.timeline-error { display: flex; flex-direction: column; gap: 10px; margin: auto 0; }
+.timeline-error .log-error { margin: 0; }
+.timeline-error .ghost-btn {
+  align-self: center; height: 32px; padding: 0 18px; border-radius: 16px;
+  color: var(--dsw-alias-label-secondary); font-size: 13px;
+}
 .todo-card, .changes-card {
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px;
   padding: 10px 12px; background: var(--dsw-alias-bg-layer-1);
