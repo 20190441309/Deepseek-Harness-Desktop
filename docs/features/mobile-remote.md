@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 审查修复：config 测试对齐 ChisaCode endpoint；SPA shell/respond 门闩；Android 清除旧 HTTP 凭据。 |
+| **last verified** | 2026-08-27 — CI 修复：测试对齐 v2 接线（ChisaCodeRemote 取代 RemoteGateway、配对链接明示、devicesId 文案）；chisacode dist 未入库（嵌套 .gitignore），相关用例在 fresh clone 显式 skip；#offer= 用例 t.after 防泄漏挂起。 |
 
 ## User paths
 

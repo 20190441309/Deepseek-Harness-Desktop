@@ -7,11 +7,14 @@ const os = require('os');
 const path = require('path');
 const { ChisaCodeRemote, loadServerApi, readDefaults, VENDOR_ROOT } = require('./chisacode-remote');
 
-test('vendor tree includes full daemon packages (not a hello slice)', () => {
-  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'server', 'dist', 'server', 'server', 'exports.js')));
+// dist/ 是构建产物（vendor 内嵌 .gitignore 挡住了提交），fresh clone / CI 没有。
+// 打包机通过 build:server-deps 产出后随 extraResources 发货；这里只在有产物时验证。
+const VENDOR_BUILT = fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'server', 'dist', 'server', 'server', 'exports.js'));
+const VENDOR_BUILD_HINT = 'vendor/chisacode-remote dist 缺失（npm run build:server-deps && build:server @ vendor/chisacode-remote）';
+
+test('vendor tree includes full daemon sources and AGPL shipping docs', () => {
+  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'server', 'src', 'server', 'exports.ts')));
   assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'relay', 'src', 'cloudflare-adapter.ts')));
-  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'client', 'dist', 'index.js')));
-  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'protocol', 'dist', 'connection-offer.js')));
   assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'WORKER-CHECKLIST.md')));
   assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'AGPL-SHIPPING.md')));
   const { DEFAULT_RELAY_ENDPOINT } = require('../shared/lan');
@@ -19,6 +22,12 @@ test('vendor tree includes full daemon packages (not a hello slice)', () => {
   const wrangler = fs.readFileSync(path.join(VENDOR_ROOT, 'packages', 'relay', 'wrangler.toml'), 'utf8');
   assert.doesNotMatch(wrangler, /10ed39a1dbf316e30abd0c409bed40d6/);
   assert.doesNotMatch(wrangler, /chisacode\.sh/);
+});
+
+test('built vendor tree includes daemon dist packages (not a hello slice)', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, () => {
+  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'server', 'dist', 'server', 'server', 'exports.js')));
+  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'client', 'dist', 'index.js')));
+  assert.ok(fs.existsSync(path.join(VENDOR_ROOT, 'packages', 'protocol', 'dist', 'connection-offer.js')));
 });
 
 test('defaults bake in desktop Away relay from lan.js constants (packaged path)', () => {
@@ -115,11 +124,15 @@ test('ChisaCodeRemote never uses lan.pairingUrl for product QR', async () => {
   }
 });
 
-test('loadServerApi exposes createChisaCodeDaemon + generateLocalPairingOffer', async () => {
+test('loadServerApi exposes createChisaCodeDaemon + generateLocalPairingOffer', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, async () => {
   const api = await loadServerApi();
   assert.equal(typeof api.createChisaCodeDaemon, 'function');
   assert.equal(typeof api.generateLocalPairingOffer, 'function');
   assert.equal(typeof api.createRootLogger, 'function');
+});
+
+test('loadServerApi fails loud with the vendor-build hint when dist is absent', { skip: VENDOR_BUILT ? 'dist 已构建，缺失路径不可达' : false }, async () => {
+  await assert.rejects(loadServerApi(), /ChisaCode server export missing/);
 });
 
 test('ChisaCodeRemote snapshot is chisacode-v2 and has no host-token wall', () => {
