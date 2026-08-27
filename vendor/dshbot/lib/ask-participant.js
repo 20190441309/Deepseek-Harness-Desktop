@@ -175,12 +175,17 @@ export function registerAskParticipant(ctx) {
           botId: { type: 'string', required: true },
           name: { type: 'string', required: true },
           text: { type: 'string', required: true },
+          texts: { type: 'array', items: { type: 'string' }, required: true },
         },
       },
-      render: (_args, value) => [{
-        type: 'text',
-        text: value.text,
-      }],
+      // One text block per send_room_message delivery (Grok parity: two
+      // deliveries in one member turn stay two visible room messages).
+      render: (_args, value) => {
+        const texts = Array.isArray(value.texts) && value.texts.length > 0
+          ? value.texts
+          : [value.text];
+        return texts.map((text) => ({ type: 'text', text: String(text ?? '') }));
+      },
     },
     presentCall: (args) => {
       const items = ctx.settings.get(NS)?.items ?? [];
@@ -212,7 +217,7 @@ export function registerAskParticipant(ctx) {
       const epoch = currentTurnEpoch(roomSessionId);
       const isCurrent = isCurrentFactory(roomSessionId, epoch);
       if (!isCurrent()) {
-        return { botId: String(args.botId ?? ''), name: 'Bot', text: '' };
+        return { botId: String(args.botId ?? ''), name: 'Bot', text: '', texts: [] };
       }
 
       const catalog = ctx.settings.get(NS);
@@ -253,23 +258,28 @@ export function registerAskParticipant(ctx) {
           }));
           try {
             if (!isCurrent()) {
-              return { botId: bot.id, name: bot.name, text: '' };
+              return { botId: bot.id, name: bot.name, text: '', texts: [] };
             }
             const result = await run.result;
             if (!isCurrent()) {
-              return { botId: bot.id, name: bot.name, text: '' };
+              return { botId: bot.id, name: bot.name, text: '', texts: [] };
             }
             const childEvents = run.localAgent?.session?.events
               ?? ctx.sessions?.get?.(run.id)?.events;
             const deliveries = extractSendRoomDeliveries(childEvents);
             if (deliveries.length > 0) {
-              return { botId: bot.id, name: bot.name, text: deliveries.join('\n\n') };
+              return {
+                botId: bot.id,
+                name: bot.name,
+                text: deliveries.join('\n\n'),
+                texts: deliveries,
+              };
             }
             const bare = blocksText(result.output);
             if (isPassContent(bare)) {
-              return { botId: bot.id, name: bot.name, text: '' };
+              return { botId: bot.id, name: bot.name, text: '', texts: [] };
             }
-            return { botId: bot.id, name: bot.name, text: '' };
+            return { botId: bot.id, name: bot.name, text: '', texts: [] };
           } finally {
             await run.dispose();
           }

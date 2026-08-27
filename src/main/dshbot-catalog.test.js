@@ -250,6 +250,11 @@ function asked(callId, botId) {
 }
 
 function answered(callId, text) {
+  return answeredMany(callId, [text]);
+}
+
+// One rendered text block per send_room_message delivery (Grok parity).
+function answeredMany(callId, texts) {
   return {
     type: 'tool/result',
     data: {
@@ -258,7 +263,7 @@ function answered(callId, text) {
         content: [{
           type: 'tool-result',
           toolCallId: callId,
-          content: [{ type: 'text', text }],
+          content: texts.map((text) => ({ type: 'text', text })),
         }],
       },
     },
@@ -282,6 +287,39 @@ test('groupTranscript folds named user and member lines in log order', async () 
     '[2]',
     '我也在',
   ].join('\n'));
+});
+
+test('two same-turn deliveries stay separate history entries (Grok parity)', async () => {
+  const { eventsToGroupHistory, groupTranscript } = await loadCatalog();
+  const items = roomCatalog();
+  const events = [
+    userSaid('请讨论'),
+    asked('c1', 'a'),
+    answeredMany('c1', ['第一条', '第二条']),
+  ];
+  const history = eventsToGroupHistory(events, items);
+  assert.deepEqual(history, [
+    { speaker: { kind: 'user' }, content: '请讨论' },
+    { speaker: { kind: 'member', id: 'a', name: '1' }, content: '第一条' },
+    { speaker: { kind: 'member', id: 'a', name: '1' }, content: '第二条' },
+  ]);
+  assert.equal(groupTranscript(events, items), [
+    '[用户]',
+    '请讨论',
+    '[1]',
+    '第一条',
+    '[1]',
+    '第二条',
+  ].join('\n'));
+  // A pass block among deliveries is still silent.
+  assert.equal(
+    eventsToGroupHistory([
+      userSaid('请讨论'),
+      asked('c1', 'a'),
+      answeredMany('c1', ['(pass)', '真话']),
+    ], items).filter((message) => message.speaker.kind === 'member').length,
+    1,
+  );
 });
 
 test('parseRoomNext / stripRoomNext only strip legacy NEXT for display', async () => {
@@ -333,7 +371,7 @@ test('memberTurnOrPass converts a non-abort member failure to silent pass', asyn
       await memberTurnOrPass({ id: 'a', name: 'Agent A' }, async () => {
         throw new Error('member model failed');
       }),
-      { botId: 'a', name: 'Agent A', text: '' },
+      { botId: 'a', name: 'Agent A', text: '', texts: [] },
     );
   });
 });
@@ -413,22 +451,45 @@ test('nextRoomSpeakerId ignores legacy NEXT footers for scheduling', async () =>
   ]), 'c');
 });
 
-test('nextRoomSpeakerId counts attempts and hard-clamps maxSpeaks and maxRounds', async () => {
+test('nextRoomSpeakerId caps visible deliveries only and hard-clamps maxRounds', async () => {
   const { memberTurnAttempts, nextRoomSpeakerId } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
+  // Grok parity: a dangling (replayed) attempt advances the round order but
+  // does NOT consume the maxSpeaks cap — only visible deliveries do.
   const danglingAttempt = [userSaid('请讨论'), asked('c1', 'a')];
   assert.deepEqual(memberTurnAttempts(danglingAttempt), [{
     botId: 'a',
     text: '',
     completed: false,
   }]);
-  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), undefined);
+  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), 'b');
+  // A pass attempt does not consume the cap either.
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+  ], { maxSpeaks: 1 }), 'b');
+  // Two visible deliveries hit maxSpeaks=2.
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '一'),
     asked('c2', 'b'), answered('c2', '二'),
   ], { maxSpeaks: 2 }), undefined);
+  // A pass between visible deliveries is not counted.
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '一'),
+    asked('c2', 'b'), answered('c2', '(pass)'),
+  ], { maxSpeaks: 2 }), 'c');
+  // A two-message member turn consumes two of the cap.
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answeredMany('c1', ['第一', '第二']),
+  ], { maxSpeaks: 2 }), undefined);
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answeredMany('c1', ['第一', '第二']),
+  ], { maxSpeaks: 3 }), 'b');
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '一'),
@@ -573,7 +634,10 @@ test('client registers the bots tab, overlay, and ask_participant toolview', () 
   assert.match(src, /dshbot-roster/);
   assert.equal(src.includes('resultText || instruction'), false);
   assert.match(src, /kind === "tool-result"/);
-  assert.match(src, /textFromContent\(block\.content\)/);
+  // One bubble text per delivery; the old joined-text extractor is gone.
+  assert.match(src, /textsFromContent\(block\.content\)/);
+  assert.match(src, /visibleTexts\.map\(/);
+  assert.equal(src.includes('function textFromContent'), false);
   assert.equal(src.includes('block?.result ?? block?.output'), false);
   assert.equal(src.includes('AvatarEditor'), false);
   assert.match(src, /name: "everyone"/);
@@ -658,6 +722,10 @@ test('room preset tool registers ask_participant as a one-shot child', () => {
   assert.match(src, /send_room_message/);
   assert.match(src, /extractSendRoomDeliveries/);
   assert.match(src, /GROUP_MAX_MESSAGES_PER_TURN/);
+  // Deliveries stay separate: array output + one rendered block per message.
+  assert.match(src, /texts: deliveries/);
+  assert.match(src, /texts: \{ type: 'array', items: \{ type: 'string' \}, required: true \}/);
+  assert.match(src, /texts\.map\(\(text\) => \(\{ type: 'text', text: String\(text \?\? ''\) \}\)\)/);
   assert.match(src, /isPassContent/);
   assert.match(src, /allow: \['send_room_message'\]/);
   assert.match(src, /restrict\(\{ allow: \['ask_participant'\] \}\)/);

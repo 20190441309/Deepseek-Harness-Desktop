@@ -68,8 +68,8 @@ export const memberPersona = new AsyncLocalStorage();
 /**
  * Convert a failed member operation to the protocol's silent pass result.
  * @param {{ id?: string, name?: string }} bot
- * @param {() => Promise<{ botId: string, name: string, text: string }>} operation
- * @returns {Promise<{ botId: string, name: string, text: string }>}
+ * @param {() => Promise<{ botId: string, name: string, text: string, texts: string[] }>} operation
+ * @returns {Promise<{ botId: string, name: string, text: string, texts: string[] }>}
  */
 export async function memberTurnOrPass(bot, operation) {
   try {
@@ -79,6 +79,7 @@ export async function memberTurnOrPass(bot, operation) {
       botId: String(bot?.id ?? ''),
       name: String(bot?.name ?? '') || 'Bot',
       text: '',
+      texts: [],
     };
   }
 }
@@ -308,23 +309,33 @@ export function lastUserText(messages) {
 }
 
 /**
+ * Per-block text bodies with tool-result nesting flattened. One rendered
+ * text block stays one entry, so a two-delivery member turn does not
+ * collapse into a single string.
+ * @param {unknown} content
+ * @returns {string[]}
+ */
+function contentTexts(content) {
+  if (!Array.isArray(content)) return [];
+  const texts = [];
+  for (const block of content) {
+    if (block?.type === 'text' && typeof block.text === 'string') {
+      texts.push(block.text);
+      continue;
+    }
+    if (block?.type === 'tool-result' && Array.isArray(block.content)) {
+      texts.push(...contentTexts(block.content));
+    }
+  }
+  return texts;
+}
+
+/**
  * @param {unknown} content
  * @returns {string}
  */
 function contentText(content) {
-  if (!Array.isArray(content)) return '';
-  const parts = [];
-  for (const block of content) {
-    if (block?.type === 'text' && typeof block.text === 'string') {
-      parts.push(block.text);
-      continue;
-    }
-    if (block?.type === 'tool-result' && Array.isArray(block.content)) {
-      const nested = contentText(block.content);
-      if (nested) parts.push(nested);
-    }
-  }
-  return parts.join('');
+  return contentTexts(content).join('');
 }
 
 /**
@@ -427,8 +438,10 @@ function lastUserMessageIndex(events) {
 }
 
 /**
- * ask_participant attempts after the latest user message. A call without a
- * result is a pass attempt, so restart replay cannot bypass the turn cap.
+ * ask_participant attempts after the latest user message. Attempts drive the
+ * round-robin order (a call without a result reads as a pass, so restart
+ * replay advances the queue instead of re-asking); the maxSpeaks cap counts
+ * visible deliveries only (see nextRoomSpeakerId).
  * @param {readonly object[] | undefined} events
  * @returns {{ botId: string, text: string, completed: boolean }[]}
  */
@@ -500,12 +513,16 @@ export function eventsToGroupHistory(events, items) {
       const callId = event.data?.message?.source?.callId;
       const author = namesByCall.get(callId);
       if (!author?.id) continue;
-      const text = memberVisibleText(contentText(event.data.message?.content));
-      if (text) {
-        messages.push({
-          speaker: { kind: 'member', id: author.id, name: author.name },
-          content: text,
-        });
+      // Grok parity: each send_room_message delivery is its own visible
+      // history entry; a two-message member turn must not collapse into one.
+      for (const raw of contentTexts(event.data.message?.content)) {
+        const text = memberVisibleText(raw);
+        if (text) {
+          messages.push({
+            speaker: { kind: 'member', id: author.id, name: author.name },
+            content: text,
+          });
+        }
       }
     }
   }
@@ -612,8 +629,16 @@ export function nextRoomSpeakerId(items, room, events, limits = {}) {
   if (members.length === 0) return undefined;
   const responders = resolveResponders(members, history).map((member) => member.id);
   if (responders.length === 0) return undefined;
+  // Grok parity: maxSpeaks caps visible delivered messages only. Pass turns,
+  // member failures, and dangling replayed calls do not consume it; total
+  // attempts stay bounded by the all-pass-round stop and maxRounds below.
+  let delivered = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i].speaker.kind === 'user') break;
+    delivered += 1;
+  }
+  if (delivered >= maxSpeaks) return undefined;
   const turns = memberTurnAttempts(events);
-  if (turns.length >= maxSpeaks) return undefined;
 
   let round = 0;
   let queue = orderRoundSpeakers(responders, round);

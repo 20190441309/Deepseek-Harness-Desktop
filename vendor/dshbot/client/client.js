@@ -1125,8 +1125,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     );
   }
 
-  function textFromContent(content) {
-    if (!Array.isArray(content)) return "";
+  function textsFromContent(content) {
+    if (!Array.isArray(content)) return [];
     const parts = [];
     for (const part of content) {
       if (part?.type === "text" && typeof part.text === "string") {
@@ -1134,11 +1134,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         continue;
       }
       if (part?.type === "tool-result" && Array.isArray(part.content)) {
-        const nested = textFromContent(part.content);
-        if (nested) parts.push(nested);
+        parts.push(...textsFromContent(part.content));
       }
     }
-    return parts.join("");
+    return parts;
   }
 
   function isPassContent(text) {
@@ -1168,10 +1167,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     } catch {
       botId = "";
     }
-    const resultText = settled
-      ? (textFromContent(block.content) || textFromContent(block.resultView?.content))
-      : "";
-    const visible = memberVisibleText(resultText);
+    // Each rendered text block is one send_room_message delivery (Grok
+    // parity): a two-message member turn stays two visible room messages.
+    const ownTexts = settled ? textsFromContent(block.content) : [];
+    const resultTexts = ownTexts.length > 0
+      ? ownTexts
+      : (settled ? textsFromContent(block.resultView?.content) : []);
+    const visibleTexts = resultTexts.map(memberVisibleText).filter(Boolean);
+    const visible = visibleTexts.length > 0;
     const resultName = (typeof block?.resultView?.title === "string" && block.resultView.title)
       || (typeof block?.callView?.title === "string" && block.callView.title)
       || "";
@@ -1187,10 +1190,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       h(AvatarView, { avatar: catalogAvatar, seed: botId, thinking, size: 32 }),
       h("div", { className: "dshbot-bubble-body" },
         h("div", { className: "dshbot-bubble-name" }, title),
-        h("div", {
-          className: "dshbot-bubble-text",
-          "data-pending": thinking ? "true" : undefined,
-        }, settled ? visible : thinkingLabel),
+        settled
+          ? visibleTexts.map((text, index) => h("div", {
+            key: index,
+            className: "dshbot-bubble-text",
+          }, text))
+          : h("div", {
+            className: "dshbot-bubble-text",
+            "data-pending": "true",
+          }, thinkingLabel),
       ),
     );
   }
