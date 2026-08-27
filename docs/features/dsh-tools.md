@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-tools` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — host TypeScript compilation, 322 focused Harness tests, and 1,118 desktop tests |
+| **last verified** | 2026-08-27 — host TypeScript compilation, 454 focused Harness tests (llm, adapters, agent-loop, session, tools, sqlite persistence), per-file 100% coverage on every changed Harness source file, keyless snapshot suite delta-neutral vs main, and 1,118 desktop tests |
 
 ## User paths
 
@@ -25,6 +25,7 @@
 - `vendor/deepseek-harness/packages/core/agent-loop/` — pre-persistence request-failure guard and tests.
 - `vendor/deepseek-harness/packages/core/session/` — poisoned-transcript projection repair and tests.
 - `vendor/deepseek-harness/packages/session/session-persistence-sqlite/src/codec.ts` — exact optional-field reconstruction for persisted tool-call chunks.
+- `vendor/deepseek-harness/examples/acp-agent/tests/snapshots/empty-response-retry/session.jsonl` — keyless snapshot fixture recording the default retryable-code set.
 - `vendor/deepseek-harness/packages/core/tools/` — registration validation and tests.
 - `vendor/deepseek-harness/packages/extensions/tool-cordis/src/api-catalog.ts` — generated public type catalog.
 - `vendor/deepseek-harness/.agents/notes/` — Harness decision record.
@@ -40,8 +41,8 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | Focused Vitest suites for llm, adapters, agent-loop, session, and tools; changed-package typecheck/lint |
-| Manual / QA | Existing sessions containing empty-name tool calls can send a subsequent prompt without `unknown tool ""` |
+| Automated | Focused Vitest suites for llm, adapters, agent-loop, session, tools, and sqlite persistence; per-file 100% coverage on changed Harness sources; keyless snapshot replay delta-neutral vs main; changed-package typecheck/lint |
+| Manual / QA | Real-machine checklist (needs `DEEPSEEK_API_KEY`): 1) open a pre-fix session whose log contains an empty-name tool call and send a prompt — reply arrives with no `unknown tool ""`; 2) run a normal tool-using turn — calls execute and persist as before; 3) real-API e2e (`pnpm run test:e2e`) for provider adapters |
 
 ## Sources
 
