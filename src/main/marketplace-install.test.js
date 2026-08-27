@@ -30,6 +30,7 @@ const {
   installPlugin,
   installImportPlugin,
   parseImportRegistrySpec,
+  isDroppedInstallSpec,
   uninstallPlugin,
   installMarketplacePlugin,
 } = require('./marketplace-install');
@@ -263,6 +264,44 @@ test('installImportPlugin rejects first-party dsh-im (Settings → Remote channe
   assert.equal(result.ok, false);
   assert.match(result.error, /退役/);
   assert.equal(calls.length, 0);
+});
+
+test('dropped basenames are rejected under any scope or GitHub owner (rename bypass)', async () => {
+  const { calls, runPlugin } = recordRunner();
+  for (const spec of [
+    '@changfenhuang/dsh-genui@1.0.0',
+    'dsh-genui@1.0.0',
+    '@another-scope/dsh-im@9.9.9',
+  ]) {
+    const result = await installImportPlugin(spec, { runPlugin });
+    assert.equal(result.ok, false, `spec should be rejected: ${spec}`);
+    assert.match(result.error, /退役/);
+  }
+  for (const spec of [
+    'github:changfenhuang/dsh-genui',
+    'github:someone/dsh-genui#0123456789abcdef0123456789abcdef01234567',
+  ]) {
+    const viaImport = await installImportPlugin(spec, { runPlugin });
+    assert.equal(viaImport.ok, false, `import spec should be rejected: ${spec}`);
+    assert.match(viaImport.error, /退役/);
+    const viaGithub = await installPlugin(spec, { runPlugin });
+    assert.equal(viaGithub.ok, false, `github spec should be rejected: ${spec}`);
+    assert.match(viaGithub.error, /退役/);
+  }
+  // The `#path:` monorepo channel only exists for curated catalog rows;
+  // its dropped-basename gate is the shared isDroppedInstallSpec predicate.
+  assert.equal(isDroppedInstallSpec('github:acme/monorepo#path:/plugins/dsh-genui'), true);
+  assert.equal(isDroppedInstallSpec('github:acme/monorepo#path:/plugins/dsh-genui-viewer'), false);
+  assert.equal(calls.length, 0);
+});
+
+test('segment-exact dropped matching keeps different packages installable', async () => {
+  const { calls, runPlugin } = recordRunner();
+  const bridge = await installPlugin('github:acme/dsh-im-bridge', { runPlugin });
+  assert.equal(bridge.ok, true);
+  const viewer = await installImportPlugin('dsh-genui-viewer@1.0.0', { runPlugin });
+  assert.equal(viewer.ok, true);
+  assert.equal(calls.length, 2);
 });
 
 test('uninstallPlugin rejects shell syntax before invoking the CLI', async () => {

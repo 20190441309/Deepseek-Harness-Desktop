@@ -19,6 +19,42 @@ const DROPPED = [
   'dsh-im',
   'xmanrui-dsh-im',
 ];
+// Exact unscoped basenames of the dropped families. A rename that only moves
+// the package to a new scope (e.g. `@changfenhuang/dsh-genui`) or a new
+// GitHub owner keeps the basename, so basename matching closes the rename
+// bypass. Segment-exact only — `dsh-genui-viewer` is a different package.
+const DROPPED_BASENAMES = [
+  'dsh-genui',
+  'dsh-plugin-yet-another-subagent',
+  'dshmarket',
+  'dsh-im',
+  'xmanrui-dsh-im',
+];
+
+/** The npm name without its scope (`@scope/name` → `name`). */
+function unscopedName(name) {
+  const text = String(name || '').trim();
+  if (text.startsWith('@')) {
+    const slash = text.indexOf('/');
+    return slash === -1 ? text : text.slice(slash + 1);
+  }
+  return text;
+}
+
+/**
+ * Whether a package name belongs to a dropped plugin family: an exact
+ * `DROPPED` entry, or any scope-rename whose unscoped basename matches a
+ * dropped basename exactly.
+ * @param {string} name - npm package name (scoped or bare).
+ * @returns {boolean}
+ */
+function isDroppedPluginName(name) {
+  const text = String(name || '').trim();
+  if (!text) {
+    return false;
+  }
+  return DROPPED.includes(text) || DROPPED_BASENAMES.includes(unscopedName(text));
+}
 const PATCH_BEGIN = '# --- dshd-gui-plugin-toggles ---';
 const PATCH_END = '# --- end dshd-gui-plugin-toggles ---';
 const DESKTOP_INSTALL_BEGIN = '# --- dshd-gui-desktop-install ---';
@@ -278,8 +314,8 @@ function stripDroppedPlugins() {
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
   let changed = false;
   if (manifest.dependencies) {
-    for (const name of DROPPED) {
-      if (Object.prototype.hasOwnProperty.call(manifest.dependencies, name)) {
+    for (const name of Object.keys(manifest.dependencies)) {
+      if (isDroppedPluginName(name)) {
         delete manifest.dependencies[name];
         changed = true;
       }
@@ -287,7 +323,7 @@ function stripDroppedPlugins() {
   }
   const current = manifest.dsh?.profile?.bundles;
   if (Array.isArray(current)) {
-    const bundles = current.filter((name) => !DROPPED.includes(name));
+    const bundles = current.filter((name) => !isDroppedPluginName(name));
     if (bundles.length !== current.length) {
       manifest.dsh = {
         ...manifest.dsh,
@@ -325,7 +361,7 @@ function listInstalledPlugins() {
         name,
         spec: String(spec || ''),
         bundle: bundles.includes(name),
-        dropped: DROPPED.includes(name),
+        dropped: isDroppedPluginName(name),
       })),
       bundles,
     };
@@ -421,6 +457,9 @@ function setBundleEnabled(name, enabled, options = {}) {
 module.exports = {
   PROFILE,
   DROPPED,
+  DROPPED_BASENAMES,
+  unscopedName,
+  isDroppedPluginName,
   OFFICIAL_TEMPLATE_BUNDLES,
   webProfileDir,
   stripDroppedPlugins,

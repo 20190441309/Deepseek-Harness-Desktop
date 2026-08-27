@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { DROPPED } = require('./plugins');
+const { DROPPED, isDroppedPluginName } = require('./plugins');
 const { isValidPackageName } = require('../host/install-dsh-plugin-client');
 const { isAllowedMarketplaceSpec } = require('./marketplace-spec');
 
@@ -9,6 +9,10 @@ const DEFAULT_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
 const CACHE_VERSION = 3;
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 4000;
+// Upper bound on the registry download (the complete body, enforced while
+// streaming): the live plugins.json is ~1–2 MB for ~2300 rows, so 8 MiB
+// leaves headroom while a runaway or hostile endpoint cannot exhaust memory.
+const MAX_REGISTRY_BYTES = 8 * 1024 * 1024;
 const USER_AGENT = 'Deepseek-Harness-Desktop';
 const SNAPSHOT_PATH = path.join(__dirname, 'marketplace-registry-snapshot.json');
 const WARNING_FRESH_CACHE = '正在使用一小时内的本地插件目录。';
@@ -191,7 +195,12 @@ function mapPlugin(plugin, locale) {
 }
 
 function isDropped(item) {
-  return DROPPED.includes(item.id) || DROPPED.includes(item.packageName);
+  // Basename matching (isDroppedPluginName + the repo segment) closes the
+  // rename bypass: a dropped plugin republished under a new npm scope or
+  // GitHub owner (e.g. `@changfenhuang/dsh-genui`) stays hidden.
+  return DROPPED.includes(item.id)
+    || isDroppedPluginName(item.packageName)
+    || isDroppedPluginName(item.repo);
 }
 
 function buildCategories(registry, items, locale) {
@@ -292,6 +301,44 @@ function githubHeaders(token) {
   return headers;
 }
 
+/**
+ * Read a fetch Response body as UTF-8 text, aborting as soon as the
+ * accumulated bytes exceed maxBytes — the cap holds even when the server
+ * sends no content-length (chunked responses).
+ * @param {Response} response
+ * @param {number} maxBytes
+ * @returns {Promise<string>}
+ */
+async function readBodyCapped(response, maxBytes) {
+  const declared = Number(response.headers?.get?.('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error('插件目录响应过大');
+  }
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const text = await response.text();
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+      throw new Error('插件目录响应过大');
+    }
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error('插件目录响应过大');
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, size).toString('utf8');
+}
+
 async function fetchRegistry() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -300,10 +347,10 @@ async function fetchRegistry() {
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
-    const text = await response.text();
     if (!response.ok) {
       throw new Error(`插件目录请求失败（${response.status}）`);
     }
+    const text = await readBodyCapped(response, MAX_REGISTRY_BYTES);
     let body = null;
     try {
       body = text ? JSON.parse(text) : null;
@@ -430,6 +477,7 @@ async function resolveCommitSha(owner, repo, ref, token) {
 }
 
 module.exports = {
+  MAX_REGISTRY_BYTES,
   listMarketplace,
   getMarketplacePlugin,
   resolveCommitSha,
