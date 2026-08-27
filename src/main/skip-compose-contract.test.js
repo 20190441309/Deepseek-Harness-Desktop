@@ -16,47 +16,68 @@ const path = require('node:path');
 const {
   CANARY_ID,
   INSTALL_ID,
+  IM_ID,
   composeContractProblems,
   composeContractRounds,
   runSkipComposeContract,
 } = require('../../scripts/check-skip-compose-contract');
 
+const DESKTOP_ROWS = `- id: ${INSTALL_ID}\n- id: ${IM_ID}\n`;
+
 test('composeContractProblems demands positive evidence before canary absence', () => {
-  // Healthy skip dump: install row present, canary gone.
-  assert.deepEqual(composeContractProblems('skip', `- id: ${INSTALL_ID}\n`), []);
-  // Healthy full dump: both present.
+  // Healthy skip dump: desktop rows present, canary gone.
+  assert.deepEqual(composeContractProblems('skip', DESKTOP_ROWS), []);
+  // Healthy full dump: all present.
   assert.deepEqual(
-    composeContractProblems('full', `- id: ${CANARY_ID}\n- id: ${INSTALL_ID}\n`),
+    composeContractProblems('full', `- id: ${CANARY_ID}\n${DESKTOP_ROWS}`),
     [],
   );
-  // Empty/truncated dump must fail on the missing install row, not pass
+  // Empty/truncated dump must fail on the missing desktop rows, not pass
   // because the canary vanished with everything else.
   const empty = composeContractProblems('skip', '');
-  assert.equal(empty.length, 1);
+  assert.equal(empty.length, 2);
   assert.match(empty[0], new RegExp(INSTALL_ID));
+  assert.match(empty[1], new RegExp(IM_ID));
   // Skip round that still composes the user layer is the core violation.
-  const resurrect = composeContractProblems('skip', `- id: ${INSTALL_ID}\n- id: ${CANARY_ID}\n`);
+  const resurrect = composeContractProblems('skip', `${DESKTOP_ROWS}- id: ${CANARY_ID}\n`);
   assert.equal(resurrect.length, 1);
   assert.match(resurrect[0], /--skip-user-plugins 未生效/);
   // Full round without the canary means the canary probe itself is broken.
-  const brokenProbe = composeContractProblems('full', `- id: ${INSTALL_ID}\n`);
+  const brokenProbe = composeContractProblems('full', DESKTOP_ROWS);
   assert.equal(brokenProbe.length, 1);
   assert.match(brokenProbe[0], /canary/);
-  // A second install row means a stale managed block composed next to the
+  // A second desktop row means a stale managed block composed next to the
   // overlay — the CLI's insert does not dedupe by id.
-  const doubled = composeContractProblems('full', `- id: ${CANARY_ID}\n- id: ${INSTALL_ID}\n- id: ${INSTALL_ID}\n`);
-  assert.equal(doubled.length, 1);
-  assert.match(doubled[0], /双挂载/);
+  const doubledInstall = composeContractProblems('full', `- id: ${CANARY_ID}\n${DESKTOP_ROWS}- id: ${INSTALL_ID}\n`);
+  assert.equal(doubledInstall.length, 1);
+  assert.match(doubledInstall[0], /双挂载/);
+  const doubledIm = composeContractProblems('full', `- id: ${CANARY_ID}\n${DESKTOP_ROWS}- id: ${IM_ID}\n`);
+  assert.equal(doubledIm.length, 1);
+  assert.match(doubledIm[0], /dsh-im/);
+  assert.match(doubledIm[0], /双挂载/);
+  // Missing dsh-im alone is a violation too (built-in must ride every start).
+  const missingIm = composeContractProblems('skip', `- id: ${INSTALL_ID}\n`);
+  assert.equal(missingIm.length, 1);
+  assert.match(missingIm[0], new RegExp(IM_ID));
 });
 
-test('composeContractRounds passes the desktop overlay on BOTH rounds in grammar-prefix order', () => {
-  const rounds = composeContractRounds('/h/apps/cli/lib/bin.js', '/p/desktop-install.patch.yml');
+test('composeContractRounds passes every desktop overlay on BOTH rounds in grammar-prefix order', () => {
+  const rounds = composeContractRounds('/h/apps/cli/lib/bin.js', [
+    '/p/desktop-install.patch.yml',
+    '/p/desktop-dsh-im.patch.yml',
+  ]);
   assert.deepEqual(rounds.map((row) => row.round), ['skip', 'full']);
   assert.deepEqual(rounds[0].args, [
-    '/h/apps/cli/lib/bin.js', 'web', '--skip-user-plugins', '--patch', '/p/desktop-install.patch.yml', '--dump-config',
+    '/h/apps/cli/lib/bin.js', 'web', '--skip-user-plugins',
+    '--patch', '/p/desktop-install.patch.yml',
+    '--patch', '/p/desktop-dsh-im.patch.yml',
+    '--dump-config',
   ]);
   assert.deepEqual(rounds[1].args, [
-    '/h/apps/cli/lib/bin.js', 'web', '--patch', '/p/desktop-install.patch.yml', '--dump-config',
+    '/h/apps/cli/lib/bin.js', 'web',
+    '--patch', '/p/desktop-install.patch.yml',
+    '--patch', '/p/desktop-dsh-im.patch.yml',
+    '--dump-config',
   ]);
 });
 
@@ -68,14 +89,18 @@ function fakeHarnessRoot(t) {
   return root;
 }
 
-test('runSkipComposeContract replays the managed-block migration and passes the overlay on both rounds', (t) => {
+function healthyStdout(args) {
+  const skip = args.includes('--skip-user-plugins');
+  return skip ? DESKTOP_ROWS : `- id: ${CANARY_ID}\n${DESKTOP_ROWS}`;
+}
+
+test('runSkipComposeContract replays the managed-block migration and passes both overlays on both rounds', (t) => {
   const root = fakeHarnessRoot(t);
   const calls = [];
   const result = runSkipComposeContract(root, {
     spawnSync: (nodeBin, args, options) => {
       calls.push({ nodeBin, args, options });
-      const skip = args.includes('--skip-user-plugins');
-      return { status: 0, stdout: skip ? `- id: ${INSTALL_ID}\n` : `- id: ${CANARY_ID}\n- id: ${INSTALL_ID}\n` };
+      return { status: 0, stdout: healthyStdout(args) };
     },
   });
   assert.deepEqual(result, { ok: true, rounds: 2 });
@@ -85,19 +110,22 @@ test('runSkipComposeContract replays the managed-block migration and passes the 
   assert.equal(skipCall.args[1], 'web');
   assert.equal(skipCall.args[2], '--skip-user-plugins');
   assert.equal(skipCall.args[3], '--patch');
-  // The overlay is generated by the REAL ensureDesktopInstallPlugin inside
-  // the temp home — including the migration that strips the seeded managed
-  // block while keeping the canary user row (asserted inside the run).
+  // The overlays are generated by the REAL ensures inside the temp home —
+  // including the migration that strips the seeded managed blocks while
+  // keeping the canary user row (asserted inside the run).
   const home = skipCall.options.env.DSH_HOME;
   assert.ok(home && home.startsWith(os.tmpdir()));
-  const overlay = path.join(home, 'profiles', 'web', 'desktop-plugins', 'install-dsh-plugin', 'desktop-install.patch.yml');
-  assert.equal(skipCall.args[4], overlay);
-  assert.equal(skipCall.args[5], '--dump-config');
+  const installOverlay = path.join(home, 'profiles', 'web', 'desktop-plugins', 'install-dsh-plugin', 'desktop-install.patch.yml');
+  const imOverlay = path.join(home, 'profiles', 'web', 'desktop-plugins', 'dsh-im', 'desktop-dsh-im.patch.yml');
+  assert.equal(skipCall.args[4], installOverlay);
+  assert.equal(skipCall.args[5], '--patch');
+  assert.equal(skipCall.args[6], imOverlay);
+  assert.equal(skipCall.args[7], '--dump-config');
   // dsh-home rule: the child composes only against the throwaway home.
   assert.equal(skipCall.options.env.DSHD_HOME, undefined);
   assert.equal(skipCall.options.env.DSH_HARNESS_ROOT, undefined);
-  // Full starts carry the overlay too — mirroring the production argv.
-  assert.deepEqual(fullCall.args.slice(1), ['web', '--patch', overlay, '--dump-config']);
+  // Full starts carry both overlays too — mirroring the production argv.
+  assert.deepEqual(fullCall.args.slice(1), ['web', '--patch', installOverlay, '--patch', imOverlay, '--dump-config']);
   // The throwaway home is removed after the run.
   assert.equal(fs.existsSync(home), false);
 });
@@ -111,8 +139,8 @@ test('runSkipComposeContract fails when the full round composes the install row 
         return {
           status: 0,
           stdout: skip
-            ? `- id: ${INSTALL_ID}\n`
-            : `- id: ${CANARY_ID}\n- id: ${INSTALL_ID}\n- id: ${INSTALL_ID}\n`,
+            ? DESKTOP_ROWS
+            : `- id: ${CANARY_ID}\n${DESKTOP_ROWS}- id: ${INSTALL_ID}\n`,
         };
       },
     }),
@@ -120,11 +148,27 @@ test('runSkipComposeContract fails when the full round composes the install row 
   );
 });
 
+test('runSkipComposeContract fails when the skip round drops the dsh-im row', (t) => {
+  const root = fakeHarnessRoot(t);
+  assert.throws(
+    () => runSkipComposeContract(root, {
+      spawnSync: (nodeBin, args) => {
+        const skip = args.includes('--skip-user-plugins');
+        return {
+          status: 0,
+          stdout: skip ? `- id: ${INSTALL_ID}\n` : `- id: ${CANARY_ID}\n${DESKTOP_ROWS}`,
+        };
+      },
+    }),
+    new RegExp(IM_ID),
+  );
+});
+
 test('runSkipComposeContract fails on user-layer resurrection under skip', (t) => {
   const root = fakeHarnessRoot(t);
   assert.throws(
     () => runSkipComposeContract(root, {
-      spawnSync: () => ({ status: 0, stdout: `- id: ${INSTALL_ID}\n- id: ${CANARY_ID}\n` }),
+      spawnSync: () => ({ status: 0, stdout: `${DESKTOP_ROWS}- id: ${CANARY_ID}\n` }),
     }),
     /--skip-user-plugins 未生效/,
   );

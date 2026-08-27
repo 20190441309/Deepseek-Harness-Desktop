@@ -1083,6 +1083,31 @@ test('disable-plugin restarts harness when kernel is ready without startDesktop'
   }
 });
 
+test('disable-plugin rejects desktop built-in dsh-im aliases without writing config', async () => {
+  const ipc = loadIpc({
+    dsh: {
+      state: 'ready',
+      logs: [],
+      snapshot: () => ({ state: 'ready' }),
+    },
+  });
+  try {
+    for (const alias of ['@xmanrui/dsh-im', 'dsh-im', 'xmanrui-dsh-im']) {
+      const result = await ipc.invoke('shell:disable-plugin', launcherEvent(), alias);
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'desktop-builtin');
+    }
+    const batch = await ipc.invoke('shell:disable-plugins', launcherEvent(), ['user-pack', 'dsh-im']);
+    assert.equal(batch.ok, false);
+    assert.equal(batch.error, 'desktop-builtin');
+    assert.equal(batch.name, 'dsh-im');
+    assert.equal(ipc.saveConfigCalls.length, 0);
+    assert.equal(ipc.startHarness(), 0);
+  } finally {
+    ipc.restore();
+  }
+});
+
 test('disable-plugin skips harness restart when kernel is idle', async () => {
   const ipc = loadIpc({
     dsh: {

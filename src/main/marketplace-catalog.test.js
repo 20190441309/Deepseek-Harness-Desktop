@@ -433,6 +433,79 @@ test('listMarketplace hides DROPPED packages; getMarketplacePlugin still returns
   assert.equal(getMarketplacePlugin('missing/plugin'), null);
 });
 
+test('a scope-renamed dropped plugin stays hidden (rename bypass closed)', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  const renamed = {
+    ...LIVE_REGISTRY,
+    plugins: [
+      ...LIVE_REGISTRY.plugins,
+      {
+        name: 'dsh-genui',
+        owner: 'changfenhuang',
+        url: 'https://github.com/changfenhuang/dsh-genui',
+        category: 'ui',
+        description: { en: 'Renamed genui.', zh: '改名后的 genui。' },
+        npm: '@changfenhuang/dsh-genui',
+        stars: 1,
+        install: 'dsh plugin --profile web add @changfenhuang/dsh-genui',
+        added: '2026-08-27',
+      },
+      {
+        name: 'dsh-genui',
+        owner: 'no-npm-fork',
+        url: 'https://github.com/no-npm-fork/dsh-genui',
+        category: 'ui',
+        description: { en: 'GitHub-only genui fork.', zh: '仅 GitHub 的 genui fork。' },
+        npm: null,
+        stars: 1,
+        install: 'dsh plugin --profile web add github:no-npm-fork/dsh-genui',
+        added: '2026-08-27',
+      },
+    ],
+  };
+  mockFetch(async () => jsonResponse(renamed));
+  const { listMarketplace } = loadCatalog();
+  const listed = await listMarketplace({ refresh: true });
+  assert.equal(byId(listed.items, 'changfenhuang/dsh-genui'), undefined);
+  assert.equal(byId(listed.items, 'no-npm-fork/dsh-genui'), undefined);
+  assert.equal(listed.items.some((item) => item.packageName === '@changfenhuang/dsh-genui'), false);
+});
+
+test('the shipped offline snapshot carries no dropped-family rows', () => {
+  // The snapshot exists so a first launch without network shows a non-empty
+  // Discover tab. Dropped rows would be filtered at render time anyway, so a
+  // retired plugin in the curated subset is pure dead weight — snapshot
+  // refreshes must not reintroduce one.
+  const { isDroppedPluginName } = require('./plugins');
+  const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'marketplace-registry-snapshot.json'), 'utf8'));
+  assert.ok(Array.isArray(snapshot.plugins) && snapshot.plugins.length > 0);
+  const dropped = snapshot.plugins.filter((row) => (
+    isDroppedPluginName(row.name) || (row.npm && isDroppedPluginName(row.npm))
+  ));
+  assert.deepEqual(dropped.map((row) => `${row.owner}/${row.name}`), []);
+});
+
+test('an oversized registry response is rejected and falls back', async () => {
+  process.env.DSHD_MARKETPLACE_REGISTRY_URL = FIXTURE_URL;
+  const { MAX_REGISTRY_BYTES, listMarketplace } = loadCatalog();
+  mockFetch(async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: (name) => (name === 'content-length' ? String(MAX_REGISTRY_BYTES + 1) : null) },
+    text: async () => { throw new Error('must not read an oversized body'); },
+  }));
+  const declared = await listMarketplace({ refresh: true });
+  assert.notEqual(declared.source, 'live');
+  assert.match(declared.warning, /插件目录响应过大/);
+
+  delete require.cache[catalogPath];
+  const catalog2 = loadCatalog();
+  mockFetch(async () => jsonResponse(`{"plugins": ["${'x'.repeat(catalog2.MAX_REGISTRY_BYTES)}"]}`));
+  const chunked = await catalog2.listMarketplace({ refresh: true });
+  assert.notEqual(chunked.source, 'live');
+  assert.match(chunked.warning, /插件目录响应过大/);
+});
+
 test('fetch uses the curated registry URL, not GitHub topic search', async () => {
   const calls = mockFetch(async () => jsonResponse(LIVE_REGISTRY));
   const { listMarketplace } = loadCatalog();

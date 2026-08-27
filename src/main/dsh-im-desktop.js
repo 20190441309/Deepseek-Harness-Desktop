@@ -4,16 +4,22 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { missingRuntimeFiles } = require('./plugin-runtime-files');
-const { webProfileDir, upsertManagedBlock, stripBlockFromFile } = require('./plugins');
+const { webProfileDir, stripBlockFromFile } = require('./plugins');
 
 /** npm package name (also used for market/forensics aliases). */
 const DSH_IM_PACKAGE = '@xmanrui/dsh-im';
 /** Scoped path under profile node_modules / legacy desktop-plugins. */
 const DSH_IM_DIR = path.join('@xmanrui', 'dsh-im');
+/** Legacy managed-block markers earlier desktop versions wrote into the
+ * user-owned cordis.patch.yml; ensure only strips them (migration). */
 const DSH_IM_BEGIN = '# --- dshd-gui-dsh-im ---';
 const DSH_IM_END = '# --- end dshd-gui-dsh-im ---';
-/** Disable / forensics / market aliases. */
+/** Forensics / market / DROPPED aliases (dsh-im is desktop built-in: the
+ * aliases are stripped from the disable list, never honored). */
 const DSH_IM_ALIASES = [DSH_IM_PACKAGE, 'dsh-im', 'xmanrui-dsh-im'];
+/** Loader insert id used by both the legacy managed block and the overlay. */
+const DSH_IM_INSERT_ID = 'xmanrui-dsh-im';
+const DSH_IM_OVERLAY_FILENAME = 'desktop-dsh-im.patch.yml';
 
 function defaultSourceDir() {
   try {
@@ -75,18 +81,27 @@ function linkIntoProfileModules(sourceDir, profileDir) {
 }
 
 /**
- * Wire first-party `@xmanrui/dsh-im` from vendor (or packaged resources) via a
- * managed cordis package-name insert + profile node_modules junction to vendor.
- * Does not soft-copy into desktop-plugins.
+ * Wire first-party `@xmanrui/dsh-im` from vendor (or packaged resources):
+ * a desktop-owned `--patch` overlay (`desktop-plugins/dsh-im/
+ * desktop-dsh-im.patch.yml`) carries the package-name insert, and a profile
+ * node_modules junction to vendor makes the name resolvable. The overlay
+ * rides EVERY start (full and skip) — dsh-im is desktop built-in Remote
+ * channels, not a user plugin, so the disable list never applies (config
+ * normalization strips the aliases). The profile's `cordis.patch.yml` is
+ * user-owned: this function only strips the managed block earlier desktop
+ * versions wrote there and never writes one back; the strip and the overlay
+ * write happen in the same call before every spawn so no start can compose
+ * both copies (the CLI's `insert` does not dedupe by id).
  *
- * @param {{ sourceDir?: string, profileDir?: string, disabledPlugins?: string[] }} [options]
+ * @param {{ sourceDir?: string, profileDir?: string }} [options]
  * @returns {{
  *   ok: boolean,
  *   added?: boolean,
- *   disabled?: boolean,
  *   sourceDir?: string|null,
  *   href?: string,
  *   patchFile?: string,
+ *   overlayFile?: string,
+ *   patchChanged?: boolean,
  *   error?: string,
  * }}
  */
@@ -97,16 +112,15 @@ function ensureDesktopDshIm(options = {}) {
   }
   const profileDir = options.profileDir || webProfileDir();
   const patchFile = path.join(profileDir, 'cordis.patch.yml');
-  const disabled = require('./config').readDisabledPlugins(options);
-  if (disabled.some((name) => DSH_IM_ALIASES.includes(name))) {
-    stripBlockFromFile(patchFile, DSH_IM_BEGIN, DSH_IM_END);
-    removeLegacyDesktopCopy(profileDir);
-    return { ok: true, added: false, sourceDir: null, disabled: true };
-  }
+  // Migration: earlier desktop versions upserted a managed block into the
+  // user-owned cordis.patch.yml. Strip it on every start regardless of the
+  // outcome below — a stale copy composed next to the overlay double-mounts.
+  const patchChanged = stripBlockFromFile(patchFile, DSH_IM_BEGIN, DSH_IM_END);
 
   const missing = missingRuntimeFiles(sourceDir);
   if (missing.length) {
-    // Do NOT strip the insert and pretend success — caller must fail start.
+    // Broken vendor runtime is desktop damage — caller must fail the start
+    // (skip cannot fix it); never pretend success with a stale mount.
     return {
       ok: false,
       added: false,
@@ -121,20 +135,33 @@ function ensureDesktopDshIm(options = {}) {
   // Loader rejects directory file:// imports (ERR_UNSUPPORTED_DIR_IMPORT).
   // Resolve by package name via the junction into profile node_modules —
   // still first-party vendor, never a soft desktop-plugins copy.
-  const body = [
+  const destDir = path.join(profileDir, 'desktop-plugins', 'dsh-im');
+  fs.mkdirSync(destDir, { recursive: true });
+  const overlayFile = path.join(destDir, DSH_IM_OVERLAY_FILENAME);
+  const overlayContents = [
+    '# Desktop-managed overlay passed to EVERY start (full and skip) via',
+    '# --patch: only the built-in dsh-im insert, never the profile user layer.',
+    '# Regenerated on every start; do not edit.',
     '- insert:',
-    '    - id: xmanrui-dsh-im',
+    `    - id: ${DSH_IM_INSERT_ID}`,
     `      name: ${JSON.stringify(DSH_IM_PACKAGE)}`,
+    '',
   ].join('\n');
-  const existed = fs.existsSync(patchFile)
-    && fs.readFileSync(patchFile, 'utf8').includes(DSH_IM_BEGIN);
-  upsertManagedBlock(patchFile, DSH_IM_BEGIN, DSH_IM_END, body);
+  const existed = fs.existsSync(overlayFile);
+  const existing = existed ? fs.readFileSync(overlayFile, 'utf8') : '';
+  if (existing !== overlayContents) {
+    const tmp = `${overlayFile}.tmp`;
+    fs.writeFileSync(tmp, overlayContents, 'utf8');
+    fs.renameSync(tmp, overlayFile);
+  }
   return {
     ok: true,
     added: !existed,
     sourceDir,
     href: pathToFileURL(sourceDir).href,
     patchFile,
+    overlayFile,
+    patchChanged,
   };
 }
 
@@ -154,6 +181,8 @@ module.exports = {
   DSH_IM_BEGIN,
   DSH_IM_END,
   DSH_IM_ALIASES,
+  DSH_IM_INSERT_ID,
+  DSH_IM_OVERLAY_FILENAME,
   withoutDshImAliases,
   ensureDesktopDshIm,
   ensureDshImPlugin,

@@ -55,6 +55,13 @@ type AllowBuildsAsk = { item: MarketItem; keys: string[] } | null
 
 const PROGRESS_LINES = 6
 
+/**
+ * Discover cards rendered per page. The curated registry carries thousands of
+ * rows; mounting them all at once stalls the settings panel, so the pane
+ * renders one page and grows on demand through the show-more button.
+ */
+export const DISCOVER_PAGE_SIZE = 60
+
 /** The installed package name backing one catalog row, or null. */
 function installedNameFor(item: MarketItem, plugins: InstalledPlugin[]): string | null {
   if (item.packageName && plugins.some(row => row.name === item.packageName)) {
@@ -167,6 +174,7 @@ export function MarketSection({
   const [tab, setTab] = useState<Tab>('discover')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
+  const [visibleCount, setVisibleCount] = useState(DISCOVER_PAGE_SIZE)
   const [busy, setBusy] = useState<BusyOp>(null)
   const [progress, setProgress] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice>(null)
@@ -270,6 +278,14 @@ export function MarketSection({
       (category === 'all' || item.category === category) && matches(item, normalizedQuery)
     ))
   }, [category, normalizedQuery, state])
+
+  // A new search or category always starts back at the first page.
+  useEffect(() => {
+    setVisibleCount(DISCOVER_PAGE_SIZE)
+  }, [category, normalizedQuery])
+
+  const visibleItems = items.length > visibleCount ? items.slice(0, visibleCount) : items
+  const hiddenCount = items.length - visibleItems.length
 
   const categoryLabels = useMemo(() => {
     if (state.status !== 'ready') return new Map<string, string>()
@@ -422,7 +438,7 @@ export function MarketSection({
                   : null}
                 {items.length > 0 ? (
                   <ul className={css.cards}>
-                    {items.map((item) => {
+                    {visibleItems.map((item) => {
                       const installedName = installedNameFor(item, installed)
                       const busyKind = busy !== null && busy.id === item.id ? busy.kind : null
                       return (
@@ -491,6 +507,17 @@ export function MarketSection({
                       )
                     })}
                   </ul>
+                ) : null}
+                {hiddenCount > 0 ? (
+                  <div className={css.showMore}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setVisibleCount(current => current + DISCOVER_PAGE_SIZE) }}
+                    >
+                      {t('showMore', { count: String(hiddenCount) })}
+                    </Button>
+                  </div>
                 ) : null}
               </>
             ) : (

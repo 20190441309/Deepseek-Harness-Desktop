@@ -27,6 +27,7 @@ const {
 } = require('./plugins');
 const { scanImport, probeImportHold, runImport } = require('./data-import');
 const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
+const { DSH_IM_ALIASES } = require('./dsh-im-desktop');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
 const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
@@ -654,6 +655,9 @@ function registerIpc({
       if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
         return { ok: false, error: 'official-template', name: raw };
       }
+      if (DSH_IM_ALIASES.includes(raw)) {
+        return { ok: false, error: 'desktop-builtin', name: raw };
+      }
     }
     const config = loadConfig();
     const disabled = [...new Set([...(config.disabledPlugins || []), ...list])];
@@ -675,6 +679,9 @@ function registerIpc({
     }
     if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
       return { ok: false, error: 'official-template' };
+    }
+    if (DSH_IM_ALIASES.includes(raw)) {
+      return { ok: false, error: 'desktop-builtin' };
     }
     const config = loadConfig();
     const disabled = [...new Set([...(config.disabledPlugins || []), raw])];

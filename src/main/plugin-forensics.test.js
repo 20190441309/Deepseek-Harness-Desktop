@@ -100,6 +100,34 @@ test('in-box fork package suspects are flagged as desktop runtime damage', () =>
   assert.equal(row.orphan, true);
 });
 
+test('desktop built-in dsh-im suspects are flagged as desktop runtime damage', () => {
+  assert.equal(isInBoxPackageName('@xmanrui/dsh-im'), true);
+  assert.equal(isInBoxPackageName('@xmanrui/dsh-im/client'), true);
+  assert.equal(isInBoxPackageName('dsh-im'), true);
+
+  const inspected = inspectPlugins({
+    logs: "Cannot find package '@xmanrui/dsh-im' imported from /profiles/web/",
+    pluginTreeFailure: true,
+    plugins: [{ name: 'good', spec: '1.0.0' }],
+    bundles: ['good'],
+  });
+  assert.equal(inspected.desktopRuntimeDamage, true);
+  const row = inspected.orphanSuspects.find((item) => item.name === '@xmanrui/dsh-im');
+  assert.equal(row.inBox, true);
+});
+
+test('desktop install overlay path suspects are flagged as desktop runtime damage', () => {
+  assert.equal(
+    isInBoxPackageName('file:///dsh-home/profiles/web/desktop-plugins/install-dsh-plugin/install-dsh-plugin.mjs'),
+    true,
+  );
+  assert.equal(
+    isInBoxPackageName('C:\\dsh-home\\profiles\\web\\desktop-plugins\\install-dsh-plugin\\install-dsh-plugin.mjs'),
+    true,
+  );
+  assert.equal(isInBoxPackageName('install-dsh-plugin'), false);
+});
+
 test('a profile plugin shadowing an in-box name stays a disableable suspect', () => {
   const inspected = inspectPlugins({
     logs: "Cannot find package '@deepseek-ai/dsh-client-ui-settings-market'",

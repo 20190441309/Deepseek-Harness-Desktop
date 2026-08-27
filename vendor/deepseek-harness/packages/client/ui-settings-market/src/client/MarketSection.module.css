@@ -382,6 +382,12 @@
   white-space: nowrap;
 }
 
+.showMore {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
 .installedGroup {
   display: flex;
   flex-direction: column;

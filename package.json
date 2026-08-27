@@ -24,6 +24,7 @@
     "qa:packaged": "node scripts/run-packaged-p0.mjs",
     "smoke:packaged": "node scripts/run-packaged-smoke.mjs",
     "check:release-version": "node scripts/check-release-version.mjs",
+    "refresh:marketplace-snapshot": "node scripts/refresh-marketplace-snapshot.mjs",
     "dist": "node scripts/run-electron-builder.cjs --win --publish never",
     "dist:mac": "node scripts/run-electron-builder.cjs --mac --publish never"
   },

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MarketSection } from '../src/client/MarketSection.tsx'
+import { DISCOVER_PAGE_SIZE, MarketSection } from '../src/client/MarketSection.tsx'
 import type { MarketSectionProps } from '../src/client/MarketSection.tsx'
 import type { MarketCatalog, MarketItem } from '../src/client/desktop-shell.ts'
 import { en, type MarketLocaleKey } from '../src/client/locales.ts'
@@ -387,6 +387,48 @@ describe('MarketSection', () => {
     await screen.findByText('demo')
     expect(screen.getByText(en.installed)).toBeTruthy()
     expect(screen.queryByRole('button', { name: en.install })).toBeNull()
+  })
+
+  it('pages the discover grid and grows through show more', async () => {
+    const rows = Array.from({ length: DISCOVER_PAGE_SIZE * 2 + 10 }, (_, position) => item({
+      id: `acme/plugin-${position}`,
+      repo: `plugin-${position}`,
+      packageName: `plugin-${position}`,
+    }))
+    renderMarket({ listCatalog: vi.fn(async () => catalog(rows)) })
+    await screen.findByText('plugin-0')
+    expect(document.querySelectorAll('[data-market-item]')).toHaveLength(DISCOVER_PAGE_SIZE)
+    // The count line still reports the full filtered total, not the page.
+    expect(screen.getByText(en.count.replace('{count}', String(rows.length)))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', {
+      name: en.showMore.replace('{count}', String(DISCOVER_PAGE_SIZE + 10)),
+    }))
+    expect(document.querySelectorAll('[data-market-item]')).toHaveLength(DISCOVER_PAGE_SIZE * 2)
+    fireEvent.click(screen.getByRole('button', { name: en.showMore.replace('{count}', '10') }))
+    expect(document.querySelectorAll('[data-market-item]')).toHaveLength(rows.length)
+    expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull()
+  })
+
+  it('resets discover paging when the search or category changes', async () => {
+    const rows = Array.from({ length: DISCOVER_PAGE_SIZE + 20 }, (_, position) => item({
+      id: `acme/plugin-${position}`,
+      repo: `plugin-${position}`,
+      packageName: `plugin-${position}`,
+    }))
+    renderMarket({ listCatalog: vi.fn(async () => catalog(rows)) })
+    await screen.findByText('plugin-0')
+    fireEvent.click(screen.getByRole('button', { name: en.showMore.replace('{count}', '20') }))
+    expect(document.querySelectorAll('[data-market-item]')).toHaveLength(rows.length)
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: 'plugin' } })
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-market-item]')).toHaveLength(DISCOVER_PAGE_SIZE)
+    })
+    fireEvent.click(screen.getByRole('button', { name: en.showMore.replace('{count}', '20') }))
+    expect(document.querySelectorAll('[data-market-item]')).toHaveLength(rows.length)
+    fireEvent.click(screen.getByRole('radio', { name: /Workflow/ }))
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-market-item]')).toHaveLength(DISCOVER_PAGE_SIZE)
+    })
   })
 
   it('streams progress lines during an install', async () => {

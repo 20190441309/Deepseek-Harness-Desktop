@@ -7,7 +7,7 @@ const { loadConfig } = require('./config');
 const { resolveNodeBin, sourceHarnessStatus } = require('./dsh');
 const { projectRoot, harnessRoot } = require('./paths');
 const { childSpawnEnv } = require('../shared/child-spawn-env');
-const { DROPPED, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
+const { DROPPED, isDroppedPluginName, webProfileDir, PROFILE, listInstalledPlugins } = require('./plugins');
 const { resolveCommitSha, getMarketplacePlugin } = require('./marketplace-catalog');
 const { parseAllowBuilds } = require('./marketplace-allowbuilds');
 const {
@@ -218,10 +218,38 @@ async function withPluginLock(work) {
   }
 }
 
+/**
+ * Whether an install spec resolves to a dropped plugin family: a dropped npm
+ * name (scope renames included), or a github spec whose repo — or `#path:`
+ * tail directory — carries a dropped basename. Segment-exact matching only;
+ * `github:x/dsh-im-bridge` is a different package and stays installable.
+ * @param {string} spec
+ * @returns {boolean}
+ */
+function isDroppedInstallSpec(spec) {
+  const value = String(spec || '').trim();
+  if (!value) {
+    return false;
+  }
+  if (isValidPackageName(value) && isDroppedPluginName(value)) {
+    return true;
+  }
+  const identity = githubIdentity(value);
+  if (!identity) {
+    return false;
+  }
+  const [repoPart, pathPart] = identity.split('#path:/');
+  const repo = repoPart.split('/')[1] || '';
+  const tail = pathPart ? pathPart.split('/').filter(Boolean).pop() || '' : '';
+  return isDroppedPluginName(repo) || (tail !== '' && isDroppedPluginName(tail));
+}
+
 function isDroppedInstall(plugin, spec) {
+  const repo = String(plugin.id || '').split('/')[1] || '';
   return DROPPED.includes(plugin.id)
-    || DROPPED.includes(plugin.packageName)
-    || (isValidPackageName(spec) && DROPPED.includes(spec));
+    || isDroppedPluginName(plugin.packageName)
+    || isDroppedPluginName(repo)
+    || isDroppedInstallSpec(spec);
 }
 
 function packageInstallDir(packageName) {
@@ -542,7 +570,7 @@ async function installPlugin(spec, options = {}) {
     if (!isValidGithubSpec(name)) {
       return { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格' };
     }
-    if (DROPPED.includes(name) || DROPPED.some((item) => name.includes(item))) {
+    if (isDroppedInstallSpec(name)) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
     return addPluginSpec(name, options);
@@ -591,8 +619,10 @@ async function installImportPlugin(spec, options = {}) {
     return { ok: false, error: '仅支持 github:owner/repo[#ref] 或 name@版本 安装规格' };
   }
   return withPluginLock(async () => {
-    const droppedKey = registry ? registry.name : value;
-    if (DROPPED.includes(droppedKey) || DROPPED.some((item) => droppedKey.includes(item))) {
+    const dropped = registry
+      ? isDroppedPluginName(registry.name)
+      : isDroppedInstallSpec(value);
+    if (dropped) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
     return addPluginSpec(value, options);
@@ -696,6 +726,7 @@ module.exports = {
   installPlugin,
   installImportPlugin,
   parseImportRegistrySpec,
+  isDroppedInstallSpec,
   uninstallPlugin,
   installMarketplacePlugin,
   resolveCli,
