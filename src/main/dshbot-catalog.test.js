@@ -315,7 +315,12 @@ test('groupTranscript omits pass replies and legacy NEXT footers', async () => {
 });
 
 test('isPassContent and memberVisibleText accept pass variants', async () => {
-  const { isPassContent, memberVisibleText } = await loadCatalog();
+  const {
+    isPassContent,
+    memberTurnOrPass,
+    memberVisibleText,
+    resolveGroupProtocolLimits,
+  } = await loadCatalog();
   assert.equal(isPassContent(''), true);
   assert.equal(isPassContent('(pass)'), true);
   assert.equal(isPassContent(' pass '), true);
@@ -324,6 +329,22 @@ test('isPassContent and memberVisibleText accept pass variants', async () => {
   assert.equal(memberVisibleText('方案A\nNEXT: pass'), '方案A');
   assert.equal(memberVisibleText('(pass)'), '');
   assert.equal(memberVisibleText('NEXT: pass'), '');
+  await assert.doesNotReject(async () => {
+    assert.deepEqual(
+      await memberTurnOrPass({ id: 'a', name: 'Agent A' }, async () => {
+        throw new Error('member model failed');
+      }),
+      { botId: 'a', name: 'Agent A', text: '' },
+    );
+  });
+  assert.deepEqual(resolveGroupProtocolLimits({ maxSpeaks: 999, maxRounds: 999 }), {
+    maxSpeaks: 10,
+    maxRounds: 3,
+  });
+  assert.deepEqual(resolveGroupProtocolLimits({ maxSpeaks: -4, maxRounds: 0 }), {
+    maxSpeaks: 1,
+    maxRounds: 1,
+  });
 });
 
 test('orderRoundSpeakers rotates by round index', async () => {
@@ -389,10 +410,17 @@ test('nextRoomSpeakerId ignores legacy NEXT footers for scheduling', async () =>
   ]), 'c');
 });
 
-test('nextRoomSpeakerId empty-stops at maxSpeaks and maxRounds', async () => {
-  const { nextRoomSpeakerId } = await loadCatalog();
+test('nextRoomSpeakerId counts attempts and hard-clamps maxSpeaks and maxRounds', async () => {
+  const { memberTurnAttempts, nextRoomSpeakerId } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
+  const danglingAttempt = [userSaid('请讨论'), asked('c1', 'a')];
+  assert.deepEqual(memberTurnAttempts(danglingAttempt), [{
+    botId: 'a',
+    text: '',
+    completed: false,
+  }]);
+  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), undefined);
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '一'),
@@ -404,6 +432,10 @@ test('nextRoomSpeakerId empty-stops at maxSpeaks and maxRounds', async () => {
     asked('c2', 'b'), answered('c2', '二'),
     asked('c3', 'c'), answered('c3', '三'),
   ], { maxRounds: 1 }), undefined);
+  assert.deepEqual(memberTurnAttempts([
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+  ]), [{ botId: 'a', text: '(pass)', completed: true }]);
 });
 
 test('isRoomConversationRequest skips 1:1 bots and auxiliary purposes', async () => {
@@ -553,6 +585,12 @@ test('client registers the bots tab, overlay, and ask_participant toolview', () 
   assert.match(src, /话短、带刺、不迎合/);
   assert.match(src, /PERSONA_TEMPLATES/);
   assert.match(src, /setDescription\(chip\.text\)/);
+  assert.match(src, /GROUP_MIN_MEMBERS = 2/);
+  assert.match(src, /memberIds\.length < GROUP_MIN_MEMBERS/);
+  assert.match(src, /item\.kind === "room" \|\| session\?\.blank === false/);
+  assert.equal(src.includes('notifications'), false);
+  assert.equal(src.includes('memoryLabel'), false);
+  assert.equal(src.includes('memoryHint'), false);
 });
 
 test('profile host apply short-circuits room llm/stream and registers ask_participant', () => {
@@ -582,6 +620,10 @@ test('profile host apply short-circuits room llm/stream and registers ask_partic
   assert.equal(src.includes('childPersonaForSession'), false);
   assert.match(src, /maxSpeaks/);
   assert.match(src, /maxRounds/);
+  assert.match(src, /max\(GROUP_MAX_MEMBER_TURNS\)/);
+  assert.match(src, /max\(GROUP_MAX_ROUNDS\)/);
+  assert.match(src, /resolveGroupProtocolLimits\(config\)/);
+  assert.equal(src.includes('notifications:'), false);
   assert.match(src, /apply\(ctx, config/);
   assert.equal(src.includes('ctx.config'), false);
   assert.match(src, /const downstream = next\(\)/);

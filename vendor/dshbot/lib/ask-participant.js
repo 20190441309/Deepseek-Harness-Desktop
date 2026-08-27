@@ -10,6 +10,7 @@ import {
   isPassContent,
   memberDisplayName,
   memberPersona,
+  memberTurnOrPass,
   memberVisibleText,
   resolveAskTarget,
   roomTurnPromptForSpeaker,
@@ -240,43 +241,39 @@ export function registerAskParticipant(ctx) {
       exec.signal?.addEventListener?.('abort', onParentAbort, { once: true });
 
       try {
-        const run = await memberPersona.run(persona, () => ctx.subagents.start(SPAWN_PROVIDER, {
-          label: bot.name,
-          prompt,
-          parent,
-          signal: localAbort.signal,
-          persona,
-          toolFilter: { allow: ['send_room_message'] },
-          ...(agentOptions ? { agentOptions } : {}),
-        }));
-        try {
-          if (!isCurrent()) {
+        return await memberTurnOrPass(bot, async () => {
+          const run = await memberPersona.run(persona, () => ctx.subagents.start(SPAWN_PROVIDER, {
+            label: bot.name,
+            prompt,
+            parent,
+            signal: localAbort.signal,
+            persona,
+            toolFilter: { allow: ['send_room_message'] },
+            ...(agentOptions ? { agentOptions } : {}),
+          }));
+          try {
+            if (!isCurrent()) {
+              return { botId: bot.id, name: bot.name, text: '' };
+            }
+            const result = await run.result;
+            if (!isCurrent()) {
+              return { botId: bot.id, name: bot.name, text: '' };
+            }
+            const childEvents = run.localAgent?.session?.events
+              ?? ctx.sessions?.get?.(run.id)?.events;
+            const deliveries = extractSendRoomDeliveries(childEvents);
+            if (deliveries.length > 0) {
+              return { botId: bot.id, name: bot.name, text: deliveries.join('\n\n') };
+            }
+            const bare = blocksText(result.output);
+            if (isPassContent(bare)) {
+              return { botId: bot.id, name: bot.name, text: '' };
+            }
+            return { botId: bot.id, name: bot.name, text: '' };
+          } finally {
             await run.dispose();
-            return { botId: bot.id, name: bot.name, text: '' };
           }
-          const result = await run.result;
-          if (!isCurrent()) {
-            return { botId: bot.id, name: bot.name, text: '' };
-          }
-          const childEvents = run.localAgent?.session?.events
-            ?? ctx.sessions?.get?.(run.id)?.events;
-          const deliveries = extractSendRoomDeliveries(childEvents);
-          if (deliveries.length > 0) {
-            return { botId: bot.id, name: bot.name, text: deliveries.join('\n\n') };
-          }
-          const bare = blocksText(result.output);
-          if (isPassContent(bare)) {
-            return { botId: bot.id, name: bot.name, text: '' };
-          }
-          return { botId: bot.id, name: bot.name, text: '' };
-        } finally {
-          await run.dispose();
-        }
-      } catch (err) {
-        if (localAbort.signal.aborted || !isCurrent()) {
-          return { botId: bot.id, name: bot.name, text: '' };
-        }
-        throw err;
+        });
       } finally {
         if (inFlightByRoom.get(roomSessionId) === localAbort) {
           inFlightByRoom.delete(roomSessionId);

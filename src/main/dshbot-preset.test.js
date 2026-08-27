@@ -137,7 +137,7 @@ test('ensureDshbotPlugin skips the patch insert when the profile already lists t
   }
 });
 
-test('ensureDshbotPlugin does not replace a pnpm-installed dshbot directory', () => {
+test('ensureDshbotPlugin does not replace a user-installed dshbot directory', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
   try {
@@ -147,6 +147,52 @@ test('ensureDshbotPlugin does not replace a pnpm-installed dshbot directory', ()
     fs.writeFileSync(path.join(installed, 'package.json'), '{"name":"dshbot","version":"9.9.9"}\n', 'utf8');
     ensureDshbotPlugin({ sourceDir: source, profileDir });
     assert.equal(JSON.parse(fs.readFileSync(path.join(installed, 'package.json'), 'utf8')).version, '9.9.9');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('ensureDshbotPlugin does not replace a pnpm-style dshbot symlink', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    const storePackage = path.join(
+      profileDir,
+      'node_modules',
+      '.pnpm',
+      'dshbot@9.9.9',
+      'node_modules',
+      'dshbot',
+    );
+    fs.mkdirSync(storePackage, { recursive: true });
+    fs.writeFileSync(
+      path.join(storePackage, 'package.json'),
+      '{"name":"dshbot","version":"9.9.9"}\n',
+      'utf8',
+    );
+    const installed = path.join(profileDir, 'node_modules', 'dshbot');
+    fs.symlinkSync(
+      storePackage,
+      installed,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const targetBefore = fs.realpathSync(installed);
+
+    const result = ensureDshbotPlugin({ sourceDir: source, profileDir });
+
+    assert.equal(result.ok, true);
+    assert.equal(fs.lstatSync(installed).isSymbolicLink(), true);
+    assert.equal(fs.realpathSync(installed), targetBefore);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(installed, 'package.json'), 'utf8')).version,
+      '9.9.9',
+    );
+    assert.equal(
+      fs.existsSync(path.join(profileDir, 'desktop-plugins', 'dshbot', 'package.json')),
+      true,
+    );
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(source, { recursive: true, force: true });
@@ -183,6 +229,7 @@ test('repo keeps the standalone dshbot package publishable', () => {
   assert.equal(fs.existsSync(path.join(root, 'presets', 'dshbot-room', 'agent.cordis.yml')), true);
   // The unwired parallel orchestrator stays deleted.
   assert.equal(fs.existsSync(path.join(root, 'lib', 'group-chat-orchestrator.js')), false);
+  assert.equal(fs.existsSync(path.join(root, 'lib', 'group-member-activity.js')), false);
   assert.equal(JSON.stringify(pkg.exports).includes('group-chat-orchestrator'), false);
 });
 

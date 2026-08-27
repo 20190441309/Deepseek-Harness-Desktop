@@ -9,10 +9,13 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import {
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MAX_SPEAKS,
-  completedMemberTurns,
+  GROUP_MAX_MEMBER_TURNS,
+  GROUP_MAX_ROUNDS,
   isRoomConversationRequest,
+  memberTurnAttempts,
   memberPersona,
   personaText,
+  resolveGroupProtocolLimits,
   roomDispatchChunks,
   emptyStopChunks,
 } from './catalog.js';
@@ -35,8 +38,8 @@ export const name = 'dsh-bot';
 export const inject = ['settings', 'systemPrompt', 'subagents', 'llm', 'sessions', 'tools'];
 
 export const Config = z.object({
-  maxSpeaks: z.number().default(DEFAULT_MAX_SPEAKS),
-  maxRounds: z.number().default(DEFAULT_MAX_ROUNDS),
+  maxSpeaks: z.number().step(1).min(1).max(GROUP_MAX_MEMBER_TURNS).default(DEFAULT_MAX_SPEAKS),
+  maxRounds: z.number().step(1).min(1).max(GROUP_MAX_ROUNDS).default(DEFAULT_MAX_ROUNDS),
 });
 
 const NS = settingsNamespace('dshbot');
@@ -73,7 +76,6 @@ const ItemSchema = z.object({
   avatar: AvatarSchema.default({ kind: 'blob' }),
   model: ModelSchema,
   workspaceId: z.string(),
-  notifications: z.boolean().default(true),
   pinned: z.boolean().default(false),
   hidden: z.boolean().default(false),
   pinOrder: z.number().default(0),
@@ -97,8 +99,7 @@ function dshHomeDir() {
  * @param {{ maxSpeaks?: number, maxRounds?: number }} [config]
  */
 export function apply(ctx, config = {}) {
-  const maxSpeaks = config.maxSpeaks ?? DEFAULT_MAX_SPEAKS;
-  const maxRounds = config.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const { maxSpeaks, maxRounds } = resolveGroupProtocolLimits(config);
   // Standalone install path: provision the dshbot-room agent preset into
   // $DSH_HOME so sessions.create({ agentPreset: 'dshbot-room' }) mounts
   // without any desktop shell copying presets for us.
@@ -151,7 +152,7 @@ export function apply(ctx, config = {}) {
       const session = options.sessionId ? ctx.sessions.get(options.sessionId) : undefined;
       const events = session?.events ?? [];
       // New user turn: bump epoch and abort any in-flight member spawn.
-      if (completedMemberTurns(events).length === 0 && options.sessionId) {
+      if (memberTurnAttempts(events).length === 0 && options.sessionId) {
         abortRoomMemberTurns(options.sessionId);
         nextTurnEpoch(options.sessionId);
       }

@@ -10,6 +10,7 @@ import {
   GROUP_MAX_MEMBERS,
   GROUP_MAX_MESSAGES_PER_TURN,
   GROUP_MAX_ROUNDS,
+  GROUP_MIN_MEMBERS,
   buildGroupMemberSystemPrompt,
   buildGroupTurnPrompt,
   isPassContent,
@@ -26,6 +27,7 @@ export {
   GROUP_MAX_MEMBERS,
   GROUP_MAX_MESSAGES_PER_TURN,
   GROUP_MAX_ROUNDS,
+  GROUP_MIN_MEMBERS,
   buildGroupMemberSystemPrompt,
   buildGroupTurnPrompt,
   isPassContent,
@@ -44,8 +46,42 @@ export const DEFAULT_MAX_SPEAKS = GROUP_MAX_MEMBER_TURNS;
 /** @deprecated Use GROUP_MAX_ROUNDS */
 export const DEFAULT_MAX_ROUNDS = GROUP_MAX_ROUNDS;
 
+/**
+ * Clamp legacy config names to the fixed group protocol bounds.
+ * @param {{ maxSpeaks?: number, maxRounds?: number }} [limits]
+ * @returns {{ maxSpeaks: number, maxRounds: number }}
+ */
+export function resolveGroupProtocolLimits(limits = {}) {
+  const clamp = (value, fallback, maximum) => {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(1, Math.min(maximum, Math.trunc(value)));
+  };
+  return {
+    maxSpeaks: clamp(limits.maxSpeaks, GROUP_MAX_MEMBER_TURNS, GROUP_MAX_MEMBER_TURNS),
+    maxRounds: clamp(limits.maxRounds, GROUP_MAX_ROUNDS, GROUP_MAX_ROUNDS),
+  };
+}
+
 /** Spawn-time overlay so the child complete prompt can see the member persona. */
 export const memberPersona = new AsyncLocalStorage();
+
+/**
+ * Convert a failed member operation to the protocol's silent pass result.
+ * @param {{ id?: string, name?: string }} bot
+ * @param {() => Promise<{ botId: string, name: string, text: string }>} operation
+ * @returns {Promise<{ botId: string, name: string, text: string }>}
+ */
+export async function memberTurnOrPass(bot, operation) {
+  try {
+    return await operation();
+  } catch {
+    return {
+      botId: String(bot?.id ?? ''),
+      name: String(bot?.name ?? '') || 'Bot',
+      text: '',
+    };
+  }
+}
 
 /**
  * @param {string | undefined} name
@@ -391,31 +427,48 @@ function lastUserMessageIndex(events) {
 }
 
 /**
- * Completed ask_participant turns after the latest user message.
+ * ask_participant attempts after the latest user message. A call without a
+ * result is a pass attempt, so restart replay cannot bypass the turn cap.
  * @param {readonly object[] | undefined} events
- * @returns {{ botId: string, text: string }[]}
+ * @returns {{ botId: string, text: string, completed: boolean }[]}
  */
-export function completedMemberTurns(events) {
+export function memberTurnAttempts(events) {
   const list = events ?? [];
   const start = lastUserMessageIndex(list);
   if (start < 0) return [];
-  const botByCall = new Map();
+  const turnByCall = new Map();
   const turns = [];
   for (let i = start + 1; i < list.length; i += 1) {
     const event = list[i];
     if (event?.type === 'tool/call' && event.data?.name === 'ask_participant') {
       const botId = askParticipantBotId(event);
       const callId = event.data.callId;
-      if (botId && callId) botByCall.set(callId, botId);
+      if (botId && callId && !turnByCall.has(callId)) {
+        const turn = { botId, text: '', completed: false };
+        turnByCall.set(callId, turn);
+        turns.push(turn);
+      }
       continue;
     }
     if (event?.type !== 'tool/result') continue;
     const callId = event.data?.message?.source?.callId;
-    const botId = botByCall.get(callId);
-    if (!botId) continue;
-    turns.push({ botId, text: contentText(event.data.message?.content) });
+    const turn = turnByCall.get(callId);
+    if (!turn) continue;
+    turn.text = contentText(event.data.message?.content);
+    turn.completed = true;
   }
   return turns;
+}
+
+/**
+ * Completed ask_participant turns after the latest user message.
+ * @param {readonly object[] | undefined} events
+ * @returns {{ botId: string, text: string }[]}
+ */
+export function completedMemberTurns(events) {
+  return memberTurnAttempts(events)
+    .filter((turn) => turn.completed)
+    .map(({ botId, text }) => ({ botId, text }));
 }
 
 /**
@@ -554,13 +607,12 @@ export function stripRoomNext(text) {
 export function nextRoomSpeakerId(items, room, events, limits = {}) {
   const history = eventsToGroupHistory(events, items);
   if (!history.some((message) => message.speaker.kind === 'user')) return undefined;
-  const maxSpeaks = Number.isFinite(limits.maxSpeaks) ? limits.maxSpeaks : GROUP_MAX_MEMBER_TURNS;
-  const maxRounds = Number.isFinite(limits.maxRounds) ? limits.maxRounds : GROUP_MAX_ROUNDS;
+  const { maxSpeaks, maxRounds } = resolveGroupProtocolLimits(limits);
   const members = roomMembersFromCatalog(items, room);
   if (members.length === 0) return undefined;
   const responders = resolveResponders(members, history).map((member) => member.id);
   if (responders.length === 0) return undefined;
-  const turns = completedMemberTurns(events);
+  const turns = memberTurnAttempts(events);
   if (turns.length >= maxSpeaks) return undefined;
 
   let round = 0;
