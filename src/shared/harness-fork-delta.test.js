@@ -90,8 +90,8 @@ test('unregisteredHotspots groups packages three segments deep, others two', () 
   ]);
   assert.deepEqual(hotspots, [
     { dir: 'packages/client/ui-conversation', count: 2 },
-    { dir: 'CLAUDE.md', count: 1 },
     { dir: 'apps/web', count: 1 },
+    { dir: 'CLAUDE.md', count: 1 },
   ]);
 });
 
