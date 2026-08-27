@@ -151,6 +151,32 @@ test('draft store keeps unsent text per session and per server', () => {
   assert.equal(createDraftStore(storage, 'srv-b').load('agent-1'), '');
 });
 
+test('draft store keeps attachments in memory across session switches only', () => {
+  const storage = memoryStorage();
+  const store = createDraftStore(storage, 'srv-a');
+  const images = [{ mediaType: 'image/png', data: 'aGk=' }];
+
+  store.saveAttachments('agent-1', images);
+  assert.deepEqual(store.loadAttachments('agent-1'), images);
+  // Returned array is a copy — mutating it must not corrupt the stash.
+  store.loadAttachments('agent-1').pop();
+  assert.equal(store.loadAttachments('agent-1').length, 1);
+
+  // In-memory by design: a "reload" (fresh store) does not see attachments.
+  assert.deepEqual(createDraftStore(storage, 'srv-a').loadAttachments('agent-1'), []);
+
+  store.saveAttachments('agent-1', []);
+  assert.deepEqual(store.loadAttachments('agent-1'), []);
+
+  store.saveAttachments('agent-2', images);
+  store.clear('agent-2');
+  assert.deepEqual(store.loadAttachments('agent-2'), []);
+
+  store.saveAttachments('agent-3', images);
+  store.clearAll();
+  assert.deepEqual(store.loadAttachments('agent-3'), []);
+});
+
 test('draft store degrades to memory when storage is unavailable', () => {
   const broken = {
     getItem() { throw new Error('storage denied'); },

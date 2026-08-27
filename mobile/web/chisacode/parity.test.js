@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  agentModelState,
   agentModeState,
   chisaBranchRows,
   chisaCheckoutStatusToVcs,
   createMobileAgent,
+  listAgentModels,
   listMobileDirectory,
   listReadyProviders,
   listWorkspaceChoices,
@@ -89,6 +91,10 @@ test('listReadyProviders keeps only ready+enabled providers with their modes', a
               { id: '', label: 'broken' },
             ],
             defaultModeId: 'plan',
+            models: [
+              { id: 'ds-r3', label: 'DeepSeek R3', isDefault: true },
+              { id: '', label: 'broken' },
+            ],
           },
           { provider: 'bare', status: 'ready' },
         ],
@@ -102,8 +108,9 @@ test('listReadyProviders keeps only ready+enabled providers with their modes', a
       label: 'DeepSeek Harness',
       modes: [{ id: 'plan', label: '规划' }],
       defaultModeId: 'plan',
+      models: [{ id: 'ds-r3', label: 'DeepSeek R3', isDefault: true }],
     },
-    { provider: 'bare', label: 'bare', modes: [], defaultModeId: null },
+    { provider: 'bare', label: 'bare', modes: [], defaultModeId: null, models: [] },
   ]);
   assert.deepEqual(calls, [{ cwd: '/repo' }]);
 });
@@ -138,9 +145,11 @@ test('createMobileAgent passes the explicit workspace, provider, and optional mo
   assert.equal(created.id, 'agent-new');
 
   await createMobileAgent(client, { cwd: '/repo/mobile', provider: 'dsh' });
+  await createMobileAgent(client, { cwd: '/repo/mobile', provider: 'dsh', model: 'ds-r3' });
   assert.deepEqual(createCalls, [
     { provider: 'dsh', cwd: '/repo/mobile', workspaceId: 'ws-mobile', modeId: 'plan' },
     { provider: 'dsh', cwd: '/repo/mobile' },
+    { provider: 'dsh', cwd: '/repo/mobile', model: 'ds-r3' },
   ]);
 });
 
@@ -186,6 +195,52 @@ test('agentModeState derives modes and the current label from the agent snapshot
     currentModeId: 'ghost',
     currentLabel: 'ghost',
   });
+});
+
+test('agentModelState reads the snapshot model with runtimeInfo fallback', () => {
+  assert.deepEqual(agentModelState({ model: 'ds-r3' }), { modelId: 'ds-r3', label: 'ds-r3' });
+  assert.deepEqual(
+    agentModelState({ runtimeInfo: { model: 'ds-lite' } }),
+    { modelId: 'ds-lite', label: 'ds-lite' },
+  );
+  // null model = provider default in effect.
+  assert.deepEqual(agentModelState({}), { modelId: null, label: '' });
+  assert.deepEqual(agentModelState(null), { modelId: null, label: '' });
+});
+
+test('listAgentModels maps daemon models and surfaces failures visibly', async () => {
+  const calls = [];
+  const client = {
+    async listProviderModels(provider, options) {
+      calls.push([provider, options]);
+      return {
+        models: [
+          { id: 'ds-r3', label: 'DeepSeek R3', isDefault: true },
+          { id: 'ds-lite' },
+          { label: 'broken-no-id' },
+        ],
+      };
+    },
+  };
+  assert.deepEqual(await listAgentModels(client, 'dsh', '/repo'), [
+    { id: 'ds-r3', label: 'DeepSeek R3', description: '', isDefault: true },
+    { id: 'ds-lite', label: 'ds-lite', description: '', isDefault: false },
+  ]);
+  assert.deepEqual(calls, [['dsh', { cwd: '/repo' }]]);
+
+  await assert.rejects(() => listAgentModels(client, '', '/repo'), /没有提供方信息/);
+  await assert.rejects(
+    () => listAgentModels({
+      async listProviderModels() { return { error: 'provider offline' }; },
+    }, 'dsh'),
+    /provider offline/,
+  );
+  await assert.rejects(
+    () => listAgentModels({
+      async listProviderModels() { return { models: [] }; },
+    }, 'dsh'),
+    /没有返回可选模型/,
+  );
 });
 
 test('chisaCheckoutStatusToVcs maps checkout and PR payloads to the mobile model', () => {
