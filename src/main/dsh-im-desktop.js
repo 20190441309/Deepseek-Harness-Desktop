@@ -143,12 +143,18 @@ function ensureDshImPlugin(options) {
   return ensureDesktopDshIm(options);
 }
 
+function withoutDshImAliases(list) {
+  const blocked = new Set(DSH_IM_ALIASES);
+  return (Array.isArray(list) ? list : []).filter((name) => !blocked.has(String(name || '').trim()));
+}
+
 module.exports = {
   DSH_IM_PACKAGE,
   DSH_IM_DIR,
   DSH_IM_BEGIN,
   DSH_IM_END,
   DSH_IM_ALIASES,
+  withoutDshImAliases,
   ensureDesktopDshIm,
   ensureDshImPlugin,
 };

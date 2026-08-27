@@ -319,6 +319,24 @@
   );
 }
 
+/* Wallpaper glass mixes bg-base translucent; the sticky seat must stay
+   opaque so the stats strip and input card read on a solid surface. */
+:global(html[data-dsh-wallpaper]) .root[data-phase='active'] .composerSeat {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 0%, transparent) 0px,
+    var(--dsw-static-neutral-bluish-00) 36px
+  );
+}
+
+:global(html[data-dsh-wallpaper] body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dsw-static-neutral-bluish-950) 0%, transparent) 0px,
+    var(--dsw-static-neutral-bluish-950) 36px
+  );
+}
+
 /* Views may opt into a composer overlay while ConversationRoot retains
    ownership of the seat geometry and its active-phase precedence. */
 .scrollBody:has([data-conversation-composer-overlay]) {

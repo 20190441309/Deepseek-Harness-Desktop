@@ -24,12 +24,14 @@ const DEFAULTS = {
   locale: 'zh',
   githubToken: '',
   remoteEnabled: false,
-  remotePort: 3180,
+  remotePort: 6767,
   remoteToken: '',
   remoteMode: 'lan',
-  remoteBindAddress: '0.0.0.0',
+  remoteBindAddress: '127.0.0.1',
   remoteLanTls: false,
   remoteRelayUrl: '',
+  remoteRelayEndpoint: '',
+  remoteAppBaseUrl: '',
   remoteRelayToken: '',
   harnessAutoRestart: true,
   harnessRestartMaxAttempts: 3,
@@ -104,10 +106,10 @@ function normalizeRendererConfigPatch(patch) {
 }
 
 /**
- * Bind addresses the remote gateway may listen on: the all-interfaces
- * wildcard (current default) or one dotted-quad IPv4 (loopback or a specific
- * NIC). Anything else falls back to the default so a corrupt config can
- * never widen or break the listener.
+ * Bind addresses the remote gateway may listen on: loopback default (127.0.0.1),
+ * the all-interfaces wildcard (0.0.0.0 when explicitly set), or one dotted-quad
+ * IPv4. Anything else falls back to the default so a corrupt config can never
+ * widen or break the listener.
  */
 function normalizeRemoteBindAddress(value) {
   const raw = String(value || '').trim();
@@ -124,12 +126,22 @@ function normalizeRemoteBindAddress(value) {
 function normalizeRemoteConfig(config) {
   const next = { ...config };
   next.remoteEnabled = REMOTE_FEATURE_ENABLED && next.remoteEnabled === true;
-  next.remoteRelayUrl = REMOTE_FEATURE_ENABLED ? normalizeRelayOrigin(next.remoteRelayUrl) : '';
+  // ChisaCode Away uses host:port endpoints. Empty → desktop built-in relay.
+  const { normalizeRelayEndpoint, DEFAULT_RELAY_ENDPOINT } = require('../shared/lan');
+  const relayCandidate = typeof next.remoteRelayUrl === 'string'
+    ? next.remoteRelayUrl
+    : (next.remoteRelayEndpoint || '');
+  const endpoint = normalizeRelayEndpoint(relayCandidate) || DEFAULT_RELAY_ENDPOINT;
+  next.remoteRelayEndpoint = endpoint;
+  next.remoteRelayUrl = endpoint;
+  // Empty stays empty — never backfill the relay origin as an SPA landing host.
+  next.remoteAppBaseUrl = typeof next.remoteAppBaseUrl === 'string'
+    ? next.remoteAppBaseUrl.trim()
+    : '';
+  // Legacy host token is ignored for product pairing; keep field for migration clears.
   next.remoteRelayToken = normalizeRelayHostToken(next.remoteRelayToken);
   next.remoteMode = REMOTE_FEATURE_ENABLED
     && next.remoteMode === 'relay'
-    && next.remoteRelayUrl
-    && next.remoteRelayToken
     ? 'relay'
     : 'lan';
   const remotePort = Number(next.remotePort);
@@ -171,9 +183,10 @@ function normalizePluginRecovery(config) {
 }
 
 function normalizeDisabledPlugins(list) {
-  return [...new Set((Array.isArray(list) ? list : [])
+  const { withoutDshImAliases } = require('./dsh-im-desktop');
+  return [...new Set(withoutDshImAliases((Array.isArray(list) ? list : [])
     .map((name) => String(name || '').trim())
-    .filter(Boolean))];
+    .filter(Boolean)))];
 }
 
 function normalizeLauncherSettings(config) {

@@ -56,7 +56,8 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
         .connectTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    var route by mutableStateOf(if (store.deviceToken.isNotEmpty() && store.origin.isNotEmpty()) Route.Chat else Route.Connect)
+    var route by mutableStateOf(Route.Connect)
+    var pendingExternalUrl by mutableStateOf<String?>(null)
     var paste by mutableStateOf("")
     var error by mutableStateOf("")
     var banner by mutableStateOf("")
@@ -101,8 +102,9 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
     val gitQuick get() = GitQuickResolver.resolve(gitStatus, gitBusy)
 
     init {
-        if (store.deviceToken.isNotEmpty() && store.origin.isNotEmpty()) {
-            viewModelScope.launch { resume() }
+        if (store.deviceToken.isNotEmpty() || store.origin.isNotEmpty()) {
+            store.deviceToken = ""
+            store.origin = ""
         }
     }
 
@@ -138,18 +140,24 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
         viewModelScope.launch {
             error = ""
             try {
+                val trimmed = text.trim()
                 withContext(Dispatchers.IO) {
-                    val offer = OfferCodec.fromPaste(text) ?: throw IllegalArgumentException("配对链接里没有密钥")
-                    val origin = originOf(text) ?: store.origin.ifEmpty { throw IllegalArgumentException("需要完整的配对 URL") }
-                    val device = LoginClient.login(http, origin, offer.token)
-                    store.origin = origin
-                    store.deviceToken = device
+                    OfferCodec.fromPaste(trimmed)
+                        ?: throw IllegalArgumentException("无效的配对链接（需要 ChisaCode offer v2）")
                 }
-                resume()
+                // Native DaemonClient is not wired yet — hand off to the mobile web SPA.
+                store.deviceToken = ""
+                if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                    pendingExternalUrl = trimmed
+                    route = Route.Connect
+                } else {
+                    error = "请用系统相机扫描桌面二维码（完整链接）"
+                    route = Route.Connect
+                }
             } catch (ex: UnauthorizedException) {
                 store.deviceToken = ""
                 route = Route.Connect
-                error = ex.message ?: "配对密钥无效"
+                error = ex.message ?: "配对无效"
             } catch (ex: Exception) {
                 error = ex.message ?: "连接失败"
             }

@@ -1,8 +1,18 @@
 const os = require('os');
 const { encodeOffer } = require('./offer');
 
-/** Product default public relay (HTTP). Only this origin may skip HTTPS. */
-const DEFAULT_RELAY_ORIGIN = 'http://125.124.85.212:8411';
+/**
+ * Desktop built-in public Away relay — hardcoded for packaged Setup.exe.
+ * Do not move these behind env/config files; empty user config falls back here.
+ */
+const DEFAULT_RELAY_HOST = '125.124.85.212';
+const DEFAULT_RELAY_PORT = 8411;
+const DEFAULT_RELAY_ENDPOINT = `${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}`;
+/** Product default public relay origin (HTTP). Only this origin may skip HTTPS for legacy URL fields. */
+const DEFAULT_RELAY_ORIGIN = `http://${DEFAULT_RELAY_ENDPOINT}`;
+/** Transport default origin only — not a product SPA landing host (QR uses LAN :3180). */
+const DEFAULT_APP_BASE_URL = DEFAULT_RELAY_ORIGIN;
+const DEFAULT_RELAY_USE_TLS = false;
 
 function isIpv4(address, family) {
   return family === 'IPv4' || family === 4 || /^\d{1,3}(\.\d{1,3}){3}$/.test(address);
@@ -24,6 +34,61 @@ function listLanAddresses() {
     }
   }
   return found;
+}
+
+/**
+ * Link-local / CGNAT / common hypervisor adapters that should not land in a QR.
+ * @param {string} address
+ * @returns {boolean}
+ */
+function isVirtualOrLinkLocalIpv4(address) {
+  const parts = String(address || '').split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return true;
+  }
+  // 169.254.0.0/16 link-local
+  if (parts[0] === 169 && parts[1] === 254) {
+    return true;
+  }
+  // 100.64.0.0/10 CGNAT (often VPN/tailscale-ish)
+  if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) {
+    return true;
+  }
+  return false;
+}
+
+function isPrivateLanIpv4(address) {
+  const parts = String(address || '').split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return false;
+  }
+  if (parts[0] === 10) {
+    return true;
+  }
+  if (parts[0] === 192 && parts[1] === 168) {
+    return true;
+  }
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Pick a phone-reachable LAN IPv4 for pairing QR / SPA base.
+ * Skips link-local and prefers RFC1918; empty when no usable NIC.
+ * @param {string[]} [addresses]
+ * @returns {string}
+ */
+function preferredLanIp(addresses = listLanAddresses()) {
+  const usable = (Array.isArray(addresses) ? addresses : [])
+    .map((row) => String(row || '').trim())
+    .filter((row) => row && row !== '127.0.0.1' && !isVirtualOrLinkLocalIpv4(row));
+  const privateLan = usable.find((row) => isPrivateLanIpv4(row));
+  if (privateLan) {
+    return privateLan;
+  }
+  return usable[0] || '';
 }
 
 /**
@@ -50,6 +115,31 @@ function normalizeRelayOrigin(value) {
   }
 }
 
+/**
+ * ChisaCode Away relay host (`hostname:port`). Rejects chisacode.sh.
+ * Built-in desktop default is always allowed.
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeRelayEndpoint(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  const withoutScheme = raw.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  if (!withoutScheme || /chisacode\.sh/i.test(withoutScheme)) {
+    return '';
+  }
+  if (!/^[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(withoutScheme)) {
+    return '';
+  }
+  return withoutScheme.includes(':') ? withoutScheme : `${withoutScheme}:443`;
+}
+
+/**
+ * v1 RemoteGateway offer URL builder (dsh-v1 in hash). NOT used for product ChisaCode v2 QR.
+ * Relay mode lands on relay origin — legacy tests only. Product: generateLocalPairingOffer + LAN :3180.
+ */
 function pairingUrl(address, port, token, options = {}) {
   const mode = options.mode === 'relay' ? 'relay' : 'lan';
   const relay = normalizeRelayOrigin(options.relay);
@@ -97,9 +187,17 @@ function reachableAddresses(bindAddress, addresses = listLanAddresses()) {
 }
 
 module.exports = {
+  DEFAULT_RELAY_HOST,
+  DEFAULT_RELAY_PORT,
   DEFAULT_RELAY_ORIGIN,
+  DEFAULT_RELAY_ENDPOINT,
+  DEFAULT_APP_BASE_URL,
+  DEFAULT_RELAY_USE_TLS,
   listLanAddresses,
+  preferredLanIp,
+  isVirtualOrLinkLocalIpv4,
   normalizeRelayOrigin,
+  normalizeRelayEndpoint,
   pairingUrl,
   publicUrl,
   reachableAddresses,

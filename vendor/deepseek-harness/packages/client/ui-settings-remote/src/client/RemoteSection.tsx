@@ -134,6 +134,8 @@ export function RemoteSection({
   const qr = useMemo(() => qrSvg(pairingUrl), [pairingUrl])
   const enabled = Boolean(snap?.enabled)
   const devices = snap?.devices ?? []
+  const relayConnected = Boolean(snap?.relayConnected)
+  const relayError = typeof snap?.relayError === 'string' ? snap.relayError : ''
 
   return (
     <div className={wide ? css.layer : `${css.layer} ${css.rail}`}>
@@ -199,8 +201,24 @@ export function RemoteSection({
                   </span>
                 </button>
                 {error ? <p className={css.status} role="status">{t('statusError', { message: error })}</p> : null}
+                {enabled && !relayConnected ? (
+                  <p className={css.status} role="status">
+                    {relayError
+                      ? t('relayDownWithError', { message: relayError })
+                      : t('relayDown')}
+                  </p>
+                ) : null}
                 {enabled && qr ? (
-                  <div className={css.qr} role="img" aria-label={t('qr')} dangerouslySetInnerHTML={{ __html: qr }} />
+                  <>
+                    <div className={css.qr} role="img" aria-label={t('qr')} dangerouslySetInnerHTML={{ __html: qr }} />
+                    {pairingUrl ? (
+                      <p className={css.hint} data-dsh-pairing-url="">
+                        <span className={css.pairingUrlLabel}>{t('pairingUrl')}</span>
+                        {' '}
+                        <code className={css.pairingUrl}>{pairingUrl}</code>
+                      </p>
+                    ) : null}
+                  </>
                 ) : (
                   <p className={css.hint}>{enabled ? t('noQr') : t('offHint')}</p>
                 )}

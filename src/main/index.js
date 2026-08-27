@@ -11,8 +11,8 @@ const { ensureDshImPlugin } = require('./dsh-im-desktop');
 const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
-const { RemoteGateway } = require('./remote');
-const { ensureTlsMaterial } = require('./remote-tls');
+const { safeStorage } = require('electron');
+const { ChisaCodeRemote } = require('./chisacode-remote');
 const { invokeDesktopShell } = require('./remote-shell');
 const git = require('./git');
 const { listDir } = require('./workspace-fs');
@@ -61,14 +61,13 @@ function qaEnv(name) {
 }
 
 const dsh = new DshManager();
-const remote = new RemoteGateway({
+// Product remote = full ChisaCode daemon + offer v2 (not HTTP RemoteGateway).
+const remote = new ChisaCodeRemote({
   getConfig: loadConfig,
   saveConfig,
-  // Persistent self-signed material: the fingerprint phones pin must survive
-  // restarts, so it lives under userData instead of the in-memory fallback.
-  getTlsMaterial: () => ensureTlsMaterial(
-    require('path').join(app.getPath('userData'), 'remote-tls'),
-  ),
+  getHomeDir: () => require('path').join(app.getPath('userData'), 'chisacode-home'),
+  safeStorage,
+  // Kept for any residual shell helpers that still expect a loopback target.
   getTarget: () => {
     if (dsh.state !== 'ready') {
       return null;

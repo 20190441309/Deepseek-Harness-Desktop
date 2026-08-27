@@ -1,0 +1,72 @@
+'use strict';
+
+/**
+ * Ensure runtime artifacts match latest source before Electron starts.
+ * Stops shipping stale ui-settings-remote/lib or missing ChisaCode links.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const root = path.join(__dirname, '..');
+
+function newestMtime(dir, filter) {
+  let newest = 0;
+  if (!fs.existsSync(dir)) return 0;
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'lib') continue;
+        walk(full);
+        continue;
+      }
+      if (filter && !filter(full)) continue;
+      newest = Math.max(newest, fs.statSync(full).mtimeMs);
+    }
+  };
+  walk(dir);
+  return newest;
+}
+
+function run(command, args, cwd = root) {
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: true });
+  if (result.status !== 0) {
+    process.exit(result.status || 1);
+  }
+}
+
+const remotePkg = path.join(root, 'vendor', 'deepseek-harness', 'packages', 'client', 'ui-settings-remote');
+const remoteSrc = path.join(remotePkg, 'src');
+const remoteLib = path.join(remotePkg, 'lib', 'client.js');
+const srcNewest = newestMtime(remoteSrc, (f) => /\.(tsx?|css)$/.test(f));
+const libMtime = fs.existsSync(remoteLib) ? fs.statSync(remoteLib).mtimeMs : 0;
+if (srcNewest > libMtime + 500) {
+  console.log('[prestart] rebuilding ui-settings-remote (src newer than lib)');
+  run('npm', ['run', 'bundle'], remotePkg);
+} else {
+  console.log('[prestart] ui-settings-remote lib is current');
+}
+
+const mobileBundle = path.join(root, 'mobile', 'web', 'chisacode', 'daemon-client.bundle.js');
+if (!fs.existsSync(mobileBundle)) {
+  console.log('[prestart] bundling chisacode mobile client');
+  run('node', ['scripts/bundle-chisacode-mobile-client.mjs']);
+}
+
+const chisacodeNm = path.join(root, 'vendor', 'chisacode-remote', 'node_modules', '@chisacode', 'server');
+if (!fs.existsSync(chisacodeNm)) {
+  console.log('[prestart] linking chisacode-remote deps');
+  run('node', ['scripts/link-chisacode-deps.cjs']);
+}
+
+// Fail closed if gateway lib still has the retired host-token wall copy.
+if (fs.existsSync(remoteLib)) {
+  const text = fs.readFileSync(remoteLib, 'utf8');
+  if (text.includes('保存宿主令牌') && !text.includes('125.124.85.212:8411')) {
+    console.error('[prestart] ui-settings-remote/lib is stale (host-token wall). Run: npm run bundle --prefix vendor/deepseek-harness/packages/client/ui-settings-remote');
+    process.exit(1);
+  }
+}
+
+console.log('[prestart] ready');

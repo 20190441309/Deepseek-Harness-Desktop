@@ -141,18 +141,19 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
 
 test('remote bind address and LAN TLS normalize with safe fallbacks', () => {
   const { normalizeRemoteBindAddress, normalizeRemoteConfig } = require('./config');
-  assert.equal(DEFAULTS.remoteBindAddress, '0.0.0.0');
+  assert.equal(DEFAULTS.remoteBindAddress, '127.0.0.1');
   assert.equal(DEFAULTS.remoteLanTls, false);
   assert.equal(normalizeRemoteBindAddress('127.0.0.1'), '127.0.0.1');
   assert.equal(normalizeRemoteBindAddress('192.168.1.20'), '192.168.1.20');
-  assert.equal(normalizeRemoteBindAddress('300.0.0.1'), '0.0.0.0');
-  assert.equal(normalizeRemoteBindAddress('garbage'), '0.0.0.0');
-  assert.equal(normalizeRemoteBindAddress(undefined), '0.0.0.0');
+  assert.equal(normalizeRemoteBindAddress('0.0.0.0'), '0.0.0.0');
+  assert.equal(normalizeRemoteBindAddress('300.0.0.1'), '127.0.0.1');
+  assert.equal(normalizeRemoteBindAddress('garbage'), '127.0.0.1');
+  assert.equal(normalizeRemoteBindAddress(undefined), '127.0.0.1');
   const normalized = normalizeRemoteConfig({
     remoteBindAddress: 'not-an-ip',
     remoteLanTls: 'yes',
   });
-  assert.equal(normalized.remoteBindAddress, '0.0.0.0');
+  assert.equal(normalized.remoteBindAddress, '127.0.0.1');
   assert.equal(normalized.remoteLanTls, false);
   const saved = saveConfig({ remoteBindAddress: '127.0.0.1', remoteLanTls: true });
   assert.equal(saved.remoteBindAddress, '127.0.0.1');
@@ -163,17 +164,18 @@ test('remote bind address and LAN TLS normalize with safe fallbacks', () => {
   saveConfig({ remoteBindAddress: '0.0.0.0', remoteLanTls: false });
 });
 
-test('remote feature keeps the desktop default HTTP relay and strips other HTTP origins', () => {
+test('remote relay endpoint normalizes to host:port for ChisaCode transport', () => {
   assert.equal(REMOTE_FEATURE_ENABLED, true);
-  const httpRelay = saveConfig({
+  const customRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
     remoteRelayUrl: 'http://relay.example:8787/path',
     remoteRelayToken: 'a'.repeat(32),
   });
-  assert.equal(httpRelay.remoteEnabled, true);
-  assert.equal(httpRelay.remoteMode, 'lan');
-  assert.equal(httpRelay.remoteRelayUrl, '');
+  assert.equal(customRelay.remoteEnabled, true);
+  assert.equal(customRelay.remoteMode, 'relay');
+  assert.equal(customRelay.remoteRelayUrl, 'relay.example:8787');
+  assert.equal(customRelay.remoteRelayEndpoint, 'relay.example:8787');
   const defaultRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
@@ -181,7 +183,15 @@ test('remote feature keeps the desktop default HTTP relay and strips other HTTP 
     remoteRelayToken: 'a'.repeat(32),
   });
   assert.equal(defaultRelay.remoteMode, 'relay');
-  assert.equal(defaultRelay.remoteRelayUrl, 'http://125.124.85.212:8411');
+  assert.equal(defaultRelay.remoteRelayUrl, '125.124.85.212:8411');
+  const blockedRelay = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'relay',
+    remoteRelayUrl: 'https://app.chisacode.sh/x',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(blockedRelay.remoteMode, 'relay');
+  assert.equal(blockedRelay.remoteRelayUrl, '125.124.85.212:8411');
   const httpsRelay = saveConfig({
     remoteEnabled: true,
     remoteMode: 'relay',
@@ -190,10 +200,33 @@ test('remote feature keeps the desktop default HTTP relay and strips other HTTP 
   });
   assert.equal(httpsRelay.remoteEnabled, true);
   assert.equal(httpsRelay.remoteMode, 'relay');
-  assert.equal(httpsRelay.remoteRelayUrl, 'https://relay.example');
+  assert.equal(httpsRelay.remoteRelayUrl, 'relay.example:443');
+  const lanMode = saveConfig({
+    remoteEnabled: true,
+    remoteMode: 'lan',
+    remoteRelayUrl: '',
+    remoteRelayToken: 'a'.repeat(32),
+  });
+  assert.equal(lanMode.remoteMode, 'lan');
+  assert.equal(lanMode.remoteRelayUrl, '125.124.85.212:8411');
   const pub = publicConfig(httpsRelay);
   assert.equal(pub.remoteAvailable, true);
   assert.equal(pub.remoteEnabled, true);
+});
+
+test('remoteAppBaseUrl never backfills relay origin as SPA landing', () => {
+  const { normalizeRemoteConfig } = require('./config');
+  const { DEFAULT_APP_BASE_URL } = require('../shared/lan');
+
+  assert.equal(DEFAULT_APP_BASE_URL, 'http://125.124.85.212:8411');
+
+  assert.equal(normalizeRemoteConfig({ remoteAppBaseUrl: '' }).remoteAppBaseUrl, '');
+  assert.equal(normalizeRemoteConfig({ remoteAppBaseUrl: '  ' }).remoteAppBaseUrl, '');
+  assert.equal(normalizeRemoteConfig({ remoteAppBaseUrl: undefined }).remoteAppBaseUrl, '');
+
+  const saved = saveConfig({ remoteAppBaseUrl: '', remoteEnabled: true });
+  assert.equal(saved.remoteAppBaseUrl, '');
+  assert.notEqual(saved.remoteAppBaseUrl, DEFAULT_APP_BASE_URL);
 });
 
 test('parkRemoteSnapshot forces unavailable shape for IPC park path', () => {

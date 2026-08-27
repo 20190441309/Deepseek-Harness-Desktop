@@ -20,6 +20,21 @@ import { callShell, UnauthorizedError } from './shell/remote-shell.js';
 import { parseVcsStatus, parseBranchList } from './git/vcs-parse.js';
 import { resolveGitQuick } from './git/quick.js';
 import { classifyScan, detectScanSupport, scanUnavailableHint } from './pair/scan.js';
+import {
+  clearAllSecrets,
+  getMostRecentStickyServerId,
+  listStickyServerIds,
+  reconnectSticky,
+} from './chisacode/session.js';
+
+/** Lazy-loaded ChisaCode protocol client (DaemonClient + offer v2). */
+let chisacodeApi = null;
+async function loadChisaCodeApi() {
+  if (!chisacodeApi) {
+    chisacodeApi = await import('./chisacode/daemon-client.bundle.js');
+  }
+  return chisacodeApi;
+}
 
 const origin = window.location.origin;
 const el = (id) => document.getElementById(id);
@@ -125,6 +140,8 @@ const state = {
   fileQuery: '',
   fileEntries: [],
   scanSupport: { supported: false, reason: '' },
+  transport: '',
+  chisacode: null,
 };
 
 let sockets = null;
@@ -307,7 +324,16 @@ function renderApproval() {
 
 // —— 主机 RPC / shell —— //
 
+const LEGACY_HOST_RPC_MSG = '当前为 ChisaCode 配对会话，旧 Host RPC 已退役';
+
+function assertNotLegacyHostRpc() {
+  if (state.transport === 'chisacode') {
+    throw new Error(LEGACY_HOST_RPC_MSG);
+  }
+}
+
 async function call(method, payload = {}) {
+  assertNotLegacyHostRpc();
   const result = await callUnary({ origin, method, payload });
   if (!result.ok) {
     throw new Error(result.error?.message || method);
@@ -316,9 +342,17 @@ async function call(method, payload = {}) {
 }
 
 function forceLogout(message) {
+  try {
+    state.chisacode?.client?.close?.();
+  } catch { /* ignore */ }
+  if (state.transport === 'chisacode') {
+    clearAllSecrets();
+  }
   sockets?.close();
   sockets = null;
   state.connected = false;
+  state.transport = '';
+  state.chisacode = null;
   state.route = 'connect';
   state.sessions = [];
   state.sessionId = '';
@@ -334,6 +368,7 @@ function forceLogout(message) {
 }
 
 async function shell(name, payload = {}) {
+  assertNotLegacyHostRpc();
   try {
     return await callShell({ origin, name, payload });
   } catch (error) {
@@ -390,35 +425,62 @@ function sessionItems(value) {
 
 async function connect(offer) {
   showError('');
-  if (offer) {
-    await loginWithOffer({ origin, offer });
+  if (!offer || offer.protocol !== 'chisacode-v2') {
+    throw new Error('请使用桌面端扫码配对二维码（ChisaCode offer）');
   }
-  sockets?.close();
-  const session = await handshake({
-    call,
-    connectEvents: async () => {
-      sockets = openEventSockets({ origin, onMux: applyMux, onHost: applyHost });
-    },
-  });
+  const api = await loadChisaCodeApi();
+  const paired = await loginWithOffer({ offer, api });
+  state.chisacode = paired;
+  state.transport = 'chisacode';
   state.connected = true;
   state.route = 'chat';
-  state.host = session.host;
-  state.cwd = String(session.host?.cwd || '');
-  state.hostName = hostLabel(session.host);
-  state.sessions = sessionItems(session.sessions);
+  state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
+  state.cwd = '';
+  state.hostName = paired.serverId;
+  try {
+    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
+    state.sessions = Array.isArray(agents)
+      ? agents
+      : (agents.items || agents.agents || []);
+  } catch {
+    state.sessions = [];
+  }
   deviceLine.replaceChildren();
-  const live = document.createElement('span');
-  live.className = 'live';
-  deviceLine.append(live, state.hostName);
-  if (workspaceLine) workspaceLine.textContent = state.hostName;
+  deviceLine.append(document.createTextNode(`已配对 ${paired.serverId}`));
+  showBanner('会话面迁移中；配对与重连已可用。');
   renderSessions();
   renderHeader();
   renderScreen();
-  refreshGit().catch(() => {});
-  const first = state.sessions.find((row) => !row.blank) || state.sessions[0];
-  if (first?.sessionId) {
-    await openSession(first.sessionId);
+}
+
+async function connectSticky() {
+  const serverId = getMostRecentStickyServerId();
+  if (!serverId) {
+    throw new Error('没有已保存的配对；请重新扫码');
   }
+  const api = await loadChisaCodeApi();
+  const paired = await reconnectSticky(api, serverId);
+  state.chisacode = paired;
+  state.transport = 'chisacode';
+  state.connected = true;
+  state.route = 'chat';
+  state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
+  state.cwd = '';
+  state.hostName = paired.serverId;
+  try {
+    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
+    state.sessions = Array.isArray(agents)
+      ? agents
+      : (agents.items || agents.agents || []);
+  } catch {
+    state.sessions = [];
+  }
+  deviceLine.replaceChildren();
+  deviceLine.append(document.createTextNode(`已重连 ${paired.serverId}`));
+  showBanner('会话面迁移中；配对与重连已可用。');
+  renderSessions();
+  renderHeader();
+  renderScreen();
 }
 
 async function openSession(sessionId) {
@@ -478,6 +540,7 @@ async function cancelRun() {
 async function answerApproval(outcome) {
   const pending = state.pendingApproval;
   if (!pending) return;
+  assertNotLegacyHostRpc();
   await respond({
     origin,
     rpcId: pending.rpcId,
@@ -804,6 +867,10 @@ async function requestHost(name, payload = {}) {
 }
 
 async function logoutDevice() {
+  if (state.transport === 'chisacode') {
+    forceLogout('');
+    return;
+  }
   try {
     await fetch(`${origin}/__remote__/logout`, { credentials: 'include', redirect: 'manual' });
   } catch { /* 网络失败也照样清态回连接页 */ }
@@ -1602,20 +1669,10 @@ renderScreen();
 initScanButton();
 
 const bootOffer = offerFromHash(window.location.hash);
-if (bootOffer) {
+if (bootOffer && bootOffer.protocol === 'chisacode-v2') {
   connect(bootOffer).catch((error) => showError(error.message || '连接失败'));
-} else {
-  // 带了 #offer= 却解不开（字段/编码/版本不对）不是「未配对」，必须显式报错，
-  // 不能静默停在「等待配对」（connect() 开头会清错误行，所以文案在试探失败后给）。
-  const malformedOffer = hashHasOffer(window.location.hash);
-  // C9/C10：先用既有 Cookie 试探握手；401（未配对/已失效）静默留在连接页，
-  // 其他失败（网关 5xx、Harness 未就绪、握手方法失败）要给出文案。
-  connect(null).catch((error) => {
-    if (malformedOffer) {
-      showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或粘贴完整配对链接。');
-      return;
-    }
-    if (error?.status === 401) return;
-    showError(error?.message || '连接失败');
-  });
+} else if (hashHasOffer(window.location.hash) && !bootOffer) {
+  showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或粘贴完整配对链接。');
+} else if (listStickyServerIds().length) {
+  connectSticky().catch((error) => showError(error.message || '重连失败'));
 }
