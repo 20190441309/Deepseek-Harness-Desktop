@@ -1,8 +1,12 @@
 /**
- * Browser integration QA for mobile/web Phase 1 against the fake daemon.
+ * Browser integration QA for mobile/web Phase 1 + Phase 2 against the fake
+ * daemon.
  *
  * Runs the real SPA (app.js + all chisacode/* modules) in headless Chrome
  * with only `daemon-client.bundle.js` swapped for the in-memory fake.
+ * Phase 2 covers the Files work loop (drill-down / breadcrumb / preview /
+ * path search / insert), read-only diff (uncommitted + base), and the MCP /
+ * skills read-only inventories.
  *
  * Usage: node tools/mobile-web-qa/run-qa.mjs [--screenshots <dir>]
  * Requires puppeteer-core (dev-only): npm i --no-save puppeteer-core
@@ -487,6 +491,380 @@ async function main() {
       }]),
       `createAgent args ${JSON.stringify(calls.at(-1))}`,
     );
+  });
+
+  // ════════ Phase 2：Files / Diff / MCP / Skills 工作环 ════════ //
+
+  // The freshly created session has cwd /repo/mobile — the workspace pane
+  // follows it. #open-workspace lives in the drawer; a DOM click works
+  // regardless of drawer visibility.
+  const openWorkspace = () => page.evaluate(() => document.querySelector('#open-workspace').click());
+  const mainTab = '#options > .ws-tabs .ws-tab';
+  const scopeTab = '#options .diff-scopes .ws-tab';
+
+  // —— Diff 工作环 —— //
+  await check('Diff：未提交 scope 只读文件列表 + badge + 无 Stage/保存按钮', async () => {
+    await openWorkspace();
+    await waitFor(page, () => document.querySelectorAll('#options .diff-file').length === 3, 'diff files rendered');
+    const view = await page.evaluate(() => ({
+      calls: window.__qa.calls.filter((call) => call.method === 'getCheckoutDiff').map((call) => call.args),
+      rows: [...document.querySelectorAll('#options .diff-file-head')].map((head) => head.textContent),
+      copy: document.querySelector('#options').textContent,
+    }));
+    assert(
+      JSON.stringify(view.calls.at(-1)) === JSON.stringify(['/repo/mobile', { mode: 'uncommitted' }]),
+      `getCheckoutDiff args ${JSON.stringify(view.calls.at(-1))}`,
+    );
+    assert(view.rows.some((row) => row.includes('mobile/web/app.js') && row.includes('+12 −3')), 'app.js stat missing');
+    assert(view.rows.some((row) => row.includes('assets/logo.png') && row.includes('二进制')), 'binary badge missing');
+    assert(view.rows.some((row) => row.includes('package-lock.json') && row.includes('文件过大')), 'too-large badge missing');
+    assert(view.copy.includes('只读视图'), 'read-only copy missing');
+  });
+  await shot('mobile-web-phase2-diff');
+
+  await check('Diff：hunk 展开渲染 add/remove 行', async () => {
+    await clickByText(page, '#options .diff-file-head', 'mobile/web/app.js');
+    await waitFor(page, () => document.querySelector('#options .diff-line.add'), 'hunk lines visible');
+    const view = await page.evaluate(() => ({
+      header: document.querySelector('#options .diff-line.header')?.textContent || '',
+      adds: [...document.querySelectorAll('#options .diff-line.add')].map((line) => line.textContent),
+      removes: [...document.querySelectorAll('#options .diff-line.remove')].map((line) => line.textContent),
+    }));
+    assert(view.header === '@@ -10,3 +10,4 @@', `hunk header: ${view.header}`);
+    assert(view.adds.some((line) => line.includes('phase2Call();')), 'add line missing');
+    assert(view.removes.some((line) => line.includes('legacyCall();')), 'remove line missing');
+  });
+
+  await check('Diff：切换 base scope 调 mode=base 并换文件集', async () => {
+    await clickByText(page, scopeTab, '对比主干');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#options .diff-file-head')]
+        .some((head) => head.textContent.includes('docs/notes.md')),
+      'base scope file rendered',
+    );
+    const view = await page.evaluate(() => ({
+      call: window.__qa.calls.filter((c) => c.method === 'getCheckoutDiff').at(-1).args,
+      row: [...document.querySelectorAll('#options .diff-file-head')].map((head) => head.textContent).join('|'),
+    }));
+    assert(view.call[1].mode === 'base', `expected mode base, got ${JSON.stringify(view.call)}`);
+    assert(view.row.includes('新增'), 'isNew badge missing on base scope');
+  });
+
+  await check('Diff：空 diff 明确状态', async () => {
+    await page.evaluate(() => {
+      window.__qa.world.diff.base = { error: null, files: [] };
+    });
+    await clickByText(page, '#options button', '刷新');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('与主干没有差异'),
+      'empty base diff copy',
+    );
+  });
+
+  await check('Diff：非 Git 仓库按 error code 判别', async () => {
+    await page.evaluate(() => {
+      window.__qa.world.diff.uncommitted = {
+        error: { code: 'NOT_GIT_REPO', message: 'not a git repository' },
+        files: [],
+      };
+    });
+    await clickByText(page, scopeTab, '未提交');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('不是 Git 仓库'),
+      'non-git copy',
+    );
+  });
+
+  await check('Diff：加载失败可见并可重试', async () => {
+    await page.evaluate(() => window.__qa.setFail('getCheckoutDiff', 'git crashed'));
+    await clickByText(page, scopeTab, '对比主干');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('读取改动失败：git crashed'),
+      'diff failure visible',
+    );
+    await clickByText(page, '#options button', '重试');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('与主干没有差异'),
+      'retry recovered to empty base diff',
+    );
+  });
+
+  // —— Files 工作环 —— //
+  await check('文件：根目录列表目录在前、文件带大小', async () => {
+    await clickByText(page, mainTab, '文件');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'root listing rendered');
+    const view = await page.evaluate(() => ({
+      names: [...document.querySelectorAll('#options .file-row .file-name')].map((node) => node.textContent),
+      listCall: window.__qa.calls.filter((c) => c.method === 'listDirectory').at(-1).args,
+      readme: [...document.querySelectorAll('#options .file-row')]
+        .find((row) => row.textContent.includes('README.md'))?.textContent || '',
+    }));
+    assert(
+      JSON.stringify(view.names) === JSON.stringify([
+        'assets/', 'build/', 'src/', 'vendor/', 'data.bin', 'README.md',
+      ]),
+      `root order: ${JSON.stringify(view.names)}`,
+    );
+    assert(JSON.stringify(view.listCall) === JSON.stringify(['/repo/mobile', '']), 'listDirectory args wrong');
+    assert(/\d+ B/.test(view.readme), 'file size label missing');
+  });
+  await shot('mobile-web-phase2-files');
+
+  await check('文件：目录点击=导航不插入 mention', async () => {
+    const draftBefore = await page.evaluate(() => document.querySelector('#draft').value);
+    await clickByText(page, '#options .file-open', 'src/');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#options .crumb')].some((crumb) => crumb.textContent === 'src'),
+      'breadcrumb shows src',
+    );
+    const view = await page.evaluate(() => ({
+      names: [...document.querySelectorAll('#options .file-row .file-name')].map((node) => node.textContent),
+      draft: document.querySelector('#draft').value,
+      settingsOpen: !document.querySelector('#settings').classList.contains('hidden'),
+    }));
+    assert(JSON.stringify(view.names) === JSON.stringify(['app/', 'index.js']), `src listing: ${view.names}`);
+    assert(view.draft === draftBefore, 'directory click must not insert a mention');
+    assert(view.settingsOpen, 'settings pane must stay open while browsing');
+  });
+
+  await check('文件：breadcrumb 返回 + 滚动位置恢复', async () => {
+    await clickByText(page, '#options .crumb', '根目录');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'back at root');
+    await clickByText(page, '#options .file-open', 'vendor/');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length === 40, 'vendor listing');
+    await page.evaluate(() => { document.querySelector('#options').scrollTop = 180; });
+    await clickByText(page, '#options .crumb', '根目录');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'root again');
+    await clickByText(page, '#options .file-open', 'vendor/');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length === 40, 'vendor revisited');
+    const scrollTop = await page.evaluate(() => document.querySelector('#options').scrollTop);
+    assert(Math.abs(scrollTop - 180) <= 2, `vendor scroll restored to ${scrollTop}, expected 180`);
+  });
+
+  await check('文件：文本只读预览（无保存按钮）', async () => {
+    await clickByText(page, '#options .crumb', '根目录');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'root before preview');
+    await clickByText(page, '#options .file-open', 'README.md');
+    await waitFor(page, () => document.querySelector('#options .preview-text'), 'text preview rendered');
+    const view = await page.evaluate(() => ({
+      title: document.querySelector('#options .preview-title')?.textContent || '',
+      text: document.querySelector('#options .preview-text')?.textContent || '',
+      copy: document.querySelector('#options').textContent,
+      buttons: [...document.querySelectorAll('#options button')].map((button) => button.textContent),
+    }));
+    assert(view.title === 'README.md', `preview title: ${view.title}`);
+    assert(view.text.includes('Mobile QA repo'), 'file content missing');
+    assert(view.copy.includes('只读预览'), 'read-only label missing');
+    assert(!view.buttons.some((label) => /保存|写入/.test(label)), 'a save button leaked into the preview');
+  });
+  await shot('mobile-web-phase2-preview');
+
+  await check('文件：插入 @路径 是显式动作并回到输入框', async () => {
+    await clickByText(page, '#options button', '插入 @路径 到输入框');
+    const view = await page.evaluate(() => ({
+      draft: document.querySelector('#draft').value,
+      settingsHidden: document.querySelector('#settings').classList.contains('hidden'),
+    }));
+    assert(view.draft.includes('@README.md'), `draft after insert: ${JSON.stringify(view.draft)}`);
+    assert(view.settingsHidden, 'settings should close after insert');
+  });
+
+  await check('文件：图片预览走 blob URL', async () => {
+    await openWorkspace();
+    await waitFor(page, () => document.querySelector('#options .preview-bar'), 'preview state restored');
+    await clickByText(page, '#options .preview-back', '返回');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'back to root');
+    await clickByText(page, '#options .file-open', 'assets/');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length === 1, 'assets listing');
+    await clickByText(page, '#options .file-open', 'logo.png');
+    await waitFor(page, () => document.querySelector('#options .preview-image'), 'image preview rendered');
+    const src = await page.evaluate(() => document.querySelector('#options .preview-image').src);
+    assert(src.startsWith('blob:'), `image src is ${src}`);
+  });
+
+  await check('文件：二进制文件明确状态', async () => {
+    await clickByText(page, '#options .preview-back', '返回');
+    await clickByText(page, '#options .crumb', '根目录');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'root for binary');
+    await clickByText(page, '#options .file-open', 'data.bin');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('二进制文件'),
+      'binary copy visible',
+    );
+  });
+
+  await check('文件：超限文件不预览且不发 readFile', async () => {
+    await clickByText(page, '#options .preview-back', '返回');
+    await clickByText(page, '#options .file-open', 'build/');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length === 1, 'build listing');
+    await clickByText(page, '#options .file-open', 'bundle.min.js');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('文件过大'),
+      'too-large copy visible',
+    );
+    const fetched = await page.evaluate(
+      () => window.__qa.calls.some((call) => call.method === 'readFile' && call.args[1] === 'build/bundle.min.js'),
+    );
+    assert(!fetched, 'oversized file must not be fetched');
+  });
+
+  await check('文件：预览失败可见并可重试', async () => {
+    await clickByText(page, '#options .preview-back', '返回');
+    await clickByText(page, '#options .crumb', '根目录');
+    await waitFor(page, () => document.querySelectorAll('#options .file-row').length >= 6, 'root for error case');
+    await page.evaluate(() => window.__qa.setFail('readFile', 'disk error'));
+    await clickByText(page, '#options .file-open', 'README.md');
+    await waitFor(
+      page,
+      () => document.querySelector('#options').textContent.includes('读取失败：disk error'),
+      'preview error visible',
+    );
+    await clickByText(page, '#options button', '重试');
+    await waitFor(page, () => document.querySelector('#options .preview-text'), 'retry recovered the preview');
+    await clickByText(page, '#options .preview-back', '返回');
+  });
+
+  await check('文件：路径搜索走 getDirectorySuggestions（非内容搜索）', async () => {
+    await page.type('#options input.paste', 'main');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#options .file-row .file-path')]
+        .some((node) => node.textContent === 'src/app/main.js'),
+      'search results rendered',
+    );
+    const view = await page.evaluate(() => ({
+      call: window.__qa.calls.filter((c) => c.method === 'getDirectorySuggestions').at(-1).args[0],
+      copy: document.querySelector('#options').textContent,
+    }));
+    assert(
+      JSON.stringify(view.call) === JSON.stringify({
+        query: 'main', cwd: '/repo/mobile', includeFiles: true, includeDirectories: true,
+        matchMode: 'fuzzy', limit: 30,
+      }),
+      `suggestion args ${JSON.stringify(view.call)}`,
+    );
+    assert(view.copy.includes('不是内容全文搜索'), 'honest non-content-search copy missing');
+  });
+  await shot('mobile-web-phase2-search');
+
+  await check('文件：搜索结果行 @ 直接插入路径', async () => {
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#options .file-row')]
+        .find((node) => node.textContent.includes('src/app/main.js'));
+      row.querySelector('.file-insert').click();
+    });
+    const draftValue = await page.evaluate(() => document.querySelector('#draft').value);
+    assert(draftValue.includes('@src/app/main.js'), `draft: ${JSON.stringify(draftValue)}`);
+  });
+
+  await check('文件：搜索结果目录点击定位到浏览器', async () => {
+    await openWorkspace();
+    await waitFor(page, () => document.querySelector('#options input.paste'), 'files tab restored');
+    await page.evaluate(() => {
+      const input = document.querySelector('#options input.paste');
+      input.value = 'src';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#options .file-row .file-path')]
+        .some((node) => node.textContent === 'src'),
+      'src directory suggestion listed',
+    );
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#options .file-row')]
+        .find((node) => node.querySelector('.file-path')?.textContent === 'src');
+      row.querySelector('.file-open').click();
+    });
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#options .crumb')].some((crumb) => crumb.textContent === 'src')
+        && document.querySelectorAll('#options .file-row').length === 2,
+      'navigated into src from search',
+    );
+    const query = await page.evaluate(() => document.querySelector('#options input.paste').value);
+    assert(query === '', 'search query should clear after locating');
+  });
+
+  // —— MCP / Skills 只读清单 —— //
+  await check('MCP：hub 标注只读清单，pane 列出状态/来源/错误', async () => {
+    // DOM click: transient toasts (e.g. Git 操作的「完成」) can overlay the header strip
+    // and swallow coordinate-based clicks on #settings-back.
+    await page.evaluate(() => document.querySelector('#settings-back').click());
+    await waitFor(page, () => document.querySelector('#settings-title').textContent === '设置', 'hub visible');
+    const hubDesc = await page.evaluate(
+      () => [...document.querySelectorAll('#options .link-row')]
+        .find((row) => row.textContent.includes('MCP'))?.textContent || '',
+    );
+    assert(hubDesc.includes('只读清单 · 电脑端管理'), `MCP hub desc: ${hubDesc}`);
+    await clickByText(page, '#options .link-row', 'MCP');
+    await waitFor(page, () => document.querySelectorAll('#options .ext-row').length === 2, 'MCP rows rendered');
+    const view = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('#options .ext-row')].map((row) => row.textContent),
+      statuses: [...document.querySelectorAll('#options .ext-status')].map((node) => node.textContent),
+      copy: document.querySelector('#options').textContent,
+    }));
+    assert(view.rows[0].includes('GitHub 工具') && view.rows[0].includes('http · 用户'), `mcp row 0: ${view.rows[0]}`);
+    assert(view.rows[0].includes('1 处按会话覆盖'), 'override count missing');
+    assert(view.rows[1].includes('stdio · 系统') && view.rows[1].includes('上次握手超时'), `mcp row 1: ${view.rows[1]}`);
+    assert(JSON.stringify(view.statuses) === JSON.stringify(['已启用', '已全局停用']), `statuses: ${view.statuses}`);
+    assert(view.copy.includes('只读清单'), 'read-only notice missing');
+  });
+  await shot('mobile-web-phase2-mcp');
+
+  await check('技能：只读清单显示来源 scope 与状态', async () => {
+    await page.evaluate(() => document.querySelector('#settings-back').click());
+    await clickByText(page, '#options .link-row', '技能');
+    await waitFor(page, () => document.querySelectorAll('#options .ext-row').length === 2, 'skill rows rendered');
+    const view = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('#options .ext-row')].map((row) => row.textContent),
+      copy: document.querySelector('#options').textContent,
+    }));
+    assert(view.rows[0].includes('release-notes') && view.rows[0].includes('项目'), `skill row 0: ${view.rows[0]}`);
+    assert(view.rows[1].includes('db-migrate') && view.rows[1].includes('Claude 主目录'), `skill row 1: ${view.rows[1]}`);
+    assert(view.rows[1].includes('已全局停用'), 'disabled status missing');
+    assert(view.copy.includes('电脑端提示：一个技能目录无法读取'), 'payload-level error note missing');
+  });
+  await shot('mobile-web-phase2-skills');
+
+  // —— Kill-list：只读契约 —— //
+  await check('Kill-list：工作区两个 tab 均无 Stage/保存/放弃类按钮', async () => {
+    await page.evaluate(() => document.querySelector('#settings-back').click());
+    await clickByText(page, '#options .link-row', '工作区');
+    await waitFor(page, () => document.querySelector('#options input.paste, #options .diff-scopes'), 'workspace pane');
+    const banned = /保存|写入|Stage|Unstage|Discard|暂存|放弃/;
+    const filesButtons = await page.evaluate(
+      () => [...document.querySelectorAll('#options button')].map((button) => button.textContent),
+    );
+    assert(!filesButtons.some((label) => banned.test(label)), `banned control in files tab: ${filesButtons}`);
+    await clickByText(page, mainTab, '更改');
+    await waitFor(page, () => document.querySelector('#options .diff-scopes'), 'changes tab');
+    const diffButtons = await page.evaluate(
+      () => [...document.querySelectorAll('#options button')].map((button) => button.textContent),
+    );
+    assert(!diffButtons.some((label) => banned.test(label)), `banned control in changes tab: ${diffButtons}`);
+  });
+
+  await check('Kill-list：全程零 MCP/技能写调用、零文件写调用', async () => {
+    const writes = await page.evaluate(() => {
+      const bannedMethods = [
+        'upsertAgentMcpServer', 'patchAgentMcpServerPolicy', 'deleteAgentMcpServer',
+        'installAgentSkills', 'uninstallAgentSkill', 'patchAgentSkillPolicy',
+        'writeFile', 'saveFile',
+      ];
+      return window.__qa.calls
+        .filter((call) => bannedMethods.includes(call.method))
+        .map((call) => call.method);
+    });
+    assert(writes.length === 0, `write RPCs were called: ${writes.join(', ')}`);
   });
 
   await check('控制台：0 应用错误', async () => {

@@ -47,6 +47,138 @@ function makeAgent(index) {
   };
 }
 
+const PNG_1PX = Uint8Array.from(atob(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+), (char) => char.charCodeAt(0));
+
+function textFileEntry(content) {
+  return {
+    kind: 'file', fileKind: 'text', mime: 'text/plain',
+    bytes: new TextEncoder().encode(content),
+  };
+}
+
+/** In-memory workspace file tree for the Files work loop. */
+function buildFileTree() {
+  const textFile = textFileEntry;
+  // 40 vendor files force the listing to overflow → scroll-restore is testable.
+  const vendorFiles = Array.from({ length: 40 }, (_, index) => (
+    `vendor/pkg-${String(index).padStart(2, '0')}.js`
+  ));
+  const files = Object.fromEntries(vendorFiles.map((path) => [path, textFileEntry(`// ${path}\n`)]));
+  return {
+    '': ['src', 'assets', 'build', 'vendor', 'data.bin', 'README.md'],
+    src: ['src/app', 'src/index.js'],
+    'src/app': ['src/app/main.js'],
+    assets: ['assets/logo.png'],
+    build: ['build/bundle.min.js'],
+    vendor: vendorFiles,
+    files: {
+      ...files,
+      'src/index.js': textFile('import { main } from "./app/main.js";\nmain();\n'),
+      'src/app/main.js': textFile('export function main() {\n  return "phase2";\n}\n'),
+      'README.md': textFile('# Mobile QA repo\n\n用于 Phase 2 文件预览的样例仓库。\n'),
+      'assets/logo.png': {
+        kind: 'file', fileKind: 'image', mime: 'image/png', bytes: PNG_1PX,
+      },
+      'data.bin': {
+        kind: 'file', fileKind: 'binary', mime: 'application/octet-stream',
+        bytes: Uint8Array.from([0, 1, 2, 3]),
+      },
+      // Size above the 2MB preview gate — the SPA must refuse to fetch it.
+      'build/bundle.min.js': {
+        kind: 'file', fileKind: 'text', mime: 'text/javascript',
+        bytes: new TextEncoder().encode('x'), sizeOverride: 3 * 1024 * 1024,
+      },
+    },
+  };
+}
+
+function diffHunk() {
+  return {
+    oldStart: 10, oldCount: 3, newStart: 10, newCount: 4,
+    lines: [
+      { type: 'context', content: 'const before = 1;' },
+      { type: 'remove', content: 'legacyCall();' },
+      { type: 'add', content: 'phase2Call();' },
+      { type: 'add', content: 'phase2Extra();' },
+    ],
+  };
+}
+
+/** Per-scope checkout diff payloads; scenarios mutate these via window.__qa. */
+function buildDiffWorld() {
+  return {
+    uncommitted: {
+      error: null,
+      files: [
+        {
+          path: 'mobile/web/app.js', isNew: false, isDeleted: false,
+          additions: 12, deletions: 3, status: 'ok', hunks: [diffHunk()],
+        },
+        {
+          path: 'assets/logo.png', isNew: true, isDeleted: false,
+          additions: 0, deletions: 0, status: 'binary', hunks: [],
+        },
+        {
+          path: 'package-lock.json', isNew: false, isDeleted: false,
+          additions: 900, deletions: 900, status: 'too_large', hunks: [],
+        },
+      ],
+    },
+    base: {
+      error: null,
+      files: [
+        {
+          path: 'docs/notes.md', isNew: true, isDeleted: false,
+          additions: 5, deletions: 0, status: 'ok', hunks: [diffHunk()],
+        },
+      ],
+    },
+  };
+}
+
+function buildExtensionsWorld() {
+  return {
+    mcp: {
+      servers: [
+        {
+          name: 'github', label: 'GitHub 工具', description: '仓库检索与 issue 操作',
+          source: 'user', removable: true, editable: true,
+          config: { type: 'http', url: 'https://mcp.example/github' },
+          statusByScope: { global: 'enabled', providers: {}, agents: { 'agent-1': 'agent-disabled' } },
+          errors: [],
+        },
+        {
+          name: 'local-fs', label: 'local-fs', description: '',
+          source: 'system', removable: false, editable: false,
+          config: { type: 'stdio', command: 'fs-mcp' },
+          statusByScope: { global: 'global-disabled', providers: {}, agents: {} },
+          errors: ['上次握手超时'],
+        },
+      ],
+      errors: [],
+    },
+    skills: {
+      skills: [
+        {
+          name: 'release-notes', description: '生成发布说明',
+          sources: [{ id: 's1', type: 'project', path: '/repo/mobile/.agents/skills/release-notes', removable: false }],
+          statusByScope: { global: 'enabled', providers: {}, agents: {} },
+          errors: [],
+        },
+        {
+          name: 'db-migrate', description: '数据库迁移助手',
+          sources: [{ id: 's2', type: 'claude-home', path: '/home/qa/.claude/skills/db-migrate', removable: true }],
+          statusByScope: { global: 'global-disabled', providers: {}, agents: {} },
+          errors: [],
+        },
+      ],
+      errors: ['一个技能目录无法读取'],
+    },
+  };
+}
+
 function buildWorld() {
   const agents = [];
   for (let index = 1; index <= TOTAL_AGENTS; index += 1) {
@@ -67,7 +199,12 @@ function buildWorld() {
     title: '归档的旧会话',
     archivedAt: '2026-08-20T08:00:00Z',
   });
-  return { agents };
+  return {
+    agents,
+    fileTree: buildFileTree(),
+    diff: buildDiffWorld(),
+    extensions: buildExtensionsWorld(),
+  };
 }
 
 /** Rich item mix near the tail so logRowNode's branches all render. */
@@ -471,6 +608,116 @@ class DaemonClient {
       delete agent.archivedAt;
       qa.emitAgentUpdate('upsert', { ...agent });
     }
+  }
+
+  // —— Phase 2：Files / Diff / Git status / MCP / Skills（只读） —— //
+
+  async getCheckoutStatus(cwd) {
+    const failed = record('getCheckoutStatus', [cwd]);
+    if (failed) return failed;
+    return {
+      cwd,
+      isGit: true,
+      currentBranch: 'main',
+      baseRef: 'main',
+      isDirty: true,
+      aheadOfOrigin: 0,
+      behindOfOrigin: 0,
+      hasRemote: true,
+      error: null,
+    };
+  }
+
+  async checkoutPrStatus(cwd) {
+    const failed = record('checkoutPrStatus', [cwd]);
+    if (failed) return failed;
+    return { cwd, status: null, error: null };
+  }
+
+  async listDirectory(cwd, path) {
+    const failed = record('listDirectory', [cwd, path]);
+    if (failed) return failed;
+    const tree = qa.world.fileTree;
+    const children = tree[path || ''];
+    if (!children) throw new Error(`ENOENT: ${path}`);
+    return {
+      path: path || '',
+      entries: children.map((childPath) => {
+        const file = tree.files[childPath];
+        return {
+          name: childPath.split('/').pop(),
+          path: childPath,
+          kind: file ? 'file' : 'directory',
+          size: file ? (file.sizeOverride ?? file.bytes.byteLength) : 0,
+          modifiedAt: '2026-08-27T00:00:00Z',
+        };
+      }),
+    };
+  }
+
+  async readFile(cwd, path) {
+    const failed = record('readFile', [cwd, path]);
+    if (failed) return failed;
+    const file = qa.world.fileTree.files[path];
+    if (!file) throw new Error(`File unavailable: ${path}`);
+    return {
+      bytes: file.bytes,
+      mime: file.mime,
+      size: file.sizeOverride ?? file.bytes.byteLength,
+      path,
+      kind: file.fileKind,
+      modifiedAt: '2026-08-27T00:00:00Z',
+    };
+  }
+
+  async getDirectorySuggestions(options) {
+    const failed = record('getDirectorySuggestions', [options]);
+    if (failed) return failed;
+    const tree = qa.world.fileTree;
+    const query = String(options?.query || '').toLowerCase();
+    const directories = Object.keys(tree).filter((key) => key && key !== 'files');
+    const filePaths = Object.keys(tree.files);
+    const entries = [
+      ...directories.map((path) => ({ path, kind: 'directory' })),
+      ...filePaths.map((path) => ({ path, kind: 'file' })),
+    ].filter((entry) => entry.path.toLowerCase().includes(query));
+    return {
+      directories: entries.filter((entry) => entry.kind === 'directory').map((entry) => entry.path),
+      entries,
+      error: null,
+    };
+  }
+
+  async getCheckoutDiff(cwd, compare) {
+    const failed = record('getCheckoutDiff', [cwd, compare]);
+    if (failed) return failed;
+    const payload = qa.world.diff[compare?.mode];
+    if (!payload) throw new Error(`unknown diff mode ${compare?.mode}`);
+    return { cwd, files: payload.files, error: payload.error, requestId: 'qa-diff' };
+  }
+
+  async listAgentMcpServers() {
+    const failed = record('listAgentMcpServers', []);
+    if (failed) return failed;
+    return {
+      requestId: 'qa-mcp',
+      scopes: [],
+      servers: qa.world.extensions.mcp.servers,
+      policy: {},
+      errors: qa.world.extensions.mcp.errors,
+    };
+  }
+
+  async listAgentSkills() {
+    const failed = record('listAgentSkills', []);
+    if (failed) return failed;
+    return {
+      requestId: 'qa-skills',
+      scopes: [],
+      skills: qa.world.extensions.skills.skills,
+      policy: {},
+      errors: qa.world.extensions.skills.errors,
+    };
   }
 }
 
