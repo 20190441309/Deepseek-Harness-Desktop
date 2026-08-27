@@ -108,7 +108,7 @@ function normalizeOfferUrl(value, currentUrl) {
   }
   try {
     const parsed = new URL(text, base);
-    return hasOfferFragment(parsed.hash) ? parsed.toString() : '';
+    return /^#offer=[A-Za-z0-9_-]+$/.test(parsed.hash) ? parsed.toString() : '';
   } catch {
     return '';
   }
