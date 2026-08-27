@@ -102,6 +102,7 @@ test('remote IPC patch only accepts RemotePatch fields', () => {
     remoteMode: 'relay',
     remotePort: 3180,
     remoteRelayUrl: 'https://relay.example/path',
+    remoteRelayUseTls: true,
   });
   assert.deepEqual(normalizeRemotePatch({ remoteEnabled: false }), { remoteEnabled: false });
   assert.deepEqual(

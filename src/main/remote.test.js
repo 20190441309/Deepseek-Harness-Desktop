@@ -778,7 +778,7 @@ function decodeLikeLoginPageScript(encoded) {
   return json && json.token ? String(json.token) : '';
 }
 
-test('#offer= first visit: login page auto-login decodes pairingUrl and lands on the parity SPA', async (t) => {
+test('legacy RemoteGateway offer fixture remains contained while the production SPA stays v2', async (t) => {
   const upstream = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (chunk) => { raw += chunk; });
@@ -840,20 +840,21 @@ test('#offer= first visit: login page auto-login decodes pairingUrl and lands on
   assert.match(spa.body, /screen-permission/);
   assert.match(spa.body, /等待配对/);
 
-  // 5. app.js 是对齐分支的接线：扫码模块 + 设置 Hub + 无效 offer 显式报错。
+  // 5. Product app.js uses the ChisaCode v2 session path, not the legacy HTTP login helpers
+  // exercised below for containment coverage.
   const appJs = await request(port, '/app.js', {
     headers: { cookie: `dsh_remote=${deviceToken}` },
   });
   assert.equal(appJs.status, 200);
   assert.match(appJs.body, /\.\/pair\/scan\.js/);
   assert.match(appJs.body, /settings-hub/);
-  assert.match(appJs.body, /hashHasOffer/);
+  assert.match(appJs.body, /hasOfferFragment/);
   assert.match(appJs.body, /配对链接无效/);
-  // ChisaCode v2 会话层已接线（sticky 重连 + daemon-client bundle 懒加载）。
   assert.match(appJs.body, /\.\/chisacode\/session\.js/);
   assert.match(appJs.body, /daemon-client\.bundle\.js/);
+  assert.doesNotMatch(appJs.body, /\.\/host\/(?:offer|login)\.js/);
 
-  // 6. SPA 侧 ESM 模块（真实手机代码）对同一个二维码 payload 直接可用。
+  // 6. Retained v1 modules still cover the legacy RemoteGateway fixture only.
   const { pathToFileURL } = require('url');
   const webHost = (name) => pathToFileURL(path.join(__dirname, '..', '..', 'mobile', 'web', 'host', name)).href;
   const { offerFromHash: spaOfferFromHash, hashHasOffer } = await import(webHost('offer.js'));
