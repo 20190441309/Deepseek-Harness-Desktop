@@ -74,6 +74,13 @@ test('settingsGroups mirrors the Android hub group table', () => {
   assert.equal(disconnect.danger, true);
   assert.equal(disconnect.action, 'logout');
   assert.equal(groups[0].rows[0].desc, 'HTTPS 中继');
+  assert.equal(groups[1].rows[1].desc, '只读');
   assert.equal(groups[2].rows[0].desc, 'main · 已与上游同步');
   assert.equal(groups[3].rows[0].desc, '跟随系统');
+});
+
+test('权限 row falls back to provider-decided copy when no snapshot mode exists', () => {
+  const groups = settingsGroups({ channel: '', accessMode: '', gitLine: '', scheme: 'light' });
+  const row = groups[1].rows.find((entry) => entry.pane === '权限');
+  assert.equal(row.desc, '由提供方决定');
 });

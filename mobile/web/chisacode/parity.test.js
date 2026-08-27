@@ -1,63 +1,126 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  agentModeState,
   chisaBranchRows,
   chisaCheckoutStatusToVcs,
   createMobileAgent,
-  discoverAgentDefaults,
   listMobileDirectory,
+  listReadyProviders,
+  listWorkspaceChoices,
   runChisaGitAction,
 } from './parity.js';
 
-test('discoverAgentDefaults uses provider and cwd from the first complete agent', async () => {
-  const client = {
-    fetchWorkspaces() {
-      throw new Error('must not fetch workspaces');
-    },
-  };
-
-  assert.deepEqual(await discoverAgentDefaults(client, [
-    { chisacodeAgent: { id: 'agent-1', provider: 'dsh', cwd: '/repo/desktop' } },
-  ]), {
-    provider: 'dsh',
-    cwd: '/repo/desktop',
-  });
-});
-
-test('discoverAgentDefaults falls back to daemon workspace and ready provider', async () => {
+test('listWorkspaceChoices maps the daemon workspace registry, most recent first', async () => {
   const calls = [];
   const client = {
     async fetchWorkspaces(options) {
-      calls.push(['workspaces', options]);
-      return {
-        entries: [{
-          id: 'workspace-1',
-          workspaceDirectory: '/repo/mobile',
-        }],
-      };
-    },
-    async getProvidersSnapshot(options) {
-      calls.push(['providers', options]);
+      calls.push(options);
       return {
         entries: [
-          { provider: 'codex', status: 'unavailable', enabled: true },
-          { provider: 'dsh', status: 'ready', enabled: true },
+          {
+            id: 'ws-desktop',
+            name: 'desktop',
+            projectDisplayName: 'acme/desktop',
+            workspaceDirectory: '/repo/desktop',
+            projectRootPath: '/repo/desktop',
+            gitRuntime: { currentBranch: 'main' },
+          },
+          {
+            id: 'ws-mobile',
+            name: '',
+            projectRootPath: '/repo/mobile',
+          },
+          { id: 'ws-broken' },
         ],
       };
     },
   };
 
-  assert.deepEqual(await discoverAgentDefaults(client, []), {
-    provider: 'dsh',
-    cwd: '/repo/mobile',
-  });
-  assert.deepEqual(calls, [
-    ['workspaces', { sort: [{ key: 'activity_at', direction: 'desc' }], page: { limit: 1 } }],
-    ['providers', { cwd: '/repo/mobile' }],
+  assert.deepEqual(await listWorkspaceChoices(client), [
+    {
+      id: 'ws-desktop',
+      name: 'desktop',
+      project: 'acme/desktop',
+      cwd: '/repo/desktop',
+      branch: 'main',
+    },
+    {
+      id: 'ws-mobile',
+      name: '/repo/mobile',
+      project: '',
+      cwd: '/repo/mobile',
+      branch: '',
+    },
   ]);
+  assert.deepEqual(calls, [{
+    sort: [{ key: 'activity_at', direction: 'desc' }],
+    page: { limit: 50 },
+  }]);
 });
 
-test('createMobileAgent calls createAgent with discovered daemon defaults', async () => {
+test('listWorkspaceChoices rejects an empty registry visibly', async () => {
+  await assert.rejects(
+    () => listWorkspaceChoices({
+      async fetchWorkspaces() {
+        return { entries: [] };
+      },
+    }),
+    /没有可用工作区/,
+  );
+});
+
+test('listReadyProviders keeps only ready+enabled providers with their modes', async () => {
+  const calls = [];
+  const client = {
+    async getProvidersSnapshot(options) {
+      calls.push(options);
+      return {
+        entries: [
+          { provider: 'codex', status: 'unavailable', enabled: true },
+          { provider: 'disabled', status: 'ready', enabled: false },
+          {
+            provider: 'dsh',
+            status: 'ready',
+            enabled: true,
+            label: 'DeepSeek Harness',
+            modes: [
+              { id: 'plan', label: '规划' },
+              { id: '', label: 'broken' },
+            ],
+            defaultModeId: 'plan',
+          },
+          { provider: 'bare', status: 'ready' },
+        ],
+      };
+    },
+  };
+
+  assert.deepEqual(await listReadyProviders(client, '/repo'), [
+    {
+      provider: 'dsh',
+      label: 'DeepSeek Harness',
+      modes: [{ id: 'plan', label: '规划' }],
+      defaultModeId: 'plan',
+    },
+    { provider: 'bare', label: 'bare', modes: [], defaultModeId: null },
+  ]);
+  assert.deepEqual(calls, [{ cwd: '/repo' }]);
+});
+
+test('listReadyProviders rejects missing cwd and empty snapshots visibly', async () => {
+  await assert.rejects(() => listReadyProviders({}, ''), /请先选择工作区/);
+  await assert.rejects(
+    () => listReadyProviders({
+      async getProvidersSnapshot() {
+        return { entries: [{ provider: 'codex', status: 'unavailable' }] };
+      },
+    }, '/repo'),
+    /没有已就绪的智能体提供方/,
+  );
+});
+
+test('createMobileAgent passes the explicit workspace, provider, and optional mode to createAgent', async () => {
   const createCalls = [];
   const client = {
     async createAgent(options) {
@@ -66,32 +129,63 @@ test('createMobileAgent calls createAgent with discovered daemon defaults', asyn
     },
   };
 
-  const created = await createMobileAgent(client, [
-    { agent: { id: 'agent-old', provider: 'dsh', cwd: '/repo' } },
-  ]);
-
+  const created = await createMobileAgent(client, {
+    workspaceId: 'ws-mobile',
+    cwd: '/repo/mobile',
+    provider: 'dsh',
+    modeId: 'plan',
+  });
   assert.equal(created.id, 'agent-new');
-  assert.deepEqual(createCalls, [{ provider: 'dsh', cwd: '/repo' }]);
+
+  await createMobileAgent(client, { cwd: '/repo/mobile', provider: 'dsh' });
+  assert.deepEqual(createCalls, [
+    { provider: 'dsh', cwd: '/repo/mobile', workspaceId: 'ws-mobile', modeId: 'plan' },
+    { provider: 'dsh', cwd: '/repo/mobile' },
+  ]);
 });
 
-test('createMobileAgent rejects missing defaults and malformed daemon results visibly', async () => {
+test('createMobileAgent rejects missing choices and malformed daemon results visibly', async () => {
   await assert.rejects(
-    () => discoverAgentDefaults({
-      async fetchWorkspaces() {
-        return { entries: [] };
-      },
-    }, []),
-    /没有可用工作区/,
+    () => createMobileAgent({}, { cwd: '', provider: 'dsh' }),
+    /请先选择工作区和提供方/,
   );
-
+  await assert.rejects(
+    () => createMobileAgent({}, { cwd: '/repo', provider: '' }),
+    /请先选择工作区和提供方/,
+  );
   await assert.rejects(
     () => createMobileAgent({
       async createAgent() {
         return {};
       },
-    }, [{ agent: { provider: 'dsh', cwd: '/repo' } }]),
+    }, { workspaceId: 'ws', cwd: '/repo', provider: 'dsh' }),
     /没有返回会话/,
   );
+});
+
+test('agentModeState derives modes and the current label from the agent snapshot only', () => {
+  assert.deepEqual(agentModeState({
+    currentModeId: 'accept-edits',
+    availableModes: [
+      { id: 'plan', label: '规划', description: '只读计划' },
+      { id: 'accept-edits', label: '自动接受编辑' },
+      { label: 'broken-no-id' },
+    ],
+  }), {
+    modes: [
+      { id: 'plan', label: '规划', description: '只读计划' },
+      { id: 'accept-edits', label: '自动接受编辑', description: '' },
+    ],
+    currentModeId: 'accept-edits',
+    currentLabel: '自动接受编辑',
+  });
+
+  assert.deepEqual(agentModeState(null), { modes: [], currentModeId: null, currentLabel: '' });
+  assert.deepEqual(agentModeState({ currentModeId: 'ghost', availableModes: [] }), {
+    modes: [],
+    currentModeId: 'ghost',
+    currentLabel: 'ghost',
+  });
 });
 
 test('chisaCheckoutStatusToVcs maps checkout and PR payloads to the mobile model', () => {

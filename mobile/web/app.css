@@ -100,6 +100,20 @@ button { cursor: pointer; }
   color: var(--dsw-alias-state-error-primary);
   font-size: 12px; line-height: 18px;
 }
+.conn-banner {
+  margin: 8px 16px 0; padding: 8px 12px; border-radius: 8px;
+  background: var(--dsw-alias-state-warn-tertiary);
+  font-size: 12px; line-height: 18px;
+}
+.conn-banner[data-phase="connecting"] { color: var(--dsw-alias-state-warn-primary); }
+.conn-banner[data-phase="offline"] { color: var(--dsw-alias-state-error-primary); }
+.sheet-error { color: var(--dsw-alias-state-error-primary); }
+.mode-row { border: 0; }
+.mode-row[aria-pressed="true"] { background: var(--dsw-alias-interactive-bg-hover); }
+.mode-current {
+  flex: none; font-size: 12px; line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
 .log {
   flex: 1; min-height: 0; overflow: auto;
   display: flex; flex-direction: column; gap: 16px;

@@ -52,7 +52,7 @@ function settingsGroups({ channel, accessMode, gitLine, scheme } = {}) {
       label: '对话',
       rows: [
         { pane: '通用设置', desc: '语言 · 排队' },
-        { pane: '权限', desc: accessMode || '只读' },
+        { pane: '权限', desc: accessMode || '由提供方决定' },
         { pane: '模型', desc: '当前会话' },
       ],
     },

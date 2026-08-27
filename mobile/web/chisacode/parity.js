@@ -13,55 +13,116 @@ function assertDaemonSuccess(payload, fallback) {
   return payload;
 }
 
-function agentRecord(row) {
-  return row?.chisacodeAgent || row?.agent || row;
+/**
+ * List the daemon workspace registry for the new-session chooser, most
+ * recently active first. An empty registry is a visible error — new sessions
+ * never guess a target from the agent list.
+ */
+async function listWorkspaceChoices(client) {
+  const payload = await client.fetchWorkspaces({
+    sort: [{ key: 'activity_at', direction: 'desc' }],
+    page: { limit: 50 },
+  });
+  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+  const choices = entries.flatMap((workspace) => {
+    const cwd = workspace?.workspaceDirectory || workspace?.projectRootPath || '';
+    if (!cwd || typeof workspace?.id !== 'string' || !workspace.id) return [];
+    return [{
+      id: workspace.id,
+      name: typeof workspace.name === 'string' && workspace.name ? workspace.name : cwd,
+      project: typeof workspace.projectDisplayName === 'string' ? workspace.projectDisplayName : '',
+      cwd,
+      branch: typeof workspace?.gitRuntime?.currentBranch === 'string'
+        ? workspace.gitRuntime.currentBranch
+        : '',
+    }];
+  });
+  if (!choices.length) {
+    throw new Error('电脑端没有可用工作区；请先在电脑端打开一个项目');
+  }
+  return choices;
 }
 
 /**
- * Resolve the provider and working directory required by DaemonClient.createAgent.
- * Existing agents are authoritative. An empty agent directory falls back to the
- * daemon's most recently active workspace and its first ready provider.
+ * List ready + enabled providers for a chosen workspace cwd, including their
+ * snapshot modes so the chooser can offer an optional permission mode.
  */
-async function discoverAgentDefaults(client, rows = []) {
-  for (const row of rows) {
-    const agent = agentRecord(row);
-    if (typeof agent?.provider === 'string' && agent.provider
-      && typeof agent?.cwd === 'string' && agent.cwd) {
-      return { provider: agent.provider, cwd: agent.cwd };
-    }
+async function listReadyProviders(client, cwd) {
+  if (typeof cwd !== 'string' || !cwd) {
+    throw new Error('请先选择工作区');
   }
-
-  const workspaces = await client.fetchWorkspaces({
-    sort: [{ key: 'activity_at', direction: 'desc' }],
-    page: { limit: 1 },
-  });
-  const workspace = Array.isArray(workspaces?.entries) ? workspaces.entries[0] : null;
-  const cwd = workspace?.workspaceDirectory || workspace?.projectRootPath || '';
-  if (!cwd) {
-    throw new Error('电脑端没有可用工作区；请先在电脑端打开一个项目');
-  }
-
   const snapshot = await client.getProvidersSnapshot({ cwd });
-  const providers = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
-  const ready = providers.find((entry) => (
-    entry?.enabled !== false
-    && entry?.status === 'ready'
-    && typeof entry?.provider === 'string'
-    && entry.provider
-  ));
-  if (!ready) {
+  const entries = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
+  const ready = entries.flatMap((entry) => {
+    if (
+      entry?.enabled === false
+      || entry?.status !== 'ready'
+      || typeof entry?.provider !== 'string'
+      || !entry.provider
+    ) {
+      return [];
+    }
+    return [{
+      provider: entry.provider,
+      label: typeof entry.label === 'string' && entry.label ? entry.label : entry.provider,
+      modes: Array.isArray(entry.modes)
+        ? entry.modes.filter((mode) => typeof mode?.id === 'string' && mode.id)
+        : [],
+      defaultModeId: typeof entry.defaultModeId === 'string' ? entry.defaultModeId : null,
+    }];
+  });
+  if (!ready.length) {
     throw new Error('电脑端没有已就绪的智能体提供方；请先在电脑端完成提供方设置');
   }
-  return { provider: ready.provider, cwd };
+  return ready;
 }
 
-async function createMobileAgent(client, rows = []) {
-  const defaults = await discoverAgentDefaults(client, rows);
-  const agent = await client.createAgent(defaults);
+/**
+ * Create an agent from explicit user choices. Phase 0 contract: the caller
+ * (workspace/provider chooser) supplies workspaceId + cwd + provider; modeId
+ * is optional. No guessing from the existing agent list.
+ */
+async function createMobileAgent(client, { workspaceId, cwd, provider, modeId } = {}) {
+  if (typeof cwd !== 'string' || !cwd || typeof provider !== 'string' || !provider) {
+    throw new Error('请先选择工作区和提供方');
+  }
+  const agent = await client.createAgent({
+    provider,
+    cwd,
+    ...(typeof workspaceId === 'string' && workspaceId ? { workspaceId } : {}),
+    ...(typeof modeId === 'string' && modeId ? { modeId } : {}),
+  });
   if (!agent || typeof agent.id !== 'string' || !agent.id) {
     throw new Error('电脑端没有返回会话；请重试');
   }
   return agent;
+}
+
+/**
+ * Derive the permission-mode view state from an agent snapshot. The snapshot
+ * is the only truth: no local fake mode ever enters this shape.
+ */
+function agentModeState(agent) {
+  const modes = Array.isArray(agent?.availableModes)
+    ? agent.availableModes.flatMap((mode) => (
+        typeof mode?.id === 'string' && mode.id
+          ? [{
+              id: mode.id,
+              label: typeof mode.label === 'string' && mode.label ? mode.label : mode.id,
+              description: typeof mode.description === 'string' ? mode.description : '',
+            }]
+          : []
+      ))
+    : [];
+  const currentModeId = typeof agent?.currentModeId === 'string' && agent.currentModeId
+    ? agent.currentModeId
+    : null;
+  const current = modes.find((mode) => mode.id === currentModeId) || null;
+  return {
+    modes,
+    currentModeId,
+    currentLabel: current ? current.label : (currentModeId || ''),
+  };
 }
 
 function chisaCheckoutStatusToVcs(status, prPayload = null) {
@@ -147,10 +208,12 @@ async function listMobileDirectory(client, cwd, relativePath = '') {
 }
 
 export {
+  agentModeState,
   chisaBranchRows,
   chisaCheckoutStatusToVcs,
   createMobileAgent,
-  discoverAgentDefaults,
   listMobileDirectory,
+  listReadyProviders,
+  listWorkspaceChoices,
   runChisaGitAction,
 };
