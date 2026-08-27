@@ -24,7 +24,8 @@ import {
 } from '../theme-family.ts'
 import { listThemeFamilies, resolveThemeFamily } from '../builtin-families.ts'
 import {
-  TRANSPARENT_GLASS_SOLIDITY, clampWallpaperEffect, isWallpaperDataUrl, mixWallpaperSurfaces,
+  TRANSPARENT_GLASS_SOLIDITY, TRANSPARENT_MIN_BLUR, clampWallpaperEffect, isWallpaperDataUrl,
+  mixWallpaperSurfaces,
 } from '../wallpaper.ts'
 import {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, isThemePreference,
@@ -387,14 +388,29 @@ export class ThemeRuntime {
    * Persist the transparent-theme flag (透明主题). While on and a wallpaper
    * is set, every chrome surface drops to a 0% fill and the wallpaper dim
    * mask is removed; the glass slider is bypassed. Without a wallpaper the
-   * flag is stored but the glass slider stays effective.
+   * flag is stored but the glass slider stays effective. Becoming effective
+   * runs the one-shot {@link nudgeTransparentBlur} readability nudge.
    * @param transparentTheme - next flag value.
    */
   setTransparentTheme(transparentTheme: boolean): void {
     if (this.settings.transparentTheme === transparentTheme) return
     this.settings = { ...this.settings, transparentTheme }
     this.queueWrite(THEME_TRANSPARENT_FIELD, transparentTheme)
+    if (transparentTheme && isWallpaperDataUrl(this.settings.wallpaperImage)) this.nudgeTransparentBlur()
     this.publish()
+  }
+
+  /**
+   * One-shot readability nudge when the transparent theme becomes effective:
+   * with 0% surfaces and no dim mask, text sits directly on the wallpaper,
+   * so a blur below {@link TRANSPARENT_MIN_BLUR} is raised to that floor and
+   * persisted. Not a continuous clamp — the user may lower the slider again;
+   * Appearance shows the low-blur hint instead of re-clamping.
+   */
+  private nudgeTransparentBlur(): void {
+    if (this.settings.wallpaperBlur >= TRANSPARENT_MIN_BLUR) return
+    this.settings = { ...this.settings, wallpaperBlur: TRANSPARENT_MIN_BLUR }
+    this.queueWrite(THEME_WALLPAPER_BLUR_FIELD, TRANSPARENT_MIN_BLUR)
   }
 
   /**
@@ -419,10 +435,14 @@ export class ThemeRuntime {
       && next.wallpaperPixelate === this.settings.wallpaperPixelate) {
       return
     }
+    const becameEffective = this.settings.transparentTheme
+      && isWallpaperDataUrl(next.wallpaperImage)
+      && !isWallpaperDataUrl(this.settings.wallpaperImage)
     this.settings = { ...this.settings, ...next }
     if (patch.wallpaperImage !== undefined) this.queueWrite(THEME_WALLPAPER_IMAGE_FIELD, next.wallpaperImage)
     if (patch.wallpaperBlur !== undefined) this.queueWrite(THEME_WALLPAPER_BLUR_FIELD, next.wallpaperBlur)
     if (patch.wallpaperPixelate !== undefined) this.queueWrite(THEME_WALLPAPER_PIXELATE_FIELD, next.wallpaperPixelate)
+    if (becameEffective) this.nudgeTransparentBlur()
     this.publish()
   }
 

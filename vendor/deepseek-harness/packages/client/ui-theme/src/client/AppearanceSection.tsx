@@ -20,6 +20,7 @@ import {
   MIN_INTERFACE_FONT_SIZE,
 } from '../theme-family.ts'
 import type { ThemePreference, ThemeSettings } from '../theme-settings.ts'
+import { TRANSPARENT_MIN_BLUR } from '../wallpaper.ts'
 import type { createAppearanceRowStore } from './settings-store.ts'
 import { ColorSchemeTiles } from './ColorSchemeTiles.tsx'
 import { ThemeLibrary } from './ThemeLibrary.tsx'
@@ -198,7 +199,9 @@ export function AppearanceSection({
         <p className={css.hint}>
           {transparentTheme && wallpaperImage === ''
             ? t('glass.transparentNeedsWallpaper')
-            : t('glass.transparentHint')}
+            : transparentTheme && wallpaperBlur < TRANSPARENT_MIN_BLUR
+              ? t('glass.transparentBlurHint')
+              : t('glass.transparentHint')}
         </p>
       </section>
 

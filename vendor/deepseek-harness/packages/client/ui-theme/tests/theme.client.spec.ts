@@ -431,6 +431,45 @@ describe('ThemeRuntime', () => {
     expect(events.length).toBe(published)
   })
 
+  it('nudges a low frosted-glass blur once when the transparent theme becomes effective', () => {
+    const { theme, host } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    // Path 1: wallpaper already set, flag flips on with blur below the floor.
+    theme.setWallpaper({ wallpaperImage: png })
+    expect(theme.getTheme().wallpaperBlur).toBe(0)
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperBlur', 20)
+    // One-shot: the user may lower the slider again without being re-clamped.
+    theme.setWallpaper({ wallpaperBlur: 5 })
+    expect(theme.getTheme().wallpaperBlur).toBe(5)
+    // Path 2: flag already on, wallpaper arrives later (gallery / picker).
+    theme.setWallpaper({ wallpaperImage: '' })
+    theme.setWallpaper({ wallpaperImage: png })
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+    flushWrites()
+    // Disabling never rewrites the blur back down.
+    theme.setTransparentTheme(false)
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+  })
+
+  it('leaves a blur at or above the floor untouched when transparency turns on', () => {
+    const { theme, host } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    theme.setWallpaper({ wallpaperImage: png, wallpaperBlur: 60 })
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(60)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperBlur', 60)
+    expect(host.set).not.toHaveBeenCalledWith('wallpaperBlur', 20)
+    // Without a wallpaper the inert flag does not touch the blur either.
+    theme.setTransparentTheme(false)
+    theme.setWallpaper({ wallpaperImage: '', wallpaperBlur: 0 })
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(0)
+  })
+
   it('coalesces a drag into one durable write per field', () => {
     const { theme, host } = make()
     theme.setGlassOpacity(45)

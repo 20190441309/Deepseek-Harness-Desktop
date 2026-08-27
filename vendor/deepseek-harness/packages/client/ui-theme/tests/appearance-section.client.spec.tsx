@@ -374,6 +374,21 @@ describe('AppearanceSection', () => {
     expect(b.setTransparentTheme).toHaveBeenCalledWith(false)
   })
 
+  it('hints when the frosted-glass blur drops below the readability floor while transparent', () => {
+    const b = mount('system', { wallpaperImage: PNG, transparentTheme: true, wallpaperBlur: 5 })
+    expect(screen.getByText(COPY['glass.transparentBlurHint'])).toBeDefined()
+    act(() => {
+      b.store.actions.sync(snap({ wallpaperImage: PNG, transparentTheme: true, wallpaperBlur: 20 }), 1)
+    })
+    expect(screen.queryByText(COPY['glass.transparentBlurHint'])).toBeNull()
+    expect(screen.getByText(COPY['glass.transparentHint'])).toBeDefined()
+    // A low blur without the transparent theme keeps the ordinary hint.
+    act(() => {
+      b.store.actions.sync(snap({ wallpaperImage: PNG, transparentTheme: false, wallpaperBlur: 5 }), 2)
+    })
+    expect(screen.queryByText(COPY['glass.transparentBlurHint'])).toBeNull()
+  })
+
   it('hints that the transparent theme needs a wallpaper and keeps the slider live without one', () => {
     const b = mount('system', { transparentTheme: true })
     expect(screen.getByText(COPY['glass.transparentNeedsWallpaper'])).toBeDefined()

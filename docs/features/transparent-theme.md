@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `transparent-theme` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — vendor `pnpm run test:gui` 全绿（含 ui-theme 17 个 spec / 176 用例）；`tsc -b tsconfig.client.json` 与 main 相比零新增错误 |
+| **last verified** | 2026-08-27 — 可读性 nudge 落地后 vendor `pnpm run test:gui` 全绿（411 文件 / 5396 用例）；`tsc -b tsconfig.client.json` 与 main 相比零新增错误；QA 记录见 [docs/qa/results/2026-08-27/transparent-theme.md](../qa/results/2026-08-27/transparent-theme.md) |
 
 ## User paths
 
@@ -12,7 +12,7 @@
 2. 已设背景图 + 开关开 → 侧栏、输入框、聊天画布、菜单、对话框、设置面板全部 0% 填充，壁纸压暗 mask 同时移除，壁纸色彩全量透出。
 3. 未设背景图时开关可以打开但不生效（提示「需要先设置背景图」），玻璃滑杆保持可用。
 4. 透明生效期间玻璃滑杆禁用（数值被旁路）；关掉开关立即恢复滑杆值。
-5. 可读性靠壁纸「毛玻璃程度 / 像素化」滑杆调节；提示文案指向毛玻璃。
+5. 可读性靠壁纸「毛玻璃程度 / 像素化」滑杆调节；透明生效瞬间若毛玻璃低于 20% 会一次性提到 20%（`TRANSPARENT_MIN_BLUR`），之后用户可再调低，调低时提示文案换成低毛玻璃警告。
 
 ## Invariants
 
@@ -21,6 +21,7 @@
 - 生效 = `mixWallpaperSurfaces(tokens, mode, TRANSPARENT_GLASS_SOLIDITY /* 0 */)` + `--dsw-alias-glass-opacity: 0%`；不是新皮肤，不新增 token 名。
 - 终端 pane（`--dsw-alias-terminal-pane`）保持实心回落 —— TUI SGR 不坐在壁纸玻璃上（沿用壁纸混色既有不变量）。
 - 根属性 `data-dsh-transparent`（`TRANSPARENT_ATTR`）只在「flag 开 + 壁纸活」时置上；`wallpaper.css` 借它把 `#dsh-wallpaper::after` 的 `--dsw-alias-bg-mask-1` 压暗层置透明。Modal / lightbox 的 mask-1 遮罩**不**受影响。
+- **可读性 nudge 是一次性的，不是持续 clamp**：透明变为生效的两条路径（开关打开时已有壁纸 / 开关已开时设上壁纸）都经过 `nudgeTransparentBlur`——`wallpaperBlur < TRANSPARENT_MIN_BLUR /* 20 */` 时提到 20 并持久化；之后手动调低不再被顶回，Appearance 只显示 `glass.transparentBlurHint` 低毛玻璃提示。关掉开关不回写毛玻璃。不引入 text-shadow / 新 token。
 - 启动脚本 payload（`buildThemeBootPayload`）在透明生效时嵌 0% 玻璃，避免预插件区间闪不透明 chrome。
 - 桌面启动器 / boot 页不感知此设置（launcher 用官方明暗表，规则见 desktop-launcher-product.mdc）。
 
@@ -43,8 +44,8 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | vendor `pnpm run test:gui`；重点 spec：`theme.client.spec.ts`（0% 混色 + 持久化）、`wallpaper.client.spec.ts`（mask 置透明 + 0% solidity）、`appearance-apply.client.spec.ts`（根属性门控）、`appearance-section.client.spec.tsx`（开关 + 滑杆禁用）、`boot-theme.client.spec.ts`（boot 0% 玻璃） |
-| Manual / QA | 设壁纸 → 开透明主题 → 侧栏/输入框/菜单全透、壁纸不再压暗；清壁纸 → 界面回不透明且提示需要壁纸 |
+| Automated | vendor `pnpm run test:gui`；重点 spec：`theme.client.spec.ts`（0% 混色 + 持久化 + 毛玻璃 nudge 一次性）、`wallpaper.client.spec.ts`（mask 置透明 + 0% solidity）、`appearance-apply.client.spec.ts`（根属性门控）、`appearance-section.client.spec.tsx`（开关 + 滑杆禁用 + 低毛玻璃提示）、`boot-theme.client.spec.ts`（boot 0% 玻璃） |
+| Manual / QA | 验收用例 TC-APP-012/013/014（[docs/qa/production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md) §9）：设壁纸 → 开透明主题 → 侧栏/输入框/菜单全透、壁纸不再压暗、毛玻璃自动提到 ≥20%；清壁纸 → 界面回不透明且提示需要壁纸 |
 
 ## Sources
 
