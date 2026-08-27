@@ -46,6 +46,7 @@
 
 ## CI 与 PR 就绪（Phase 6）
 
-- [x] 推送 `cursor/unique-settings-nav-icons-cc5b`，HEAD 上 Desktop unit tests (windows + macos) + vendor-gui 三项全 SUCCESS。
+- [x] 推送 `cursor/unique-settings-nav-icons-cc5b`，HEAD `30f3ff51` 上 Desktop unit tests (windows + macos) + vendor-gui 三项全 SUCCESS（run 33057605173）。
 - [x] 历史 `54c3579b` vendor-gui 失败已定位：icons spec 的 TS2722（可能为 undefined 的调用），`fe5b191c` 已修复，非 flake。
-- [ ] 全绿且验证完成后把 PR #51 draft 置为 ready。
+- [x] `19523019`（纯文档提交）的 macOS 失败已定位为既有 flake：`git-workspace-watch.test.js`「fires once (debounced)」在 fs.watch（FSEvents 异步起流）武装间隙写入被吞，与本 PR diff 无关；本地 8/8 通过，重跑同树全绿。修 test 属另一 PR。
+- [x] 全绿且验证完成，PR #51 达到 ready 标准（本环境无 PR 写权限，置 ready 由上游执行）。
