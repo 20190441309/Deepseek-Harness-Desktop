@@ -59,6 +59,8 @@
         <p class="lead">描述你想要构建的内容。工作区仍是电脑上的那一个。</p>
       </div>
       <div class="composer-root">
+        <div class="slash-pop hidden" id="slash-pop"></div>
+        <p class="readonly-note hidden" id="readonly-note"></p>
         <form class="composer" id="composer">
           <div class="attach-rail hidden" id="attach-rail"></div>
           <textarea id="draft" rows="2" placeholder="给智能体发消息"></textarea>
@@ -86,10 +88,7 @@
             <p class="headline" id="approval-title">需要审批</p>
             <p class="command" id="approval-command"></p>
           </div>
-          <div class="action-row">
-            <button class="ghost-btn" type="button" id="approval-reject">拒绝</button>
-            <button class="primary-btn" type="button" id="approval-allow">允许一次</button>
-          </div>
+          <div class="action-row" id="approval-actions"></div>
         </div>
       </div>
     </section>
