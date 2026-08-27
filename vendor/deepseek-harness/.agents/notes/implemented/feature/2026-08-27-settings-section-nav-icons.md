@@ -27,7 +27,7 @@ The Settings sidebar identified only Models, Agent presets, and Plugins with ded
 | `about` | `IconInfoOutline16` |
 | `usage-stats` | `IconChartOutline16` |
 
-The icon table stays in the Settings shell because section registrations carry identity, order, and copy but no presentation metadata. Unknown section ids retain the settings gear fallback. `ui-primitives` supplies the server, device, information, and chart glyphs that had no suitable 16px sibling. Those four use stroke-expanded `currentColor` paths with rounded, official-family optical weight rather than CSS-like thin rectangles.
+The icon table stays in the Settings shell because section registrations carry identity, order, and copy but no presentation metadata. Unknown section ids retain the settings gear fallback. `ui-primitives` supplies the server, device, information, and chart glyphs that had no suitable 16px sibling. Those four use stroke-expanded `currentColor` paths with rounded, official-family optical weight rather than CSS-like thin rectangles, drawn as native 16×16 positive-coordinate path data with no `transform` attributes.
 
 ## Alternatives considered
 
@@ -39,4 +39,4 @@ The icon table stays in the Settings shell because section registrations carry i
 
 ## Consequences
 
-Known Settings rows have distinct monochrome glyphs in both themes, and future unknown rows remain renderable through the gear fallback. The Settings component test pins the complete known-id set and compares rendered SVG geometry; the primitives test pins the expanded public icon set and its `currentColor` rule.
+Known Settings rows have distinct monochrome glyphs in both themes, and future unknown rows remain renderable through the gear fallback. The Settings component test pins the complete known-id set and compares rendered SVG geometry; the primitives test pins the expanded public icon set, its `currentColor` rule, and the transform-free native geometry of the four navigation glyphs.
