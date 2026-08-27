@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — Phase 2 落地：Files 工作环（`listDirectory` 目录下钻 + breadcrumb + 每层滚动恢复、`readFile` 只读预览 text/image/binary/too-large/error 五态、`getDirectorySuggestions` 路径搜索、显式插入 @路径）、Diff 工作环（`getCheckoutDiff` 只读 uncommitted/base 两 scope，file+hunk 视图，non-git/空/失败/binary/too-large 判别）、MCP/Skills 只读清单（`listAgentMcpServers`/`listAgentSkills`，状态/来源/覆盖计数/错误）。零写 RPC（QA 断言）。144 单测 + 41 项 fake-daemon 浏览器集成检查全绿；真机 relay 链路 BLOCKED，见 `docs/qa/results/2026-08-27/mobile-web-phase2.md`（Phase 1 报告：`mobile-web-phase1.md`）。 |
+| **last verified** | 2026-08-27（合并后收口复核）— fake-daemon 浏览器集成 QA 在合并树复跑 **41/41 全绿**（`tools/mobile-web-qa/run-qa.mjs`，headless Chrome）；`mobile/web` 单测含在 desktop `npm test` 1219 绿内；XSS 姿态复核：`mobile/` 零 `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write` sink，markdown 链接 scheme 白名单有测试锁；Android `:protocol:test` 5/5 绿（JDK 17，纯 JVM 模块），`:app:testDebugUnitTest` BLOCKED（VM 无 Android SDK）；真机 relay 链路仍 BLOCKED。此前同日 — Phase 2 落地：Files 工作环（`listDirectory` 目录下钻 + breadcrumb + 每层滚动恢复、`readFile` 只读预览 text/image/binary/too-large/error 五态、`getDirectorySuggestions` 路径搜索、显式插入 @路径）、Diff 工作环（`getCheckoutDiff` 只读 uncommitted/base 两 scope，file+hunk 视图，non-git/空/失败/binary/too-large 判别）、MCP/Skills 只读清单（`listAgentMcpServers`/`listAgentSkills`，状态/来源/覆盖计数/错误）。零写 RPC（QA 断言）。144 单测 + 41 项 fake-daemon 浏览器集成检查全绿；真机 relay 链路 BLOCKED，见 `docs/qa/results/2026-08-27/mobile-web-phase2.md`（Phase 1 报告：`mobile-web-phase1.md`）。 |
 
 ## User paths
 

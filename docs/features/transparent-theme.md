@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `transparent-theme` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 可读性 nudge 落地后 vendor `pnpm run test:gui` 全绿（411 文件 / 5396 用例）；`tsc -b tsconfig.client.json` 与 main 相比零新增错误；QA 记录见 [docs/qa/results/2026-08-27/transparent-theme.md](../qa/results/2026-08-27/transparent-theme.md) |
+| **last verified** | 2026-08-27（合并后收口复核）— vendor `test:gui` 在合并树复跑全绿（412 文件 / 5409 pass / 1 skip，含 ui-theme 全部 specs）；壁纸门控源级复核：`TRANSPARENT_ATTR` 仅在 `transparentTheme === true && isWallpaperDataUrl(wallpaperImage)` 时置上（`appearance-apply.ts`）。此前同日 — 可读性 nudge 落地后 vendor `pnpm run test:gui` 全绿（411 文件 / 5396 用例）；`tsc -b tsconfig.client.json` 与 main 相比零新增错误；QA 记录见 [docs/qa/results/2026-08-27/transparent-theme.md](../qa/results/2026-08-27/transparent-theme.md) |
 
 ## User paths
 

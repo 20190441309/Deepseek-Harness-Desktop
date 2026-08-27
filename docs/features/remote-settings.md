@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `remote-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 合并汇总：(a) dsh-im 内置化落地：`ensureDesktopDshIm` 改写自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`（每次启动经 `--patch` 传，全量 + skip），只 strip 用户 `cordis.patch.yml` 里的遗留受管块（迁移）绝不写回；禁用名单对 dsh-im 别名不再生效（config 归一化剔除 + `shell:disable-plugin(s)` 拒绝并返回 `desktop-builtin`）；forensics 把 dsh-im 孤儿 suspect 判为内置组件损坏（`inBox`）；skip compose 契约双 overlay 双轮各恰好一次，已对真实 CLI 跑通。(b) ChisaCode 实跑修复：源码启动/打包先构建 daemon；安装包携带生产依赖；中继配置变更重启 transport；设备列表读最新 upstream store。 |
+| **last verified** | 2026-08-27（合并后收口复核）— DER INTEGER 修复（`6874270c`）完备性复审通过（全零 serial、0x00+高位保留、长 length、UTCTime 2050 边界均安全），补钉 multi-zero 剥除与高位 0x00 保留两个边界形态的回归测试，`remote-tls.test.js` 6/6 绿；`shell:rotate-remote-token`（HARNESS_ONLY，ChisaCodeRemote.rotateToken→refreshPairing）与 desktop-builtin 禁用拒绝（LAUNCHER_ONLY，写前拒绝）无串扰——saveConfig 读改写合并且主进程单线程。此前同日 — 合并汇总：(a) dsh-im 内置化落地：`ensureDesktopDshIm` 改写自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`（每次启动经 `--patch` 传，全量 + skip），只 strip 用户 `cordis.patch.yml` 里的遗留受管块（迁移）绝不写回；禁用名单对 dsh-im 别名不再生效（config 归一化剔除 + `shell:disable-plugin(s)` 拒绝并返回 `desktop-builtin`）；forensics 把 dsh-im 孤儿 suspect 判为内置组件损坏（`inBox`）；skip compose 契约双 overlay 双轮各恰好一次，已对真实 CLI 跑通。(b) ChisaCode 实跑修复：源码启动/打包先构建 daemon；安装包携带生产依赖；中继配置变更重启 transport；设备列表读最新 upstream store。 |
 
 ## User paths
 

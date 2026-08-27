@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-27 — Grok 对齐补丁完成源码门禁：`maxSpeaks` 改计可见投递（pass/失败/悬挂尝试不耗额度）、同 turn 双投递保持独立可见条目、`send_to_agent` 群投递仅限成员、闲置群不再假入队（诚实 ok:false）；此前同日：失败即 pass、10/3 硬顶、2–6 成员、pnpm 软链保护、UI 去伪。云端 Linux 源码级 GUI 三相轮换仍沿用 2026-08-26 PASS 证据（`docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）。TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups） |
+| **last verified** | 2026-08-27（合并后收口复核）— 发布链路预检实跑通过：`node scripts/check-dshbot-publish.mjs dshbot-v0.2.0` PASS（manifest 完整、tag 校验一致）；协议/目录/preset 单测含在合并树 desktop `npm test` 1219 绿内；唯一发布缺口仍是仓库 `NPM_TOKEN` secret（Settings → Secrets → Actions 配好后推 `dshbot-v0.2.0` tag 即发，workflow 缺 token 会明确报错不半发）。此前同日 — Grok 对齐补丁完成源码门禁：`maxSpeaks` 改计可见投递（pass/失败/悬挂尝试不耗额度）、同 turn 双投递保持独立可见条目、`send_to_agent` 群投递仅限成员、闲置群不再假入队（诚实 ok:false）；此前同日：失败即 pass、10/3 硬顶、2–6 成员、pnpm 软链保护、UI 去伪。云端 Linux 源码级 GUI 三相轮换仍沿用 2026-08-26 PASS 证据（`docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）。TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups） |
 
 ## User paths
 
