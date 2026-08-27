@@ -758,7 +758,7 @@ export class Session {
     const normalized = normalizeToolTranscript(this.derived, this.startedToolCallIds())
     // The common case is a valid transcript: return the cached projections
     // themselves instead of allocating the normalized wrapper.
-    return normalized.synthesized === 0 && normalized.suppressed === 0
+    return normalized.synthesized === 0 && normalized.suppressed === 0 && normalized.repaired === 0
       ? [...this.derived]
       : normalized.messages
   }

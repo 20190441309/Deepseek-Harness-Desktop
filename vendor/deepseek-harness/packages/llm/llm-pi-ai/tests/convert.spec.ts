@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
-import { createUserMessage, CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, createMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, MALFORMED_RESPONSE_CODE, createMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { AssistantMessage, AssistantMessageEvent, Usage } from '@earendil-works/pi-ai'
 import { toPiContext } from '../src/context.ts'
@@ -676,13 +676,12 @@ describe('toStreamChunks', () => {
     ])
   })
 
-  it('tolerates toolcall_start with a missing partial entry', async () => {
-    const chunks = await collect(toStreamChunks(feed(
+  it('rejects toolcall_start with a missing partial entry', async () => {
+    await expect(collect(toStreamChunks(feed(
       { type: 'toolcall_start', contentIndex: 0, partial: assistant() },
       { type: 'toolcall_delta', contentIndex: 0, delta: '{}', partial: assistant() },
       { type: 'done', reason: 'stop', message: assistant() },
-    )))
-    expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: '', argumentsDelta: '{}' })
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 
   it('maps error events to error finish chunks (in-stream error style)', async () => {
@@ -853,23 +852,21 @@ describe('mapStopReason / mapUsage', () => {
 })
 
 describe('toStreamChunks edge branches', () => {
-  it('omits the name field for tool calls whose partial carried an empty name', async () => {
+  it('rejects tool calls whose partial carries an empty name', async () => {
     const blank = assistant({ content: [{ type: 'toolCall', id: 'x', name: '', arguments: {} }] })
-    const chunks = await collect(toStreamChunks(feed(
+    await expect(collect(toStreamChunks(feed(
       { type: 'toolcall_start', contentIndex: 0, partial: blank },
       { type: 'toolcall_delta', contentIndex: 0, delta: '{}', partial: blank },
       { type: 'done', reason: 'stop', message: assistant() },
-    )))
-    expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'x', argumentsDelta: '{}' })
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 })
 
 describe('toStreamChunks defensive branches', () => {
-  it('tolerates a toolcall_delta with no preceding toolcall_start', async () => {
-    const chunks = await collect(toStreamChunks(feed(
+  it('rejects a toolcall_delta with no preceding toolcall_start', async () => {
+    await expect(collect(toStreamChunks(feed(
       { type: 'toolcall_delta', contentIndex: 0, delta: '{}', partial: assistant() },
       { type: 'done', reason: 'stop', message: assistant() },
-    )))
-    expect(chunks[0]).toEqual({ type: 'tool-call-delta', index: 0, id: '', argumentsDelta: '{}' })
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 })

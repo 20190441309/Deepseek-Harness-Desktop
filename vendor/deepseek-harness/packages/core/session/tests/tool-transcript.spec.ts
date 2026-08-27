@@ -100,6 +100,53 @@ describe('normalizeToolTranscript', () => {
     expect(normalized.suppressed).toBe(1)
   })
 
+  it('removes malformed calls and their results while preserving valid assistant content', () => {
+    const assistant = createAssistantMessage({
+      content: [
+        { type: 'text', text: 'checking' },
+        { type: 'tool-call', id: CallId('bad'), name: '', arguments: '{}' },
+        { type: 'tool-call', id: CallId('good'), name: 'read_file', arguments: '{}' },
+      ],
+      source: {
+        provider: 'mock',
+        model: 'mock',
+        replayState: { response: {}, blocks: [{}, {}, {}] },
+      },
+    })
+    const badResult = resultFor('bad')
+    const goodResult = resultFor('good')
+    const normalized = normalizeToolTranscript(
+      [assistant, badResult, goodResult],
+      new Set([CallId('bad'), CallId('good')]),
+    )
+
+    expect(normalized.repaired).toBe(1)
+    expect(normalized.suppressed).toBe(1)
+    expect(normalized.synthesized).toBe(0)
+    expect(normalized.messages).toHaveLength(2)
+    expect(normalized.messages[0]).toMatchObject({
+      id: assistant.id,
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'checking' },
+        { type: 'tool-call', id: CallId('good'), name: 'read_file' },
+      ],
+      source: { kind: 'model', provider: 'mock', model: 'mock' },
+    })
+    expect(normalized.messages[0]?.source).not.toHaveProperty('replayState')
+    expect(normalized.messages[1]).toBe(goodResult)
+    expect(() => assertToolTranscriptValid(normalized.messages)).not.toThrow()
+  })
+
+  it('suppresses an assistant message containing only malformed calls', () => {
+    const assistant = assistantWithCalls({ id: '', name: 'read' }, { id: 'bad', name: 'with space' })
+    const continued = user('continue')
+    const normalized = normalizeToolTranscript([assistant, resultFor('bad'), continued], new Set())
+    expect(normalized.messages).toEqual([continued])
+    expect(normalized.repaired).toBe(2)
+    expect(normalized.suppressed).toBe(1)
+  })
+
   it('is deterministic: repeated passes synthesize identical message identities', () => {
     const messages = [assistantWithCalls({ id: 'a', name: 'read' }), user('again')]
     const first = normalizeToolTranscript(messages, new Set([CallId('a')])).messages
@@ -122,6 +169,13 @@ describe('assertToolTranscriptValid', () => {
 
   it('rejects trailing assistant tool calls with no results', () => {
     expect(() => assertToolTranscriptValid([assistantWithCalls({ id: 'a', name: 'read' })])).toThrow(/no results/)
+  })
+
+  it('rejects malformed assistant tool-call identity', () => {
+    expect(() => assertToolTranscriptValid([
+      assistantWithCalls({ id: 'a', name: '' }),
+      resultFor('a'),
+    ])).toThrow(/malformed tool call/)
   })
 
   it('rejects an assistant call group that is not closed before the next message', () => {
@@ -184,6 +238,30 @@ describe('deriveMessages canonicalization', () => {
     expect(messages[assistantIndex + 3]).toMatchObject({ role: 'user', content: [{ type: 'text', text: 'again' }] })
     // The append-only log is untouched.
     expect(session.events.filter(event => event.type === 'tool/result')).toHaveLength(0)
+  })
+
+  it('repairs an empty-name poisoned session for the next prompt without rewriting its log', () => {
+    const session = Session.create(SessionId('empty-name-poison'))
+    const poisoned = assistantWithCalls({ id: 'bad-call', name: '' })
+    session.append('user/message', user('first'), { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: poisoned,
+    }, { surfaceOp: 'append' })
+    session.append('tool/result', {
+      turn: 1,
+      step: 1,
+      message: resultFor('bad-call', 'Error: unknown tool ""'),
+    }, { surfaceOp: 'append' })
+    session.append('user/message', user('try again'), { surfaceOp: 'append' })
+    const before = structuredClone(session.events)
+
+    const messages = session.deriveMessages()
+    expect(messages.map(message => message.role)).toEqual(['user', 'user'])
+    expect(messages[1]).toMatchObject({ content: [{ type: 'text', text: 'try again' }] })
+    expect(() => assertToolTranscriptValid(messages)).not.toThrow()
+    expect(session.events).toEqual(before)
   })
 
   it('leaves a valid session transcript byte-identical', () => {

@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import { BlockAssembler } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, MALFORMED_RESPONSE_CODE } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { CallId } from '@deepseek-ai/dsh-llm'
 
@@ -57,6 +57,18 @@ function feed(chunks: StreamChunk[]): BlockAssembler {
   return a
 }
 
+/** Assemble one arbitrary stream, retaining expected malformed-call rejection. */
+function outcome(assembler: BlockAssembler):
+  | { ok: true; blocks: ReturnType<BlockAssembler['blocks']> }
+  | { ok: false; code: string } {
+  try {
+    return { ok: true, blocks: assembler.blocks() }
+  } catch (error: unknown) {
+    expect(error).toMatchObject({ code: MALFORMED_RESPONSE_CODE })
+    return { ok: false, code: MALFORMED_RESPONSE_CODE }
+  }
+}
+
 describe('BlockAssembler properties', () => {
   it('partials map size never exceeds the number of distinct indices seen', () => {
     fc.assert(fc.property(streamArb, (chunks) => {
@@ -64,25 +76,28 @@ describe('BlockAssembler properties', () => {
       for (const chunk of chunks) {
         if ('index' in chunk) distinct.add(chunk.index)
       }
-      const a = feed(chunks)
+      const assembled = outcome(feed(chunks))
       // blocks() length equals the number of distinct indices that became
       // partials (block-bearing chunks). It can never exceed distinct indices.
-      expect(a.blocks().length).toBeLessThanOrEqual(distinct.size)
+      if (assembled.ok) expect(assembled.blocks.length).toBeLessThanOrEqual(distinct.size)
     }))
   })
 
   it('re-assembly is idempotent: blocks() is stable across repeated calls', () => {
     fc.assert(fc.property(streamArb, (chunks) => {
       const a = feed(chunks)
-      expect(a.blocks()).toEqual(a.blocks())
-      // And message().content mirrors blocks().
-      expect(a.message().content).toEqual(a.blocks())
+      const first = outcome(a)
+      expect(outcome(a)).toEqual(first)
+      // And message().content mirrors successfully assembled blocks.
+      if (first.ok) expect(a.message().content).toEqual(first.blocks)
     }))
   })
 
   it('blocks() never throws and yields only valid content-block tags', () => {
     fc.assert(fc.property(streamArb, (chunks) => {
-      const blocks = feed(chunks).blocks()
+      const assembled = outcome(feed(chunks))
+      if (!assembled.ok) return
+      const blocks = assembled.blocks
       for (const block of blocks) {
         expect(['text', 'reasoning', 'tool-call', 'tool-result']).toContain(block.type)
       }

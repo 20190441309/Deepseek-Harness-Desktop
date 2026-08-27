@@ -16,14 +16,17 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { Inbox, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, LlmCallConfig, LlmFailure, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
 import {
   BlockAssembler,
+  HarnessError,
   LlmError,
+  MALFORMED_RESPONSE_CODE,
   createAssistantMessage,
   deepFreeze,
   errorChain,
   markAgentLoopRequest,
+  requireValidToolCallIdentity,
 } from '@deepseek-ai/dsh-llm'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
@@ -386,26 +389,32 @@ export class ReactLoopAgent implements Agent {
       }
       const finish = assembler.finish
       if (finish.kind === 'error' || finish.kind === 'aborted') {
-        const action = await this.dispatch.waterfall(
-          'agent/request-error', {
-            turn,
-            step,
-            provider: request.provider,
-            failure: finish.failure,
-            retryPolicy: preparedCall?.retryPolicy,
-            signal,
-          },
-          () => Promise.resolve<RequestErrorAction>(undefined),
-        )
-        signal.throwIfAborted()
-        if (action?.kind !== 'retry') {
-          throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
-        }
-        continue
+        if (await this.shouldRetryRequest(
+          turn, step, request.provider, finish.failure, preparedCall?.retryPolicy, signal,
+        )) continue
+        throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
       }
 
+      let content: ContentBlock[]
+      try {
+        content = assembler.blocks()
+        // Defense in depth at the persistence boundary: even if assembly is
+        // replaced later, no malformed model call may enter durable history.
+        for (const block of content) {
+          if (block.type === 'tool-call') {
+            requireValidToolCallIdentity(block.id, block.name, 'assistant response tool call')
+          }
+        }
+      } catch (error: unknown) {
+        if (!(error instanceof HarnessError) || error.code !== MALFORMED_RESPONSE_CODE) throw error
+        const failure: LlmFailure = { message: error.message, code: error.code }
+        if (await this.shouldRetryRequest(
+          turn, step, request.provider, failure, preparedCall?.retryPolicy, signal,
+        )) continue
+        throw new LlmError(failure.message, failure.code)
+      }
       const message = createAssistantMessage({
-        content: assembler.blocks(),
+        content,
         source: {
           provider: request.provider,
           model: request.model,
@@ -432,6 +441,24 @@ export class ReactLoopAgent implements Agent {
       )
       return concluded ? { kind: 'completed' } : null
     }
+  }
+
+  /** Offer one proven model-response failure to the request recovery boundary. */
+  private async shouldRetryRequest(
+    turn: number,
+    step: number,
+    provider: string,
+    failure: LlmFailure,
+    retryPolicy: PreparedLlmCall['retryPolicy'] | undefined,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const action = await this.dispatch.waterfall(
+      'agent/request-error',
+      { turn, step, provider, failure, retryPolicy, signal },
+      (): Promise<RequestErrorAction> => Promise.resolve(undefined),
+    )
+    signal.throwIfAborted()
+    return action?.kind === 'retry'
   }
 
   /**

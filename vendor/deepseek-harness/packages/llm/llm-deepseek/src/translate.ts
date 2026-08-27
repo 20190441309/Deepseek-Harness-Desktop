@@ -8,7 +8,7 @@
  * @module dsh-llm-deepseek/translate
  */
 
-import { CallId, EMPTY_RESPONSE_CODE, LlmError } from '@deepseek-ai/dsh-llm'
+import { CallId, EMPTY_RESPONSE_CODE, LlmError, requireValidToolCallIdentity } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import { DONE } from './sse.ts'
 import type { WireChunk, WireUsage } from './types.ts'
@@ -66,11 +66,17 @@ function closeBlock(block: OpenBlock): ContentBlock {
   switch (block.kind) {
     case 'text': return { type: 'text', text: block.text }
     case 'reasoning': return { type: 'reasoning', text: block.text }
-    case 'tool-call': return {
-      type: 'tool-call',
-      id: CallId(block.callId ?? ''),
-      name: block.name ?? '',
-      arguments: block.text,
+    case 'tool-call': {
+      const identity = requireValidToolCallIdentity(
+        block.callId,
+        block.name,
+        `DeepSeek tool call at block index ${block.index}`,
+      )
+      return {
+        type: 'tool-call',
+        ...identity,
+        arguments: block.text,
+      }
     }
   }
 }
@@ -163,7 +169,7 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
         yield {
           type: 'tool-call-delta',
           index: block.index,
-          id: CallId(block.callId ?? ''),
+          ...block.callId !== undefined ? { id: CallId(block.callId) } : {},
           ...block.name !== undefined ? { name: block.name } : {},
           argumentsDelta: fragment,
         }

@@ -8,7 +8,7 @@
  * @module dsh-llm-pi-ai/stream
  */
 
-import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
+import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE, requireValidToolCallIdentity } from '@deepseek-ai/dsh-llm'
 import type { FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { AssistantMessage, AssistantMessageEvent, Usage as PiUsage } from '@earendil-works/pi-ai'
@@ -157,37 +157,50 @@ export async function* toStreamChunks(
       case 'toolcall_start': {
         // The id/name live on the partial's content at this index.
         const partial = event.partial.content[event.contentIndex]
-        const id = partial?.type === 'toolCall' ? partial.id : ''
-        const name = partial?.type === 'toolCall' ? partial.name : ''
-        toolIds.set(event.contentIndex, { id, name })
+        const identity = requireValidToolCallIdentity(
+          partial?.type === 'toolCall' ? partial.id : undefined,
+          partial?.type === 'toolCall' ? partial.name : undefined,
+          `pi-ai tool call at block index ${event.contentIndex}`,
+        )
+        toolIds.set(event.contentIndex, identity)
         yield { type: 'block-start', index: event.contentIndex, blockType: 'tool-call' }
         break
       }
       case 'toolcall_delta': {
         const known = toolIds.get(event.contentIndex)
+        const identity = requireValidToolCallIdentity(
+          known?.id,
+          known?.name,
+          `pi-ai tool call at block index ${event.contentIndex}`,
+        )
         yield {
           type: 'tool-call-delta',
           index: event.contentIndex,
-          id: CallId(known?.id ?? ''),
-          ...known?.name !== undefined && known.name.length > 0 ? { name: known.name } : {},
+          id: CallId(identity.id),
+          name: identity.name,
           argumentsDelta: event.delta,
         }
         break
       }
-      case 'toolcall_end':
+      case 'toolcall_end': {
+        const identity = requireValidToolCallIdentity(
+          event.toolCall.id,
+          event.toolCall.name,
+          `pi-ai tool call at block index ${event.contentIndex}`,
+        )
         yield {
           type: 'block-end',
           index: event.contentIndex,
           block: {
             type: 'tool-call',
-            id: CallId(event.toolCall.id),
-            name: event.toolCall.name,
+            ...identity,
             // pi-ai hands back the PARSED arguments; the harness vocabulary
             // keeps the raw string.
             arguments: JSON.stringify(event.toolCall.arguments),
           },
         }
         break
+      }
       case 'done':
         yield { type: 'usage', usage: mapUsage(event.message.usage) }
         yield {

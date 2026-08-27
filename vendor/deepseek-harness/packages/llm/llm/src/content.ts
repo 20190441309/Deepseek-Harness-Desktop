@@ -1,7 +1,42 @@
 /** Content-block structure helpers. @module @deepseek-ai/dsh-llm/content */
 
+import { CallId } from './brand.ts'
+import { HarnessError, MALFORMED_RESPONSE_CODE } from './error.ts'
 import type { ContentBlock } from './types.ts'
 import type { Message } from './message.ts'
+
+/** Provider-compatible function-name grammar shared by calls and registrations. */
+export const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+/** Whether a tool-call identity is safe to persist, replay, and dispatch. */
+export function isValidToolCallIdentity(id: unknown, name: unknown): boolean {
+  return typeof id === 'string' && id.length > 0
+    && typeof name === 'string' && TOOL_NAME_PATTERN.test(name)
+}
+
+/**
+ * Validate provider-authored tool-call identity before it becomes content.
+ * @param id - provider call id; any non-empty string is accepted.
+ * @param name - function name constrained to the shared provider grammar.
+ * @param subject - diagnostic location for the malformed identity.
+ * @returns the typed identity without inventing fallback values.
+ */
+export function requireValidToolCallIdentity(
+  id: unknown,
+  name: unknown,
+  subject = 'model tool call',
+): { id: CallId; name: string } {
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new HarnessError(`${subject} has an empty or missing call id`, MALFORMED_RESPONSE_CODE)
+  }
+  if (typeof name !== 'string' || !TOOL_NAME_PATTERN.test(name)) {
+    throw new HarnessError(
+      `${subject} has an invalid function name; expected [A-Za-z0-9_-]{1,64}`,
+      MALFORMED_RESPONSE_CODE,
+    )
+  }
+  return { id: CallId(id), name }
+}
 
 /** Model-facing stand-in for an image removed to fit a provider request bound. */
 export const OFFLOADED_IMAGE_TEXT

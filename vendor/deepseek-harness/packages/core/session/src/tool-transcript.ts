@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh-session/tool-transcript
  */
 
-import { MessageId, freezeMessage, type CallId, type Message, type ToolCallBlock, type ToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { MessageId, freezeMessage, isValidToolCallIdentity, type CallId, type Message, type ToolCallBlock, type ToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { TOOL_NOT_STARTED_TEXT, TOOL_OUTCOME_UNKNOWN_TEXT } from './repair.ts'
 
 /** Outcome of one transcript canonicalization pass. */
@@ -21,6 +21,8 @@ export interface ToolTranscriptNormalization {
   synthesized: number
   /** Number of suppressed duplicate or orphan tool results. */
   suppressed: number
+  /** Number of malformed assistant tool-call blocks removed from projection. */
+  repaired: number
 }
 
 /**
@@ -46,6 +48,7 @@ export function normalizeToolTranscript(
   const out: Message[] = []
   let synthesized = 0
   let suppressed = 0
+  let repaired = 0
   let pendingBlocks: ToolCallBlock[] = []
   let remainingIds = new Set<CallId>()
   const settled = new Map<CallId, Message>()
@@ -66,7 +69,29 @@ export function normalizeToolTranscript(
     settled.clear()
   }
 
-  for (const message of messages) {
+  for (const durableMessage of messages) {
+    let message = durableMessage
+    if (message.role === 'assistant') {
+      const content = message.content.filter((block) => {
+        if (block.type !== 'tool-call' || isValidToolCallIdentity(block.id, block.name)) return true
+        repaired++
+        return false
+      })
+      if (content.length !== message.content.length) {
+        if (content.length === 0) {
+          closeGroup()
+          continue
+        }
+        const source = message.source
+        message = freezeMessage({
+          ...message,
+          content,
+          source: source.kind === 'model'
+            ? { kind: 'model', provider: source.provider, model: source.model }
+            : source,
+        })
+      }
+    }
     const toolCalls = message.role === 'assistant'
       ? message.content.filter((block): block is ToolCallBlock => block.type === 'tool-call')
       : []
@@ -99,7 +124,7 @@ export function normalizeToolTranscript(
     out.push(message)
   }
   closeGroup()
-  return { messages: out, synthesized, suppressed }
+  return { messages: out, synthesized, suppressed, repaired }
 }
 
 /**
@@ -115,6 +140,9 @@ export function assertToolTranscriptValid(messages: readonly Message[]): void {
     if (message.role === 'assistant') {
       const calls = message.content.filter((block): block is ToolCallBlock => block.type === 'tool-call')
       if (calls.length > 0) {
+        if (calls.some(block => !isValidToolCallIdentity(block.id, block.name))) {
+          throw new Error('session transcript: assistant message contains a malformed tool call')
+        }
         if (pending.length > 0) {
           throw new Error('session transcript: assistant tool calls are not followed by their results before the next assistant message')
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BlockAssembler, CallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, CallId, MALFORMED_RESPONSE_CODE, type StreamChunk } from '@deepseek-ai/dsh-llm'
 
 describe('BlockAssembler', () => {
   it('assembles interleaved text, reasoning, and tool-call deltas', () => {
@@ -100,14 +100,42 @@ describe('BlockAssembler', () => {
     expect(assembler.blocks()).toEqual([{ type: 'tool-call', id: CallId('c1'), name: 'echo', arguments: '{}' }])
   })
 
-  it('assembles tool-call with generated id fallback when no id provided', () => {
+  it('rejects a delta-only tool call instead of inventing an id or empty name', () => {
     const assembler = new BlockAssembler()
     assembler.push({ type: 'tool-call-delta', index: 0, argumentsDelta: '{}' } as StreamChunk)
-    // No id and no name provided — uses fallback id `call-{index}` and empty name
-    const blocks = assembler.blocks()
-    expect(blocks).toEqual([
-      { type: 'tool-call', id: CallId('call-0'), name: '', arguments: '{}' },
-    ])
+    expect(() => assembler.blocks()).toThrow(expect.objectContaining({
+      code: MALFORMED_RESPONSE_CODE,
+      message: expect.stringContaining('call id'),
+    }))
+  })
+
+  it.each(['', 'with space', 'dot.name', 'x'.repeat(65)])(
+    'rejects a completed tool call with invalid name %j',
+    (name) => {
+      const assembler = new BlockAssembler()
+      assembler.push({
+        type: 'block-end',
+        index: 0,
+        block: { type: 'tool-call', id: CallId('c1'), name, arguments: '{}' },
+      })
+      expect(() => assembler.blocks()).toThrow(expect.objectContaining({
+        code: MALFORMED_RESPONSE_CODE,
+        message: expect.stringContaining('function name'),
+      }))
+    },
+  )
+
+  it('rejects a completed tool call with an empty id', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: CallId(''), name: 'echo', arguments: '{}' },
+    })
+    expect(() => assembler.blocks()).toThrow(expect.objectContaining({
+      code: MALFORMED_RESPONSE_CODE,
+      message: expect.stringContaining('call id'),
+    }))
   })
 
   it('exposes usage via the getter when a usage chunk was received', () => {
