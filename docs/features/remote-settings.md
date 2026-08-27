@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `remote-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 审查修复：config endpoint 语义；SPA RPC 门闩；Android 旧凭据清除；`relayConnected` 门禁。 |
+| **last verified** | 2026-08-27 — dsh-im 内置化落地：`ensureDesktopDshIm` 改写自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`（每次启动经 `--patch` 传，全量 + skip），只 strip 用户 `cordis.patch.yml` 里的遗留受管块（迁移）绝不写回；禁用名单对 dsh-im 别名不再生效（config 归一化剔除 + `shell:disable-plugin(s)` 拒绝并返回 `desktop-builtin`）；forensics 把 dsh-im 孤儿 suspect 判为内置组件损坏（`inBox`）。skip compose 契约双 overlay 双轮各恰好一次，已对真实 CLI 跑通。此前同日 — 审查修复：config endpoint 语义；SPA RPC 门闩；Android 旧凭据清除；`relayConnected` 门禁。 |
 
 ## User paths
 
@@ -20,7 +20,7 @@
 - 侧栏 QR 仅客户端 `qrSvg(pairingUrl)`（`includeQr: false`）。
 - 外出中继禁止 `chisacode.sh` / 上游 `account_id`。AGPL：`AGPL-SHIPPING.md`。内置 `125…:8411` 可作为 **传输默认**，不可作 SPA。
 - 粘性：`deviceSecret` 直至用户解除配对；刷新 QR 只换短期 pairing token。
-- dsh-im 一等公民：`--patch` 叠加（full+skip）；禁插件 / Recovery 不可关。
+- dsh-im 桌面内置：insert 在自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`，`--patch` 叠加（full+skip）；`cordis.patch.yml` 不写受管块（只 strip 迁移）；禁插件 / Recovery 不可关（IPC 返回 `desktop-builtin`，config 归一化剔除别名）；vendor 运行时缺损 fail start（skip 修不了）。
 - 渠道主操作 36px（飞书扫码无 `size=small`）。
 
 ## Allowed touch

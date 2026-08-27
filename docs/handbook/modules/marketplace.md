@@ -18,6 +18,11 @@
   已安装页按目录分类分组 profile 插件行并逐行卸载（QA 走查 `market.discover` /
   `market.installed` 断言这套结构）。
 - 目录 / 安装：`marketplace-catalog.js`、`marketplace-install.js`、`marketplace-spec.js`、`marketplace-allowbuilds.js`。
+  目录拉取流式封顶 8 MiB（`MAX_REGISTRY_BYTES`），超限走缓存 / 内置离线快照回退
+  （`marketplace-registry-snapshot.json`：随包携带的极小精选子集，仅保证断网首启
+  分区不空白，不是完整目录镜像）。退役判定按家族 basename 匹配
+  （`isDroppedPluginName`），换 scope / owner 的再发布不漏网。
+  发现页分页渲染（每页 60 张卡 + 加载更多），搜索 / 分类变化回第一页。
 - 与上游分离：`dshmarket` 在 `DROPPED`（不挂载、目录隐藏、拒绝安装）；
   `dshmarket-preset.js` 只剩 `removeDshMarketPreset` 清理旧预置残留；
   `vendor/dshmarket` 只剩 attribution stub（LICENSE + `DESKTOP-FORK.md`），源码快照已删。

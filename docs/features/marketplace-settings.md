@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — PR #46 全面复审（第二轮）：主进程 `installMarketplacePlugin` 补上已弃用行拒绝（此前只有 UI 隐藏安装按钮，引擎可被直接 IPC 绕过），目录刷新抛错时保留已展示目录并给出可重试 `role="alert"`（对齐市场失败约定「抛错保留上一份卡片」），刷新进行中禁用按钮并改标「刷新中…」（启用此前闲置的 `refreshing` 文案），分类 chips 组改用独立「分类」aria-label（不再与页签 tablist 同名）；README 已装匹配描述从「子串」更正为边界匹配。vendor `ui-settings-market` vitest 4 文件 40/40 绿（market-section 27、spec-match 8、browser-plugin 4、invariant 1），vendor `test:gui` 全绿（410 文件 / 5373 测试），desktop marketplace 引擎测试 48/48 绿，包目录 oxlint 干净。此前同日评审跟进：安装按钮门禁（`deprecated` / 空 `installSpec`）、页签 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮 `title`、`spec-match.ts` owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）；`qa:source` 复跑全绿：73 PASS / 3 SKIP（均与市场无关）/ 0 FAIL，含 market.section / market.discover / market.installed PASS（Linux xvfb 源码运行，[结果](../qa/results/2026-08-26/market-follow-up-qa-source.md)）。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）。同日（PR #44）打包门禁补齐：`assertHarnessRuntime` 新增 `assertDesktopForkRuntime`，逐一校验 `DESKTOP_PACKAGES`（含 `ui-settings-market`）在打包运行时里 package.json + 声明入口文件齐全——此前门禁只点名 mcp/skills 旧包，陈旧 deploy 目录可打出缺 `ui-settings-market` 的 Setup，启动时 Loader 从 profile 目录导入该行直接 `ERR_MODULE_NOT_FOUND` 且 skip/恢复全部无效。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
+| **last verified** | 2026-08-27 — 三项收口：**(1) DROPPED 家族改名绕过封堵**——`isDroppedPluginName` 按去 scope 的 basename 整段匹配退役家族（`@changfenhuang/dsh-genui` 这类换 scope / 换 GitHub owner 的再发布不再漏网），贯通 profile 清理（`stripDroppedPlugins`）、目录隐藏（`isDropped` 同时查 `packageName` 与 `repo`）与两条安装入口（`isDroppedInstallSpec` 覆盖 npm 名、github repo 名与 `#path:` 尾段；仅整段匹配，`dsh-genui-viewer` 等相似名不受影响）；**(2) 目录响应上限**——`fetchRegistry` 流式读 body 且封顶 8 MiB（`MAX_REGISTRY_BYTES`，content-length 预检 + chunked 累计双保险），超限视同拉取失败走缓存/快照回退；**(3) 发现页分页**——每页 60 张卡（`DISCOVER_PAGE_SIZE`）+「加载更多（剩余 N）」按钮，搜索/分类变化回第一页，计数行仍报全量过滤总数（2286 行目录不再一次性挂 DOM）。desktop marketplace 引擎测试与 vendor market-section specs（29/29）全绿。此前 2026-08-26 — PR #46 全面复审（第二轮）：主进程 `installMarketplacePlugin` 补上已弃用行拒绝（此前只有 UI 隐藏安装按钮，引擎可被直接 IPC 绕过），目录刷新抛错时保留已展示目录并给出可重试 `role="alert"`（对齐市场失败约定「抛错保留上一份卡片」），刷新进行中禁用按钮并改标「刷新中…」（启用此前闲置的 `refreshing` 文案），分类 chips 组改用独立「分类」aria-label（不再与页签 tablist 同名）；README 已装匹配描述从「子串」更正为边界匹配。vendor `ui-settings-market` vitest 4 文件 40/40 绿（market-section 27、spec-match 8、browser-plugin 4、invariant 1），vendor `test:gui` 全绿（410 文件 / 5373 测试），desktop marketplace 引擎测试 48/48 绿，包目录 oxlint 干净。此前同日评审跟进：安装按钮门禁（`deprecated` / 空 `installSpec`）、页签 tab/tabpanel ARIA 关联（`market-tab-*` ↔ `market-panel-*`）、刷新按钮 `title`、`spec-match.ts` owner/repo 整段边界匹配（`github:acme/demo-extra` 不再误配 `acme/demo`）；`qa:source` 复跑全绿：73 PASS / 3 SKIP（均与市场无关）/ 0 FAIL，含 market.section / market.discover / market.installed PASS（Linux xvfb 源码运行，[结果](../qa/results/2026-08-26/market-follow-up-qa-source.md)）。同日早些时候：市场分区重排为「发现 / 已安装」双页签官方样式（`Pill` 页签、`Input` 搜索、头像 / 星标 / 分类 / 主页链接卡片、已安装按目录分类分组 + 未分组置底）。同日（PR #44）打包门禁补齐：`assertHarnessRuntime` 新增 `assertDesktopForkRuntime`，逐一校验 `DESKTOP_PACKAGES`（含 `ui-settings-market`）在打包运行时里 package.json + 声明入口文件齐全——此前门禁只点名 mcp/skills 旧包，陈旧 deploy 目录可打出缺 `ui-settings-market` 的 Setup，启动时 Loader 从 profile 目录导入该行直接 `ERR_MODULE_NOT_FOUND` 且 skip/恢复全部无效。此前 2026-08-25（合并树 `ea659884`）：consolidation #39 后 desktop `npm test` 997/0/3 绿（含 dshmarket-preset 单测）+ `qa:source` market.section/discover/installed 步骤 PASS；Deferred 定为 v1 明确不移植；`vendor/dshmarket` 收缩为 attribution stub |
 
 ## User paths
 
@@ -31,6 +31,14 @@
   （已装行不受影响，仍显示「已安装」标记 + 卸载）。
 - 已安装 ↔ 目录行的规格匹配走 `spec-match.ts` 的 owner/repo 整段边界匹配
   （`packageName` 精确匹配优先），不做子串 `includes`。
+- 退役判定按**家族**而非精确名：`isDroppedPluginName`（`plugins.js`）对 `DROPPED`
+  精确名之外再按去 scope 的 basename 整段匹配（`DROPPED_BASENAMES`），目录隐藏与
+  两条安装入口（catalog id / 直接 spec）一致执行；换 scope、换 GitHub owner 或
+  `#path:` 尾段命中家族名的再发布一律拒绝，相似但不同段的名字不受影响。
+- 目录拉取有硬上限：`fetchRegistry` 流式读取且封顶 `MAX_REGISTRY_BYTES`（8 MiB），
+  超限按拉取失败处理（缓存 / 快照回退），不允许远端响应无界占用内存。
+- 「发现」页分页渲染：每页 `DISCOVER_PAGE_SIZE`（60）张卡 + 「加载更多」按钮，
+  搜索 / 分类变化重置回第一页；计数行始终报全量过滤总数。
 - 安装落点是桌面 `dsh-home/profiles/web`，不是官方 `~/.dsh`（见 [dsh-home](dsh-home.md)）。
 - 重启归 HarnessController（`restartAfterProfileWrite` → `startHarness`），无游离 dshmarket 重启路径。
 - Harness 未就绪时不以空市场窗硬装。

@@ -14,6 +14,10 @@ const FETCH_TIMEOUT_MS = 4000;
 // leaves headroom while a runaway or hostile endpoint cannot exhaust memory.
 const MAX_REGISTRY_BYTES = 8 * 1024 * 1024;
 const USER_AGENT = 'Deepseek-Harness-Desktop';
+// Shipped offline fallback: a tiny curated subset of the registry so a
+// first launch without network still shows a non-empty Discover tab. It is
+// NOT a full registry mirror and is only served when both the live fetch
+// and the on-disk cache are unavailable.
 const SNAPSHOT_PATH = path.join(__dirname, 'marketplace-registry-snapshot.json');
 const WARNING_FRESH_CACHE = '正在使用一小时内的本地插件目录。';
 const WARNING_EMPTY = '无法加载插件目录。';
