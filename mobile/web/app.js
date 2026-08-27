@@ -27,6 +27,13 @@ import {
   pairFromOfferUrl,
   reconnectSticky,
 } from './chisacode/session.js';
+import {
+  chisaBranchRows,
+  chisaCheckoutStatusToVcs,
+  createMobileAgent,
+  listMobileDirectory,
+  runChisaGitAction,
+} from './chisacode/parity.js';
 
 /** Lazy-loaded ChisaCode protocol client (DaemonClient + offer v2). */
 let chisacodeApi = null;
@@ -174,6 +181,24 @@ function showBanner(message) {
   state.banner = message || '';
   bannerEl.textContent = state.banner;
   bannerEl.classList.toggle('hidden', !state.banner);
+}
+
+function connectionLabel() {
+  return state.transport === 'chisacode'
+    ? 'ChisaCode v2 · 端到端加密'
+    : channelLabel(origin);
+}
+
+function openPullRequest() {
+  try {
+    const url = new URL(state.gitStatus.pr?.url || '');
+    if (url.protocol !== 'https:') throw new Error('Pull request URL must use HTTPS');
+    window.open(url.toString(), '_blank', 'noopener');
+    setToast(`打开拉取请求 #${state.gitStatus.pr?.number ?? ''}`.trim());
+  } catch {
+    showBanner('拉取请求链接不可用；请在电脑端打开');
+    setToast('拉取请求不可用');
+  }
 }
 
 function renderScreen() {
@@ -504,17 +529,19 @@ async function finishChisaCodeConnect(paired, reconnected) {
   state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
   state.cwd = '';
   state.hostName = paired.serverId;
+  let loadError = '';
   try {
     state.sessions = agentRows(await paired.client.fetchAgents({
       page: { limit: 100 },
       subscribe: {},
     }));
-  } catch {
+  } catch (error) {
     state.sessions = [];
+    loadError = `无法加载会话：${error?.message || '电脑没有响应'}`;
   }
   deviceLine.replaceChildren();
   deviceLine.append(document.createTextNode(`${reconnected ? '已重连' : '已配对'} ${paired.serverId}`));
-  showBanner('');
+  showBanner(loadError);
   renderSessions();
   renderHeader();
   renderScreen();
@@ -580,7 +607,11 @@ async function openSession(sessionId) {
 
 async function createSession() {
   if (state.transport === 'chisacode') {
-    throw new Error('请先在电脑端新建会话；手机端可继续已有 ChisaCode 会话');
+    const agent = await createMobileAgent(state.chisacode.client, state.sessions);
+    updateChisaCodeAgent(agent);
+    await openSession(agent.id);
+    showBanner('');
+    return;
   }
   const created = await call('session.create', {});
   const sessionId = created.value?.sessionId;
@@ -828,8 +859,25 @@ function currentQuick() {
 async function refreshGit() {
   if (!state.cwd) return;
   try {
-    const result = await shell('gitStatus', { cwd: state.cwd });
-    state.gitStatus = parseVcsStatus(result);
+    if (state.transport === 'chisacode') {
+      const status = await state.chisacode.client.getCheckoutStatus(state.cwd);
+      let pr = null;
+      if (status?.isGit && typeof state.chisacode.client.checkoutPrStatus === 'function') {
+        try {
+          pr = await state.chisacode.client.checkoutPrStatus(state.cwd);
+          if (pr?.error) {
+            const message = typeof pr.error === 'string' ? pr.error : pr.error.message;
+            showBanner(`Git 状态已加载；拉取请求状态不可用：${message || '电脑没有响应'}`);
+          }
+        } catch (error) {
+          showBanner(`Git 状态已加载；拉取请求状态不可用：${error?.message || '电脑没有响应'}`);
+        }
+      }
+      state.gitStatus = chisaCheckoutStatusToVcs(status, pr);
+    } else {
+      const result = await shell('gitStatus', { cwd: state.cwd });
+      state.gitStatus = parseVcsStatus(result);
+    }
   } catch (error) {
     setToast(error.message || 'Git 状态不可用');
   }
@@ -855,7 +903,11 @@ async function gitAction(name, extra = {}) {
   renderToast();
   renderSettings();
   try {
-    await shell(name, { cwd: state.cwd, ...extra });
+    if (state.transport === 'chisacode') {
+      await runChisaGitAction(state.chisacode.client, name, state.cwd, extra);
+    } else {
+      await shell(name, { cwd: state.cwd, ...extra });
+    }
     state.gitDialog = '';
     state.gitConfirmAction = '';
     renderSheet();
@@ -911,8 +963,7 @@ function runGitPrimary() {
     return;
   }
   if (quick.kind === 'open_pr') {
-    showBanner('已在电脑上打开拉取请求');
-    setToast(state.gitStatus.pr?.number != null ? `打开拉取请求 #${state.gitStatus.pr.number}` : '打开拉取请求');
+    openPullRequest();
     return;
   }
   setToast(quick.hint);
@@ -921,8 +972,16 @@ function runGitPrimary() {
 async function loadBranches() {
   if (!state.cwd) return;
   try {
-    const result = await shell('gitBranchList', { cwd: state.cwd });
-    state.branches = parseBranchList(result);
+    if (state.transport === 'chisacode') {
+      const result = await state.chisacode.client.getBranchSuggestions({
+        cwd: state.cwd,
+        limit: 200,
+      });
+      state.branches = chisaBranchRows(result, state.gitStatus.refName);
+    } else {
+      const result = await shell('gitBranchList', { cwd: state.cwd });
+      state.branches = parseBranchList(result);
+    }
     state.branchQuery = '';
     state.gitDialog = 'branch';
     renderSheet();
@@ -945,15 +1004,19 @@ function createBranch() {
 async function loadFiles() {
   if (!state.cwd) return;
   try {
-    const result = await shell('listDir', { cwd: state.cwd, relativePath: '' });
-    const entries = Array.isArray(result?.entries) ? result.entries : [];
-    state.fileEntries = entries
-      .map((entry) => {
-        const name = typeof entry?.name === 'string' ? entry.name : '';
-        if (!name) return '';
-        return entry?.kind === 'directory' ? `${name}/` : name;
-      })
-      .filter(Boolean);
+    if (state.transport === 'chisacode') {
+      state.fileEntries = await listMobileDirectory(state.chisacode.client, state.cwd);
+    } else {
+      const result = await shell('listDir', { cwd: state.cwd, relativePath: '' });
+      const entries = Array.isArray(result?.entries) ? result.entries : [];
+      state.fileEntries = entries
+        .map((entry) => {
+          const name = typeof entry?.name === 'string' ? entry.name : '';
+          if (!name) return '';
+          return entry?.kind === 'directory' ? `${name}/` : name;
+        })
+        .filter(Boolean);
+    }
   } catch (error) {
     showBanner(error.message || '无法列出文件');
   }
@@ -968,6 +1031,10 @@ function insertMention(path) {
 }
 
 async function requestHost(name, payload = {}) {
+  if (state.transport === 'chisacode') {
+    showBanner('ChisaCode 手机协议不能控制电脑窗口；请在电脑端操作');
+    return;
+  }
   try {
     await shell(name, payload);
     showBanner(name === 'openGallery'
@@ -1082,9 +1149,11 @@ function switchNode(on, onToggle) {
 }
 
 function renderSettingsHub() {
-  options.append(noticeNode('远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。标了「电脑」的项会改 Host 窗口。'));
+  options.append(noticeNode(state.transport === 'chisacode'
+    ? '手机外观和会话选项只留在本机；电脑窗口设置请在电脑端操作。'
+    : '远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。标了「电脑」的项会改 Host 窗口。'));
   const groups = settingsGroups({
-    channel: channelLabel(origin),
+    channel: connectionLabel(),
     accessMode: state.accessMode,
     gitLine: gitStatusLine(state.gitStatus),
     scheme: store.scheme,
@@ -1281,6 +1350,13 @@ function renderWorkspacePane() {
 }
 
 function renderHostRequestPane(pane) {
+  if (state.transport === 'chisacode') {
+    options.append(descNode('ChisaCode 手机协议不控制电脑窗口。请在电脑端打开对应设置。'));
+    const unavailable = primaryButton(`请在电脑端打开${pane}`, () => {});
+    unavailable.disabled = true;
+    options.append(unavailable);
+    return;
+  }
   options.append(descNode('这些项在电脑 Host 上。手机只发送打开请求，不画假清单。'));
   const section = hostSettingsSection(pane);
   if (section) {
@@ -1314,6 +1390,10 @@ function renderSettings() {
     return;
   }
   if (pane === '电脑外观') {
+    if (state.transport === 'chisacode') {
+      renderHostRequestPane('电脑外观');
+      return;
+    }
     options.append(noticeNode('图库窗口在电脑上。这里可以请电脑打开外观。'));
     options.append(paneTitleNode('背景图'));
     options.append(ghostButton('在电脑上打开图库', () => requestHost('openGallery')));
@@ -1331,13 +1411,18 @@ function renderSettings() {
         renderSettings();
       }),
     ));
-    options.append(ghostButton('在电脑上打开界面设置', () => requestHost('openSettings')));
+    const hostSettings = ghostButton(
+      state.transport === 'chisacode' ? '请在电脑端打开界面设置' : '在电脑上打开界面设置',
+      () => requestHost('openSettings'),
+    );
+    hostSettings.disabled = state.transport === 'chisacode';
+    options.append(hostSettings);
     return;
   }
   if (pane === '连接详情') {
     options.append(noticeNode('远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。'));
     options.append(hairRow('主机', state.hostName));
-    options.append(hairRow('通道', channelLabel(origin)));
+    options.append(hairRow('通道', connectionLabel()));
     const danger = document.createElement('button');
     danger.type = 'button';
     danger.className = 'danger-btn';
@@ -1451,8 +1536,7 @@ function renderSheet() {
         onClick: () => {
           if (hasOpenPr) {
             closeGitLayer();
-            showBanner('已在电脑上打开拉取请求');
-            setToast('打开拉取请求');
+            openPullRequest();
           } else {
             state.gitDialog = '';
             renderSheet();
@@ -1494,7 +1578,11 @@ function renderSheet() {
       }
       const canCreate = Boolean(query) && !state.branches.some((branch) => branch.name === query && !branch.isRemote);
       nodes.push(sheetItem({
-        label: canCreate ? `创建并检出分支「${query}」` : '创建并检出新分支…',
+        label: state.transport === 'chisacode'
+          ? '创建新分支（请在电脑端操作）'
+          : canCreate ? `创建并检出分支「${query}」` : '创建并检出新分支…',
+        hint: state.transport === 'chisacode' ? '当前协议支持切换分支，但不支持创建普通分支。' : '',
+        enabled: state.transport !== 'chisacode',
         onClick: () => {
           if (canCreate) state.newBranchName = query;
           state.gitDialog = 'create-branch';
@@ -1575,12 +1663,17 @@ function renderDialog() {
       state.commitMessage = value;
     }));
     dialog.append(body);
-    dialogFoot(dialog, [
-      ghostButton('取消', closeGitLayer),
-      ghostButton('在新建分支上提交', () => {
+    const branchCommit = ghostButton(
+      state.transport === 'chisacode' ? '新建分支请在电脑端操作' : '在新建分支上提交',
+      () => {
         state.gitDialog = 'create-branch';
         renderDialog();
-      }),
+      },
+    );
+    branchCommit.disabled = state.transport === 'chisacode';
+    dialogFoot(dialog, [
+      ghostButton('取消', closeGitLayer),
+      branchCommit,
       primaryButton('提交', () => gitAction('gitCommit', { message: state.commitMessage })),
     ]);
     dialogRoot.append(layer);
@@ -1588,6 +1681,12 @@ function renderDialog() {
   }
   if (kind === 'create-branch') {
     const { layer, dialog } = dialogLayer(true);
+    if (state.transport === 'chisacode') {
+      dialogHead(dialog, '请在电脑端创建分支', '当前 ChisaCode 手机协议支持切换已有分支，但不支持创建普通分支。');
+      dialogFoot(dialog, [primaryButton('知道了', closeGitLayer)]);
+      dialogRoot.append(layer);
+      return;
+    }
     dialogHead(dialog, '创建并检出新分支', '基于当前 HEAD 创建一个新的本地分支，并在创建成功后立即切换过去。');
     const body = document.createElement('div');
     body.className = 'dialog-body';
