@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BlockAssembler, EMPTY_RESPONSE_CODE, LlmError } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, EMPTY_RESPONSE_CODE, LlmError, MALFORMED_RESPONSE_CODE } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { DONE } from '../src/sse.ts'
 import { mapFinishReason, mapUsage, translate } from '../src/translate.ts'
@@ -312,20 +312,34 @@ describe('mapUsage', () => {
 })
 
 describe('translate: defensive tool-call branches', () => {
-  it('handles deltas that never carry id or name (empty-string fallbacks)', async () => {
-    const chunks = await collect(translate(feed(
+  it('rejects deltas that complete without an id or name', async () => {
+    await expect(collect(translate(feed(
       firstChunk,
-      // Hypothetical lenient wire: argument fragments with no id/name at all.
       { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{}' } }] } }] },
       { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       DONE,
-    )))
-    expect(chunks).toEqual([
-      { type: 'block-start', index: 0, blockType: 'tool-call' },
-      { type: 'tool-call-delta', index: 0, id: '', argumentsDelta: '{}' },
-      { type: 'block-end', index: 0, block: { type: 'tool-call', id: '', name: '', arguments: '{}' } },
-      { type: 'finish', reason: { kind: 'tool-calls' } },
-    ])
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
+  })
+
+  it.each(['', 'with space', 'x'.repeat(65)])(
+    'rejects a completed tool call with invalid name %j',
+    async (name) => {
+      await expect(collect(translate(feed(
+        firstChunk,
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name, arguments: '{}' } }] } }] },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+        DONE,
+      )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
+    },
+  )
+
+  it('rejects a completed tool call with an empty id', async () => {
+    await expect(collect(translate(feed(
+      firstChunk,
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: '', function: { name: 'f', arguments: '{}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      DONE,
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 
   it('handles tool_call deltas with a function object but no arguments field', async () => {
@@ -338,13 +352,12 @@ describe('translate: defensive tool-call branches', () => {
     expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'c', name: 'f', argumentsDelta: '' })
   })
 
-  it('handles tool_call deltas with no function object at all', async () => {
-    const chunks = await collect(translate(feed(
+  it('rejects a completed tool call with no function object', async () => {
+    await expect(collect(translate(feed(
       firstChunk,
       { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c' }] } }] },
       { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       DONE,
-    )))
-    expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'c', argumentsDelta: '' })
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 })

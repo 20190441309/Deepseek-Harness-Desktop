@@ -57,7 +57,7 @@
 
 消息内容是类型化内容块数组：`text`、`reasoning`、`tool-call`、`tool-result`。联合从可合并扩展的 `ContentBlockMap` 派生，因此插件可以通过 declaration merging 添加块类型。assistant 消息使用模型来源，其中携带生成该消息的提供方和模型，以及可选的适配器私有回放状态。dispatch 前，`LlmRuntime` 只在历史提供方路由与目标提供方路由当前由完全相同的适配器实例拥有时才保留该状态；随后由适配器判定能否在模型／提供方间恢复或转换该状态。核心块集只包含每条已发布路径都支持的块。多模态内容（图像、音频等）没有核心块类型；需要它的功能会通过 map 添加，并一并添加相应的适配器／UI／压缩（compaction）支持。
 
-流式输出是原始分片协议（`block-start`、`text-delta`、`reasoning-delta`、`tool-call-delta`、`block-end`、`usage`、`finish`）。每个适配器结果都以一个终止 `finish` 到达消费方；运行故障使用 `error` 或 `aborted` 作为结束原因，而不会跨流 API 抛出。`BlockAssembler` 是将分片组装为块／消息的唯一共享实现。成功的 `finish` 可以携带 `ReplayEnvelope`——不透明的响应级回放元数据，加上与发射块序列对齐的可选逐块条目。组装对内容与元数据只做一次保留/丢弃决定：`max-tokens` 结束会丢弃可能被截断的工具调用，数据在每个被丢弃的位置同步失去对应条目，因此存储的元数据始终描述存储的内容。
+流式输出是原始分片协议（`block-start`、`text-delta`、`reasoning-delta`、`tool-call-delta`、`block-end`、`usage`、`finish`）。每个适配器结果都以一个终止 `finish` 到达消费方；运行故障使用 `error` 或 `aborted` 作为结束原因，而不会跨流 API 抛出。`BlockAssembler` 是将分片组装为块／消息的唯一共享实现。返回内容前，它会以 `MALFORMED_RESPONSE` 拒绝 ID 为空或名称不匹配 `[A-Za-z0-9_-]{1,64}` 的工具调用；它不会虚构 ID 或空名称。成功的 `finish` 可以携带 `ReplayEnvelope`——不透明的响应级回放元数据，加上与发射块序列对齐的可选逐块条目。组装对内容与元数据只做一次保留/丢弃决定：`max-tokens` 结束会丢弃可能被截断的工具调用，数据在每个被丢弃的位置同步失去对应条目，因此存储的元数据始终描述存储的内容。
 
 ### 调用配置（`call-config.ts`）
 
@@ -83,6 +83,7 @@
 - `CONTEXT_WINDOW_EXCEEDED_CODE`：当请求超过模型上下文窗口时，无论通过 HTTP 异常抛出还是带内 finish 交付，两个 DeepSeek 适配器都使用的提供方无关 code。`isContextWindowExceededError(detail)` 是它们针对 OpenAI 兼容提供方详细信息的共享保守分类器。
 - `QUOTA_EXCEEDED_CODE`：帐户配额、余额、点数、预算或用量限制耗尽时使用的非暂时性提供方无关 code。`isQuotaExceededError(detail)` 使这些失败与请求速率限制保持区分。
 - `EMPTY_RESPONSE_CODE`：两个适配器都使用的提供方无关 code，用于表示退化的提供方生成结果：一个未携带任何内容块的终止 `stop`。它会被分类为错误 finish（而非成功空消息），因为尝试未产生持久内容；`dsh-llm-retry` 默认重试它。
+- `MALFORMED_RESPONSE_CODE`：已完成响应违反内容协议时使用的提供方无关 code，包括工具调用 ID 为空或函数名无效。Agent loop 会在持久化 assistant 内容前拒绝它，并交给默认请求重试。
 - `INVALID_CREDENTIAL_CODE`：已提供但无法使用的凭据所用的提供方无关 code——格式错误而非缺失，修复方式是改正已存储的值，而不是补充一个凭据，这正是它与 `MISSING_CREDENTIAL` 的区别。它被刻意排除在默认可重试集合之外：格式错误的凭据每次尝试都会以同样方式失败。`assertUsableApiKey(raw, pkg, ref)` 会以该 code 抛出 `LlmError`，是每个适配器判定已存储凭据不可用时共用的诊断。
 
 ### 真实适配器

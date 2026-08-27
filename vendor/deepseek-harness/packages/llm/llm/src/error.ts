@@ -39,6 +39,13 @@ export const QUOTA_EXCEEDED_CODE = 'QUOTA'
 export const EMPTY_RESPONSE_CODE = 'EMPTY_RESPONSE'
 
 /**
+ * Canonical provider-neutral code for a syntactically completed response that
+ * violates the Harness protocol contract. The attempt contributes no durable
+ * assistant message, so the default retry policy may safely repeat it.
+ */
+export const MALFORMED_RESPONSE_CODE = 'MALFORMED_RESPONSE'
+
+/**
  * Canonical provider-neutral code for a credential that was supplied but
  * cannot be used — malformed rather than absent. Distinct from
  * `MISSING_CREDENTIAL` because the fix differs: correct the stored value

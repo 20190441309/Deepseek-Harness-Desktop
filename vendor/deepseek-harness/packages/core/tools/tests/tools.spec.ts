@@ -1987,6 +1987,23 @@ describe('ToolRuntime', () => {
       .toThrow('timeoutMs must be a positive finite number')
   })
 
+  it.each(['', 'with space', 'dot.name', 'x'.repeat(65)])(
+    'rejects invalid tool registration name %j',
+    async (name) => {
+      const ctx = await setup()
+      expect(() => ctx.tools.register({ ...echoTool, name }))
+        .toThrow('tool name must match [A-Za-z0-9_-]{1,64}')
+      expect(ctx.tools.schemas()).toEqual([])
+    },
+  )
+
+  it('accepts the complete tool registration name grammar', async () => {
+    const ctx = await setup()
+    const name = `${'A'.repeat(60)}0_-x`
+    ctx.tools.register({ ...echoTool, name })
+    expect(ctx.tools.schemas()[0]?.name).toBe(name)
+  })
+
   it('rejects duplicate names and unregisters on fiber dispose (HMR safety)', async () => {
     const ctx = await setup()
     ctx.tools.register(echoTool)

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage, type AssistantMessage, type Message, type ToolResultMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { CallId, createAssistantMessage, createMessage, createToolResultMessage, createUserMessage, type AssistantMessage, type Message, type ToolResultMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import {
   Session,
   SessionId,
@@ -46,7 +46,9 @@ describe('normalizeToolTranscript', () => {
     expect(normalized.messages).toEqual(messages)
     expect(normalized.synthesized).toBe(0)
     expect(normalized.suppressed).toBe(0)
-    expect(() => assertToolTranscriptValid(normalized.messages)).not.toThrow()
+    expect(() => {
+      assertToolTranscriptValid(normalized.messages)
+    }).not.toThrow()
   })
 
   it('synthesizes results for missing pairs and closes the group before the transcript moves on', () => {
@@ -70,7 +72,9 @@ describe('normalizeToolTranscript', () => {
       content: [{ type: 'tool-result', isError: true, content: [{ type: 'text', text: TOOL_NOT_STARTED_TEXT }] }],
     })
     expect(rest[2]).toBe(messages[2])
-    expect(() => assertToolTranscriptValid(normalized.messages)).not.toThrow()
+    expect(() => {
+      assertToolTranscriptValid(normalized.messages)
+    }).not.toThrow()
   })
 
   it('re-emits settled results in block order when the log misplaced them', () => {
@@ -100,6 +104,76 @@ describe('normalizeToolTranscript', () => {
     expect(normalized.suppressed).toBe(1)
   })
 
+  it('removes malformed calls and their results while preserving valid assistant content', () => {
+    const assistant = createAssistantMessage({
+      content: [
+        { type: 'text', text: 'checking' },
+        { type: 'tool-call', id: CallId('bad'), name: '', arguments: '{}' },
+        { type: 'tool-call', id: CallId('good'), name: 'read_file', arguments: '{}' },
+      ],
+      source: {
+        provider: 'mock',
+        model: 'mock',
+        replayState: { response: {}, blocks: [{}, {}, {}] },
+      },
+    })
+    const badResult = resultFor('bad')
+    const goodResult = resultFor('good')
+    const normalized = normalizeToolTranscript(
+      [assistant, badResult, goodResult],
+      new Set([CallId('bad'), CallId('good')]),
+    )
+
+    expect(normalized.repaired).toBe(1)
+    expect(normalized.suppressed).toBe(1)
+    expect(normalized.synthesized).toBe(0)
+    expect(normalized.messages).toHaveLength(2)
+    expect(normalized.messages[0]).toMatchObject({
+      id: assistant.id,
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'checking' },
+        { type: 'tool-call', id: CallId('good'), name: 'read_file' },
+      ],
+      source: { kind: 'model', provider: 'mock', model: 'mock' },
+    })
+    expect(normalized.messages[0]?.source).not.toHaveProperty('replayState')
+    expect(normalized.messages[1]).toBe(goodResult)
+    expect(() => {
+      assertToolTranscriptValid(normalized.messages)
+    }).not.toThrow()
+  })
+
+  it('repairs a non-model assistant message without altering its source', () => {
+    const assistant = createMessage({
+      role: 'assistant' as const,
+      content: [
+        { type: 'tool-call' as const, id: CallId(''), name: 'read', arguments: '{}' },
+        { type: 'tool-call' as const, id: CallId('good'), name: 'read', arguments: '{}' },
+      ],
+      source: { kind: 'plugin' as const, plugin: 'relay' },
+    })
+    const normalized = normalizeToolTranscript([assistant, resultFor('good')], new Set([CallId('good')]))
+    expect(normalized.repaired).toBe(1)
+    expect(normalized.messages[0]).toMatchObject({
+      id: assistant.id,
+      content: [{ type: 'tool-call', id: CallId('good'), name: 'read' }],
+      source: { kind: 'plugin', plugin: 'relay' },
+    })
+    expect(() => {
+      assertToolTranscriptValid(normalized.messages)
+    }).not.toThrow()
+  })
+
+  it('suppresses an assistant message containing only malformed calls', () => {
+    const assistant = assistantWithCalls({ id: '', name: 'read' }, { id: 'bad', name: 'with space' })
+    const continued = user('continue')
+    const normalized = normalizeToolTranscript([assistant, resultFor('bad'), continued], new Set())
+    expect(normalized.messages).toEqual([continued])
+    expect(normalized.repaired).toBe(2)
+    expect(normalized.suppressed).toBe(1)
+  })
+
   it('is deterministic: repeated passes synthesize identical message identities', () => {
     const messages = [assistantWithCalls({ id: 'a', name: 'read' }), user('again')]
     const first = normalizeToolTranscript(messages, new Set([CallId('a')])).messages
@@ -111,42 +185,63 @@ describe('normalizeToolTranscript', () => {
 
 describe('assertToolTranscriptValid', () => {
   it('accepts a canonical transcript', () => {
-    expect(() => assertToolTranscriptValid([
-      assistantWithCalls({ id: 'a', name: 'read' }, { id: 'b', name: 'read' }),
-      resultFor('a'),
-      resultFor('b'),
-      createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'mock', model: 'mock' } }),
-      user('ok'),
-    ])).not.toThrow()
+    expect(() => {
+      assertToolTranscriptValid([
+        assistantWithCalls({ id: 'a', name: 'read' }, { id: 'b', name: 'read' }),
+        resultFor('a'),
+        resultFor('b'),
+        createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'mock', model: 'mock' } }),
+        user('ok'),
+      ])
+    }).not.toThrow()
   })
 
   it('rejects trailing assistant tool calls with no results', () => {
-    expect(() => assertToolTranscriptValid([assistantWithCalls({ id: 'a', name: 'read' })])).toThrow(/no results/)
+    expect(() => {
+      assertToolTranscriptValid([assistantWithCalls({ id: 'a', name: 'read' })])
+    }).toThrow(/no results/)
+  })
+
+  it('rejects malformed assistant tool-call identity', () => {
+    expect(() => {
+      assertToolTranscriptValid([
+        assistantWithCalls({ id: 'a', name: '' }),
+        resultFor('a'),
+      ])
+    }).toThrow(/malformed tool call/)
   })
 
   it('rejects an assistant call group that is not closed before the next message', () => {
-    expect(() => assertToolTranscriptValid([
-      assistantWithCalls({ id: 'a', name: 'read' }),
-      user('moved on'),
-    ])).toThrow(/before the transcript moves on/)
+    expect(() => {
+      assertToolTranscriptValid([
+        assistantWithCalls({ id: 'a', name: 'read' }),
+        user('moved on'),
+      ])
+    }).toThrow(/before the transcript moves on/)
   })
 
   it('rejects an assistant call group that is not closed before the next assistant message', () => {
-    expect(() => assertToolTranscriptValid([
-      assistantWithCalls({ id: 'a', name: 'read' }),
-      assistantWithCalls({ id: 'b', name: 'read' }),
-    ])).toThrow(/before the next assistant message/)
+    expect(() => {
+      assertToolTranscriptValid([
+        assistantWithCalls({ id: 'a', name: 'read' }),
+        assistantWithCalls({ id: 'b', name: 'read' }),
+      ])
+    }).toThrow(/before the next assistant message/)
   })
 
   it('rejects an orphan tool result', () => {
-    expect(() => assertToolTranscriptValid([resultFor('ghost')])).toThrow(/no preceding assistant tool call/)
+    expect(() => {
+      assertToolTranscriptValid([resultFor('ghost')])
+    }).toThrow(/no preceding assistant tool call/)
   })
 
   it('rejects out-of-order results', () => {
-    expect(() => assertToolTranscriptValid([
-      assistantWithCalls({ id: 'a', name: 'read' }, { id: 'b', name: 'read' }),
-      resultFor('b'),
-    ])).toThrow(/out of order/)
+    expect(() => {
+      assertToolTranscriptValid([
+        assistantWithCalls({ id: 'a', name: 'read' }, { id: 'b', name: 'read' }),
+        resultFor('b'),
+      ])
+    }).toThrow(/out of order/)
   })
 })
 
@@ -171,7 +266,9 @@ describe('deriveMessages canonicalization', () => {
     session.append('user/message', user('again'), { surfaceOp: 'append' })
 
     const messages = session.deriveMessages()
-    expect(() => assertToolTranscriptValid(messages)).not.toThrow()
+    expect(() => {
+      assertToolTranscriptValid(messages)
+    }).not.toThrow()
     const results = toolResults(messages)
     expect(results.map(message => String(message.source.callId))).toEqual(['c1', 'c2'])
     expect(results[0]!.content[0]).toMatchObject({ isError: true, content: [{ type: 'text', text: TOOL_OUTCOME_UNKNOWN_TEXT }] })
@@ -184,6 +281,32 @@ describe('deriveMessages canonicalization', () => {
     expect(messages[assistantIndex + 3]).toMatchObject({ role: 'user', content: [{ type: 'text', text: 'again' }] })
     // The append-only log is untouched.
     expect(session.events.filter(event => event.type === 'tool/result')).toHaveLength(0)
+  })
+
+  it('repairs an empty-name poisoned session for the next prompt without rewriting its log', () => {
+    const session = Session.create(SessionId('empty-name-poison'))
+    const poisoned = assistantWithCalls({ id: 'bad-call', name: '' })
+    session.append('user/message', user('first'), { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: poisoned,
+    }, { surfaceOp: 'append' })
+    session.append('tool/result', {
+      turn: 1,
+      step: 1,
+      message: resultFor('bad-call', 'Error: unknown tool ""'),
+    }, { surfaceOp: 'append' })
+    session.append('user/message', user('try again'), { surfaceOp: 'append' })
+    const before = structuredClone(session.events)
+
+    const messages = session.deriveMessages()
+    expect(messages.map(message => message.role)).toEqual(['user', 'user'])
+    expect(messages[1]).toMatchObject({ content: [{ type: 'text', text: 'try again' }] })
+    expect(() => {
+      assertToolTranscriptValid(messages)
+    }).not.toThrow()
+    expect(session.events).toEqual(before)
   })
 
   it('leaves a valid session transcript byte-identical', () => {
