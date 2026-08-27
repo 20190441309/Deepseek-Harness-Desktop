@@ -15,7 +15,7 @@
 - 插件自足：`lib/room-preset.js` 在 apply 时把 `presets/dshbot-room` 自装到 `$DSH_HOME/.agent-presets/`（幂等、字节级刷新），不依赖桌面拷贝。
 - 桌面壳：`removeDshbotPreset` 清 managed patch 块、`desktop-plugins/dshbot` 拷贝、预置软链（仅指向拷贝的）、无主 preset；**不**碰用户安装（真实 node_modules、profile dependencies/bundles）。`ensureDshbotPlugin` 仅 config `dshbotPreset: true` 时跑，log-only。
 - 纯协议：`lib/group-chat.js`；建群/成员/epoch：`group-chat-host.js`；调度唯一实现在 `catalog.js`（`nextRoomSpeakerId` 事件链）——平行 `GroupChatOrchestrator` 与 redrive 助手已删。
-- 房间推进借 Harness `llm/stream` → 链式 `ask_participant`；成员 spawn `toolFilter` 仅 `send_room_message`，system prompt 同口径（talking-circle）。10 次上限（`maxSpeaks`）按 Grok 语义只计可见投递：pass、失败与重启后无结果调用不耗额度，只推进轮转（总尝试由全 pass 停轮 + `maxRounds` 封顶）；非取消失败变成静默 pass。同 turn 双投递保持独立可见条目（`texts` 按条 render / 提取 / 展示）。Config 只接受整数 `maxSpeaks=1..10`、`maxRounds=1..3`，调度入口也硬钳到协议顶。
+- 房间推进借 Harness `llm/stream` → 链式 `ask_participant`；成员 spawn `toolFilter` 仅 `send_room_message`，system prompt 同口径（talking-circle）。10 次上限（`maxSpeaks`）按 Grok 语义只计可见投递（`visibleMemberMessageCount`）：pass 与失败推进轮转但不耗额度；重启后无结果的悬挂调用不占位、下次重新点名（总尝试由全 pass 停轮 + `maxRounds` 封顶）；非取消失败变成静默 pass。同 turn 双投递保持独立可见条目（`texts` 按条 render / 提取 / 展示）。Config 只接受整数 `maxSpeaks=1..10`、`maxRounds=1..3`，调度入口也硬钳到协议顶。
 - A2A：`send_to_agent` 可发同伴或 post 进**自己所在的**群（非成员拒绝）；群无离线 inbox，闲置房间返回 `ok: false` 明说未投递；priority 仅队列序；1:1 系统提示带 `dshbot:teammates` 目录段（Grok agent-directory 适配）。
 - inbox drain 独立在无依赖的 `lib/inbox-drain.js`（仅 1:1）：assemble 只 PEEK、ack 在消费 turn 之后，at-least-once（崩溃重投、ack 幂等、重复注入不双删）。
 - 编辑器不提供通知开关或记忆文本框：通知没有 Harness 投递钩子，持久记忆只由 1:1 Bot 的 `remember` 工具写入。已建立群锁定工作区选择器；只有建群时可选工作区。思考态直接使用现有 session/tool 状态，不维护平行 group-member activity tracker。

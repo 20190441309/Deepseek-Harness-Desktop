@@ -25,7 +25,7 @@
 - 房间 turn epoch 进程内单调：崩溃重启从 0 重新起算，崩溃前铸出的 epoch token 永远过期（stale member turn 无法回写）。
 - 群父会话不调聊天模型；可见气泡仅用户消息与成员投递（`send_room_message`，`(pass)` 静默）。同一成员 turn 的两条投递保持两条独立可见条目（`ask_participant` 输出 `texts` 按条 render，历史提取与客户端气泡按条展示，不 `\n\n` 合并）。
 - 群成员为 2–6 个独立 Bot；协议常量：`GROUP_MIN_MEMBERS=2`、`GROUP_MAX_MEMBERS=6`、`GROUP_MAX_ROUNDS=3`、`GROUP_MAX_MEMBER_TURNS=10`、`GROUP_MAX_MESSAGES_PER_TURN=2`、`GROUP_PROMPT_HISTORY_LIMIT=24`。
-- `GROUP_MAX_MEMBER_TURNS`（`maxSpeaks`）按 Grok 语义**只计可见投递**：pass、成员失败与重启后重放到的无结果调用不消耗额度（它们仍推进轮转队列，总尝试数由「一轮全 pass 即停」+ `maxRounds` 封顶）。成员非取消错误返回静默 pass；Config 拒绝 1–10 / 1–3 之外的整数，调度入口仍硬钳到 10 / 3。
+- `GROUP_MAX_MEMBER_TURNS`（`maxSpeaks`）按 Grok 语义**只计可见投递**（`visibleMemberMessageCount`）：pass 与成员失败不消耗额度但推进轮转队列；重启重放到的无结果（悬挂）调用既不耗额度也不占位，下次派发重新点名同一成员。总尝试数由「一轮全 pass 即停」+ `maxRounds` 封顶。成员非取消错误返回静默 pass；Config 拒绝 1–10 / 1–3 之外的整数，调度入口仍硬钳到 10 / 3。
 - 成员 system prompt 与 toolFilter 一致：talking-circle 措辞，明说 `send_room_message` 是唯一工具（不再谎称 full toolkit）。
 - 无 `speakerSeat` / later 默认 pass / `NEXT:` 调度 / redrive（`buildGroupRedriveNote` 已删）/ 平行 `GroupChatOrchestrator`（已删，事件链调度是唯一实现）。
 - 目录 schema / 编辑器没有未实现的通知开关；记忆只由 1:1 Bot 的 `remember` 工具写入，不提供编辑 UI；`group-member-activity.js` 不存在，思考态来自现有 session/tool 状态。

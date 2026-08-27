@@ -438,10 +438,10 @@ function lastUserMessageIndex(events) {
 }
 
 /**
- * ask_participant attempts after the latest user message. Attempts drive the
- * round-robin order (a call without a result reads as a pass, so restart
- * replay advances the queue instead of re-asking); the maxSpeaks cap counts
- * visible deliveries only (see nextRoomSpeakerId).
+ * ask_participant attempts after the latest user message. Completed attempts
+ * drive the round-robin order; a dangling call (crash-replayed, no result)
+ * neither consumes the visible-delivery cap nor advances the queue, so the
+ * next dispatch re-asks that member (see nextRoomSpeakerId).
  * @param {readonly object[] | undefined} events
  * @returns {{ botId: string, text: string, completed: boolean }[]}
  */
@@ -471,6 +471,24 @@ export function memberTurnAttempts(events) {
     turn.completed = true;
   }
   return turns;
+}
+
+/**
+ * Member-visible messages since the latest user message (Grok delivery
+ * counting: this is what the maxSpeaks cap consumes).
+ * @param {readonly object[] | undefined} events
+ * @param {readonly object[]} items
+ * @returns {number}
+ */
+export function visibleMemberMessageCount(events, items) {
+  const history = eventsToGroupHistory(events, items);
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const message = history[i];
+    if (message.speaker.kind === 'user') break;
+    if (message.speaker.kind === 'member') count += 1;
+  }
+  return count;
 }
 
 /**
@@ -632,12 +650,7 @@ export function nextRoomSpeakerId(items, room, events, limits = {}) {
   // Grok parity: maxSpeaks caps visible delivered messages only. Pass turns,
   // member failures, and dangling replayed calls do not consume it; total
   // attempts stay bounded by the all-pass-round stop and maxRounds below.
-  let delivered = 0;
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    if (history[i].speaker.kind === 'user') break;
-    delivered += 1;
-  }
-  if (delivered >= maxSpeaks) return undefined;
+  if (visibleMemberMessageCount(events, items) >= maxSpeaks) return undefined;
   const turns = memberTurnAttempts(events);
 
   let round = 0;
@@ -646,6 +659,7 @@ export function nextRoomSpeakerId(items, room, events, limits = {}) {
   let roundsCompleted = 0;
 
   for (const turn of turns) {
+    if (!turn.completed) continue;
     const at = queue.indexOf(turn.botId);
     if (at >= 0) queue.splice(at, 1);
     if (memberVisibleText(turn.text)) nonPassThisRound += 1;

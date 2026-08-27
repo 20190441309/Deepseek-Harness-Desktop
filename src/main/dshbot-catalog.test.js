@@ -452,19 +452,24 @@ test('nextRoomSpeakerId ignores legacy NEXT footers for scheduling', async () =>
 });
 
 test('nextRoomSpeakerId caps visible deliveries only and hard-clamps maxRounds', async () => {
-  const { memberTurnAttempts, nextRoomSpeakerId } = await loadCatalog();
+  const { memberTurnAttempts, nextRoomSpeakerId, visibleMemberMessageCount } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
-  // Grok parity: a dangling (replayed) attempt advances the round order but
-  // does NOT consume the maxSpeaks cap — only visible deliveries do.
+  // Grok parity: a dangling (crash-replayed) call neither consumes the
+  // maxSpeaks cap nor advances the queue — the member is re-asked.
   const danglingAttempt = [userSaid('请讨论'), asked('c1', 'a')];
   assert.deepEqual(memberTurnAttempts(danglingAttempt), [{
     botId: 'a',
     text: '',
     completed: false,
   }]);
-  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), 'b');
-  // A pass attempt does not consume the cap either.
+  assert.equal(visibleMemberMessageCount(danglingAttempt, items), 0);
+  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), 'a');
+  // A completed pass attempt advances the queue without consuming the cap.
+  assert.equal(visibleMemberMessageCount([
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+  ], items), 0);
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '(pass)'),
@@ -482,6 +487,10 @@ test('nextRoomSpeakerId caps visible deliveries only and hard-clamps maxRounds',
     asked('c2', 'b'), answered('c2', '(pass)'),
   ], { maxSpeaks: 2 }), 'c');
   // A two-message member turn consumes two of the cap.
+  assert.equal(visibleMemberMessageCount([
+    userSaid('请讨论'),
+    asked('c1', 'a'), answeredMany('c1', ['第一', '第二']),
+  ], items), 2);
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answeredMany('c1', ['第一', '第二']),
