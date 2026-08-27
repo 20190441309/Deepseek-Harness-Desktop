@@ -404,6 +404,72 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().wallpaperPixelate).toBe(0)
   })
 
+  it('transparent theme drops every mixed surface to 0% while a wallpaper is set', () => {
+    const { theme, host, events } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    // Without a wallpaper the flag persists but the glass slider stays effective.
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().transparentTheme).toBe(true)
+    expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('80%')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('transparentTheme', true)
+    // With a wallpaper the whole chrome goes fully see-through.
+    theme.setWallpaper({ wallpaperImage: png })
+    const tokens = theme.getTheme().active.tokens
+    expect(tokens['--dsw-alias-glass-opacity']).toBe('0%')
+    expect(tokens['--dsw-alias-bg-base']).toContain('0%')
+    expect(tokens['--dsw-alias-bg-layer-1']).toContain('0%')
+    expect(tokens['--dsw-specific-sidebar-fill']).toContain('0%')
+    // TUI SGR must not sit on wallpaper glass: the terminal pane stays solid.
+    expect(tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+    // Turning the flag off restores the glass slider.
+    theme.setTransparentTheme(false)
+    expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('80%')
+    // Same-value set is a no-op.
+    const published = events.length
+    theme.setTransparentTheme(false)
+    expect(events.length).toBe(published)
+  })
+
+  it('nudges a low frosted-glass blur once when the transparent theme becomes effective', () => {
+    const { theme, host } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    // Path 1: wallpaper already set, flag flips on with blur below the floor.
+    theme.setWallpaper({ wallpaperImage: png })
+    expect(theme.getTheme().wallpaperBlur).toBe(0)
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperBlur', 20)
+    // One-shot: the user may lower the slider again without being re-clamped.
+    theme.setWallpaper({ wallpaperBlur: 5 })
+    expect(theme.getTheme().wallpaperBlur).toBe(5)
+    // Path 2: flag already on, wallpaper arrives later (gallery / picker).
+    theme.setWallpaper({ wallpaperImage: '' })
+    theme.setWallpaper({ wallpaperImage: png })
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+    flushWrites()
+    // Disabling never rewrites the blur back down.
+    theme.setTransparentTheme(false)
+    expect(theme.getTheme().wallpaperBlur).toBe(20)
+  })
+
+  it('leaves a blur at or above the floor untouched when transparency turns on', () => {
+    const { theme, host } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    theme.setWallpaper({ wallpaperImage: png, wallpaperBlur: 60 })
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(60)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('wallpaperBlur', 60)
+    expect(host.set).not.toHaveBeenCalledWith('wallpaperBlur', 20)
+    // Without a wallpaper the inert flag does not touch the blur either.
+    theme.setTransparentTheme(false)
+    theme.setWallpaper({ wallpaperImage: '', wallpaperBlur: 0 })
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().wallpaperBlur).toBe(0)
+  })
+
   it('coalesces a drag into one durable write per field', () => {
     const { theme, host } = make()
     theme.setGlassOpacity(45)

@@ -39,6 +39,7 @@ Gate: <卡上 gates>
 | id | 一句话 | 主入口 | gates 摘要 |
 | --- | --- | --- | --- |
 | [wallpaper-gallery](wallpaper-gallery.md) | Appearance 行 + 图库窗；图源只在窗内 | `WallpaperRow` / `WallpaperGalleryModal` | TC-APP-002…010 |
+| [transparent-theme](transparent-theme.md) | 外观「透明主题」开关：有壁纸时全表面 0% 填充、压暗 mask 移除 | `ThemeRuntime.setTransparentTheme` / `TRANSPARENT_ATTR` | vendor ui-theme client specs |
 | [marketplace-settings](marketplace-settings.md) | 设置内市场（桌面自有代码）；无独立窗 | `marketplace-install` / `ui-settings-market` | TC-EXT-001…005 |
 | [surfaces-work-loops](surfaces-work-loops.md) | 右栏工作环，非空态卡片 | preview / ui-files | TC-SURF-001…007 |
 | [boot-page](boot-page.md) | 仪器启动画布 + 插件进度/恢复 | `boot.*` / harness-controller | TC-INST-003…007、012、013 |

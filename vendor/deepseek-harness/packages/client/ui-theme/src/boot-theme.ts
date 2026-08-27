@@ -14,6 +14,7 @@ import {
   DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, resolveThemeSettings,
   type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
+import { TRANSPARENT_GLASS_SOLIDITY, isWallpaperDataUrl } from './wallpaper.ts'
 
 /** Payload embedded in the pre-plugin bootstrap script. */
 export interface ThemeBootPayload {
@@ -42,12 +43,15 @@ function tokensFor(settings: ThemeSettings, mode: 'light' | 'dark'): ThemeTokens
  */
 export function buildThemeBootPayload(section: ThemeSettings | undefined): ThemeBootPayload {
   const settings = resolveThemeSettings(section)
+  // Effective glass: the transparent theme (wallpaper-gated) bypasses the
+  // slider, so the pre-plugin interval already paints see-through chrome.
+  const transparent = settings.transparentTheme && isWallpaperDataUrl(settings.wallpaperImage)
   return {
     preference: settings.preference,
     lightTokens: tokensFor(settings, 'light'),
     darkTokens: tokensFor(settings, 'dark'),
     fontSizeInterface: settings.fontSizeInterface,
-    glassOpacity: settings.glassOpacity,
+    glassOpacity: transparent ? TRANSPARENT_GLASS_SOLIDITY : settings.glassOpacity,
   }
 }
 

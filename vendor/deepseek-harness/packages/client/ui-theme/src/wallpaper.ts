@@ -33,6 +33,29 @@ export const WALLPAPER_BLEED = 48
 export const WALLPAPER_ATTR = 'data-dsh-wallpaper'
 
 /**
+ * Root attribute flipped on while the transparent theme is effective (the
+ * flag is on and a wallpaper is live). The stylesheet drops the wallpaper
+ * dim mask under it so the image colors show through unmasked.
+ */
+export const TRANSPARENT_ATTR = 'data-dsh-transparent'
+
+/**
+ * Solidity fed into {@link mixWallpaperSurfaces} while the transparent theme
+ * is effective: every chrome surface keeps a 0% fill so only the wallpaper
+ * paints behind content. The terminal pane still keeps its solid fallback.
+ */
+export const TRANSPARENT_GLASS_SOLIDITY = 0
+
+/**
+ * Frosted-glass blur percent the runtime raises the wallpaper to when the
+ * transparent theme becomes effective and the current blur sits below it,
+ * so text is not left on a sharp wallpaper with 0% surfaces. One-shot per
+ * effective transition — the user may lower the slider again afterwards;
+ * Appearance then hints instead of re-clamping.
+ */
+export const TRANSPARENT_MIN_BLUR = 20
+
+/**
  * Canvas fill percent never exceeds this while a wallpaper is mixed, so glass
  * 100% still lets the image show through the main chat. Sidebar and raised
  * surfaces keep the glass slider, including 100% opaque.

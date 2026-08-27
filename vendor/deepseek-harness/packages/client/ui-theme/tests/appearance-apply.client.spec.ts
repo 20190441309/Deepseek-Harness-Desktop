@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   appearanceFontStack, applyAppearanceDocumentExtras, cssFontFamilies, quoteFontFamilyName,
 } from '../src/appearance-apply.ts'
-import { WALLPAPER_ATTR, WALLPAPER_LAYER_ID } from '../src/wallpaper.ts'
+import { TRANSPARENT_ATTR, WALLPAPER_ATTR, WALLPAPER_LAYER_ID } from '../src/wallpaper.ts'
 
 afterEach(() => {
   document.documentElement.style.fontSize = ''
@@ -84,5 +84,20 @@ describe('applyAppearanceDocumentExtras', () => {
     })
     expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(false)
     expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
+  })
+
+  it('flips the transparent-theme attribute only while a wallpaper is live', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const base = { fontFamilySans: '', fontFamilyCode: '', fontSizeInterface: 16, fontSizeCode: 13 }
+    // Flag on without a wallpaper: the attribute stays off.
+    applyAppearanceDocumentExtras({ ...base, transparentTheme: true })
+    expect(document.documentElement.hasAttribute(TRANSPARENT_ATTR)).toBe(false)
+    // Flag plus wallpaper: the attribute lands.
+    applyAppearanceDocumentExtras({ ...base, transparentTheme: true, wallpaperImage: png })
+    expect(document.documentElement.hasAttribute(TRANSPARENT_ATTR)).toBe(true)
+    // Flag off clears it again.
+    applyAppearanceDocumentExtras({ ...base, transparentTheme: false, wallpaperImage: png })
+    expect(document.documentElement.hasAttribute(TRANSPARENT_ATTR)).toBe(false)
+    applyAppearanceDocumentExtras(base)
   })
 })

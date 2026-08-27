@@ -42,6 +42,15 @@ html[data-dsh-wallpaper] #root {
   pointer-events: none;
 }
 
+/*
+ * Transparent theme (透明主题): the dim mask over the bitmap is dropped so
+ * the wallpaper colors show through the fully see-through chrome unmasked.
+ * The mixed surface tokens are already 0% via TRANSPARENT_GLASS_SOLIDITY.
+ */
+html[data-dsh-transparent] #dsh-wallpaper::after {
+  background: transparent;
+}
+
 html[data-dsh-wallpaper] #root {
   position: relative;
   z-index: 1;

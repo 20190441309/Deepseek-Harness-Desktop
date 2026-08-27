@@ -3,7 +3,7 @@
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bootThemeInjection, buildThemeBootPayload, injectBootTheme } from '../src/boot-theme.ts'
-import { DEFAULT_WALLPAPER_SOURCES, type ThemePreference } from '../src/theme-settings.ts'
+import { DEFAULT_THEME_SETTINGS, DEFAULT_WALLPAPER_SOURCES, type ThemePreference } from '../src/theme-settings.ts'
 
 const DARK_ATTRIBUTE = 'data-ds-dark-theme'
 
@@ -73,6 +73,7 @@ describe('theme bootstrap row', () => {
       activeDarkThemeId: 'deepseek',
       customThemes: [],
       glassOpacity: 70,
+      transparentTheme: false,
       wallpaperImage: '',
       wallpaperBlur: 0,
       wallpaperPixelate: 0,
@@ -99,5 +100,24 @@ describe('theme bootstrap row', () => {
     expect(document.documentElement.style.fontSize).toBe('18px')
     expect(document.body.style.getPropertyValue('--dsw-alias-bg-base')).toBe('#f3faf7')
     expect(document.body.style.getPropertyValue('--dsw-alias-glass-opacity')).toBe('70%')
+  })
+
+  it('embeds 0% glass while the transparent theme is effective, but only with a wallpaper', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const withWallpaper = buildThemeBootPayload({
+      ...DEFAULT_THEME_SETTINGS,
+      customThemes: [],
+      glassOpacity: 70,
+      transparentTheme: true,
+      wallpaperImage: png,
+    })
+    expect(withWallpaper.glassOpacity).toBe(0)
+    const withoutWallpaper = buildThemeBootPayload({
+      ...DEFAULT_THEME_SETTINGS,
+      customThemes: [],
+      glassOpacity: 70,
+      transparentTheme: true,
+    })
+    expect(withoutWallpaper.glassOpacity).toBe(70)
   })
 })

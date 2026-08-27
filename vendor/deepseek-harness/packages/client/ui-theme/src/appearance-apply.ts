@@ -4,7 +4,7 @@ import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_INTERFACE_FONT_SIZE,
 } from './theme-family.ts'
-import { applyWallpaperLayer } from './wallpaper.ts'
+import { TRANSPARENT_ATTR, applyWallpaperLayer, isWallpaperDataUrl } from './wallpaper.ts'
 
 const DEFAULT_SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 const DEFAULT_CODE_STACK = "'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei'"
@@ -63,6 +63,8 @@ export interface AppearanceDocumentExtras {
   wallpaperBlur?: number
   /** Pixelation percent. */
   wallpaperPixelate?: number
+  /** Transparent theme flag; effective only while a wallpaper is live. */
+  transparentTheme?: boolean
 }
 
 /**
@@ -91,4 +93,8 @@ export function applyAppearanceDocumentExtras(extras: AppearanceDocumentExtras):
     wallpaperBlur: extras.wallpaperBlur ?? 0,
     wallpaperPixelate: extras.wallpaperPixelate ?? 0,
   })
+  root.toggleAttribute(
+    TRANSPARENT_ATTR,
+    extras.transparentTheme === true && isWallpaperDataUrl(extras.wallpaperImage ?? ''),
+  )
 }

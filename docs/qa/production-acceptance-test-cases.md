@@ -731,6 +731,24 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 
 **期望：** 可切换生效；删除不崩；重启后仍在（若已保存）。
 
+### TC-APP-012 · 透明主题 · P1
+
+**步骤：** 先设背景图 → 外观「玻璃透明度」区块打开「透明主题」→ 检查侧栏 / 输入框 / 菜单 / 对话框 → 关闭开关。
+
+**期望：** 开启后所有 chrome 表面 0% 填充，壁纸压暗 mask 移除（色彩全量透出）；玻璃滑杆置灰；终端 pane 仍是实心底。关闭后立即恢复玻璃滑杆值与压暗层，无残留透明异常。
+
+### TC-APP-013 · 透明主题无壁纸惰性 · P1
+
+**步骤：** 清掉背景图 → 打开「透明主题」→ 调玻璃滑杆。
+
+**期望：** 开关可打开但不生效（惰性），提示「透明主题需要先设置背景图才会生效」；玻璃滑杆保持可用且立即起效；菜单 / 对话框不消失。
+
+### TC-APP-014 · 透明主题可读性 · P1
+
+**步骤：** 设一张高对比繁杂壁纸且毛玻璃调到 0 → 打开「透明主题」→ 检查侧栏与聊天文字 → 再手动把毛玻璃拉回 0。
+
+**期望：** 透明生效瞬间毛玻璃自动提到 20%（一次性，不是持续钳制），文字可读；手动调回 0 后不被顶回，但提示换成低毛玻璃警告文案（建议调高毛玻璃）。关闭透明不回写毛玻璃值。
+
 ---
 
 ## 10. 扩展、市场与 dshbot
@@ -1060,6 +1078,9 @@ Pass 的证据种类只能是 `CI artifact SHA + 已装 exe`。
 | TC-APP-009 | P1 | Pass | CI SHA + 已装 exe | Appearance/图库无 Unsplash 等 | Trent | 2026-08-23 |
 | TC-APP-010 | P1 | Pass | CI SHA + 已装 exe | 设壁纸后毛玻璃/像素化 | Trent | 2026-08-23 |
 | TC-APP-011 | P1 | Pass | CI SHA + 已装 exe | 主题库可见 | Trent | 2026-08-23 |
+| TC-APP-012 | P1 |  |  | 2026-08-27 Linux 源码级 PASS（非发版证据）：[results/2026-08-27/transparent-theme.md](results/2026-08-27/transparent-theme.md)；待装包补测 | Trent | 2026-08-27 |
+| TC-APP-013 | P1 |  |  | 2026-08-27 Linux 源码级 PASS（非发版证据）：[results/2026-08-27/transparent-theme.md](results/2026-08-27/transparent-theme.md)；待装包补测 | Trent | 2026-08-27 |
+| TC-APP-014 | P1 |  |  | 2026-08-27 Linux 源码级 PASS（非发版证据）：[results/2026-08-27/transparent-theme.md](results/2026-08-27/transparent-theme.md)；待装包补测 | Trent | 2026-08-27 |
 | TC-EXT-001 | P0 | Pass | CI SHA + 已装 exe | 设置分区齐全 | Trent | 2026-08-23 |
 | TC-EXT-002 | P0 | Pass | CI SHA + 已装 exe | 市场在设置内 | Trent | 2026-08-23 |
 | TC-EXT-003 | P0 | Pass | CI SHA + 已装 exe | 发现约 1884 | Trent | 2026-08-23 |

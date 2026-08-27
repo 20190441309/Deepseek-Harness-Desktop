@@ -13,6 +13,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     families: [],
     customThemes: [],
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+    transparentTheme: false,
     wallpaperImage: '',
     wallpaperBlur: 0,
     wallpaperPixelate: 0,
@@ -50,6 +51,13 @@ describe('createAppearanceRowStore', () => {
     store.actions.sync(snap({ preference: 'system' }), 3)
     expect(store.getSnapshot().preference).toBe('dark')
     expect(store.getSnapshot().revision).toBe(3)
+  })
+
+  it('mirrors the transparent-theme flag', () => {
+    const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().transparentTheme).toBe(false)
+    store.actions.sync(snap({ transparentTheme: true }), 0)
+    expect(store.getSnapshot().transparentTheme).toBe(true)
   })
 
   it('mirrors wallpaperSources and wallpaperFavorites', () => {

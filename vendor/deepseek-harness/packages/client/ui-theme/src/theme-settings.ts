@@ -40,6 +40,9 @@ export const THEME_CUSTOM_THEMES_FIELD = 'customThemes'
 /** Field carrying glass-surface opacity. */
 export const THEME_GLASS_OPACITY_FIELD = 'glassOpacity'
 
+/** Field toggling the fully transparent chrome (透明主题). */
+export const THEME_TRANSPARENT_FIELD = 'transparentTheme'
+
 /** Field carrying the wallpaper data URL. */
 export const THEME_WALLPAPER_IMAGE_FIELD = 'wallpaperImage'
 
@@ -127,6 +130,12 @@ export interface ThemeSettings {
   customThemes: ThemeFamily[]
   /** Overlay / menu / composer solidity, 40–100. */
   glassOpacity: number
+  /**
+   * Transparent theme (透明主题): with a wallpaper set, every chrome surface
+   * drops its fill so the image shows through unmasked. Overrides the glass
+   * slider while active; without a wallpaper the flag is stored but inert.
+   */
+  transparentTheme: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -162,6 +171,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   activeDarkThemeId: DEFAULT_FAMILY_ID,
   customThemes: [],
   glassOpacity: DEFAULT_GLASS_OPACITY,
+  transparentTheme: false,
   wallpaperImage: '',
   wallpaperBlur: DEFAULT_WALLPAPER_EFFECT,
   wallpaperPixelate: DEFAULT_WALLPAPER_EFFECT,
@@ -207,6 +217,7 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_CUSTOM_THEMES_FIELD]: z.array(ThemeFamilySchema).default([]),
   [THEME_GLASS_OPACITY_FIELD]: z.number().min(MIN_GLASS_OPACITY).max(MAX_GLASS_OPACITY)
     .default(DEFAULT_GLASS_OPACITY),
+  [THEME_TRANSPARENT_FIELD]: z.boolean().default(false),
   [THEME_WALLPAPER_IMAGE_FIELD]: z.string().default(''),
   [THEME_WALLPAPER_BLUR_FIELD]: z.number().min(MIN_WALLPAPER_EFFECT).max(MAX_WALLPAPER_EFFECT)
     .default(DEFAULT_WALLPAPER_EFFECT),

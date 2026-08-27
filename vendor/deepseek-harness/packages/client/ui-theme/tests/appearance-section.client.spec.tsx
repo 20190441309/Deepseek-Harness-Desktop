@@ -95,6 +95,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     activeDarkThemeId: 'deepseek',
     customThemes,
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+    transparentTheme: false,
     wallpaperImage: '',
     wallpaperBlur: 0,
     wallpaperPixelate: 0,
@@ -121,6 +122,7 @@ function mount(
   const setCustomThemes = vi.fn()
   const previewTheme = vi.fn()
   const setGlassOpacity = vi.fn()
+  const setTransparentTheme = vi.fn()
   const setWallpaper = vi.fn()
   const setTypography = vi.fn()
   const setWallpaperSources = vi.fn()
@@ -140,14 +142,15 @@ function mount(
     setCustomThemes,
     previewTheme,
     setGlassOpacity,
+    setTransparentTheme,
     setWallpaper,
     setTypography,
     ...(wallpaper !== undefined ? { setWallpaperSources, setWallpaperFavorites } : {}),
   }
   const view = render(<AppearanceSection {...props} />)
   return {
-    store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setWallpaper,
-    setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
+    store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setTransparentTheme,
+    setWallpaper, setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
   }
 }
 
@@ -359,6 +362,40 @@ describe('AppearanceSection', () => {
     expect(screen.getAllByPlaceholderText('系统默认')).toHaveLength(2)
   })
 
+  it('toggles the transparent theme and freezes the glass slider while it is effective', () => {
+    const b = mount('system', { wallpaperImage: PNG })
+    expect(screen.getByText(COPY['glass.transparentHint'])).toBeDefined()
+    const toggle = screen.getByRole('switch', { name: COPY['glass.transparent'] })
+    fireEvent.click(toggle)
+    expect(b.setTransparentTheme).toHaveBeenCalledWith(true)
+    act(() => { b.store.actions.sync(snap({ wallpaperImage: PNG, transparentTheme: true }), 1) })
+    expect((screen.getByRole('slider', { name: COPY['glass.title'] }) as HTMLInputElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('switch', { name: COPY['glass.transparent'] }))
+    expect(b.setTransparentTheme).toHaveBeenCalledWith(false)
+  })
+
+  it('hints when the frosted-glass blur drops below the readability floor while transparent', () => {
+    const b = mount('system', { wallpaperImage: PNG, transparentTheme: true, wallpaperBlur: 5 })
+    expect(screen.getByText(COPY['glass.transparentBlurHint'])).toBeDefined()
+    act(() => {
+      b.store.actions.sync(snap({ wallpaperImage: PNG, transparentTheme: true, wallpaperBlur: 20 }), 1)
+    })
+    expect(screen.queryByText(COPY['glass.transparentBlurHint'])).toBeNull()
+    expect(screen.getByText(COPY['glass.transparentHint'])).toBeDefined()
+    // A low blur without the transparent theme keeps the ordinary hint.
+    act(() => {
+      b.store.actions.sync(snap({ wallpaperImage: PNG, transparentTheme: false, wallpaperBlur: 5 }), 2)
+    })
+    expect(screen.queryByText(COPY['glass.transparentBlurHint'])).toBeNull()
+  })
+
+  it('hints that the transparent theme needs a wallpaper and keeps the slider live without one', () => {
+    const b = mount('system', { transparentTheme: true })
+    expect(screen.getByText(COPY['glass.transparentNeedsWallpaper'])).toBeDefined()
+    expect((screen.getByRole('slider', { name: COPY['glass.title'] }) as HTMLInputElement).disabled).toBe(false)
+    expect(b.setTransparentTheme).not.toHaveBeenCalled()
+  })
+
   it('hints that high glass opacity covers a set wallpaper', () => {
     const b = mount('system', { wallpaperImage: PNG, glassOpacity: 80 })
     expect(screen.queryByText(COPY['wallpaper.glassHint'])).toBeNull()
@@ -437,7 +474,9 @@ describe('AppearanceSection', () => {
     expect(screen.getByRole('button', { name: '浏览图库' })).toBeDefined()
     expect(screen.queryByRole('heading', { name: '图源' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '图库来源' })).toBeNull()
-    expect(screen.queryByRole('switch')).toBeNull()
+    // The transparent-theme switch is the only Appearance toggle; no source switches.
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
+    expect(screen.getByRole('switch', { name: COPY['glass.transparent'] })).toBeDefined()
     expect(screen.queryByText('Bing 每日壁纸')).toBeNull()
     expect(screen.queryByLabelText('壁纸目录地址')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增图源' })).toBeNull()
