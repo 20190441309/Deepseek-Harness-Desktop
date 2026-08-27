@@ -9,6 +9,10 @@ TC-EXT-007 行（Pass + CI SHA）。**不得用旧「停放 Pass」冒充。**
 > Electron GUI，本手册即「下一次拿到 CI artifact 后一键执行」的完整脚本化路径；
 > 自动化部分（A/C 两相）已由 `plugin.dshbot.*` walk 探针覆盖，建群冒烟为唯一
 > 纯手工步骤。
+>
+> **2026-08-26 预演：** 三相已在云端 Linux 源码级 GUI 上完整轮换 PASS（同安装
+> 规格、同 walk 探针、同残留抽查；不替代本手册的安装包执行）：
+> [results/2026-08-26/tc-ext-007-dshbot.md](results/2026-08-26/tc-ext-007-dshbot.md)。
 
 ## 前置
 
