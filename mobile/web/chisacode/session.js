@@ -98,11 +98,11 @@ function normalizeOfferUrl(value, currentUrl) {
   const text = String(value || '').trim();
   if (!text) return '';
   const base = new URL(currentUrl || globalThis.location?.href || 'http://localhost/');
-  if (text.startsWith('offer=')) {
+  if (/^offer=[A-Za-z0-9_-]+$/.test(text)) {
     base.hash = `#${text}`;
     return base.toString();
   }
-  if (text.startsWith('#offer=')) {
+  if (/^#offer=[A-Za-z0-9_-]+$/.test(text)) {
     base.hash = text;
     return base.toString();
   }
