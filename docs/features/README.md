@@ -23,6 +23,10 @@
 - **更新：** 不变量或关键路径变了；或改完后刷新 `last verified`。
 - **局部修复不改契约：** 会话写明「无卡 / 不改产品契约」，diff 仍应尽量小。
 
+## 新桌面能力的默认形态（sidecar-by-default）
+
+新桌面能力**默认做成 vendor 树外的 sidecar 插件**（Cordis 插件 + 桌面 overlay 挂载；样板：dsh-usage-panel / dsh-im / dshbot），除非它必须修改上游代码。必须改上游时，把 fork 面登记进 [src/shared/harness-desktop-forks.js](../../src/shared/harness-desktop-forks.js)（整包 → `DESKTOP_PACKAGES`；上游文件内改动 → `FORK_FILE_MARKERS`；bundle 组合行 → `COMPOSITION_ROWS`），否则 CI 的 fork-delta 棘轮（`npm run check:fork-delta`）会超基线变红。依据：[解耦分析 §2.F](../superpowers/plans/2026-08-27-dsh-decoupling-analysis.md)。
+
 ## 会话开场模板
 
 ```text
