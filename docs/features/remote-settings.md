@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `remote-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — dsh-im 内置化落地：`ensureDesktopDshIm` 改写自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`（每次启动经 `--patch` 传，全量 + skip），只 strip 用户 `cordis.patch.yml` 里的遗留受管块（迁移）绝不写回；禁用名单对 dsh-im 别名不再生效（config 归一化剔除 + `shell:disable-plugin(s)` 拒绝并返回 `desktop-builtin`）；forensics 把 dsh-im 孤儿 suspect 判为内置组件损坏（`inBox`）。skip compose 契约双 overlay 双轮各恰好一次，已对真实 CLI 跑通。此前同日 — 审查修复：config endpoint 语义；SPA RPC 门闩；Android 旧凭据清除；`relayConnected` 门禁。 |
+| **last verified** | 2026-08-27 — 合并汇总：(a) dsh-im 内置化落地：`ensureDesktopDshIm` 改写自有 overlay `desktop-plugins/dsh-im/desktop-dsh-im.patch.yml`（每次启动经 `--patch` 传，全量 + skip），只 strip 用户 `cordis.patch.yml` 里的遗留受管块（迁移）绝不写回；禁用名单对 dsh-im 别名不再生效（config 归一化剔除 + `shell:disable-plugin(s)` 拒绝并返回 `desktop-builtin`）；forensics 把 dsh-im 孤儿 suspect 判为内置组件损坏（`inBox`）；skip compose 契约双 overlay 双轮各恰好一次，已对真实 CLI 跑通。(b) ChisaCode 实跑修复：源码启动/打包先构建 daemon；安装包携带生产依赖；中继配置变更重启 transport；设备列表读最新 upstream store。 |
 
 ## User paths
 
@@ -17,6 +17,7 @@
 - 设置 section id `remote`；子 slot `settings.remote.tab`：`gateway`（order 0）、`channels`（order 10）。
 - **配对协议 = ChisaCode offer v2**：主进程 `ChisaCodeRemote` 启全量 `createChisaCodeDaemon`；QR `appBaseUrl` = `preferredLanIp():3180` mobile/web；**禁止**把中继 origin 当 SPA。
 - `snapshot.relayConnected` / `relayError` 反映真实 relay control；未连接时弹窗明示。
+- 源码启动若缺 `dist` 会构建 ChisaCode server；pack/dist 额外组装并验证 production daemon 依赖，禁止靠构建机残留产物。
 - 侧栏 QR 仅客户端 `qrSvg(pairingUrl)`（`includeQr: false`）。
 - 外出中继禁止 `chisacode.sh` / 上游 `account_id`。AGPL：`AGPL-SHIPPING.md`。内置 `125…:8411` 可作为 **传输默认**，不可作 SPA。
 - 粘性：`deviceSecret` 直至用户解除配对；刷新 QR 只换短期 pairing token。

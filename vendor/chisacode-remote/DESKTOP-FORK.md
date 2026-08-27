@@ -24,7 +24,8 @@ MIT shell chrome (settings copy, Electron IPC) stays MIT. AGPL covers this tree 
 ## Packaging
 
 - Electron main uses dynamic `import()` of ESM server exports (or `ELECTRON_RUN_AS_NODE` supervisor).
-- Packaged builds: `extraResources` include this tree + production `node_modules` (see `scripts/link-chisacode-deps.mjs`).
+- Source start builds missing/stale server artifacts before Electron launches.
+- Packaged builds run `scripts/prepare-chisacode-remote.mjs --force --runtime`; `extraResources` include the built package tree plus a production-only `node_modules`, and `afterPack` imports the shipped server API as a release gate.
 - Corresponding source for AGPL network use: this directory in the public repo / release source archive.
 
 ## Do not

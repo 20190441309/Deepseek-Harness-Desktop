@@ -5,7 +5,14 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { ChisaCodeRemote, loadServerApi, readDefaults, VENDOR_ROOT } = require('./chisacode-remote');
+const {
+  ChisaCodeRemote,
+  loadServerApi,
+  publicDevicesFromStore,
+  readDefaults,
+  relayUseTls,
+  VENDOR_ROOT,
+} = require('./chisacode-remote');
 
 // dist/ 是构建产物（vendor 内嵌 .gitignore 挡住了提交），fresh clone / CI 没有。
 // 打包机通过 build:server-deps 产出后随 extraResources 发货；这里只在有产物时验证。
@@ -22,6 +29,26 @@ test('vendor tree includes full daemon sources and AGPL shipping docs', () => {
   const wrangler = fs.readFileSync(path.join(VENDOR_ROOT, 'packages', 'relay', 'wrangler.toml'), 'utf8');
   assert.doesNotMatch(wrangler, /10ed39a1dbf316e30abd0c409bed40d6/);
   assert.doesNotMatch(wrangler, /chisacode\.sh/);
+});
+
+test('desktop start and packaging prepare and ship the ChisaCode runtime', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(VENDOR_ROOT, '..', '..', 'package.json'), 'utf8'));
+  const prepareScript = fs.readFileSync(
+    path.join(VENDOR_ROOT, '..', '..', 'scripts', 'prepare-chisacode-remote.mjs'),
+    'utf8',
+  );
+  assert.match(manifest.scripts.start, /prestart-ensure/);
+  assert.match(manifest.scripts.pack, /prepare-chisacode-remote\.mjs --force --runtime/);
+  assert.match(prepareScript, /--install-links/);
+  const resources = manifest.build.extraResources;
+  assert.ok(resources.some((entry) => (
+    entry.from === 'vendor/chisacode-remote'
+    && entry.to === 'vendor/chisacode-remote'
+  )));
+  assert.ok(resources.some((entry) => (
+    entry.from === 'vendor/chisacode-remote/.tmp/desktop-runtime/node_modules'
+    && entry.to === 'vendor/chisacode-remote/node_modules'
+  )));
 });
 
 test('built vendor tree includes daemon dist packages (not a hello slice)', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, () => {
@@ -73,6 +100,43 @@ test('attachRelayStatusProbe flips on relay_control_connected / relay_error', ()
   assert.equal(events[2].lastError, 'relay_control_disconnected');
 });
 
+test('public device snapshots follow upstream lastUsedAt and do not retain revoked rows', () => {
+  const store = {
+    listDevices() {
+      return [
+        {
+          deviceId: 'dev_phone_1234',
+          label: 'Trent phone',
+          createdAt: '2026-08-01T00:00:00.000Z',
+          lastUsedAt: '2026-08-27T07:00:00.000Z',
+          revokedAt: null,
+        },
+        {
+          deviceId: 'dev_old_9999',
+          createdAt: '2026-07-01T00:00:00.000Z',
+          lastUsedAt: null,
+          revokedAt: '2026-08-01T00:00:00.000Z',
+        },
+      ];
+    },
+  };
+  assert.deepEqual(publicDevicesFromStore(store), [{
+    id: 'dev_phone_1234',
+    name: 'Trent phone',
+    createdAt: '2026-08-01T00:00:00.000Z',
+    boundAt: '2026-08-01T00:00:00.000Z',
+    lastSeenAt: '2026-08-27T07:00:00.000Z',
+    shortId: '1234',
+  }]);
+});
+
+test('relay TLS follows the persisted endpoint transport setting', () => {
+  assert.equal(relayUseTls({ remoteRelayUseTls: false }, '125.124.85.212:8411'), false);
+  assert.equal(relayUseTls({ remoteRelayUseTls: true }, 'relay.example.com:443'), true);
+  assert.equal(relayUseTls({}, 'relay.example.com:443'), true);
+  assert.equal(relayUseTls({}, 'relay.example.com:8411'), false);
+});
+
 test('refreshPairing passes LAN appBaseUrl and includeQr false', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cc-'));
   const calls = [];
@@ -96,6 +160,64 @@ test('refreshPairing passes LAN appBaseUrl and includeQr false', async () => {
   assert.match(calls[0].appBaseUrl, /:3180$/);
   assert.doesNotMatch(calls[0].appBaseUrl, /125\.124\.85\.212/);
   assert.equal(calls[0].relayUseTls, false);
+});
+
+test('startDaemon restarts the upstream daemon when relay transport config changes', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cc-'));
+  let config = {
+    remoteEnabled: true,
+    remoteRelayEndpoint: '125.124.85.212:8411',
+    remoteRelayUseTls: false,
+  };
+  const daemons = [];
+  const remote = new ChisaCodeRemote({
+    getConfig: () => config,
+    getHomeDir: () => home,
+  });
+  remote.ensureMobileWebServer = async () => {};
+  remote.stopMobileWebServer = async () => {};
+  remote.serverApi = {
+    createRootLogger() {
+      const logger = {
+        info() {},
+        warn() {},
+        error() {},
+        child() { return logger; },
+      };
+      return logger;
+    },
+    async createChisaCodeDaemon(args) {
+      const daemon = {
+        args,
+        starts: 0,
+        stops: 0,
+        async start() { this.starts += 1; },
+        async stop() { this.stops += 1; },
+      };
+      daemons.push(daemon);
+      return daemon;
+    },
+    async generateLocalPairingOffer(args) {
+      return { relayEnabled: true, url: `${args.appBaseUrl}/#offer=x`, qr: null };
+    },
+  };
+
+  await remote.startDaemon();
+  assert.equal(daemons.length, 1);
+  assert.equal(daemons[0].args.relayUseTls, false);
+
+  config = {
+    ...config,
+    remoteRelayEndpoint: 'relay.example.com:443',
+    remoteRelayUseTls: true,
+  };
+  await remote.startDaemon();
+
+  assert.equal(daemons.length, 2);
+  assert.equal(daemons[0].stops, 1);
+  assert.equal(daemons[1].args.relayEndpoint, 'relay.example.com:443');
+  assert.equal(daemons[1].args.relayUseTls, true);
+  await remote.stopDaemon();
 });
 
 test('ChisaCodeRemote never uses lan.pairingUrl for product QR', async () => {

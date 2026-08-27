@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -113,31 +114,38 @@ fun ScanScreen(onFound: (String) -> Unit, onClose: () -> Unit) {
         Box(
             Modifier
                 .weight(1f)
-                .padding(start = 24.dp, end = 24.dp, top = 16.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(27, 27, 28)),
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-            if (torch) {
-                Box(Modifier.fillMaxSize().background(Color(255, 255, 220, 0x28)))
-            }
-            Canvas(Modifier.fillMaxSize()) {
-                val insetX = size.width * 0.18f
-                val insetY = size.height * 0.18f
-                val arm = 28.dp.toPx()
-                val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Square)
-                val left = insetX
-                val top = insetY
-                val right = size.width - insetX
-                val bottom = size.height - insetY
-                drawLine(ink, Offset(left, top), Offset(left + arm, top), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(left, top), Offset(left, top + arm), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(right, top), Offset(right - arm, top), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(right, top), Offset(right, top + arm), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(left, bottom), Offset(left + arm, bottom), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(left, bottom), Offset(left, bottom - arm), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(right, bottom), Offset(right - arm, bottom), stroke.width, StrokeCap.Square)
-                drawLine(ink, Offset(right, bottom), Offset(right, bottom - arm), stroke.width, StrokeCap.Square)
+            Box(
+                Modifier
+                    .aspectRatio(1f)
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(27, 27, 28)),
+            ) {
+                AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+                if (torch) {
+                    Box(Modifier.fillMaxSize().background(Color(255, 255, 220, 0x28)))
+                }
+                Canvas(Modifier.fillMaxSize()) {
+                    val inset = size.width * 0.18f
+                    val arm = 28.dp.toPx()
+                    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Square)
+                    val left = inset
+                    val top = inset
+                    val right = size.width - inset
+                    val bottom = size.height - inset
+                    drawLine(ink, Offset(left, top), Offset(left + arm, top), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(left, top), Offset(left, top + arm), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(right, top), Offset(right - arm, top), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(right, top), Offset(right, top + arm), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(left, bottom), Offset(left + arm, bottom), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(left, bottom), Offset(left, bottom - arm), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(right, bottom), Offset(right - arm, bottom), stroke.width, StrokeCap.Square)
+                    drawLine(ink, Offset(right, bottom), Offset(right, bottom - arm), stroke.width, StrokeCap.Square)
+                }
             }
         }
         Text(

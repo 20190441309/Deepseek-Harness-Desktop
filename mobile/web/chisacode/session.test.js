@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClientRelayUrl, reconnectSticky } from './session.js';
+import {
+  agentRows,
+  buildClientRelayUrl,
+  normalizeOfferUrl,
+  pairFromOfferUrl,
+  reconnectSticky,
+} from './session.js';
 
 if (!globalThis.localStorage) {
   const bag = new Map();
@@ -88,4 +94,102 @@ test('reconnectSticky uses role=client and stored useTls', async () => {
   assert.equal(calls[0].role, 'client');
   assert.equal(calls[0].useTls, false);
   assert.equal(calls[0].serverId, 'srv_test');
+});
+
+test('pairFromOfferUrl uses offer v2 bootstrap auth and persists the issued device secret', async () => {
+  localStorage.setItem('dsh-chisacode-device-secrets', JSON.stringify({
+    srv_pair: {
+      deviceId: 'dev_revoked_0000',
+      deviceSecret: 'x'.repeat(64),
+      daemonPublicKeyB64: 'old-key',
+      relayEndpoint: 'old.example:443',
+      useTls: true,
+    },
+  }));
+  const relayCalls = [];
+  let clientOptions;
+  class MockDaemonClient {
+    constructor(options) {
+      clientOptions = options;
+    }
+
+    async connect() {
+      clientOptions.onRelayDeviceAuthResult({
+        ok: true,
+        deviceId: clientOptions.relayDeviceAuth.deviceId,
+        deviceSecret: 's'.repeat(64),
+      });
+    }
+  }
+  const offer = {
+    v: 2,
+    serverId: 'srv_pair',
+    daemonPublicKeyB64: 'daemon-key',
+    authBootstrap: { pairingToken: 'one-time-token' },
+    relay: { endpoint: '125.124.85.212:8411', useTls: false },
+  };
+  const api = {
+    parseConnectionOfferFromUrl(value) {
+      assert.match(value, /#offer=/);
+      return offer;
+    },
+    createRelayDeviceId: () => 'dev_pair_1234',
+    buildRelayWebSocketUrl(params) {
+      relayCalls.push(params);
+      return 'ws://125.124.85.212:8411/ws?role=client';
+    },
+    DaemonClient: MockDaemonClient,
+  };
+
+  const paired = await pairFromOfferUrl(api, 'http://192.168.1.8:3180/#offer=encoded');
+
+  assert.equal(paired.serverId, 'srv_pair');
+  assert.deepEqual(clientOptions.relayDeviceAuth, {
+    version: 1,
+    serverId: 'srv_pair',
+    deviceId: 'dev_revoked_0000',
+    pairingToken: 'one-time-token',
+  });
+  assert.equal(relayCalls[0].role, 'client');
+  const saved = JSON.parse(localStorage.getItem('dsh-chisacode-device-secrets'));
+  assert.equal(saved.srv_pair.deviceId, 'dev_revoked_0000');
+  assert.equal(saved.srv_pair.deviceSecret, 's'.repeat(64));
+});
+
+test('normalizeOfferUrl accepts full and pasted offer fragments without decoding as v1', () => {
+  const current = 'http://192.168.1.8:3180/';
+  assert.equal(
+    normalizeOfferUrl('#offer=v2-payload', current),
+    'http://192.168.1.8:3180/#offer=v2-payload',
+  );
+  assert.equal(
+    normalizeOfferUrl('offer=v2-payload', current),
+    'http://192.168.1.8:3180/#offer=v2-payload',
+  );
+  assert.equal(normalizeOfferUrl('https://example.com/no-offer', current), '');
+});
+
+test('agentRows maps the upstream directory payload into the mobile session list', () => {
+  assert.deepEqual(agentRows({
+    entries: [{
+      agent: {
+        id: 'agent-1',
+        title: 'Remote audit',
+        status: 'running',
+        cwd: '/workspace',
+      },
+    }],
+  }), [{
+    sessionId: 'agent-1',
+    title: 'Remote audit',
+    projections: { values: { title: 'Remote audit' } },
+    running: true,
+    cwd: '/workspace',
+    chisacodeAgent: {
+      id: 'agent-1',
+      title: 'Remote audit',
+      status: 'running',
+      cwd: '/workspace',
+    },
+  }]);
 });

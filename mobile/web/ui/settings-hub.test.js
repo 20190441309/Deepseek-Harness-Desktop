@@ -74,6 +74,31 @@ test('settingsGroups mirrors the Android hub group table', () => {
   assert.equal(disconnect.danger, true);
   assert.equal(disconnect.action, 'logout');
   assert.equal(groups[0].rows[0].desc, 'HTTPS 中继');
+  assert.equal(groups[1].rows[1].desc, '只读');
   assert.equal(groups[2].rows[0].desc, 'main · 已与上游同步');
   assert.equal(groups[3].rows[0].desc, '跟随系统');
+});
+
+test('权限 row falls back to provider-decided copy when no snapshot mode exists', () => {
+  const groups = settingsGroups({ channel: '', accessMode: '', gitLine: '', scheme: 'light' });
+  const row = groups[1].rows.find((entry) => entry.pane === '权限');
+  assert.equal(row.desc, '由提供方决定');
+});
+
+test('remoteReadOnly flips MCP / 技能 / 文件 descriptions to the daemon read-only copy', () => {
+  const defaults = settingsGroups({ scheme: 'light' });
+  const flat = (groups) => Object.fromEntries(
+    groups.flatMap((group) => group.rows.map((row) => [row.pane, row.desc])),
+  );
+  assert.equal(flat(defaults).MCP, '在电脑上打开');
+  assert.equal(flat(defaults)['技能'], '在电脑上打开');
+  assert.equal(flat(defaults)['文件'], '搜索并插入到输入框');
+
+  const remote = settingsGroups({ scheme: 'light', remoteReadOnly: true });
+  assert.equal(flat(remote).MCP, '只读清单 · 电脑端管理');
+  assert.equal(flat(remote)['技能'], '只读清单 · 电脑端管理');
+  assert.equal(flat(remote)['文件'], '浏览 · 只读预览 · 插入路径');
+  // 插件 / 市场 stay honest desktop-only placeholders — no daemon RPC.
+  assert.equal(flat(remote)['插件'], '已挂载清单');
+  assert.equal(flat(remote)['市场'], '在电脑上安装');
 });

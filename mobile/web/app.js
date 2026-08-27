@@ -1,6 +1,4 @@
-import { offerFromHash, offerFromPaste, hashHasOffer } from './host/offer.js';
 import { callUnary, respond } from './host/rpc.js';
-import { loginWithOffer } from './host/login.js';
 import { handshake } from './host/handshake.js';
 import { openEventSockets } from './host/events.js';
 import { applyHostFrame, hostLabel } from './host/frames.js';
@@ -21,11 +19,78 @@ import { parseVcsStatus, parseBranchList } from './git/vcs-parse.js';
 import { resolveGitQuick } from './git/quick.js';
 import { classifyScan, detectScanSupport, scanUnavailableHint } from './pair/scan.js';
 import {
-  clearAllSecrets,
+  agentRows,
+  clearSecret,
   getMostRecentStickyServerId,
+  hasOfferFragment,
   listStickyServerIds,
+  pairFromOfferUrl,
   reconnectSticky,
 } from './chisacode/session.js';
+import {
+  agentModelState,
+  agentModeState,
+  chisaBranchRows,
+  chisaCheckoutStatusToVcs,
+  createMobileAgent,
+  listAgentModels,
+  listReadyProviders,
+  listWorkspaceChoices,
+  runChisaGitAction,
+} from './chisacode/parity.js';
+import {
+  breadcrumbSegments,
+  fileSizeLabel,
+  listDirectoryView,
+  previewSizeGate,
+  readFilePreview,
+  searchWorkspacePaths,
+} from './chisacode/files.js';
+import {
+  DIFF_SCOPES,
+  diffFileBadge,
+  fetchMobileDiff,
+} from './chisacode/diff.js';
+import {
+  listMobileMcpServers,
+  listMobileSkills,
+} from './chisacode/extensions.js';
+import {
+  createDraftStore,
+  resyncAfterReconnect,
+  watchConnection,
+} from './chisacode/controller.js';
+import {
+  agentPageInfo,
+  archiveMobileAgent,
+  deleteMobileAgent,
+  groupSessionRows,
+  isReadOnlyRow,
+  listArchivedAgents,
+  mergeAgentRows,
+  regenerateMobileTitle,
+  renameMobileAgent,
+  unarchiveMobileAgent,
+} from './chisacode/directory.js';
+import {
+  fetchOlderTimeline,
+  mergeOlderEntries,
+  timelinePageInfo,
+} from './chisacode/timeline.js';
+import {
+  approvalFromRequest,
+  approvalsFromAgent,
+  genericResponse,
+  removeApproval,
+  responseForAction,
+} from './chisacode/approvals.js';
+import {
+  applySlashCommand,
+  filterSlashCommands,
+  listAgentCommands,
+  slashQuery,
+} from './chisacode/commands.js';
+import { parseMarkdown } from './conversation/markdown.js';
 
 /** Lazy-loaded ChisaCode protocol client (DaemonClient + offer v2). */
 let chisacodeApi = null;
@@ -55,6 +120,7 @@ const chatTitle = el('chat-title');
 const hostLine = el('host-line');
 const gitPill = el('git-pill');
 const runFlag = el('run-flag');
+const connBanner = el('conn-banner');
 const bannerEl = el('banner');
 const logEl = el('log');
 const blankEl = el('blank');
@@ -64,9 +130,13 @@ const attachRail = el('attach-rail');
 const sendBtn = el('send-btn');
 const stopBtn = el('stop-btn');
 const accessChip = el('access-chip');
+const modelChip = el('model-chip');
 const approval = el('approval');
 const approvalTitle = el('approval-title');
 const approvalCommand = el('approval-command');
+const approvalActions = el('approval-actions');
+const slashPop = el('slash-pop');
+const readonlyNote = el('readonly-note');
 const sessionList = el('session-list');
 const workspaceLine = el('workspace-line');
 const search = el('search');
@@ -116,7 +186,19 @@ const state = {
   sessions: [],
   sessionId: '',
   events: [],
-  pendingApproval: null,
+  // Daemon permission queue for the open session; the first entry renders.
+  pendingApprovals: [],
+  agentPage: { nextCursor: null, hasMore: false },
+  agentsLoadingMore: false,
+  timelinePage: { startCursor: null, hasOlder: false },
+  timelineLoadingOlder: false,
+  sessionMenu: '',
+  sessionConfirm: null,
+  sessionRename: null,
+  history: null,
+  modelPane: null,
+  modelBusy: false,
+  slash: { open: false, loading: false, error: '', commands: [] },
   query: '',
   host: null,
   hostName: '已连接',
@@ -126,7 +208,10 @@ const state = {
   attachments: [],
   lightbox: null,
   attachOpen: false,
-  accessMode: '只读',
+  connPhase: 'online',
+  connLabel: '',
+  modeBusy: false,
+  newSession: null,
   gitStatus: parseVcsStatus(null),
   gitBusy: false,
   gitToast: '',
@@ -139,12 +224,18 @@ const state = {
   wsTab: 'changes',
   fileQuery: '',
   fileEntries: [],
+  // Phase 2 work loops (chisacode only): Files drill-down, read-only diff,
+  // and read-only MCP / skills inventories.
+  filesPane: null,
+  diffPane: null,
+  extPane: { mcp: null, skills: null },
   scanSupport: { supported: false, reason: '' },
   transport: '',
   chisacode: null,
 };
 
 let sockets = null;
+let draftStore = null;
 let scanStream = null;
 let scanLoopId = 0;
 let torchOn = false;
@@ -175,6 +266,40 @@ function showBanner(message) {
   bannerEl.classList.toggle('hidden', !state.banner);
 }
 
+function renderConnBanner() {
+  const visible = state.transport === 'chisacode' && state.connected && state.connPhase !== 'online';
+  connBanner.classList.toggle('hidden', !visible);
+  if (visible) {
+    connBanner.dataset.phase = state.connPhase;
+    connBanner.textContent = state.connLabel;
+  } else {
+    delete connBanner.dataset.phase;
+    connBanner.textContent = '';
+  }
+}
+
+function composerOffline() {
+  return state.transport === 'chisacode' && state.connPhase !== 'online';
+}
+
+function connectionLabel() {
+  return state.transport === 'chisacode'
+    ? 'ChisaCode v2 · 端到端加密'
+    : channelLabel(origin);
+}
+
+function openPullRequest() {
+  try {
+    const url = new URL(state.gitStatus.pr?.url || '');
+    if (url.protocol !== 'https:') throw new Error('Pull request URL must use HTTPS');
+    window.open(url.toString(), '_blank', 'noopener');
+    setToast(`打开拉取请求 #${state.gitStatus.pr?.number ?? ''}`.trim());
+  } catch {
+    showBanner('拉取请求链接不可用；请在电脑端打开');
+    setToast('拉取请求不可用');
+  }
+}
+
 function renderScreen() {
   const name = visibleScreen(state);
   screenConnect.classList.toggle('hidden', name !== 'connect');
@@ -195,10 +320,36 @@ function syncRunning() {
   stopBtn.classList.toggle('hidden', !state.running);
 }
 
+function currentModeState() {
+  if (state.transport !== 'chisacode') {
+    return { modes: [], currentModeId: null, currentLabel: '' };
+  }
+  return agentModeState(currentRow()?.chisacodeAgent);
+}
+
+function currentModelState() {
+  if (state.transport !== 'chisacode') {
+    return { modelId: null, label: '' };
+  }
+  return agentModelState(currentRow()?.chisacodeAgent);
+}
+
+/** Subagent and archived sessions open read-only; the composer is hidden. */
+function currentReadOnlyReason() {
+  if (state.transport !== 'chisacode') return '';
+  const row = currentRow();
+  if (!row || !isReadOnlyRow(row)) return '';
+  if (row.chisacodeAgent?.archivedAt) {
+    return '已归档会话（只读）。可在「已归档会话」里取消归档。';
+  }
+  return '子智能体会话（只读）。由父会话驱动，不能直接发消息。';
+}
+
 function renderComposer() {
   const canSend = Boolean(draft.value.trim()) || state.attachments.length > 0;
-  sendBtn.disabled = !canSend;
-  accessChip.firstChild.textContent = state.accessMode;
+  sendBtn.disabled = !canSend || composerOffline();
+  accessChip.firstChild.textContent = currentModeState().currentLabel || '权限';
+  modelChip.firstChild.textContent = currentModelState().label || '模型';
   attachRail.classList.toggle('hidden', state.attachments.length === 0);
   attachRail.replaceChildren(...state.attachments.map((image, index) => {
     const wrap = document.createElement('div');
@@ -217,6 +368,7 @@ function renderComposer() {
     remove.textContent = '×';
     remove.addEventListener('click', () => {
       state.attachments.splice(index, 1);
+      draftStore?.saveAttachments(state.sessionId, state.attachments);
       if (state.lightbox && !state.attachments.includes(state.lightbox)) {
         state.lightbox = null;
         renderLightbox();
@@ -240,86 +392,423 @@ function renderHeader() {
   syncRunning();
 }
 
-function renderSessions() {
-  const query = state.query.trim();
-  sessionList.replaceChildren(...state.sessions
-    .filter((row) => !query || sessionTitle(row).includes(query))
-    .map((row) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `session${row.sessionId === state.sessionId ? ' active' : ''}`;
-      const title = document.createElement('b');
-      title.textContent = sessionTitle(row);
-      const meta = document.createElement('span');
-      meta.textContent = row.running ? '运行中' : '';
-      button.append(title, meta);
-      button.addEventListener('click', () => {
-        openSession(row.sessionId).catch((error) => showBanner(error.message));
-      });
-      return button;
-    }));
+function sessionRowNode(row, { child = false, subagentTag = false } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = `session-row${child ? ' session-child' : ''}`;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `session${row.sessionId === state.sessionId ? ' active' : ''}`;
+  const title = document.createElement('b');
+  title.textContent = sessionTitle(row);
+  const meta = document.createElement('span');
+  meta.textContent = [
+    child || subagentTag ? '子智能体' : '',
+    row.running ? '运行中' : '',
+  ].filter(Boolean).join(' · ');
+  button.append(title, meta);
+  button.addEventListener('click', () => {
+    openSession(row.sessionId).catch((error) => showBanner(error.message));
+  });
+  wrap.append(button);
+  if (state.transport === 'chisacode') {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'session-more';
+    more.setAttribute('aria-label', '会话操作');
+    more.textContent = '⋯';
+    more.addEventListener('click', (event) => {
+      event.stopPropagation();
+      state.sessionMenu = row.sessionId;
+      renderSheet();
+    });
+    wrap.append(more);
+  }
+  return wrap;
 }
 
-function renderLog() {
+function drawerFootButton(label, { disabled = false, onClick }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'session-list-action';
+  button.disabled = disabled;
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function renderSessions() {
+  const query = state.query.trim();
+  // Archived rows live in the「已归档会话」sheet, not the active drawer.
+  const rows = state.sessions.filter((row) => !row.chisacodeAgent?.archivedAt);
+  const nodes = [];
+  if (query) {
+    // Search stays a flat title filter over loaded rows; subagents keep
+    // their tag so read-only rows are recognizable outside the grouped view.
+    for (const row of rows.filter((item) => sessionTitle(item).includes(query))) {
+      nodes.push(sessionRowNode(row, { subagentTag: isReadOnlyRow(row) }));
+    }
+  } else {
+    for (const group of groupSessionRows(rows)) {
+      nodes.push(sessionRowNode(group.row, { subagentTag: group.orphanSubagent }));
+      for (const child of group.children) {
+        nodes.push(sessionRowNode(child, { child: true }));
+      }
+    }
+  }
+  if (state.transport === 'chisacode' && state.agentPage.hasMore && !query) {
+    nodes.push(drawerFootButton(
+      state.agentsLoadingMore ? '正在加载…' : '加载更多会话',
+      { disabled: state.agentsLoadingMore, onClick: () => loadMoreSessions() },
+    ));
+  }
+  if (state.transport === 'chisacode') {
+    nodes.push(drawerFootButton('已归档会话', { onClick: () => openHistorySheet() }));
+  }
+  sessionList.replaceChildren(...nodes);
+}
+
+async function loadMoreSessions() {
+  const paired = state.chisacode;
+  if (!paired || !state.agentPage.hasMore || state.agentsLoadingMore) return;
+  state.agentsLoadingMore = true;
+  renderSessions();
+  try {
+    const payload = await paired.client.fetchAgents({
+      page: { limit: 100, cursor: state.agentPage.nextCursor },
+    });
+    if (state.chisacode !== paired) return;
+    state.sessions = mergeAgentRows(state.sessions, agentRows(payload));
+    state.agentPage = agentPageInfo(payload);
+  } catch (error) {
+    showBanner(`无法加载更多会话：${error?.message || '电脑没有响应'}`);
+  } finally {
+    if (state.chisacode === paired) {
+      state.agentsLoadingMore = false;
+      renderSessions();
+    }
+  }
+}
+
+// —— 安全 Markdown 渲染：结构化 block/span → createElement/textContent —— //
+
+function markdownSpanNodes(spans) {
+  return (spans || []).map((span) => {
+    if (span.kind === 'code') {
+      const code = document.createElement('code');
+      code.textContent = span.text;
+      return code;
+    }
+    if (span.kind === 'strong') {
+      const strong = document.createElement('strong');
+      strong.textContent = span.text;
+      return strong;
+    }
+    if (span.kind === 'em') {
+      const em = document.createElement('em');
+      em.textContent = span.text;
+      return em;
+    }
+    if (span.kind === 'link') {
+      const link = document.createElement('a');
+      link.textContent = span.text;
+      link.href = span.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      return link;
+    }
+    return document.createTextNode(span.text);
+  });
+}
+
+function renderMarkdownInto(node, text) {
+  for (const block of parseMarkdown(text)) {
+    if (block.kind === 'code') {
+      const pre = document.createElement('pre');
+      pre.className = 'md-code';
+      const code = document.createElement('code');
+      code.textContent = block.text;
+      pre.append(code);
+      node.append(pre);
+      continue;
+    }
+    if (block.kind === 'heading') {
+      const heading = document.createElement(`h${Math.min(block.level + 3, 6)}`);
+      heading.className = 'md-heading';
+      heading.append(...markdownSpanNodes(block.spans));
+      node.append(heading);
+      continue;
+    }
+    if (block.kind === 'list') {
+      const list = document.createElement(block.ordered ? 'ol' : 'ul');
+      list.className = 'md-list';
+      for (const item of block.items) {
+        const li = document.createElement('li');
+        li.append(...markdownSpanNodes(item));
+        list.append(li);
+      }
+      node.append(list);
+      continue;
+    }
+    if (block.kind === 'quote') {
+      const quote = document.createElement('blockquote');
+      quote.className = 'md-quote';
+      quote.append(...markdownSpanNodes(block.spans));
+      node.append(quote);
+      continue;
+    }
+    const paragraph = document.createElement('p');
+    paragraph.append(...markdownSpanNodes(block.spans));
+    node.append(paragraph);
+  }
+}
+
+function toolRowNode(row) {
+  const node = document.createElement('div');
+  node.className = 'tool';
+  const head = document.createElement('div');
+  head.className = 'tool-head';
+  const name = document.createElement('span');
+  name.className = 'tool-name';
+  name.textContent = row.text;
+  const ok = document.createElement('span');
+  ok.className = `tool-ok${row.status === 'failed' ? ' bad' : ''}`;
+  ok.textContent = row.card || '';
+  head.append(name, ok);
+  node.append(head);
+  const detail = row.detail;
+  if (detail && (detail.summary || detail.body)) {
+    if (detail.summary) {
+      const summary = document.createElement('p');
+      summary.className = 'tool-summary';
+      summary.textContent = detail.summary;
+      node.append(summary);
+    }
+    if (detail.body) {
+      const expand = document.createElement('details');
+      expand.className = 'tool-detail';
+      const label = document.createElement('summary');
+      label.textContent = '详情';
+      expand.append(label);
+      if (detail.bodyKind === 'markdown') {
+        const body = document.createElement('div');
+        renderMarkdownInto(body, detail.body);
+        expand.append(body);
+      } else {
+        const pre = document.createElement('pre');
+        pre.className = 'md-code';
+        pre.textContent = detail.body;
+        expand.append(pre);
+      }
+      node.append(expand);
+    }
+  }
+  return node;
+}
+
+function logRowNode(row) {
+  if (row.role === 'tool') {
+    return toolRowNode(row);
+  }
+  const node = document.createElement('div');
+  if (row.role === 'user') {
+    node.className = 'user';
+    if (row.images?.length) {
+      const gallery = document.createElement('div');
+      gallery.className = 'bubble-images';
+      for (const image of row.images) {
+        const img = document.createElement('img');
+        img.className = row.images.length === 1 ? 'solo' : 'multi';
+        img.src = `data:${image.mediaType};base64,${image.data}`;
+        img.alt = '消息图片';
+        img.addEventListener('click', () => {
+          state.lightbox = image;
+          renderLightbox();
+        });
+        gallery.append(img);
+      }
+      node.append(gallery);
+    }
+    if (row.text) {
+      const text = document.createElement('span');
+      text.textContent = row.text;
+      node.append(text);
+    }
+    return node;
+  }
+  if (row.role === 'reasoning') {
+    node.className = 'reasoning';
+    const paragraph = document.createElement('p');
+    paragraph.textContent = row.text;
+    node.append(paragraph);
+    return node;
+  }
+  if (row.role === 'error') {
+    node.className = 'log-error';
+    node.textContent = row.text;
+    return node;
+  }
+  if (row.role === 'todo') {
+    node.className = 'todo-card';
+    const heading = document.createElement('p');
+    heading.className = 'todo-title';
+    heading.textContent = '待办';
+    node.append(heading);
+    for (const item of row.items || []) {
+      const line = document.createElement('p');
+      line.className = `todo-item${item.completed ? ' done' : ''}`;
+      line.textContent = `${item.completed ? '✓' : '○'} ${item.text}`;
+      node.append(line);
+    }
+    return node;
+  }
+  if (row.role === 'changes') {
+    node.className = 'changes-card';
+    const heading = document.createElement('p');
+    heading.className = 'todo-title';
+    heading.textContent = row.text || '本轮改动';
+    node.append(heading);
+    for (const file of row.files || []) {
+      const line = document.createElement('p');
+      line.className = 'changes-file';
+      const counts = [
+        Number.isInteger(file.additions) ? `+${file.additions}` : '',
+        Number.isInteger(file.deletions) ? `-${file.deletions}` : '',
+      ].filter(Boolean).join(' ');
+      line.textContent = counts ? `${file.path} · ${counts}` : file.path;
+      node.append(line);
+    }
+    return node;
+  }
+  if (row.role === 'meta') {
+    node.className = 'meta-row';
+    node.textContent = row.text;
+    return node;
+  }
+  node.className = 'assistant';
+  renderMarkdownInto(node, row.text || '');
+  return node;
+}
+
+/**
+ * @param {{ anchor?: 'bottom' | 'preserve' }} options 'preserve' keeps the
+ * visual scroll position across a prepend (load-older), 'bottom' follows the
+ * newest message.
+ */
+function renderLog({ anchor = 'bottom' } = {}) {
   const rows = foldEvents(state.events);
   blankEl.classList.toggle('hidden', rows.length > 0);
   logEl.classList.toggle('hidden', rows.length === 0);
-  logEl.replaceChildren(...rows.map((row) => {
-    const node = document.createElement('div');
-    node.className = row.role === 'user' ? 'user' : row.role === 'tool' ? 'tool' : 'assistant';
-    if (row.role === 'tool') {
-      const head = document.createElement('div');
-      head.className = 'tool-head';
-      const name = document.createElement('span');
-      name.className = 'tool-name';
-      name.textContent = row.text;
-      const ok = document.createElement('span');
-      ok.className = 'tool-ok';
-      ok.textContent = row.card || '';
-      head.append(name, ok);
-      node.append(head);
-    } else if (row.role === 'user') {
-      if (row.images?.length) {
-        const gallery = document.createElement('div');
-        gallery.className = 'bubble-images';
-        for (const image of row.images) {
-          const img = document.createElement('img');
-          img.className = row.images.length === 1 ? 'solo' : 'multi';
-          img.src = `data:${image.mediaType};base64,${image.data}`;
-          img.alt = '消息图片';
-          img.addEventListener('click', () => {
-            state.lightbox = image;
-            renderLightbox();
-          });
-          gallery.append(img);
-        }
-        node.append(gallery);
-      }
-      if (row.text) {
-        const text = document.createElement('span');
-        text.textContent = row.text;
-        node.append(text);
-      }
-    } else {
-      const paragraph = document.createElement('p');
-      paragraph.textContent = row.text;
-      node.append(paragraph);
-    }
-    return node;
-  }));
-  if (rows.length) {
+  const prevHeight = logEl.scrollHeight;
+  const prevTop = logEl.scrollTop;
+  const nodes = [];
+  if (state.transport === 'chisacode' && state.timelinePage.hasOlder) {
+    const older = document.createElement('button');
+    older.type = 'button';
+    older.className = 'load-older';
+    older.disabled = state.timelineLoadingOlder;
+    older.textContent = state.timelineLoadingOlder ? '正在加载…' : '加载更早消息';
+    older.addEventListener('click', () => loadOlderMessages());
+    nodes.push(older);
+  }
+  nodes.push(...rows.map(logRowNode));
+  logEl.replaceChildren(...nodes);
+  if (!rows.length) return;
+  if (anchor === 'preserve') {
+    logEl.scrollTop = prevTop + (logEl.scrollHeight - prevHeight);
+  } else {
     logEl.scrollTop = logEl.scrollHeight;
   }
 }
 
-function renderApproval() {
-  const pending = Boolean(state.pendingApproval);
-  composer.classList.toggle('hidden', pending);
-  approval.classList.toggle('hidden', !pending);
-  if (pending) {
-    approvalTitle.textContent = state.pendingApproval.title || '需要审批';
-    approvalCommand.textContent = state.pendingApproval.command || '';
+async function loadOlderMessages() {
+  const paired = state.chisacode;
+  const sessionId = state.sessionId;
+  const page = state.timelinePage;
+  if (!paired || !sessionId || !page.hasOlder || state.timelineLoadingOlder) return;
+  state.timelineLoadingOlder = true;
+  renderLog({ anchor: 'preserve' });
+  try {
+    const payload = await fetchOlderTimeline(paired.client, sessionId, page.startCursor);
+    if (state.chisacode !== paired || state.sessionId !== sessionId) return;
+    const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+    if (payload?.reset === true || payload?.staleCursor === true) {
+      // The daemon's timeline epoch moved; the old window cannot be stitched.
+      state.events = entries;
+    } else {
+      state.events = mergeOlderEntries(entries, state.events);
+    }
+    state.timelinePage = timelinePageInfo(payload);
+    state.timelineLoadingOlder = false;
+    renderLog({ anchor: 'preserve' });
+  } catch (error) {
+    if (state.chisacode !== paired || state.sessionId !== sessionId) return;
+    state.timelineLoadingOlder = false;
+    renderLog({ anchor: 'preserve' });
+    showBanner(`无法加载更早消息：${error?.message || '电脑没有响应'}`);
   }
+}
+
+function approvalActionButton(label, className, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+/**
+ * The composer area is one of: read-only note (subagent/archived), the first
+ * pending daemon approval (with the daemon's own action list), or the
+ * composer form.
+ */
+function renderApproval() {
+  const readOnly = currentReadOnlyReason();
+  const pending = readOnly ? null : state.pendingApprovals[0] || null;
+  readonlyNote.textContent = readOnly;
+  readonlyNote.classList.toggle('hidden', !readOnly);
+  composer.classList.toggle('hidden', Boolean(pending) || Boolean(readOnly));
+  approval.classList.toggle('hidden', !pending);
+  // Always re-render the slash popup: it must hide itself when an approval
+  // arrives mid-typing and may return once the approval resolves.
+  renderSlashPop();
+  if (!pending) return;
+  approvalTitle.textContent = pending.title || '需要审批';
+  approvalCommand.textContent = pending.command || '';
+  const buttons = [];
+  if (pending.legacy) {
+    buttons.push(
+      approvalActionButton('拒绝', 'ghost-btn', () => {
+        answerLegacyApproval('rejected').catch((error) => showBanner(error.message));
+      }),
+      approvalActionButton('允许一次', 'primary-btn', () => {
+        answerLegacyApproval('allowed-once').catch((error) => showBanner(error.message));
+      }),
+    );
+  } else if (pending.actions.length) {
+    // Render exactly the daemon's action list — labels, order, and variants.
+    for (const action of pending.actions) {
+      const className = action.variant === 'primary'
+        ? 'primary-btn'
+        : action.variant === 'danger' ? 'danger-btn' : 'ghost-btn';
+      buttons.push(approvalActionButton(action.label, className, () => {
+        respondToPendingApproval(pending, responseForAction(action))
+          .catch((error) => showBanner(error.message));
+      }));
+    }
+  } else {
+    buttons.push(
+      approvalActionButton('拒绝', 'ghost-btn', () => {
+        respondToPendingApproval(pending, genericResponse('deny'))
+          .catch((error) => showBanner(error.message));
+      }),
+      approvalActionButton('允许一次', 'primary-btn', () => {
+        respondToPendingApproval(pending, genericResponse('allow'))
+          .catch((error) => showBanner(error.message));
+      }),
+    );
+  }
+  approvalActions.replaceChildren(...buttons);
 }
 
 // —— 主机 RPC / shell —— //
@@ -342,12 +831,19 @@ async function call(method, payload = {}) {
 }
 
 function forceLogout(message) {
+  const serverId = state.chisacode?.serverId;
   try {
-    state.chisacode?.client?.close?.();
+    state.chisacode?.dispose?.();
+    const closing = state.chisacode?.client?.close?.();
+    if (closing && typeof closing.catch === 'function') {
+      void closing.catch(() => {});
+    }
   } catch { /* ignore */ }
-  if (state.transport === 'chisacode') {
-    clearAllSecrets();
+  if (state.transport === 'chisacode' && serverId) {
+    clearSecret(serverId);
+    draftStore?.clearAll();
   }
+  draftStore = null;
   sockets?.close();
   sockets = null;
   state.connected = false;
@@ -357,10 +853,28 @@ function forceLogout(message) {
   state.sessions = [];
   state.sessionId = '';
   state.events = [];
+  state.pendingApprovals = [];
+  state.agentPage = { nextCursor: null, hasMore: false };
+  state.agentsLoadingMore = false;
+  state.timelinePage = { startCursor: null, hasOlder: false };
+  state.timelineLoadingOlder = false;
+  state.sessionMenu = '';
+  state.sessionConfirm = null;
+  state.sessionRename = null;
+  state.history = null;
+  state.modelPane = null;
+  state.modelBusy = false;
+  state.slash = { open: false, loading: false, error: '', commands: [] };
   state.settingsOpen = false;
   state.settingsPane = '';
   state.gitDialog = '';
+  state.connPhase = 'online';
+  state.connLabel = '';
+  state.newSession = null;
+  resetWorkPanes();
+  state.extPane = { mcp: null, skills: null };
   showBanner('');
+  renderConnBanner();
   renderSheet();
   renderDialog();
   renderScreen();
@@ -390,12 +904,12 @@ function applyMux(frame) {
     return;
   }
   if (patch.type === 'approval') {
-    state.pendingApproval = patch.pending;
+    state.pendingApprovals = [{ ...patch.pending, legacy: true, actions: [] }];
     renderApproval();
     return;
   }
   if (patch.type === 'approval-clear') {
-    state.pendingApproval = null;
+    state.pendingApprovals = [];
     renderApproval();
     return;
   }
@@ -423,34 +937,205 @@ function sessionItems(value) {
   return [];
 }
 
-async function connect(offer) {
-  showError('');
-  if (!offer || offer.protocol !== 'chisacode-v2') {
-    throw new Error('请使用桌面端扫码配对二维码（ChisaCode offer）');
+function updateChisaCodeAgent(agent) {
+  const next = agentRows({ entries: [{ agent }] })[0];
+  if (!next) return;
+  const index = state.sessions.findIndex(row => row.sessionId === next.sessionId);
+  if (index >= 0) {
+    state.sessions[index] = next;
+  } else {
+    state.sessions.unshift(next);
   }
-  const api = await loadChisaCodeApi();
-  const paired = await loginWithOffer({ offer, api });
+  if (state.sessionId === next.sessionId) {
+    state.cwd = next.cwd;
+    renderComposer();
+    renderApproval();
+    if (state.settingsOpen && (state.settingsPane === '权限' || state.settingsPane === '模型')) {
+      renderSettings();
+    }
+  }
+  renderSessions();
+  renderHeader();
+}
+
+function clearApproval(requestId) {
+  const before = state.pendingApprovals.length;
+  state.pendingApprovals = removeApproval(state.pendingApprovals, requestId);
+  if (state.pendingApprovals.length !== before) {
+    renderApproval();
+  }
+}
+
+function bindChisaCodeEvents(paired) {
+  const disposers = [];
+  if (typeof paired.client.on !== 'function') {
+    return () => {};
+  }
+  disposers.push(paired.client.on('agent_update', (message) => {
+    const update = message?.payload;
+    if (update?.kind === 'upsert') {
+      updateChisaCodeAgent(update.agent);
+    } else if (update?.kind === 'remove') {
+      state.sessions = state.sessions.filter(row => row.sessionId !== update.agentId);
+      if (update.agentId === state.sessionId) {
+        // The open session was deleted (possibly from another client).
+        state.sessionId = '';
+        state.events = [];
+        state.pendingApprovals = [];
+        state.timelinePage = { startCursor: null, hasOlder: false };
+        renderLog();
+        renderApproval();
+        renderComposer();
+      }
+      renderSessions();
+      renderHeader();
+    }
+  }));
+  // Cross-client resolution: another paired client (or the desktop) answered.
+  disposers.push(paired.client.on('agent_permission_resolved', (message) => {
+    const payload = message?.payload;
+    if (!payload || payload.agentId !== state.sessionId) return;
+    clearApproval(payload.requestId);
+  }));
+  disposers.push(paired.client.on('agent_stream', (message) => {
+    const payload = message?.payload;
+    if (!payload || payload.agentId !== state.sessionId) return;
+    const event = payload.event;
+    if (event?.type === 'timeline') {
+      const duplicate = Number.isInteger(payload.seq)
+        && state.events.some((entry) => entry.seqStart === payload.seq);
+      if (!duplicate) {
+        state.events.push({
+          item: event.item,
+          timestamp: payload.timestamp,
+          seqStart: payload.seq,
+          seqEnd: payload.seq,
+        });
+        renderLog();
+      }
+    }
+    const row = currentRow();
+    if (row && event?.type === 'turn_started') row.running = true;
+    if (row && ['turn_completed', 'turn_failed', 'turn_canceled'].includes(event?.type)) {
+      row.running = false;
+    }
+    if (event?.type === 'permission_requested') {
+      const pending = approvalFromRequest(event.request);
+      if (pending && !state.pendingApprovals.some((item) => item.requestId === pending.requestId)) {
+        state.pendingApprovals = [...state.pendingApprovals, pending];
+        renderApproval();
+      }
+    }
+    if (event?.type === 'permission_resolved') {
+      clearApproval(event.requestId);
+    }
+    if (event?.type === 'mode_changed') {
+      const row = currentRow();
+      if (row?.chisacodeAgent) {
+        row.chisacodeAgent = {
+          ...row.chisacodeAgent,
+          currentModeId: event.currentModeId ?? null,
+          availableModes: Array.isArray(event.availableModes)
+            ? event.availableModes
+            : row.chisacodeAgent.availableModes,
+        };
+      }
+      renderComposer();
+      if (state.settingsOpen && state.settingsPane === '权限') renderSettings();
+    }
+    renderHeader();
+  }));
+  return () => {
+    for (const dispose of disposers) {
+      if (typeof dispose === 'function') dispose();
+    }
+  };
+}
+
+async function runReconnectResync() {
+  const paired = state.chisacode;
+  if (state.transport !== 'chisacode' || !paired) return;
+  try {
+    const { agents, timeline } = await resyncAfterReconnect(paired.client, {
+      sessionId: state.sessionId,
+    });
+    if (state.chisacode !== paired) return;
+    state.sessions = agentRows(agents);
+    state.agentPage = agentPageInfo(agents);
+    if (timeline) {
+      state.events = Array.isArray(timeline.entries) ? timeline.entries : [];
+      state.timelinePage = timelinePageInfo(timeline);
+      if (timeline.agent) updateChisaCodeAgent(timeline.agent);
+      state.pendingApprovals = approvalsFromAgent(timeline.agent);
+      state.cwd = currentRow()?.cwd || state.cwd;
+    }
+    renderSessions();
+    renderHeader();
+    renderLog();
+    renderApproval();
+    renderComposer();
+    setToast('已重新连接并同步');
+  } catch (error) {
+    if (state.chisacode !== paired) return;
+    showBanner(`重连后同步失败：${error?.message || '电脑没有响应'}`);
+  }
+}
+
+async function finishChisaCodeConnect(paired, reconnected) {
+  const disposeEvents = bindChisaCodeEvents(paired);
+  const disposeWatch = watchConnection(paired.client, {
+    onStatus: (phase) => {
+      state.connPhase = phase.phase;
+      state.connLabel = phase.label;
+      renderConnBanner();
+      renderComposer();
+    },
+    onReconnected: () => {
+      void runReconnectResync();
+    },
+  });
+  paired.dispose = () => {
+    disposeEvents();
+    disposeWatch();
+  };
+  draftStore = createDraftStore(localStorage, paired.serverId);
   state.chisacode = paired;
   state.transport = 'chisacode';
   state.connected = true;
   state.route = 'chat';
   state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
   state.cwd = '';
+  resetWorkPanes();
+  state.extPane = { mcp: null, skills: null };
   state.hostName = paired.serverId;
+  let loadError = '';
   try {
-    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
-    state.sessions = Array.isArray(agents)
-      ? agents
-      : (agents.items || agents.agents || []);
-  } catch {
+    const payload = await paired.client.fetchAgents({
+      page: { limit: 100 },
+      subscribe: {},
+    });
+    state.sessions = agentRows(payload);
+    state.agentPage = agentPageInfo(payload);
+  } catch (error) {
     state.sessions = [];
+    state.agentPage = { nextCursor: null, hasMore: false };
+    loadError = `无法加载会话：${error?.message || '电脑没有响应'}`;
   }
   deviceLine.replaceChildren();
-  deviceLine.append(document.createTextNode(`已配对 ${paired.serverId}`));
-  showBanner('会话面迁移中；配对与重连已可用。');
+  deviceLine.append(document.createTextNode(`${reconnected ? '已重连' : '已配对'} ${paired.serverId}`));
+  showBanner(loadError);
   renderSessions();
   renderHeader();
   renderScreen();
+}
+
+async function connect(offerUrl) {
+  showError('');
+  if (!hasOfferFragment(offerUrl)) {
+    throw new Error('请使用桌面端扫码配对二维码（ChisaCode offer）');
+  }
+  const api = await loadChisaCodeApi();
+  await finishChisaCodeConnect(await pairFromOfferUrl(api, offerUrl), false);
 }
 
 async function connectSticky() {
@@ -459,37 +1144,50 @@ async function connectSticky() {
     throw new Error('没有已保存的配对；请重新扫码');
   }
   const api = await loadChisaCodeApi();
-  const paired = await reconnectSticky(api, serverId);
-  state.chisacode = paired;
-  state.transport = 'chisacode';
-  state.connected = true;
-  state.route = 'chat';
-  state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
-  state.cwd = '';
-  state.hostName = paired.serverId;
-  try {
-    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
-    state.sessions = Array.isArray(agents)
-      ? agents
-      : (agents.items || agents.agents || []);
-  } catch {
-    state.sessions = [];
-  }
-  deviceLine.replaceChildren();
-  deviceLine.append(document.createTextNode(`已重连 ${paired.serverId}`));
-  showBanner('会话面迁移中；配对与重连已可用。');
-  renderSessions();
-  renderHeader();
-  renderScreen();
+  await finishChisaCodeConnect(await reconnectSticky(api, serverId), true);
 }
 
 async function openSession(sessionId) {
+  const previousSessionId = state.sessionId;
+  if (state.transport === 'chisacode' && previousSessionId && previousSessionId !== sessionId) {
+    // Attachments survive a session switch in memory (not a reload).
+    draftStore?.saveAttachments(previousSessionId, state.attachments);
+  }
   state.sessionId = sessionId;
   phone.removeAttribute('data-drawer');
   backdrop.classList.add('hidden');
+  if (state.transport === 'chisacode') {
+    draft.value = draftStore?.load(sessionId) || '';
+    state.attachments = draftStore?.loadAttachments(sessionId) || [];
+    state.timelinePage = { startCursor: null, hasOlder: false };
+    state.timelineLoadingOlder = false;
+    renderComposer();
+    renderSlashPop();
+    const history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
+      direction: 'tail',
+      limit: 200,
+      projection: 'projected',
+    });
+    if (state.sessionId !== sessionId) return;
+    state.events = Array.isArray(history?.entries) ? history.entries : [];
+    state.timelinePage = timelinePageInfo(history);
+    // Capture before updateChisaCodeAgent, which already writes the new cwd.
+    const previousCwd = state.cwd;
+    if (history?.agent) updateChisaCodeAgent(history.agent);
+    state.pendingApprovals = approvalsFromAgent(history?.agent);
+    state.cwd = currentRow()?.cwd || '';
+    // Files / diff panes are cwd-bound; a different workspace invalidates them.
+    if (state.cwd !== previousCwd) resetWorkPanes();
+    renderHeader();
+    renderSessions();
+    renderLog();
+    renderApproval();
+    renderComposer();
+    return;
+  }
   const history = await call('session.history', { sessionId });
   state.events = history.value?.events || [];
-  state.pendingApproval = null;
+  state.pendingApprovals = [];
   const row = currentRow();
   if (row && history.value?.projections) {
     row.projections = history.value.projections;
@@ -500,7 +1198,284 @@ async function openSession(sessionId) {
   renderApproval();
 }
 
+// —— 新会话 chooser（工作区 → 提供方 → 可选权限模式）—— //
+
+function updateNewSession(patch) {
+  if (!state.newSession) return;
+  state.newSession = { ...state.newSession, ...patch };
+  renderSheet();
+}
+
+function startNewSessionChooser() {
+  state.attachOpen = false;
+  state.gitDialog = '';
+  phone.removeAttribute('data-drawer');
+  backdrop.classList.add('hidden');
+  state.newSession = {
+    step: 'workspace',
+    loading: true,
+    error: '',
+    workspaces: [],
+    providers: [],
+    workspace: null,
+    provider: null,
+  };
+  renderSheet();
+  const session = state.newSession;
+  listWorkspaceChoices(state.chisacode.client)
+    .then((workspaces) => {
+      if (state.newSession !== session) return;
+      updateNewSession({ loading: false, workspaces });
+    })
+    .catch((error) => {
+      if (state.newSession !== session) return;
+      updateNewSession({ loading: false, error: error?.message || '电脑没有响应' });
+    });
+}
+
+function chooseNewSessionWorkspace(workspace) {
+  updateNewSession({
+    step: 'provider', workspace, loading: true, creating: false, error: '', providers: [],
+  });
+  const session = state.newSession;
+  listReadyProviders(state.chisacode.client, workspace.cwd)
+    .then((providers) => {
+      if (state.newSession !== session) return;
+      updateNewSession({ loading: false, providers });
+    })
+    .catch((error) => {
+      if (state.newSession !== session) return;
+      updateNewSession({ loading: false, error: error?.message || '电脑没有响应' });
+    });
+}
+
+function chooseNewSessionProvider(provider) {
+  if (provider.modes.length) {
+    updateNewSession({ step: 'mode', provider, error: '' });
+    return;
+  }
+  chooseNewSessionMode(provider, '');
+}
+
+function chooseNewSessionMode(provider, modeId) {
+  if (Array.isArray(provider.models) && provider.models.length) {
+    updateNewSession({ step: 'model', provider, modeId, error: '' });
+    return;
+  }
+  submitNewSession(provider, modeId, '');
+}
+
+function submitNewSession(provider, modeId, model) {
+  const session = state.newSession;
+  const workspace = session?.workspace;
+  if (!session || !workspace) return;
+  updateNewSession({ loading: true, creating: true, error: '' });
+  const active = state.newSession;
+  createMobileAgent(state.chisacode.client, {
+    workspaceId: workspace.id,
+    cwd: workspace.cwd,
+    provider: provider.provider,
+    ...(modeId ? { modeId } : {}),
+    ...(model ? { model } : {}),
+  })
+    .then((agent) => {
+      if (state.newSession !== active) return;
+      state.newSession = null;
+      renderSheet();
+      updateChisaCodeAgent(agent);
+      showBanner('');
+      // The agent exists; a timeline load failure must be visible, not
+      // swallowed by the chooser's create error handler.
+      return openSession(agent.id).catch((error) => {
+        showBanner(`会话已创建，但载入失败：${error?.message || '电脑没有响应'}`);
+      });
+    })
+    .catch((error) => {
+      if (state.newSession !== active) return;
+      updateNewSession({ loading: false, creating: false, error: error?.message || '电脑没有响应' });
+    });
+}
+
+// —— 会话操作（重命名 / 重新生成标题 / 归档 / 删除）与已归档历史 —— //
+
+function sessionRowById(sessionId) {
+  return state.sessions.find((row) => row.sessionId === sessionId);
+}
+
+function clearSessionView(sessionId) {
+  if (state.sessionId !== sessionId) return;
+  state.sessionId = '';
+  state.events = [];
+  state.pendingApprovals = [];
+  state.timelinePage = { startCursor: null, hasOlder: false };
+  renderLog();
+  renderApproval();
+  renderComposer();
+  renderHeader();
+}
+
+function startSessionRename(row) {
+  state.sessionMenu = '';
+  state.sessionRename = {
+    sessionId: row.sessionId,
+    value: sessionTitle(row),
+    busy: false,
+    error: '',
+  };
+  renderSheet();
+  renderDialog();
+}
+
+async function submitSessionRename() {
+  const rename = state.sessionRename;
+  const paired = state.chisacode;
+  if (!rename || rename.busy || !paired) return;
+  rename.busy = true;
+  rename.error = '';
+  renderDialog();
+  try {
+    await renameMobileAgent(paired.client, rename.sessionId, rename.value);
+    if (state.sessionRename !== rename) return;
+    // The daemon accepted; reflect the confirmed name locally right away
+    // (the authoritative agent_update upsert follows).
+    const row = sessionRowById(rename.sessionId);
+    if (row) {
+      row.projections = row.projections || { values: {} };
+      row.projections.values = { ...row.projections.values, title: rename.value.trim() };
+      row.title = rename.value.trim();
+    }
+    state.sessionRename = null;
+    renderDialog();
+    renderSessions();
+    renderHeader();
+    setToast('已重命名');
+  } catch (error) {
+    if (state.sessionRename !== rename) return;
+    rename.busy = false;
+    rename.error = error?.message || '电脑没有响应';
+    renderDialog();
+  }
+}
+
+async function regenerateSessionTitle(row) {
+  state.sessionMenu = '';
+  renderSheet();
+  try {
+    await regenerateMobileTitle(state.chisacode.client, row.sessionId);
+    setToast('已请求重新生成标题');
+  } catch (error) {
+    showBanner(`重新生成标题失败：${error?.message || '电脑没有响应'}`);
+  }
+}
+
+function startSessionConfirm(kind, row) {
+  state.sessionMenu = '';
+  state.sessionConfirm = {
+    kind,
+    sessionId: row.sessionId,
+    title: sessionTitle(row),
+    busy: false,
+    error: '',
+  };
+  renderSheet();
+  renderDialog();
+}
+
+async function runSessionConfirm() {
+  const confirm = state.sessionConfirm;
+  const paired = state.chisacode;
+  if (!confirm || confirm.busy || !paired) return;
+  confirm.busy = true;
+  confirm.error = '';
+  renderDialog();
+  try {
+    if (confirm.kind === 'archive') {
+      await archiveMobileAgent(paired.client, confirm.sessionId);
+    } else {
+      await deleteMobileAgent(paired.client, confirm.sessionId);
+    }
+    if (state.sessionConfirm !== confirm) return;
+    // Confirmed by the daemon — only now does the row leave the list.
+    state.sessions = state.sessions.filter((row) => row.sessionId !== confirm.sessionId);
+    clearSessionView(confirm.sessionId);
+    state.sessionConfirm = null;
+    renderDialog();
+    renderSessions();
+    setToast(confirm.kind === 'archive' ? '已归档' : '已删除');
+  } catch (error) {
+    if (state.sessionConfirm !== confirm) return;
+    confirm.busy = false;
+    confirm.error = error?.message || '电脑没有响应';
+    renderDialog();
+  }
+}
+
+function openHistorySheet() {
+  phone.removeAttribute('data-drawer');
+  backdrop.classList.add('hidden');
+  state.history = {
+    rows: [],
+    nextCursor: null,
+    hasMore: false,
+    loading: true,
+    error: '',
+    busyId: '',
+  };
+  renderSheet();
+  loadHistoryPage(true);
+}
+
+async function loadHistoryPage(firstPage) {
+  const view = state.history;
+  const paired = state.chisacode;
+  if (!view || !paired) return;
+  view.loading = true;
+  view.error = '';
+  renderSheet();
+  try {
+    const result = await listArchivedAgents(paired.client, {
+      cursor: firstPage ? null : view.nextCursor,
+    });
+    if (state.history !== view) return;
+    view.rows = firstPage ? result.rows : mergeAgentRows(view.rows, result.rows);
+    view.nextCursor = result.nextCursor;
+    view.hasMore = result.hasMore;
+    view.loading = false;
+    renderSheet();
+  } catch (error) {
+    if (state.history !== view) return;
+    view.loading = false;
+    view.error = error?.message || '电脑没有响应';
+    renderSheet();
+  }
+}
+
+async function unarchiveFromHistory(row) {
+  const view = state.history;
+  const paired = state.chisacode;
+  if (!view || !paired || view.busyId) return;
+  view.busyId = row.sessionId;
+  renderSheet();
+  try {
+    await unarchiveMobileAgent(paired.client, row.sessionId);
+    if (state.history !== view) return;
+    view.rows = view.rows.filter((item) => item.sessionId !== row.sessionId);
+    view.busyId = '';
+    renderSheet();
+    setToast('已取消归档');
+  } catch (error) {
+    if (state.history !== view) return;
+    view.busyId = '';
+    view.error = `取消归档失败：${error?.message || '电脑没有响应'}`;
+    renderSheet();
+  }
+}
+
 async function createSession() {
+  if (state.transport === 'chisacode') {
+    startNewSessionChooser();
+    return;
+  }
   const created = await call('session.create', {});
   const sessionId = created.value?.sessionId;
   if (!sessionId) return;
@@ -516,7 +1491,36 @@ async function sendPrompt() {
   const text = draft.value.trim();
   const images = state.attachments.slice();
   if (!state.sessionId || (!text && !images.length)) return;
-  if (state.pendingApproval) return;
+  if (state.pendingApprovals.length) return;
+  if (state.transport === 'chisacode') {
+    if (currentReadOnlyReason()) {
+      showBanner('只读会话不能发送消息');
+      return;
+    }
+    if (composerOffline()) {
+      showBanner('连接已断开，消息未发送；草稿已保留，恢复连接后再发');
+      return;
+    }
+    await state.chisacode.client.sendAgentMessage(
+      state.sessionId,
+      text || '请查看附件',
+      {
+        images: images.map(image => ({
+          data: image.data,
+          mimeType: image.mediaType,
+        })),
+      },
+    );
+    draft.value = '';
+    draftStore?.clear(state.sessionId);
+    state.attachments = [];
+    const row = currentRow();
+    if (row) row.running = true;
+    renderComposer();
+    renderSlashPop();
+    renderHeader();
+    return;
+  }
   const blocks = [];
   if (text) blocks.push(textBlock(text));
   for (const image of images) {
@@ -531,23 +1535,137 @@ async function sendPrompt() {
 async function cancelRun() {
   if (!state.sessionId) return;
   try {
+    if (state.transport === 'chisacode') {
+      await state.chisacode.client.cancelAgent(state.sessionId);
+      return;
+    }
     await call('session.cancel', { sessionId: state.sessionId });
   } catch (error) {
     showBanner(error.message || '无法停止');
   }
 }
 
-async function answerApproval(outcome) {
-  const pending = state.pendingApproval;
-  if (!pending) return;
+/**
+ * Answer one daemon permission request with a full AgentPermissionResponse
+ * (behavior + optional selectedActionId). The queue advances locally; the
+ * daemon's permission_resolved event is idempotent on top.
+ */
+async function respondToPendingApproval(pending, response) {
+  if (state.transport !== 'chisacode') return;
+  await state.chisacode.client.respondToPermission(
+    state.sessionId,
+    pending.requestId,
+    response,
+  );
+  clearApproval(pending.requestId);
+}
+
+async function answerLegacyApproval(outcome) {
+  const pending = state.pendingApprovals[0];
+  if (!pending || !pending.legacy) return;
   assertNotLegacyHostRpc();
   await respond({
     origin,
     rpcId: pending.rpcId,
     value: { sessionId: pending.sessionId, approvalId: pending.approvalId, outcome },
   });
-  state.pendingApproval = null;
+  state.pendingApprovals = [];
   renderApproval();
+}
+
+// —— Slash 命令 popup（`/` 触发，daemon listCommands，按 agent 缓存）—— //
+
+function renderSlashPop() {
+  const slash = state.slash;
+  const visible = slash.open && !currentReadOnlyReason() && !state.pendingApprovals.length;
+  slashPop.classList.toggle('hidden', !visible);
+  if (!visible) return;
+  const nodes = [];
+  if (slash.loading) {
+    const note = document.createElement('p');
+    note.className = 'slash-note';
+    note.textContent = '正在读取命令…';
+    nodes.push(note);
+  } else if (slash.error) {
+    const note = document.createElement('p');
+    note.className = 'slash-note slash-error';
+    note.textContent = slash.error;
+    nodes.push(note);
+  } else {
+    const rows = filterSlashCommands(slash.commands, slashQuery(draft.value) || '');
+    if (!rows.length) {
+      const note = document.createElement('p');
+      note.className = 'slash-note';
+      note.textContent = '没有匹配的命令';
+      nodes.push(note);
+    }
+    for (const command of rows.slice(0, 8)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'slash-item';
+      const name = document.createElement('b');
+      name.textContent = `/${command.name}${command.argumentHint ? ` ${command.argumentHint}` : ''}`;
+      button.append(name);
+      if (command.description) {
+        const desc = document.createElement('span');
+        desc.textContent = command.description;
+        button.append(desc);
+      }
+      button.addEventListener('click', () => {
+        draft.value = applySlashCommand(command.name);
+        if (state.sessionId) draftStore?.save(state.sessionId, draft.value);
+        state.slash = { ...state.slash, open: false };
+        renderSlashPop();
+        renderComposer();
+        draft.focus();
+      });
+      nodes.push(button);
+    }
+  }
+  slashPop.replaceChildren(...nodes);
+}
+
+function updateSlashPopup() {
+  const paired = state.chisacode;
+  const sessionId = state.sessionId;
+  const query = slashQuery(draft.value);
+  const usable = state.transport === 'chisacode' && paired && sessionId
+    && query !== null && !currentReadOnlyReason();
+  if (!usable) {
+    if (state.slash.open) {
+      state.slash = { ...state.slash, open: false };
+      renderSlashPop();
+    }
+    return;
+  }
+  paired.slashCommandsCache ??= new Map();
+  const cached = paired.slashCommandsCache.get(sessionId);
+  if (cached) {
+    state.slash = { open: true, loading: false, error: '', commands: cached };
+    renderSlashPop();
+    return;
+  }
+  state.slash = { open: true, loading: true, error: '', commands: [] };
+  renderSlashPop();
+  listAgentCommands(paired.client, sessionId)
+    .then((commands) => {
+      if (state.chisacode !== paired || state.sessionId !== sessionId) return;
+      paired.slashCommandsCache.set(sessionId, commands);
+      if (slashQuery(draft.value) === null) return;
+      state.slash = { open: true, loading: false, error: '', commands };
+      renderSlashPop();
+    })
+    .catch((error) => {
+      if (state.chisacode !== paired || state.sessionId !== sessionId) return;
+      if (slashQuery(draft.value) === null) return;
+      state.slash = {
+        open: true,
+        loading: false,
+        error: `无法读取命令：${error?.message || '电脑没有响应'}`,
+        commands: [],
+      };
+      renderSlashPop();
+    });
 }
 
 // —— 扫码（M2）—— //
@@ -593,7 +1711,7 @@ function handleScanHit(raw) {
   }
   state.route = 'connect';
   renderScreen();
-  connect(outcome.offer).catch((error) => {
+  connect(outcome.offerUrl).catch((error) => {
     showError(error.message || '连接失败');
   });
   return true;
@@ -702,6 +1820,7 @@ async function addFiles(fileList) {
       showBanner(error.message || '无法读取图片');
     }
   }
+  draftStore?.saveAttachments(state.sessionId, state.attachments);
   renderComposer();
 }
 
@@ -714,8 +1833,25 @@ function currentQuick() {
 async function refreshGit() {
   if (!state.cwd) return;
   try {
-    const result = await shell('gitStatus', { cwd: state.cwd });
-    state.gitStatus = parseVcsStatus(result);
+    if (state.transport === 'chisacode') {
+      const status = await state.chisacode.client.getCheckoutStatus(state.cwd);
+      let pr = null;
+      if (status?.isGit && typeof state.chisacode.client.checkoutPrStatus === 'function') {
+        try {
+          pr = await state.chisacode.client.checkoutPrStatus(state.cwd);
+          if (pr?.error) {
+            const message = typeof pr.error === 'string' ? pr.error : pr.error.message;
+            showBanner(`Git 状态已加载；拉取请求状态不可用：${message || '电脑没有响应'}`);
+          }
+        } catch (error) {
+          showBanner(`Git 状态已加载；拉取请求状态不可用：${error?.message || '电脑没有响应'}`);
+        }
+      }
+      state.gitStatus = chisaCheckoutStatusToVcs(status, pr);
+    } else {
+      const result = await shell('gitStatus', { cwd: state.cwd });
+      state.gitStatus = parseVcsStatus(result);
+    }
   } catch (error) {
     setToast(error.message || 'Git 状态不可用');
   }
@@ -741,7 +1877,11 @@ async function gitAction(name, extra = {}) {
   renderToast();
   renderSettings();
   try {
-    await shell(name, { cwd: state.cwd, ...extra });
+    if (state.transport === 'chisacode') {
+      await runChisaGitAction(state.chisacode.client, name, state.cwd, extra);
+    } else {
+      await shell(name, { cwd: state.cwd, ...extra });
+    }
     state.gitDialog = '';
     state.gitConfirmAction = '';
     renderSheet();
@@ -797,8 +1937,7 @@ function runGitPrimary() {
     return;
   }
   if (quick.kind === 'open_pr') {
-    showBanner('已在电脑上打开拉取请求');
-    setToast(state.gitStatus.pr?.number != null ? `打开拉取请求 #${state.gitStatus.pr.number}` : '打开拉取请求');
+    openPullRequest();
     return;
   }
   setToast(quick.hint);
@@ -807,8 +1946,16 @@ function runGitPrimary() {
 async function loadBranches() {
   if (!state.cwd) return;
   try {
-    const result = await shell('gitBranchList', { cwd: state.cwd });
-    state.branches = parseBranchList(result);
+    if (state.transport === 'chisacode') {
+      const result = await state.chisacode.client.getBranchSuggestions({
+        cwd: state.cwd,
+        limit: 200,
+      });
+      state.branches = chisaBranchRows(result, state.gitStatus.refName);
+    } else {
+      const result = await shell('gitBranchList', { cwd: state.cwd });
+      state.branches = parseBranchList(result);
+    }
     state.branchQuery = '';
     state.gitDialog = 'branch';
     renderSheet();
@@ -828,8 +1975,9 @@ function createBranch() {
   state.newBranchName = '';
 }
 
+/** Legacy HTTP-host flat root listing. The chisacode path uses the Files work loop. */
 async function loadFiles() {
-  if (!state.cwd) return;
+  if (!state.cwd || state.transport === 'chisacode') return;
   try {
     const result = await shell('listDir', { cwd: state.cwd, relativePath: '' });
     const entries = Array.isArray(result?.entries) ? result.entries : [];
@@ -846,6 +1994,248 @@ async function loadFiles() {
   if (state.settingsOpen) renderSettings();
 }
 
+// —— Phase 2：Files / Diff / MCP / Skills 工作环（chisacode 只读）—— //
+
+/** Drop cwd-bound work-loop state (session switch, logout). Revokes preview blob URLs. */
+function resetWorkPanes() {
+  if (state.filesPane?.preview?.blobUrl) {
+    URL.revokeObjectURL(state.filesPane.preview.blobUrl);
+  }
+  state.filesPane = null;
+  state.diffPane = null;
+  filesBodyHook = null;
+}
+
+function ensureFilesPane() {
+  if (!state.filesPane) {
+    state.filesPane = {
+      path: '',
+      entries: [],
+      loading: false,
+      loaded: false,
+      error: '',
+      loadSeq: 0,
+      preview: null,
+      search: { query: '', loading: false, error: '', results: [], ran: false },
+      scrollTops: {},
+      pendingScroll: null,
+    };
+  }
+  return state.filesPane;
+}
+
+/** Re-render only the files body (keeps the search input node and its focus). */
+let filesBodyHook = null;
+function refreshFilesBody() {
+  if (filesBodyHook?.node?.isConnected) {
+    filesBodyHook.render();
+    return;
+  }
+  if (state.settingsOpen
+    && (state.settingsPane === '文件' || (state.settingsPane === '工作区' && state.wsTab === 'files'))) {
+    renderSettings();
+  }
+}
+
+function closeFilePreview() {
+  const pane = state.filesPane;
+  if (!pane?.preview) return;
+  if (pane.preview.blobUrl) URL.revokeObjectURL(pane.preview.blobUrl);
+  pane.preview = null;
+  pane.pendingScroll = pane.scrollTops[pane.path] ?? 0;
+}
+
+/** Navigate the drill-down browser to a relative directory path. */
+async function loadFilesPath(path) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  if (pane.preview) {
+    closeFilePreview();
+  } else if (!pane.search.query.trim()) {
+    // Only record listing scroll when the listing itself is on screen.
+    pane.scrollTops[pane.path] = options.scrollTop;
+  }
+  const seq = pane.loadSeq + 1;
+  pane.loadSeq = seq;
+  pane.loading = true;
+  pane.error = '';
+  refreshFilesBody();
+  try {
+    const view = await listDirectoryView(state.chisacode.client, state.cwd, path);
+    if (state.filesPane !== pane || pane.loadSeq !== seq) return;
+    pane.path = view.path;
+    pane.entries = view.entries;
+    pane.loaded = true;
+    pane.pendingScroll = pane.scrollTops[view.path] ?? 0;
+  } catch (error) {
+    if (state.filesPane !== pane || pane.loadSeq !== seq) return;
+    pane.error = error?.message || '无法读取目录';
+  }
+  pane.loading = false;
+  refreshFilesBody();
+}
+
+/** Open the read-only preview for one file entry ({ path, name?, size? }). */
+async function openFilePreview(entry) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  if (!pane.preview && !pane.search.query.trim()) {
+    pane.scrollTops[pane.path] = options.scrollTop;
+  }
+  if (pane.preview?.blobUrl) URL.revokeObjectURL(pane.preview.blobUrl);
+  const preview = {
+    path: entry.path,
+    name: entry.name || entry.path.split('/').pop() || entry.path,
+    size: Number.isFinite(entry.size) ? entry.size : null,
+    loading: false,
+    error: '',
+    data: null,
+    blobUrl: '',
+  };
+  pane.preview = preview;
+  // Known-oversized files are never fetched — honest state without the cost.
+  if (previewSizeGate(entry.size)) {
+    preview.data = { kind: 'too-large', size: entry.size };
+    refreshFilesBody();
+    return;
+  }
+  preview.loading = true;
+  refreshFilesBody();
+  try {
+    const data = await readFilePreview(state.chisacode.client, state.cwd, entry.path);
+    if (state.filesPane !== pane || pane.preview !== preview) return;
+    preview.data = data;
+    preview.size = data.size;
+    if (data.kind === 'image') {
+      preview.blobUrl = URL.createObjectURL(new Blob([data.bytes], { type: data.mime || 'image/*' }));
+    }
+  } catch (error) {
+    if (state.filesPane !== pane || pane.preview !== preview) return;
+    preview.error = error?.message || '无法读取文件';
+  }
+  preview.loading = false;
+  refreshFilesBody();
+}
+
+let fileSearchTimer = 0;
+async function runFileSearch(query) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  pane.search.loading = true;
+  pane.search.error = '';
+  refreshFilesBody();
+  try {
+    const results = await searchWorkspacePaths(state.chisacode.client, state.cwd, query, { limit: 30 });
+    if (state.filesPane !== pane || pane.search.query.trim() !== query) return;
+    pane.search.results = results;
+    pane.search.ran = true;
+  } catch (error) {
+    if (state.filesPane !== pane || pane.search.query.trim() !== query) return;
+    pane.search.error = error?.message || '路径搜索失败';
+    pane.search.ran = true;
+  }
+  pane.search.loading = false;
+  refreshFilesBody();
+}
+
+/** Entry point used by every "open the files surface" affordance. */
+function openFilesPane() {
+  if (state.transport !== 'chisacode') {
+    loadFiles();
+    return;
+  }
+  const pane = ensureFilesPane();
+  if (!pane.loaded && !pane.loading && state.cwd) {
+    void loadFilesPath(pane.path);
+  }
+}
+
+function ensureDiffPane() {
+  if (!state.diffPane) {
+    state.diffPane = {
+      scope: 'uncommitted',
+      loading: false,
+      error: '',
+      view: null,
+      open: {},
+      loadSeq: 0,
+    };
+  }
+  return state.diffPane;
+}
+
+function refreshDiffBody() {
+  if (state.settingsOpen && state.settingsPane === '工作区' && state.wsTab === 'changes') {
+    renderSettings();
+  }
+}
+
+/** Load the read-only diff for the current scope (one-shot getCheckoutDiff). */
+async function loadDiff() {
+  const pane = ensureDiffPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  const seq = pane.loadSeq + 1;
+  pane.loadSeq = seq;
+  pane.loading = true;
+  pane.error = '';
+  refreshDiffBody();
+  try {
+    const view = await fetchMobileDiff(state.chisacode.client, state.cwd, pane.scope);
+    if (state.diffPane !== pane || pane.loadSeq !== seq) return;
+    pane.view = view;
+  } catch (error) {
+    if (state.diffPane !== pane || pane.loadSeq !== seq) return;
+    pane.error = error?.message || '读取改动失败';
+    pane.view = null;
+  }
+  pane.loading = false;
+  refreshDiffBody();
+}
+
+function openChangesTab() {
+  if (state.transport !== 'chisacode') return;
+  const pane = ensureDiffPane();
+  if (!pane.view && !pane.loading && state.cwd) {
+    void loadDiff();
+  }
+}
+
+function ensureExtPane(kind) {
+  if (!state.extPane[kind]) {
+    state.extPane[kind] = { loading: false, loaded: false, error: '', rows: [], notes: [] };
+  }
+  return state.extPane[kind];
+}
+
+/** Load the read-only MCP / skills inventory. Strictly list RPCs — no writes. */
+async function loadExtensions(kind, force = false) {
+  if (state.transport !== 'chisacode') return;
+  const pane = ensureExtPane(kind);
+  if (pane.loading || (pane.loaded && !force)) return;
+  pane.loading = true;
+  pane.error = '';
+  renderExtIfVisible(kind);
+  try {
+    const result = kind === 'mcp'
+      ? await listMobileMcpServers(state.chisacode.client)
+      : await listMobileSkills(state.chisacode.client);
+    if (state.extPane[kind] !== pane) return;
+    pane.rows = result.rows;
+    pane.notes = result.errors;
+    pane.loaded = true;
+  } catch (error) {
+    if (state.extPane[kind] !== pane) return;
+    pane.error = error?.message || '无法读取清单';
+  }
+  pane.loading = false;
+  renderExtIfVisible(kind);
+}
+
+function renderExtIfVisible(kind) {
+  const paneName = kind === 'mcp' ? 'MCP' : '技能';
+  if (state.settingsOpen && state.settingsPane === paneName) renderSettings();
+}
+
 function insertMention(path) {
   draft.value = draft.value ? `${draft.value.trimEnd()} @${path} ` : `@${path} `;
   closeSettings();
@@ -854,6 +2244,10 @@ function insertMention(path) {
 }
 
 async function requestHost(name, payload = {}) {
+  if (state.transport === 'chisacode') {
+    showBanner('ChisaCode 手机协议不能控制电脑窗口；请在电脑端操作');
+    return;
+  }
   try {
     await shell(name, payload);
     showBanner(name === 'openGallery'
@@ -882,6 +2276,7 @@ async function logoutDevice() {
 function openSettings(pane = '') {
   state.settingsOpen = true;
   state.settingsPane = pane;
+  if (pane === '模型') state.modelPane = null;
   phone.removeAttribute('data-drawer');
   backdrop.classList.add('hidden');
   renderSettings();
@@ -968,12 +2363,15 @@ function switchNode(on, onToggle) {
 }
 
 function renderSettingsHub() {
-  options.append(noticeNode('远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。标了「电脑」的项会改 Host 窗口。'));
+  options.append(noticeNode(state.transport === 'chisacode'
+    ? '手机外观和会话选项只留在本机；电脑窗口设置请在电脑端操作。'
+    : '远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。标了「电脑」的项会改 Host 窗口。'));
   const groups = settingsGroups({
-    channel: channelLabel(origin),
-    accessMode: state.accessMode,
+    channel: connectionLabel(),
+    accessMode: currentModeState().currentLabel,
     gitLine: gitStatusLine(state.gitStatus),
     scheme: store.scheme,
+    remoteReadOnly: state.transport === 'chisacode',
   });
   for (const group of groups) {
     const wrap = document.createElement('div');
@@ -1008,8 +2406,15 @@ function renderSettingsHub() {
           return;
         }
         state.settingsPane = row.pane;
-        if (row.pane === '工作区') refreshGit();
-        if (row.pane === '文件' || row.pane === '工作区') loadFiles();
+        if (row.pane === '工作区') {
+          refreshGit();
+          if (state.wsTab === 'files') openFilesPane();
+          else openChangesTab();
+        }
+        if (row.pane === '文件') openFilesPane();
+        if (row.pane === '模型') state.modelPane = null;
+        if (row.pane === 'MCP') void loadExtensions('mcp');
+        if (row.pane === '技能') void loadExtensions('skills');
         renderSettings();
       });
       body.append(button);
@@ -1103,7 +2508,7 @@ function gitCapsuleNode() {
   return capsule;
 }
 
-function renderFilesInto(target) {
+function renderLegacyFilesInto(target) {
   const list = document.createElement('div');
   const renderRows = () => {
     const query = state.fileQuery.trim();
@@ -1138,6 +2543,419 @@ function renderFilesInto(target) {
   renderRows();
 }
 
+function mentionButton(path) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'file-insert';
+  button.textContent = '@';
+  button.setAttribute('aria-label', `把 ${path} 插入输入框`);
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    insertMention(path);
+  });
+  return button;
+}
+
+function fileEntryRow(entry, { onOpen, showPath = false } = {}) {
+  const row = document.createElement('div');
+  row.className = 'file-row';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'file-open';
+  const main = document.createElement('span');
+  main.className = 'file-main';
+  const name = document.createElement('span');
+  name.className = 'file-name';
+  const baseName = entry.name || entry.path.split('/').pop() || entry.path;
+  name.textContent = entry.kind === 'directory' ? `${baseName}/` : baseName;
+  main.append(name);
+  if (showPath) {
+    const full = document.createElement('span');
+    full.className = 'file-path';
+    full.textContent = entry.path;
+    main.append(full);
+  } else if (entry.kind === 'file') {
+    const meta = document.createElement('span');
+    meta.className = 'file-path';
+    meta.textContent = fileSizeLabel(entry.size);
+    main.append(meta);
+  }
+  button.append(main);
+  button.addEventListener('click', () => onOpen(entry));
+  row.append(button, mentionButton(entry.path));
+  return row;
+}
+
+function filePreviewNodes(pane) {
+  const preview = pane.preview;
+  const nodes = [];
+  const bar = document.createElement('div');
+  bar.className = 'preview-bar';
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'preview-back';
+  back.textContent = '‹ 返回';
+  back.addEventListener('click', () => {
+    closeFilePreview();
+    refreshFilesBody();
+  });
+  const title = document.createElement('span');
+  title.className = 'preview-title';
+  title.textContent = preview.path;
+  bar.append(back, title);
+  nodes.push(bar);
+  const meta = [];
+  if (Number.isFinite(preview.size)) meta.push(fileSizeLabel(preview.size));
+  meta.push('只读预览');
+  nodes.push(descNode(meta.join(' · ')));
+  nodes.push(primaryButton('插入 @路径 到输入框', () => insertMention(preview.path)));
+  if (preview.loading) {
+    nodes.push(descNode('正在读取文件…'));
+    return nodes;
+  }
+  if (preview.error) {
+    nodes.push(descNode(`读取失败：${preview.error}`));
+    nodes.push(ghostButton('重试', () => {
+      void openFilePreview({ path: preview.path, name: preview.name, size: null });
+    }));
+    return nodes;
+  }
+  const data = preview.data;
+  if (!data) return nodes;
+  if (data.kind === 'too-large') {
+    nodes.push(descNode(`文件过大（${fileSizeLabel(data.size)}），手机端不预览超过 2 MB 的文件。请在电脑端打开。`));
+    return nodes;
+  }
+  if (data.kind === 'binary') {
+    nodes.push(descNode(`二进制文件（${data.mime || '未知类型'}），手机端不预览。请在电脑端打开。`));
+    return nodes;
+  }
+  if (data.kind === 'image') {
+    const img = document.createElement('img');
+    img.className = 'preview-image';
+    img.alt = preview.path;
+    img.src = preview.blobUrl;
+    nodes.push(img);
+    return nodes;
+  }
+  if (data.truncated) {
+    nodes.push(descNode('文件较长，仅显示前 200 KB。'));
+  }
+  const pre = document.createElement('pre');
+  pre.className = 'preview-text';
+  pre.textContent = data.text;
+  nodes.push(pre);
+  return nodes;
+}
+
+function fileSearchNodes(pane) {
+  const nodes = [descNode('按路径匹配（daemon 模糊建议），不是内容全文搜索。')];
+  if (pane.search.loading) {
+    nodes.push(descNode('正在搜索…'));
+    return nodes;
+  }
+  if (pane.search.error) {
+    nodes.push(descNode(`搜索失败：${pane.search.error}`));
+    return nodes;
+  }
+  if (!pane.search.ran) return nodes;
+  if (!pane.search.results.length) {
+    nodes.push(descNode('没有匹配的路径'));
+    return nodes;
+  }
+  for (const entry of pane.search.results) {
+    nodes.push(fileEntryRow(entry, {
+      showPath: true,
+      onOpen: (hit) => {
+        pane.search.query = '';
+        pane.search.results = [];
+        pane.search.ran = false;
+        if (hit.kind === 'directory') {
+          void loadFilesPath(hit.path);
+        } else {
+          void openFilePreview({ path: hit.path, size: null });
+          refreshFilesBody();
+        }
+        renderSettings();
+      },
+    }));
+  }
+  return nodes;
+}
+
+function fileBrowserNodes(pane) {
+  const nodes = [];
+  const crumbs = document.createElement('div');
+  crumbs.className = 'crumbs';
+  const segments = breadcrumbSegments(pane.path);
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.textContent = '/';
+      crumbs.append(sep);
+    }
+    const crumb = document.createElement('button');
+    crumb.type = 'button';
+    crumb.className = 'crumb';
+    crumb.textContent = segment.label;
+    crumb.disabled = index === segments.length - 1;
+    crumb.addEventListener('click', () => {
+      void loadFilesPath(segment.path);
+    });
+    crumbs.append(crumb);
+  });
+  nodes.push(crumbs);
+  if (pane.loading) {
+    nodes.push(descNode('正在读取目录…'));
+    return nodes;
+  }
+  if (pane.error) {
+    nodes.push(descNode(`读取目录失败：${pane.error}`));
+    nodes.push(ghostButton('重试', () => { void loadFilesPath(pane.path); }));
+    return nodes;
+  }
+  if (!pane.entries.length) {
+    nodes.push(descNode('这个目录是空的'));
+    return nodes;
+  }
+  for (const entry of pane.entries) {
+    nodes.push(fileEntryRow(entry, {
+      onOpen: (hit) => {
+        if (hit.kind === 'directory') {
+          void loadFilesPath(hit.path);
+        } else {
+          void openFilePreview(hit);
+        }
+      },
+    }));
+  }
+  return nodes;
+}
+
+/** Files work loop: breadcrumb drill-down, daemon path search, read-only preview. */
+function renderFilesInto(target) {
+  if (state.transport !== 'chisacode') {
+    renderLegacyFilesInto(target);
+    return;
+  }
+  const pane = ensureFilesPane();
+  if (!state.cwd) {
+    target.append(descNode('先打开一个会话，文件浏览跟随该会话的工作区目录。'));
+    return;
+  }
+  const searchWrap = document.createElement('div');
+  const searchInput = fieldInput(pane.search.query, '按路径搜索（不是内容搜索）', (value) => {
+    pane.search.query = value;
+    clearTimeout(fileSearchTimer);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      pane.search.results = [];
+      pane.search.ran = false;
+      pane.search.loading = false;
+      pane.search.error = '';
+      refreshFilesBody();
+      return;
+    }
+    pane.search.loading = true;
+    refreshFilesBody();
+    fileSearchTimer = setTimeout(() => { void runFileSearch(trimmed); }, 250);
+  });
+  searchWrap.append(searchInput);
+  const body = document.createElement('div');
+  body.className = 'files-body';
+  const render = () => {
+    searchWrap.classList.toggle('hidden', Boolean(pane.preview));
+    if (pane.preview) {
+      body.replaceChildren(...filePreviewNodes(pane));
+    } else if (pane.search.query.trim()) {
+      body.replaceChildren(...fileSearchNodes(pane));
+    } else {
+      body.replaceChildren(...fileBrowserNodes(pane));
+      if (pane.pendingScroll !== null) {
+        options.scrollTop = pane.pendingScroll;
+        pane.pendingScroll = null;
+      }
+    }
+  };
+  filesBodyHook = { node: body, render };
+  target.append(searchWrap, body);
+  render();
+}
+
+function renderDiffInto(target) {
+  const pane = ensureDiffPane();
+  if (!state.cwd) {
+    target.append(descNode('先打开一个会话，改动视图跟随该会话的工作区目录。'));
+    return;
+  }
+  const scopes = document.createElement('div');
+  scopes.className = 'ws-tabs diff-scopes';
+  for (const scope of DIFF_SCOPES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ws-tab';
+    button.setAttribute('aria-selected', String(pane.scope === scope.id));
+    button.textContent = scope.label;
+    button.addEventListener('click', () => {
+      if (pane.scope === scope.id) return;
+      pane.scope = scope.id;
+      pane.view = null;
+      pane.open = {};
+      void loadDiff();
+      renderSettings();
+    });
+    scopes.append(button);
+  }
+  target.append(scopes);
+  target.append(descNode('只读视图。提交、暂存等操作请用顶部 Git 胶囊或电脑端。'));
+  if (pane.loading) {
+    target.append(descNode('正在读取改动…'));
+    return;
+  }
+  if (pane.error) {
+    target.append(descNode(`读取改动失败：${pane.error}`));
+    target.append(ghostButton('重试', () => { void loadDiff(); }));
+    return;
+  }
+  const view = pane.view;
+  if (!view) {
+    target.append(ghostButton('加载改动', () => { void loadDiff(); }));
+    return;
+  }
+  if (view.kind === 'non-git') {
+    target.append(descNode('这个目录不是 Git 仓库，没有改动视图。'));
+    return;
+  }
+  if (view.kind === 'empty') {
+    target.append(descNode(pane.scope === 'uncommitted' ? '没有未提交的改动。' : '与主干没有差异。'));
+    target.append(ghostButton('刷新', () => { void loadDiff(); }));
+    return;
+  }
+  for (const file of view.files) {
+    const details = document.createElement('details');
+    details.className = 'diff-file';
+    if (pane.open[file.path]) details.open = true;
+    details.addEventListener('toggle', () => {
+      pane.open[file.path] = details.open;
+    });
+    const summary = document.createElement('summary');
+    summary.className = 'diff-file-head';
+    const path = document.createElement('span');
+    path.className = 'diff-path';
+    path.textContent = file.path;
+    summary.append(path);
+    const badge = diffFileBadge(file);
+    if (badge) {
+      const badgeNode = document.createElement('span');
+      badgeNode.className = 'diff-badge';
+      badgeNode.textContent = badge;
+      summary.append(badgeNode);
+    }
+    const stat = document.createElement('span');
+    stat.className = 'diff-stat';
+    stat.textContent = `+${file.additions} −${file.deletions}`;
+    summary.append(stat);
+    details.append(summary);
+    if (file.status === 'binary') {
+      details.append(descNode('二进制文件，不显示行级差异。'));
+    } else if (file.status === 'too_large') {
+      details.append(descNode('差异过大，电脑端可查看完整内容。'));
+    } else if (!file.hunks.length) {
+      details.append(descNode('没有行级差异。'));
+    } else {
+      for (const hunk of file.hunks) {
+        const block = document.createElement('div');
+        block.className = 'diff-hunk';
+        const header = document.createElement('div');
+        header.className = 'diff-line header';
+        header.textContent = hunk.header;
+        block.append(header);
+        for (const line of hunk.lines) {
+          const row = document.createElement('div');
+          row.className = `diff-line ${line.type}`;
+          const sign = line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' ';
+          row.textContent = `${sign} ${line.content}`;
+          block.append(row);
+        }
+        details.append(block);
+      }
+    }
+    target.append(details);
+  }
+  target.append(ghostButton('刷新', () => { void loadDiff(); }));
+}
+
+/** MCP / Skills read-only inventory pane (kind: 'mcp' | 'skills'). */
+function renderExtensionsPane(kind) {
+  const pane = ensureExtPane(kind);
+  const noun = kind === 'mcp' ? 'MCP 服务器' : '技能';
+  options.append(noticeNode(`只读清单。启用、停用、安装、删除${noun}请在电脑端操作。`));
+  if (pane.loading) {
+    options.append(descNode('正在读取清单…'));
+    return;
+  }
+  if (pane.error) {
+    options.append(descNode(`读取失败：${pane.error}`));
+    options.append(ghostButton('重试', () => { void loadExtensions(kind, true); }));
+    return;
+  }
+  for (const note of pane.notes) {
+    options.append(descNode(`电脑端提示：${note}`));
+  }
+  if (!pane.rows.length) {
+    options.append(descNode(kind === 'mcp' ? '电脑端没有配置 MCP 服务器。' : '电脑端没有可用技能。'));
+    options.append(ghostButton('刷新', () => { void loadExtensions(kind, true); }));
+    return;
+  }
+  const group = document.createElement('div');
+  group.className = 'group';
+  for (const row of pane.rows) {
+    const item = document.createElement('div');
+    item.className = 'ext-row';
+    const main = document.createElement('div');
+    main.className = 'ext-main';
+    const title = document.createElement('span');
+    title.className = 'ext-name';
+    title.textContent = kind === 'mcp' ? row.label : row.name;
+    main.append(title);
+    if (row.description) {
+      const desc = document.createElement('span');
+      desc.className = 'ext-desc';
+      desc.textContent = row.description;
+      main.append(desc);
+    }
+    const metaParts = [];
+    if (kind === 'mcp') {
+      if (row.transport) metaParts.push(row.transport);
+      metaParts.push(row.source === 'system' ? '系统' : '用户');
+    } else {
+      for (const source of row.sources) metaParts.push(source.typeLabel);
+    }
+    if (row.overrides.providers) metaParts.push(`${row.overrides.providers} 处按提供方覆盖`);
+    if (row.overrides.agents) metaParts.push(`${row.overrides.agents} 处按会话覆盖`);
+    if (metaParts.length) {
+      const meta = document.createElement('span');
+      meta.className = 'ext-meta';
+      meta.textContent = metaParts.join(' · ');
+      main.append(meta);
+    }
+    for (const errorText of row.errors) {
+      const errorNode = document.createElement('span');
+      errorNode.className = 'ext-error';
+      errorNode.textContent = errorText;
+      main.append(errorNode);
+    }
+    const status = document.createElement('span');
+    status.className = `ext-status${row.enabled ? ' on' : ''}`;
+    status.textContent = row.statusLabel || '未知状态';
+    item.append(main, status);
+    group.append(item);
+  }
+  options.append(group);
+  options.append(ghostButton('刷新', () => { void loadExtensions(kind, true); }));
+}
+
 function renderWorkspacePane() {
   options.append(gitCapsuleNode());
   options.append(descNode(gitStatusLine(state.gitStatus)));
@@ -1151,7 +2969,8 @@ function renderWorkspacePane() {
     tab.textContent = label;
     tab.addEventListener('click', () => {
       state.wsTab = id;
-      if (id === 'files') loadFiles();
+      if (id === 'files') openFilesPane();
+      if (id === 'changes') openChangesTab();
       renderSettings();
     });
     tabs.append(tab);
@@ -1159,6 +2978,8 @@ function renderWorkspacePane() {
   options.append(tabs);
   if (state.wsTab === 'files') {
     renderFilesInto(options);
+  } else if (state.transport === 'chisacode') {
+    renderDiffInto(options);
   } else {
     options.append(descNode(state.gitStatus.hasWorkingTreeChanges
       ? '有未提交更改。用顶部胶囊提交，或到文件 Tab 插入路径。'
@@ -1167,6 +2988,13 @@ function renderWorkspacePane() {
 }
 
 function renderHostRequestPane(pane) {
+  if (state.transport === 'chisacode') {
+    options.append(descNode('ChisaCode 手机协议不控制电脑窗口。请在电脑端打开对应设置。'));
+    const unavailable = primaryButton(`请在电脑端打开${pane}`, () => {});
+    unavailable.disabled = true;
+    options.append(unavailable);
+    return;
+  }
   options.append(descNode('这些项在电脑 Host 上。手机只发送打开请求，不画假清单。'));
   const section = hostSettingsSection(pane);
   if (section) {
@@ -1175,6 +3003,216 @@ function renderHostRequestPane(pane) {
   }
   options.append(descNode('会话内选项只留在这次连接。电脑窗口关闭行为请在电脑设置里改。', 'lead'));
   options.append(ghostButton('在电脑上打开设置', () => requestHost('openSettings')));
+}
+
+async function changeAgentMode(modeId) {
+  const row = currentRow();
+  const agent = row?.chisacodeAgent;
+  if (!agent || state.modeBusy) return;
+  const before = agent.currentModeId ?? null;
+  if (before === modeId) return;
+  state.modeBusy = true;
+  row.chisacodeAgent = { ...agent, currentModeId: modeId };
+  renderComposer();
+  renderSettings();
+  try {
+    await state.chisacode.client.setAgentMode(agent.id, modeId);
+    showBanner('');
+  } catch (error) {
+    // Roll back only if the daemon has not sent a newer authoritative value.
+    const current = currentRow();
+    if (current?.chisacodeAgent?.id === agent.id
+      && current.chisacodeAgent.currentModeId === modeId) {
+      current.chisacodeAgent = { ...current.chisacodeAgent, currentModeId: before };
+    }
+    showBanner(`切换权限模式失败：${error?.message || '电脑没有响应'}`);
+  } finally {
+    state.modeBusy = false;
+    renderComposer();
+    renderSettings();
+  }
+}
+
+function renderModePane() {
+  if (state.transport !== 'chisacode') {
+    options.append(descNode('当前连接不支持权限模式管理；请在电脑端操作。'));
+    return;
+  }
+  const agent = currentRow()?.chisacodeAgent;
+  if (!agent) {
+    options.append(descNode('先打开一个会话。权限模式属于具体会话，来自电脑端 daemon。'));
+    return;
+  }
+  const modeState = currentModeState();
+  if (!modeState.modes.length) {
+    options.append(descNode('此会话的提供方没有可切换的权限模式。'));
+    return;
+  }
+  options.append(descNode('权限模式来自电脑端 daemon；切换会立即写回这个会话，失败会回滚。'));
+  const group = document.createElement('div');
+  group.className = 'group';
+  for (const mode of modeState.modes) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sheet-item mode-row';
+    button.disabled = state.modeBusy;
+    button.setAttribute('aria-pressed', String(mode.id === modeState.currentModeId));
+    const main = document.createElement('span');
+    main.className = 'sheet-item-main';
+    const title = document.createElement('span');
+    title.textContent = mode.label;
+    main.append(title);
+    if (mode.description) {
+      const hint = document.createElement('span');
+      hint.className = 'sheet-hint';
+      hint.textContent = mode.description;
+      main.append(hint);
+    }
+    button.append(main);
+    if (mode.id === modeState.currentModeId) {
+      const mark = document.createElement('span');
+      mark.className = 'mode-current';
+      mark.textContent = '当前';
+      button.append(mark);
+    }
+    button.addEventListener('click', () => {
+      changeAgentMode(mode.id);
+    });
+    group.append(button);
+  }
+  options.append(group);
+}
+
+async function changeAgentModel(modelId) {
+  const row = currentRow();
+  const agent = row?.chisacodeAgent;
+  if (!agent || state.modelBusy) return;
+  const before = typeof agent.model === 'string' && agent.model ? agent.model : null;
+  if (before === modelId) return;
+  state.modelBusy = true;
+  row.chisacodeAgent = { ...agent, model: modelId };
+  renderComposer();
+  renderSettings();
+  try {
+    await state.chisacode.client.setAgentModel(agent.id, modelId);
+    showBanner('');
+  } catch (error) {
+    // Roll back only if the daemon has not sent a newer authoritative value.
+    const current = currentRow();
+    if (current?.chisacodeAgent?.id === agent.id
+      && (current.chisacodeAgent.model ?? null) === modelId) {
+      current.chisacodeAgent = { ...current.chisacodeAgent, model: before };
+    }
+    showBanner(`切换模型失败：${error?.message || '电脑没有响应'}`);
+  } finally {
+    state.modelBusy = false;
+    renderComposer();
+    renderSettings();
+  }
+}
+
+function loadModelPane() {
+  const agent = currentRow()?.chisacodeAgent;
+  if (!agent) return;
+  const pane = { loading: true, error: '', rows: [] };
+  state.modelPane = pane;
+  listAgentModels(state.chisacode.client, agent.provider, agent.cwd)
+    .then((rows) => {
+      if (state.modelPane !== pane) return;
+      state.modelPane = { loading: false, error: '', rows };
+      renderSettings();
+    })
+    .catch((error) => {
+      if (state.modelPane !== pane) return;
+      state.modelPane = { loading: false, error: error?.message || '电脑没有响应', rows: [] };
+      renderSettings();
+    });
+}
+
+function renderModelPane() {
+  if (state.transport !== 'chisacode') {
+    options.append(descNode('当前连接不支持模型管理；请在电脑端操作。'));
+    return;
+  }
+  const agent = currentRow()?.chisacodeAgent;
+  if (!agent) {
+    options.append(descNode('先打开一个会话。模型属于具体会话，来自电脑端 daemon。'));
+    return;
+  }
+  if (!state.modelPane) loadModelPane();
+  const pane = state.modelPane;
+  const modelState = currentModelState();
+  options.append(descNode('模型清单来自电脑端提供方；切换会立即写回这个会话，失败会回滚。'));
+  options.append(hairRow('当前模型', modelState.label || '提供方默认'));
+  if (pane?.loading) {
+    options.append(descNode('正在读取可选模型…'));
+    return;
+  }
+  if (pane?.error) {
+    options.append(noticeNode(`读取模型失败：${pane.error}`));
+    options.append(ghostButton('重试', () => {
+      loadModelPane();
+      renderSettings();
+    }));
+    return;
+  }
+  const group = document.createElement('div');
+  group.className = 'group';
+  const defaultRow = document.createElement('button');
+  defaultRow.type = 'button';
+  defaultRow.className = 'sheet-item mode-row';
+  defaultRow.disabled = state.modelBusy;
+  defaultRow.setAttribute('aria-pressed', String(!modelState.modelId));
+  const defaultMain = document.createElement('span');
+  defaultMain.className = 'sheet-item-main';
+  const defaultTitle = document.createElement('span');
+  defaultTitle.textContent = '提供方默认';
+  defaultMain.append(defaultTitle);
+  defaultRow.append(defaultMain);
+  if (!modelState.modelId) {
+    const mark = document.createElement('span');
+    mark.className = 'mode-current';
+    mark.textContent = '当前';
+    defaultRow.append(mark);
+  }
+  defaultRow.addEventListener('click', () => {
+    changeAgentModel(null);
+  });
+  group.append(defaultRow);
+  for (const model of pane?.rows || []) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sheet-item mode-row';
+    button.disabled = state.modelBusy;
+    button.setAttribute('aria-pressed', String(model.id === modelState.modelId));
+    const main = document.createElement('span');
+    main.className = 'sheet-item-main';
+    const title = document.createElement('span');
+    title.textContent = model.label;
+    main.append(title);
+    const hints = [
+      model.label === model.id ? '' : model.id,
+      model.isDefault ? '提供方默认' : '',
+    ].filter(Boolean).join(' · ');
+    if (hints) {
+      const hint = document.createElement('span');
+      hint.className = 'sheet-hint';
+      hint.textContent = hints;
+      main.append(hint);
+    }
+    button.append(main);
+    if (model.id === modelState.modelId) {
+      const mark = document.createElement('span');
+      mark.className = 'mode-current';
+      mark.textContent = '当前';
+      button.append(mark);
+    }
+    button.addEventListener('click', () => {
+      changeAgentModel(model.id);
+    });
+    group.append(button);
+  }
+  options.append(group);
 }
 
 function renderSettings() {
@@ -1200,6 +3238,10 @@ function renderSettings() {
     return;
   }
   if (pane === '电脑外观') {
+    if (state.transport === 'chisacode') {
+      renderHostRequestPane('电脑外观');
+      return;
+    }
     options.append(noticeNode('图库窗口在电脑上。这里可以请电脑打开外观。'));
     options.append(paneTitleNode('背景图'));
     options.append(ghostButton('在电脑上打开图库', () => requestHost('openGallery')));
@@ -1217,13 +3259,18 @@ function renderSettings() {
         renderSettings();
       }),
     ));
-    options.append(ghostButton('在电脑上打开界面设置', () => requestHost('openSettings')));
+    const hostSettings = ghostButton(
+      state.transport === 'chisacode' ? '请在电脑端打开界面设置' : '在电脑上打开界面设置',
+      () => requestHost('openSettings'),
+    );
+    hostSettings.disabled = state.transport === 'chisacode';
+    options.append(hostSettings);
     return;
   }
   if (pane === '连接详情') {
     options.append(noticeNode('远程页上的改动只留在这次连接，不会写回电脑上的 settings.yaml。'));
     options.append(hairRow('主机', state.hostName));
-    options.append(hairRow('通道', channelLabel(origin)));
+    options.append(hairRow('通道', connectionLabel()));
     const danger = document.createElement('button');
     danger.type = 'button';
     danger.className = 'danger-btn';
@@ -1233,16 +3280,15 @@ function renderSettings() {
     return;
   }
   if (pane === '权限') {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'selector-chip';
-    chip.textContent = state.accessMode;
-    chip.addEventListener('click', () => {
-      state.accessMode = state.accessMode === '只读' ? '完全访问' : '只读';
-      renderComposer();
-      renderSettings();
-    });
-    options.append(hairRow('默认访问模式', '新会话的工具权限。完全访问仍要确认。', chip));
+    renderModePane();
+    return;
+  }
+  if (pane === '模型') {
+    renderModelPane();
+    return;
+  }
+  if ((pane === 'MCP' || pane === '技能') && state.transport === 'chisacode') {
+    renderExtensionsPane(pane === 'MCP' ? 'mcp' : 'skills');
     return;
   }
   renderHostRequestPane(pane);
@@ -1296,8 +3342,197 @@ function closeGitLayer() {
   renderDialog();
 }
 
+function newSessionStepTitle(step) {
+  if (step === 'provider') return '新会话 · 选择提供方';
+  if (step === 'mode') return '新会话 · 权限模式';
+  if (step === 'model') return '新会话 · 选择模型';
+  return '新会话 · 选择工作区';
+}
+
+function renderNewSessionSheet() {
+  const session = state.newSession;
+  const { layer, sheet } = sheetLayer(newSessionStepTitle(session.step), () => {
+    state.newSession = null;
+    renderSheet();
+  });
+  if (session.step !== 'workspace') {
+    sheet.append(sheetItem({
+      label: '‹ 返回',
+      enabled: !session.loading,
+      onClick: () => {
+        if (session.step === 'model') {
+          if (session.provider?.modes?.length) {
+            updateNewSession({ step: 'mode', modeId: '', error: '' });
+          } else {
+            updateNewSession({ step: 'provider', provider: null, modeId: '', error: '' });
+          }
+        } else if (session.step === 'mode') {
+          updateNewSession({ step: 'provider', provider: null, error: '' });
+        } else {
+          updateNewSession({ step: 'workspace', workspace: null, providers: [], error: '' });
+        }
+      },
+    }));
+  }
+  if (session.error) {
+    const error = document.createElement('p');
+    error.className = 'sheet-note sheet-error';
+    error.textContent = session.error;
+    sheet.append(error);
+  }
+  if (session.loading) {
+    const note = document.createElement('p');
+    note.className = 'sheet-note';
+    note.textContent = session.creating
+      ? '正在创建会话…'
+      : session.step === 'workspace' ? '正在读取电脑端工作区…' : '正在读取提供方…';
+    sheet.append(note);
+    sheetRoot.append(layer);
+    return;
+  }
+  if (session.step === 'workspace') {
+    for (const workspace of session.workspaces) {
+      sheet.append(sheetItem({
+        label: workspace.name,
+        hint: [workspace.project, workspace.branch, workspace.cwd].filter(Boolean).join(' · '),
+        onClick: () => chooseNewSessionWorkspace(workspace),
+      }));
+    }
+  } else if (session.step === 'provider') {
+    for (const provider of session.providers) {
+      sheet.append(sheetItem({
+        label: provider.label,
+        hint: provider.label === provider.provider ? '' : provider.provider,
+        onClick: () => chooseNewSessionProvider(provider),
+      }));
+    }
+  } else if (session.step === 'mode' && session.provider) {
+    sheet.append(sheetItem({
+      label: '使用提供方默认',
+      hint: '不指定模式，由电脑端提供方决定',
+      onClick: () => chooseNewSessionMode(session.provider, ''),
+    }));
+    for (const mode of session.provider.modes) {
+      sheet.append(sheetItem({
+        label: mode.label || mode.id,
+        hint: [
+          mode.description || '',
+          mode.id === session.provider.defaultModeId ? '默认' : '',
+        ].filter(Boolean).join(' · '),
+        onClick: () => chooseNewSessionMode(session.provider, mode.id),
+      }));
+    }
+  } else if (session.step === 'model' && session.provider) {
+    sheet.append(sheetItem({
+      label: '使用提供方默认',
+      hint: '不指定模型，由电脑端提供方决定',
+      onClick: () => submitNewSession(session.provider, session.modeId || '', ''),
+    }));
+    for (const model of session.provider.models || []) {
+      sheet.append(sheetItem({
+        label: model.label,
+        hint: [
+          model.label === model.id ? '' : model.id,
+          model.isDefault ? '提供方默认' : '',
+        ].filter(Boolean).join(' · '),
+        onClick: () => submitNewSession(session.provider, session.modeId || '', model.id),
+      }));
+    }
+  }
+  sheetRoot.append(layer);
+}
+
+function renderSessionMenuSheet() {
+  const row = sessionRowById(state.sessionMenu);
+  if (!row) {
+    state.sessionMenu = '';
+    return;
+  }
+  const { layer, sheet } = sheetLayer(sessionTitle(row), () => {
+    state.sessionMenu = '';
+    renderSheet();
+  });
+  sheet.append(
+    sheetItem({ label: '重命名', onClick: () => startSessionRename(row) }),
+    sheetItem({
+      label: '重新生成标题',
+      hint: '由电脑端根据对话内容生成',
+      onClick: () => regenerateSessionTitle(row),
+    }),
+    sheetItem({
+      label: '归档',
+      hint: '移入「已归档会话」，可取消归档',
+      onClick: () => startSessionConfirm('archive', row),
+    }),
+    sheetItem({
+      label: '删除',
+      hint: '从电脑端永久删除，不可恢复',
+      onClick: () => startSessionConfirm('delete', row),
+    }),
+  );
+  sheetRoot.append(layer);
+}
+
+function renderHistorySheet() {
+  const view = state.history;
+  const { layer, sheet } = sheetLayer('已归档会话', () => {
+    state.history = null;
+    renderSheet();
+  });
+  const note = document.createElement('p');
+  note.className = 'sheet-note';
+  note.textContent = '取消归档会让电脑端重新载入这个会话；这不会恢复正在运行的任务。';
+  sheet.append(note);
+  if (view.error) {
+    const error = document.createElement('p');
+    error.className = 'sheet-note sheet-error';
+    error.textContent = view.error;
+    sheet.append(error);
+  }
+  for (const row of view.rows) {
+    const busy = view.busyId === row.sessionId;
+    sheet.append(sheetItem({
+      label: sessionTitle(row),
+      hint: busy ? '正在取消归档…' : '点按取消归档',
+      enabled: !view.busyId && !view.loading,
+      onClick: () => unarchiveFromHistory(row),
+    }));
+  }
+  if (view.loading) {
+    const loading = document.createElement('p');
+    loading.className = 'sheet-note';
+    loading.textContent = '正在读取已归档会话…';
+    sheet.append(loading);
+  } else if (!view.rows.length && !view.error) {
+    const empty = document.createElement('p');
+    empty.className = 'sheet-note';
+    empty.textContent = '没有已归档的会话。';
+    sheet.append(empty);
+  }
+  if (view.hasMore && !view.loading) {
+    sheet.append(sheetItem({
+      label: '加载更多',
+      enabled: !view.busyId,
+      onClick: () => loadHistoryPage(false),
+    }));
+  }
+  sheetRoot.append(layer);
+}
+
 function renderSheet() {
   sheetRoot.replaceChildren();
+  if (state.newSession) {
+    renderNewSessionSheet();
+    return;
+  }
+  if (state.history) {
+    renderHistorySheet();
+    return;
+  }
+  if (state.sessionMenu) {
+    renderSessionMenuSheet();
+    if (state.sessionMenu) return;
+  }
   if (state.attachOpen) {
     const { layer, sheet } = sheetLayer('添加', () => {
       state.attachOpen = false;
@@ -1306,7 +3541,7 @@ function renderSheet() {
     sheet.append(
       sheetItem({ label: '拍照', onClick: () => { state.attachOpen = false; renderSheet(); fileCamera.click(); } }),
       sheetItem({ label: '从相册选择', onClick: () => { state.attachOpen = false; renderSheet(); fileGallery.click(); } }),
-      sheetItem({ label: '从工作区选文件', onClick: () => { state.attachOpen = false; renderSheet(); openSettings('文件'); loadFiles(); } }),
+      sheetItem({ label: '从工作区选文件', onClick: () => { state.attachOpen = false; renderSheet(); openSettings('文件'); openFilesPane(); } }),
     );
     sheetRoot.append(layer);
     return;
@@ -1337,8 +3572,7 @@ function renderSheet() {
         onClick: () => {
           if (hasOpenPr) {
             closeGitLayer();
-            showBanner('已在电脑上打开拉取请求');
-            setToast('打开拉取请求');
+            openPullRequest();
           } else {
             state.gitDialog = '';
             renderSheet();
@@ -1380,7 +3614,11 @@ function renderSheet() {
       }
       const canCreate = Boolean(query) && !state.branches.some((branch) => branch.name === query && !branch.isRemote);
       nodes.push(sheetItem({
-        label: canCreate ? `创建并检出分支「${query}」` : '创建并检出新分支…',
+        label: state.transport === 'chisacode'
+          ? '创建新分支（请在电脑端操作）'
+          : canCreate ? `创建并检出分支「${query}」` : '创建并检出新分支…',
+        hint: state.transport === 'chisacode' ? '当前协议支持切换分支，但不支持创建普通分支。' : '',
+        enabled: state.transport !== 'chisacode',
         onClick: () => {
           if (canCreate) state.newBranchName = query;
           state.gitDialog = 'create-branch';
@@ -1401,7 +3639,7 @@ function renderSheet() {
   renderDialog();
 }
 
-function dialogLayer(compact) {
+function dialogLayer(compact, onClose = closeGitLayer) {
   const layer = document.createElement('div');
   layer.className = 'dialog-layer';
   if (compact) layer.dataset.compact = '';
@@ -1409,7 +3647,7 @@ function dialogLayer(compact) {
   mask.type = 'button';
   mask.className = 'dialog-mask';
   mask.setAttribute('aria-label', '关闭');
-  mask.addEventListener('click', closeGitLayer);
+  mask.addEventListener('click', onClose);
   const dialog = document.createElement('div');
   dialog.className = 'dialog';
   layer.append(mask, dialog);
@@ -1429,8 +3667,82 @@ function dialogFoot(dialog, buttons) {
   dialog.append(foot);
 }
 
+function renderSessionRenameDialog() {
+  const rename = state.sessionRename;
+  const close = () => {
+    if (state.sessionRename?.busy) return;
+    state.sessionRename = null;
+    renderDialog();
+  };
+  const { layer, dialog } = dialogLayer(true, close);
+  dialogHead(dialog, '重命名会话', '名字写回电脑端，两边同步显示。');
+  const body = document.createElement('div');
+  body.className = 'dialog-body';
+  body.append(fieldInput(rename.value, '会话名称', (value) => {
+    rename.value = value;
+    saveBtn.disabled = rename.busy || !value.trim();
+  }));
+  if (rename.error) {
+    const error = document.createElement('p');
+    error.className = 'sheet-note sheet-error';
+    error.textContent = rename.error;
+    body.append(error);
+  }
+  dialog.append(body);
+  const saveBtn = primaryButton(rename.busy ? '正在保存…' : '保存', () => submitSessionRename());
+  saveBtn.disabled = rename.busy || !rename.value.trim();
+  const cancelBtn = ghostButton('取消', close);
+  cancelBtn.disabled = rename.busy;
+  dialogFoot(dialog, [cancelBtn, saveBtn]);
+  dialogRoot.append(layer);
+}
+
+function renderSessionConfirmDialog() {
+  const confirm = state.sessionConfirm;
+  const close = () => {
+    if (state.sessionConfirm?.busy) return;
+    state.sessionConfirm = null;
+    renderDialog();
+  };
+  const { layer, dialog } = dialogLayer(true, close);
+  const isDelete = confirm.kind === 'delete';
+  dialogHead(
+    dialog,
+    isDelete ? `删除「${confirm.title}」？` : `归档「${confirm.title}」？`,
+    isDelete
+      ? '会从电脑端永久删除这个会话，不可恢复。'
+      : '会话会移入「已归档会话」，之后可以取消归档。',
+  );
+  if (confirm.error) {
+    const error = document.createElement('p');
+    error.className = 'sheet-note sheet-error';
+    error.textContent = confirm.error;
+    dialog.append(error);
+  }
+  const cancelBtn = ghostButton('取消', close);
+  cancelBtn.disabled = confirm.busy;
+  const okBtn = document.createElement('button');
+  okBtn.type = 'button';
+  okBtn.className = isDelete ? 'danger-btn' : 'primary-btn';
+  okBtn.textContent = confirm.busy
+    ? (isDelete ? '正在删除…' : '正在归档…')
+    : (isDelete ? '删除' : '归档');
+  okBtn.disabled = confirm.busy;
+  okBtn.addEventListener('click', () => runSessionConfirm());
+  dialogFoot(dialog, [cancelBtn, okBtn]);
+  dialogRoot.append(layer);
+}
+
 function renderDialog() {
   dialogRoot.replaceChildren();
+  if (state.sessionRename) {
+    renderSessionRenameDialog();
+    return;
+  }
+  if (state.sessionConfirm) {
+    renderSessionConfirmDialog();
+    return;
+  }
   const kind = state.gitDialog;
   if (kind !== 'commit' && kind !== 'create-branch' && kind !== 'confirm') return;
   if (kind === 'commit') {
@@ -1461,12 +3773,17 @@ function renderDialog() {
       state.commitMessage = value;
     }));
     dialog.append(body);
-    dialogFoot(dialog, [
-      ghostButton('取消', closeGitLayer),
-      ghostButton('在新建分支上提交', () => {
+    const branchCommit = ghostButton(
+      state.transport === 'chisacode' ? '新建分支请在电脑端操作' : '在新建分支上提交',
+      () => {
         state.gitDialog = 'create-branch';
         renderDialog();
-      }),
+      },
+    );
+    branchCommit.disabled = state.transport === 'chisacode';
+    dialogFoot(dialog, [
+      ghostButton('取消', closeGitLayer),
+      branchCommit,
       primaryButton('提交', () => gitAction('gitCommit', { message: state.commitMessage })),
     ]);
     dialogRoot.append(layer);
@@ -1474,6 +3791,12 @@ function renderDialog() {
   }
   if (kind === 'create-branch') {
     const { layer, dialog } = dialogLayer(true);
+    if (state.transport === 'chisacode') {
+      dialogHead(dialog, '请在电脑端创建分支', '当前 ChisaCode 手机协议支持切换已有分支，但不支持创建普通分支。');
+      dialogFoot(dialog, [primaryButton('知道了', closeGitLayer)]);
+      dialogRoot.append(layer);
+      return;
+    }
     dialogHead(dialog, '创建并检出新分支', '基于当前 HEAD 创建一个新的本地分支，并在创建成功后立即切换过去。');
     const body = document.createElement('div');
     body.className = 'dialog-body';
@@ -1596,12 +3919,16 @@ el('permission-paste').addEventListener('click', () => {
   pasteInput.focus();
 });
 el('paste-enter').addEventListener('click', () => {
-  const offer = offerFromPaste(pasteInput.value);
-  if (!offer) {
+  const outcome = classifyScan(pasteInput.value, origin);
+  if (outcome.kind === 'invalid') {
     showError('链接无效');
     return;
   }
-  connect(offer).catch((error) => showError(error.message || '连接失败'));
+  if (outcome.kind === 'navigate') {
+    window.location.replace(outcome.url);
+    return;
+  }
+  connect(outcome.offerUrl).catch((error) => showError(error.message || '连接失败'));
 });
 el('menu').addEventListener('click', () => {
   phone.setAttribute('data-drawer', '');
@@ -1617,7 +3944,8 @@ el('new-session').addEventListener('click', () => {
 el('open-workspace').addEventListener('click', () => {
   openSettings('工作区');
   refreshGit();
-  loadFiles();
+  if (state.wsTab === 'files') openFilesPane();
+  else openChangesTab();
 });
 el('open-settings').addEventListener('click', () => openSettings(''));
 settingsBack.addEventListener('click', () => {
@@ -1629,7 +3957,13 @@ search.addEventListener('input', () => {
   state.query = search.value;
   renderSessions();
 });
-draft.addEventListener('input', () => renderComposer());
+draft.addEventListener('input', () => {
+  if (state.transport === 'chisacode' && state.sessionId) {
+    draftStore?.save(state.sessionId, draft.value);
+  }
+  renderComposer();
+  updateSlashPopup();
+});
 composer.addEventListener('submit', (event) => {
   event.preventDefault();
   sendPrompt().catch((error) => showBanner(error.message || '发送失败'));
@@ -1654,12 +3988,6 @@ gitPill.addEventListener('click', () => {
   openSettings('工作区');
   refreshGit();
 });
-el('approval-allow').addEventListener('click', () => {
-  answerApproval('allowed-once').catch((error) => showBanner(error.message));
-});
-el('approval-reject').addEventListener('click', () => {
-  answerApproval('rejected').catch((error) => showBanner(error.message));
-});
 
 // —— 启动 —— //
 
@@ -1668,11 +3996,8 @@ renderComposer();
 renderScreen();
 initScanButton();
 
-const bootOffer = offerFromHash(window.location.hash);
-if (bootOffer && bootOffer.protocol === 'chisacode-v2') {
-  connect(bootOffer).catch((error) => showError(error.message || '连接失败'));
-} else if (hashHasOffer(window.location.hash) && !bootOffer) {
-  showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或粘贴完整配对链接。');
+if (hasOfferFragment(window.location.hash)) {
+  connect(window.location.href).catch((error) => showError(error.message || '配对链接无效'));
 } else if (listStickyServerIds().length) {
   connectSticky().catch((error) => showError(error.message || '重连失败'));
 }

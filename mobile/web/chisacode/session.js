@@ -34,7 +34,12 @@ function clearAllSecrets() {
 
 function listStickyServerIds() {
   const all = loadSecrets();
-  return Object.keys(all).filter((id) => all[id]?.deviceSecret && all[id]?.relayEndpoint);
+  return Object.keys(all).filter((id) => (
+    all[id]?.deviceId
+    && all[id]?.deviceSecret
+    && all[id]?.daemonPublicKeyB64
+    && all[id]?.relayEndpoint
+  ));
 }
 
 function getMostRecentStickyServerId() {
@@ -42,7 +47,12 @@ function getMostRecentStickyServerId() {
   let bestId = '';
   let bestAt = -1;
   for (const [id, record] of Object.entries(all)) {
-    if (!record?.deviceSecret || !record?.relayEndpoint) {
+    if (
+      !record?.deviceId
+      || !record?.deviceSecret
+      || !record?.daemonPublicKeyB64
+      || !record?.relayEndpoint
+    ) {
       continue;
     }
     const at = Number(record.savedAt) || 0;
@@ -80,13 +90,64 @@ function buildClientRelayUrl(api, { endpoint, useTls, serverId }) {
   });
 }
 
+function hasOfferFragment(value) {
+  return /(?:^|#|&)offer=[^&]+/.test(String(value || ''));
+}
+
+function normalizeOfferUrl(value, currentUrl) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const base = new URL(currentUrl || globalThis.location?.href || 'http://localhost/');
+  if (/^offer=[A-Za-z0-9_-]+$/.test(text)) {
+    base.hash = `#${text}`;
+    return base.toString();
+  }
+  if (/^#offer=[A-Za-z0-9_-]+$/.test(text)) {
+    base.hash = text;
+    return base.toString();
+  }
+  try {
+    const parsed = new URL(text, base);
+    return /^#offer=[A-Za-z0-9_-]+$/.test(parsed.hash) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function agentRows(payload) {
+  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+  return entries.flatMap((entry) => {
+    const agent = entry?.agent || entry;
+    if (!agent || typeof agent.id !== 'string' || !agent.id) {
+      return [];
+    }
+    return [{
+      sessionId: agent.id,
+      title: typeof agent.title === 'string' ? agent.title : '',
+      projections: {
+        values: {
+          title: typeof agent.title === 'string' ? agent.title : '',
+        },
+      },
+      running: agent.status === 'running' || agent.status === 'initializing',
+      cwd: typeof agent.cwd === 'string' ? agent.cwd : '',
+      chisacodeAgent: agent,
+    }];
+  });
+}
+
 /**
  * @param {typeof import('./daemon-client.bundle.js')} api
  * @param {string} offerUrl
  * @returns {Promise<{ client: import('@chisacode/client').DaemonClient, offer: object, serverId: string }>}
  */
 export async function pairFromOfferUrl(api, offerUrl) {
-  const offer = api.parseConnectionOfferFromUrl(offerUrl);
+  let offer;
+  try {
+    offer = api.parseConnectionOfferFromUrl(offerUrl);
+  } catch {
+    throw new Error('无效的配对链接（需要 ChisaCode offer v2）');
+  }
   if (!offer || !offer.serverId) {
     throw new Error('无效的配对链接（需要 ChisaCode offer v2）');
   }
@@ -102,19 +163,21 @@ export async function pairFromOfferUrl(api, offerUrl) {
   const useTls = offer.relay?.useTls === true;
 
   let relayDeviceAuth;
-  if (stored?.deviceSecret) {
-    relayDeviceAuth = {
-      version: 1,
-      serverId: offer.serverId,
-      deviceId: stored.deviceId,
-      deviceSecret: stored.deviceSecret,
-    };
-  } else if (pairingToken) {
+  // A freshly scanned offer must use its one-time token. This lets a desktop
+  // revocation recover even when the phone still has the now-invalid secret.
+  if (pairingToken) {
     relayDeviceAuth = {
       version: 1,
       serverId: offer.serverId,
       deviceId,
       pairingToken,
+    };
+  } else if (stored?.deviceId && stored?.deviceSecret) {
+    relayDeviceAuth = {
+      version: 1,
+      serverId: offer.serverId,
+      deviceId: stored.deviceId,
+      deviceSecret: stored.deviceSecret,
     };
   } else {
     throw new Error('需要扫码配对或已保存的设备密钥');
@@ -161,7 +224,12 @@ export async function pairFromOfferUrl(api, offerUrl) {
  */
 export async function reconnectSticky(api, serverId) {
   const stored = loadSecrets()[serverId];
-  if (!stored?.deviceSecret || !stored.relayEndpoint) {
+  if (
+    !stored?.deviceId
+    || !stored?.deviceSecret
+    || !stored.daemonPublicKeyB64
+    || !stored.relayEndpoint
+  ) {
     throw new Error('没有已保存的配对；请重新扫码');
   }
   const useTls = stored.useTls === true;
@@ -198,4 +266,7 @@ export {
   listStickyServerIds,
   getMostRecentStickyServerId,
   buildClientRelayUrl,
+  hasOfferFragment,
+  normalizeOfferUrl,
+  agentRows,
 };

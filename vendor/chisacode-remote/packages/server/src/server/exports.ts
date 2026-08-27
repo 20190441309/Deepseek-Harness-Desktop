@@ -17,6 +17,10 @@ export {
 export { hashDaemonPassword, isBearerTokenValid } from "./auth.js";
 export { generateLocalPairingOffer, type LocalPairingOffer } from "./pairing-offer.js";
 export {
+  RelayDeviceCredentialStore,
+  type RelayDeviceRecord,
+} from "./relay-device-credential-store.js";
+export {
   ConnectionOfferSchema,
   decodeOfferFragmentPayload,
   parseConnectionOfferFromUrl,
