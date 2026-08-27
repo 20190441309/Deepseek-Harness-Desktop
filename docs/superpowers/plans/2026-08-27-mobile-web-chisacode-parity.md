@@ -1,7 +1,9 @@
 # Mobile/Web ChisaCode parity plan
 
-Date: 2026-08-27  
-Feature: `mobile-remote`  
+Date: 2026-08-27
+
+Feature: `mobile-remote`
+
 Base: `cursor/android-chisacode-parity-ed5c`
 
 ## Goal
