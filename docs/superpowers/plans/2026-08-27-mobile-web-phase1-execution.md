@@ -122,7 +122,7 @@ Phase 2（Files 下钻 / Diff / MCP / Skills）、终端、Browser surface、mar
 
 ## 文件 touch list
 
-- 新增：`mobile/web/chisacode/{directory,timeline,approvals,commands}.js` + 各自 `.test.js`；`mobile/web/conversation/markdown.js` + `.test.js`；`mobile/web/qa/{fake-daemon-bundle.mjs,serve.mjs,run-phase1-qa.mjs,README.md}`
+- 新增：`mobile/web/chisacode/{directory,timeline,approvals,commands}.js` + 各自 `.test.js`；`mobile/web/conversation/markdown.js` + `.test.js`；`tools/mobile-web-qa/{fake-daemon-client.mjs,server.mjs,run-qa.mjs}`
 - 修改：`mobile/web/chisacode/{parity,controller}.js` + tests、`mobile/web/conversation/fold.js` + test、`mobile/web/{app.js,index.html,app.css}`
 - 文档：`docs/features/mobile-remote.md`、`docs/handbook/flows/remote-pair.md`（如涉及）、`docs/qa/results/2026-08-27/mobile-web-phase1.md`、本计划
 
