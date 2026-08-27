@@ -20,9 +20,10 @@
 - 目录 / 安装：`marketplace-catalog.js`、`marketplace-install.js`、`marketplace-spec.js`、`marketplace-allowbuilds.js`。
   目录拉取流式封顶 8 MiB（`MAX_REGISTRY_BYTES`），超限走缓存 / 内置离线快照回退
   （`marketplace-registry-snapshot.json`：随包携带的极小精选子集，仅保证断网首启
-  有目录可浏览；完整镜像用 `npm run refresh:marketplace-snapshot` 按需刷新）
-  分区不空白，不是完整目录镜像）。退役判定按家族 basename 匹配
-  （`isDroppedPluginName`），换 scope / owner 的再发布不漏网。
+  分区不空白，不是完整目录镜像；发版前用 `npm run refresh:marketplace-snapshot`
+  从在线目录刷新精选子集，脚本会先按家族剔除退役行）。退役判定按家族 basename 匹配
+  （`isDroppedPluginName`），换 scope / owner 的再发布不漏网；随包快照不携带退役行
+  （回归测试把关）。
   发现页分页渲染（每页 60 张卡 + 加载更多），搜索 / 分类变化回第一页。
 - 与上游分离：`dshmarket` 在 `DROPPED`（不挂载、目录隐藏、拒绝安装）；
   `dshmarket-preset.js` 只剩 `removeDshMarketPreset` 清理旧预置残留；
