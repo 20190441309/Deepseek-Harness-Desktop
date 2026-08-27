@@ -956,6 +956,71 @@ async function main() {
     assert(writes.length === 0, `write RPCs were called: ${writes.join(', ')}`);
   });
 
+  // —— Phase 3：多台已保存电脑 chooser（纯本地状态，放最后：要断开当前设备）—— //
+  await check('已保存电脑：断开后连接页列出其它电脑（最近优先）', async () => {
+    await page.evaluate(() => {
+      const key = 'dsh-chisacode-device-secrets';
+      const all = JSON.parse(localStorage.getItem(key) || '{}');
+      all['qa-second'] = {
+        deviceId: 'dev_qa2', deviceSecret: 'secret_qa2',
+        daemonPublicKeyB64: 'pk2', relayEndpoint: '10.0.0.2:8411',
+        savedAt: Date.now() - 86400000,
+      };
+      all['qa-third'] = {
+        deviceId: 'dev_qa3', deviceSecret: 'secret_qa3',
+        daemonPublicKeyB64: 'pk3', relayEndpoint: '10.0.0.3:8411',
+        savedAt: Date.now() - 1000,
+      };
+      localStorage.setItem(key, JSON.stringify(all));
+    });
+    await page.evaluate(() => document.querySelector('#settings-back').click());
+    await clickByText(page, '#options .link-row', '连接详情');
+    await clickByText(page, '#options button', '断开这台设备');
+    await waitFor(page, () => !document.querySelector('#screen-connect').classList.contains('hidden'), 'back on connect screen');
+    const view = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('#saved-computers .saved-open')].map((row) => row.textContent),
+      secrets: Object.keys(JSON.parse(localStorage.getItem('dsh-chisacode-device-secrets') || '{}')),
+    }));
+    // Disconnecting cleared the current pairing (qa-server); the others stay.
+    assert(!view.secrets.includes('qa-server'), 'disconnect must clear the active secret');
+    assert(view.rows.length === 2, `saved rows: ${JSON.stringify(view.rows)}`);
+    assert(view.rows[0].includes('qa-third') && view.rows[0].includes('10.0.0.3:8411'), `newest first: ${view.rows[0]}`);
+    assert(view.rows[1].includes('qa-second'), `second row: ${view.rows[1]}`);
+  });
+  await shot('mobile-web-phase3-saved-computers');
+
+  await check('已保存电脑：忘记移除该台且不再列出', async () => {
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#saved-computers .saved-row')]
+        .find((node) => node.textContent.includes('qa-third'));
+      row.querySelector('.saved-forget').click();
+    });
+    await waitFor(
+      page,
+      () => document.querySelectorAll('#saved-computers .saved-row').length === 1,
+      'row removed after forget',
+    );
+    const secrets = await page.evaluate(
+      () => Object.keys(JSON.parse(localStorage.getItem('dsh-chisacode-device-secrets') || '{}')),
+    );
+    assert(!secrets.includes('qa-third'), 'forget must clear the stored secret');
+  });
+
+  await check('已保存电脑：点选后 sticky 重连进入 chat', async () => {
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#saved-computers .saved-row')]
+        .find((node) => node.textContent.includes('qa-second'));
+      row.querySelector('.saved-open').click();
+    });
+    await waitFor(page, () => !document.querySelector('#screen-chat').classList.contains('hidden'), 'chat visible again');
+    const device = await page.evaluate(() => document.querySelector('#device-line').textContent);
+    assert(device.includes('已重连 qa-second'), `device line: ${device}`);
+    await waitFor(page, () => {
+      const calls = window.__qa.calls.filter((call) => call.method === 'fetchAgents');
+      return calls.length > 0;
+    }, 'agents refetched after saved-computer reconnect');
+  });
+
   await check('控制台：0 应用错误', async () => {
     assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join(' | ')}`);
   });

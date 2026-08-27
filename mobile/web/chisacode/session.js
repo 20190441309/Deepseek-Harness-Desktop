@@ -42,6 +42,28 @@ function listStickyServerIds() {
   ));
 }
 
+/**
+ * Rows for the connect screen "已保存的电脑" chooser: complete sticky records
+ * only, most recently saved first. Pure local state — no daemon RPC.
+ * @param {Record<string, object>} secrets loadSecrets() shape
+ * @returns {Array<{ serverId: string, relayEndpoint: string, savedAt: number }>}
+ */
+function savedComputerRows(secrets) {
+  return Object.entries(secrets || {})
+    .filter(([, record]) => (
+      record?.deviceId
+      && record?.deviceSecret
+      && record?.daemonPublicKeyB64
+      && record?.relayEndpoint
+    ))
+    .map(([serverId, record]) => ({
+      serverId,
+      relayEndpoint: String(record.relayEndpoint),
+      savedAt: Number(record.savedAt) || 0,
+    }))
+    .sort((a, b) => b.savedAt - a.savedAt);
+}
+
 function getMostRecentStickyServerId() {
   const all = loadSecrets();
   let bestId = '';
@@ -265,6 +287,7 @@ export {
   saveSecret,
   listStickyServerIds,
   getMostRecentStickyServerId,
+  savedComputerRows,
   buildClientRelayUrl,
   hasOfferFragment,
   normalizeOfferUrl,

@@ -24,8 +24,10 @@ import {
   getMostRecentStickyServerId,
   hasOfferFragment,
   listStickyServerIds,
+  loadSecrets,
   pairFromOfferUrl,
   reconnectSticky,
+  savedComputerRows,
 } from './chisacode/session.js';
 import {
   agentModelState,
@@ -110,6 +112,7 @@ const screenScan = el('screen-scan');
 const screenPermission = el('screen-permission');
 const screenChat = el('screen-chat');
 const connectError = el('connect-error');
+const savedComputersEl = el('saved-computers');
 const deviceLine = el('device-line');
 const pasteInput = el('paste');
 const scanOpen = el('scan-open');
@@ -265,6 +268,67 @@ function showError(message) {
   connectError.classList.toggle('hidden', !message);
 }
 
+// —— 已保存的电脑（多台 sticky 选择，纯本地状态） —— //
+
+let connectBusy = false;
+
+async function connectSaved(serverId) {
+  if (connectBusy) return;
+  connectBusy = true;
+  renderSavedComputers();
+  showError('');
+  try {
+    const api = await loadChisaCodeApi();
+    await finishChisaCodeConnect(await reconnectSticky(api, serverId), true);
+  } catch (error) {
+    showError(error?.message || '重连失败');
+  } finally {
+    connectBusy = false;
+    renderSavedComputers();
+  }
+}
+
+function renderSavedComputers() {
+  const rows = savedComputerRows(loadSecrets());
+  savedComputersEl.classList.toggle('hidden', rows.length === 0);
+  savedComputersEl.replaceChildren();
+  if (!rows.length) return;
+  const heading = document.createElement('p');
+  heading.className = 'saved-title';
+  heading.textContent = '已保存的电脑';
+  savedComputersEl.append(heading);
+  for (const entry of rows) {
+    const row = document.createElement('div');
+    row.className = 'saved-row';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'saved-open';
+    open.disabled = connectBusy;
+    const name = document.createElement('b');
+    name.textContent = entry.serverId;
+    const desc = document.createElement('span');
+    desc.className = 'saved-desc';
+    desc.textContent = [
+      entry.relayEndpoint,
+      entry.savedAt ? new Date(entry.savedAt).toLocaleDateString('zh-CN') : '',
+    ].filter(Boolean).join(' · ');
+    open.append(name, desc);
+    open.addEventListener('click', () => { void connectSaved(entry.serverId); });
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'saved-forget';
+    forget.textContent = '忘记';
+    forget.disabled = connectBusy;
+    forget.setAttribute('aria-label', `忘记 ${entry.serverId}`);
+    forget.addEventListener('click', () => {
+      clearSecret(entry.serverId);
+      renderSavedComputers();
+    });
+    row.append(open, forget);
+    savedComputersEl.append(row);
+  }
+}
+
 function showBanner(message) {
   state.banner = message || '';
   bannerEl.textContent = state.banner;
@@ -307,6 +371,7 @@ function openPullRequest() {
 
 function renderScreen() {
   const name = visibleScreen(state);
+  if (name === 'connect') renderSavedComputers();
   screenConnect.classList.toggle('hidden', name !== 'connect');
   screenScan.classList.toggle('hidden', name !== 'scan');
   screenPermission.classList.toggle('hidden', name !== 'permission');
@@ -4072,5 +4137,14 @@ initScanButton();
 if (hasOfferFragment(window.location.hash)) {
   connect(window.location.href).catch((error) => showError(error.message || '配对链接无效'));
 } else if (listStickyServerIds().length) {
-  connectSticky().catch((error) => showError(error.message || '重连失败'));
+  // Auto-reconnect targets the most recent computer; the connect screen's
+  // saved-computer rows stay disabled until this attempt settles.
+  connectBusy = true;
+  renderSavedComputers();
+  connectSticky()
+    .catch((error) => showError(error.message || '重连失败'))
+    .finally(() => {
+      connectBusy = false;
+      if (state.route === 'connect') renderSavedComputers();
+    });
 }
