@@ -421,9 +421,10 @@ function renderSessions() {
   const rows = state.sessions.filter((row) => !row.chisacodeAgent?.archivedAt);
   const nodes = [];
   if (query) {
-    // Search stays a flat title filter over loaded rows.
+    // Search stays a flat title filter over loaded rows; subagents keep
+    // their tag so read-only rows are recognizable outside the grouped view.
     for (const row of rows.filter((item) => sessionTitle(item).includes(query))) {
-      nodes.push(sessionRowNode(row));
+      nodes.push(sessionRowNode(row, { subagentTag: isReadOnlyRow(row) }));
     }
   } else {
     for (const group of groupSessionRows(rows)) {
@@ -747,9 +748,9 @@ function renderApproval() {
   readonlyNote.classList.toggle('hidden', !readOnly);
   composer.classList.toggle('hidden', Boolean(pending) || Boolean(readOnly));
   approval.classList.toggle('hidden', !pending);
-  if (readOnly || !pending) {
-    renderSlashPop();
-  }
+  // Always re-render the slash popup: it must hide itself when an approval
+  // arrives mid-typing and may return once the approval resolves.
+  renderSlashPop();
   if (!pending) return;
   approvalTitle.textContent = pending.title || '需要审批';
   approvalCommand.textContent = pending.command || '';
