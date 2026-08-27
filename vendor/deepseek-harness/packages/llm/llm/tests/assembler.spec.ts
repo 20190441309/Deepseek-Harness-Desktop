@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { BlockAssembler, CallId, MALFORMED_RESPONSE_CODE, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, CallId, HarnessError, MALFORMED_RESPONSE_CODE, type StreamChunk } from '@deepseek-ai/dsh-llm'
 
 function expectMalformed(action: () => unknown, message: string): void {
   try {
     action()
   } catch (error: unknown) {
-    expect(error).toMatchObject({
-      code: MALFORMED_RESPONSE_CODE,
-      message: expect.stringContaining(message),
-    })
+    expect(error).toBeInstanceOf(HarnessError)
+    if (!(error instanceof HarnessError)) throw error
+    expect(error.code).toBe(MALFORMED_RESPONSE_CODE)
+    expect(error.message).toContain(message)
     return
   }
   expect.fail('expected malformed response error')
