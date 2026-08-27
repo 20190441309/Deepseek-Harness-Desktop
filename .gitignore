@@ -48,6 +48,8 @@ gui-test-screenshots/
 !.cursor/rules/
 .cursor/rules/*
 !.cursor/rules/*.mdc
+!.cursor/environment.json
+!.cursor/install.sh
 .tmp/
 docs/qa/results/**/*.orig
 docs/qa/results/**/ci-installer/*.exe

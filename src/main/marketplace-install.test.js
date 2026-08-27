@@ -124,6 +124,18 @@ function githubRow(owner, name, url, installToken) {
   };
 }
 
+// The shipped snapshot row for status-rotator became npm-published in the
+// 2026-08-27 refresh; github-channel tests pin the github-only shape here so
+// snapshot refreshes cannot flip their resolved spec.
+function writeGithubOnlyStatusRotatorRegistry() {
+  writeDiskRegistry([githubRow(
+    '01Virex',
+    'dsh-status-rotator',
+    'https://github.com/01Virex/dsh-status-rotator',
+    GITHUB_SPEC,
+  )]);
+}
+
 function recordRunner(onAdd) {
   const calls = [];
   return {
@@ -379,6 +391,7 @@ test('installMarketplacePlugin rolls back a dependency when no loadable entry is
 });
 
 test('installMarketplacePlugin installs github:owner/repo through the plugin runner', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   const { calls, runPlugin } = recordRunner(() => {
     writeProfileDep('@virex/dsh-status-rotator', 'git+https://github.com/01Virex/dsh-status-rotator.git');
     writeClientPlugin('@virex/dsh-status-rotator');
@@ -472,6 +485,7 @@ test('installMarketplacePlugin removes a package with no loadable dsh entry', as
 });
 
 test('installMarketplacePlugin removes a github package with no loadable dsh entry', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   const { calls, runPlugin } = recordRunner(() => {
     writeProfileDep('@virex/dsh-status-rotator', 'git+https://github.com/01Virex/dsh-status-rotator.git');
     writeBarePlugin('@virex/dsh-status-rotator');
@@ -541,6 +555,7 @@ test('installMarketplacePlugin rejects a #path: spec that contains a colon', asy
 });
 
 test('installMarketplacePlugin removes a github package that landed only in node_modules', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   const { calls, runPlugin } = recordRunner(() => {
     writeBarePlugin('@virex/dsh-status-rotator');
   });
@@ -551,6 +566,7 @@ test('installMarketplacePlugin removes a github package that landed only in node
 });
 
 test('installMarketplacePlugin removes a github package already in the profile when it is not loadable', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   writeProfileDep('@virex/dsh-status-rotator', GITHUB_SPEC);
   writeBarePlugin('@virex/dsh-status-rotator');
   const { calls, runPlugin } = recordRunner();
@@ -595,6 +611,7 @@ test('parseAllowBuilds reads ndjson-escaped prepare-not-allowed package names', 
 });
 
 test('installMarketplacePlugin leaves a floating github ref when no token is stored', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   const previous = globalThis.fetch;
   globalThis.fetch = async (url) => {
     if (String(url).includes('api.github.com')) {
@@ -617,6 +634,7 @@ test('installMarketplacePlugin leaves a floating github ref when no token is sto
 });
 
 test('installMarketplacePlugin pins a SHA when a GitHub token is stored', async () => {
+  writeGithubOnlyStatusRotatorRegistry();
   const previous = globalThis.fetch;
   globalThis.fetch = async (url) => {
     if (String(url).includes('api.github.com')) {
