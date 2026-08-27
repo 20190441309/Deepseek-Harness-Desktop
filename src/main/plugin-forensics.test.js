@@ -41,7 +41,7 @@ test('generic crashes are not blamed on a plugin', () => {
   assert.equal(inspected.plugins[0].suspect, false);
 });
 
-test('inspectPlugins flags suspects and presets without deleting the latter', () => {
+test('inspectPlugins flags suspects and in-box built-ins without preset toggles', () => {
   const inspected = inspectPlugins({
     logs: 'cannot resolve profile bundle "evil-pack"',
     plugins: [
@@ -51,13 +51,12 @@ test('inspectPlugins flags suspects and presets without deleting the latter', ()
     bundles: ['dsh-usage-panel', 'evil-pack'],
     disabledPlugins: ['evil-pack'],
   });
-  assert.equal(inspected.plugins.find((row) => row.name === 'dsh-usage-panel').preset, true);
+  assert.equal(inspected.plugins.find((row) => row.name === 'dsh-usage-panel').inBox, true);
+  assert.equal(inspected.plugins.find((row) => row.name === 'dsh-usage-panel').preset, false);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').suspect, true);
   assert.equal(inspected.plugins.find((row) => row.name === 'evil-pack').disabled, true);
-  assert.equal(isPresetPlugin('dsh-usage-panel'), true);
-  // dshbot is a standalone user plugin now, so forensics may suspect/disable it.
+  assert.equal(isPresetPlugin('dsh-usage-panel'), false);
   assert.equal(isPresetPlugin('dshbot'), false);
-  // The marketplace is desktop-owned code, not a mounted preset plugin.
   assert.equal(isPresetPlugin('dshmarket'), false);
   assert.equal(isPresetPlugin('evil-pack'), false);
 });
@@ -100,17 +99,16 @@ test('in-box fork package suspects are flagged as desktop runtime damage', () =>
   assert.equal(row.orphan, true);
 });
 
-test('a profile plugin shadowing an in-box name stays a disableable suspect', () => {
+test('a profile plugin shadowing an in-box name is flagged in-box on the row', () => {
   const inspected = inspectPlugins({
     logs: "Cannot find package '@deepseek-ai/dsh-client-ui-settings-market'",
     plugins: [{ name: '@deepseek-ai/dsh-client-ui-settings-market', spec: '1.0.0' }],
     bundles: [],
   });
   assert.equal(inspected.desktopRuntimeDamage, false);
-  assert.equal(inspected.summary.desktopRuntimeDamage, false);
   assert.equal(inspected.orphanSuspects.length, 0);
   assert.equal(inspected.plugins[0].suspect, true);
-  assert.equal(inspected.plugins[0].inBox, undefined);
+  assert.equal(inspected.plugins[0].inBox, true);
 });
 
 test('non in-box orphans do not raise the runtime damage flag', () => {

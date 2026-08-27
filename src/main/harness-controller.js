@@ -425,18 +425,12 @@ class HarnessController extends EventEmitter {
     }
     const desktopInstall = this.ensureDesktopInstallPlugin();
     if (desktopInstall && desktopInstall.ok === false) {
-      throw new Error(`桌面安装插件写入失败：${desktopInstall.reason || 'unknown'}`);
+      throw new Error(`桌面内置组件迁移失败：${desktopInstall.reason || 'unknown'}`);
     }
-    // Desktop-owned rows ride --patch overlays on EVERY start; the profile's
-    // cordis.patch.yml is purely user-owned (ensure only strips legacy
-    // managed blocks). Never pass that file to --patch: overlays still apply
-    // under --skip-user-plugins, so it would re-mount every user row the
-    // skip exists to bypass. The install overlay is required on all starts;
-    // the usage overlay joins below on full starts only.
+    // Built-ins (install tool, usage stats, dsh-im) compose through
+    // @deepseek-ai/dsh-web-app — no --patch overlays. migrateLegacy* only
+    // strips stale managed blocks / overlay files from earlier desktop versions.
     const patchFiles = [];
-    if (desktopInstall?.overlayFile) {
-      patchFiles.push(desktopInstall.overlayFile);
-    }
     // The marketplace is desktop-owned (settings section `market` +
     // main-process curated engine); every start only clears legacy
     // dshmarket preset residue, log-only on failure.
@@ -456,35 +450,26 @@ class HarnessController extends EventEmitter {
         const usage = await this.ensureUsagePanelPlugin();
         this.assertOperationCurrent(generation);
         if (usage && usage.ok === false) {
-          this.dsh.log(`预置用量统计失败：${usage.error || 'unknown'}`, 'app');
-        } else if (usage?.overlayFile) {
-          patchFiles.push(usage.overlayFile);
+          this.dsh.log(`内置用量统计迁移失败：${usage.error || 'unknown'}`, 'app');
         }
       } catch (error) {
-        this.dsh.log(`预置用量统计失败：${errorMessage(error)}`, 'app');
+        this.dsh.log(`内置用量统计迁移失败：${errorMessage(error)}`, 'app');
       }
-    } else {
-      this.dsh.log('跳过用户插件：不预置用量统计插件', 'app');
     }
-    // dsh-im is first-party Settings → Remote → Channels — not an optional
-    // user plugin. Wire it on every start (including skipUserPlugins recovery)
-    // unless the user explicitly disabled it; missing vendor deps fail start.
+    // dsh-im is first-party Settings → Remote → Channels — composes through
+    // @deepseek-ai/dsh-web-app on every start (including skipUserPlugins).
     try {
       const im = await this.ensureDshImPlugin();
       this.assertOperationCurrent(generation);
-      if (im && im.disabled) {
-        this.dsh.log('已按禁用名单跳过桌面内置 dsh-im（消息渠道）', 'app');
-      } else if (im && im.ok === false) {
-        throw new Error(`桌面内置 dsh-im 失败：${im.error || 'unknown'}`);
-      } else if (im && im.ok) {
-        this.dsh.log(im.added ? '已接入桌面内置 dsh-im（消息渠道）' : '桌面内置 dsh-im 已就绪', 'app');
+      if (im && im.ok === false) {
+        throw new Error(`桌面内置 dsh-im 迁移失败：${im.error || 'unknown'}`);
       }
     } catch (error) {
       if (isCancellation(error)) throw error;
-      if (error instanceof Error && error.message.startsWith('桌面内置 dsh-im 失败：')) {
+      if (error instanceof Error && error.message.startsWith('桌面内置 dsh-im 迁移失败：')) {
         throw error;
       }
-      throw new Error(`桌面内置 dsh-im 失败：${errorMessage(error)}`);
+      throw new Error(`桌面内置 dsh-im 迁移失败：${errorMessage(error)}`);
     }
     // dshbot is a standalone plugin: never force-ensured, never blocks start.
     // Default starts only clean legacy desktop-preset residue (user installs

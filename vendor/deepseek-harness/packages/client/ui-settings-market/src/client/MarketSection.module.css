@@ -194,6 +194,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
 .empty {
   margin: 0;
   border: 1px dashed var(--dsw-alias-border-l2);

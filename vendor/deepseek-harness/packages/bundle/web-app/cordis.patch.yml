@@ -240,6 +240,18 @@
     - id: ui-settings-remote
       name: '@deepseek-ai/dsh-client-ui-settings-remote'
 
+    # Desktop built-in: Settings → Remote → Channels (first-party IM).
+    - id: xmanrui-dsh-im
+      name: '@xmanrui/dsh-im'
+
+    # Desktop built-in: Settings → Usage stats (Token KPI / heatmap).
+    - id: usage-stats
+      name: 'dsh-usage-panel'
+
+    # Desktop built-in: model tool install_dsh_plugin (curated market is primary).
+    - id: dshd-desktop-plugin-install
+      name: '@deepseek-ai/dsh-desktop-install'
+
     # Desktop-owned marketplace section (settings.section id `market`);
     # registers only when the desktop preload exposes the curated engine.
     - id: ui-settings-market

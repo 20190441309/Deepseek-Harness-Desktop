@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `remote-settings` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 审查修复：config endpoint 语义；SPA RPC 门闩；Android 旧凭据清除；`relayConnected` 门禁。 |
+| **last verified** | 2026-08-27 — dsh-im 内置化：`@xmanrui/dsh-im` 编入 web-app bundle；full+skip 均存在；Recovery / disable 不可关。 |
 
 ## User paths
 
@@ -20,7 +20,7 @@
 - 侧栏 QR 仅客户端 `qrSvg(pairingUrl)`（`includeQr: false`）。
 - 外出中继禁止 `chisacode.sh` / 上游 `account_id`。AGPL：`AGPL-SHIPPING.md`。内置 `125…:8411` 可作为 **传输默认**，不可作 SPA。
 - 粘性：`deviceSecret` 直至用户解除配对；刷新 QR 只换短期 pairing token。
-- dsh-im 一等公民：`--patch` 叠加（full+skip）；禁插件 / Recovery 不可关。
+- dsh-im 一等公民：`@deepseek-ai/dsh-web-app` bundle 行（full+skip）；禁插件 / Recovery 不可关；市场拒绝重复安装。
 - 渠道主操作 36px（飞书扫码无 `size=small`）。
 
 ## Allowed touch

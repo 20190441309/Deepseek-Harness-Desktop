@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
 const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
+const { DESKTOP_BUILTIN_VENDOR_PACKAGES } = require('../src/shared/desktop-builtin-packages');
+const { linkDesktopBuiltinPackages } = require('./link-desktop-builtin-packages');
+const { syncDesktopInstallPackage } = require('./sync-desktop-install-package');
 const { runSkipComposeContract } = require('./check-skip-compose-contract');
 const {
   ensureGhosttyAssetsInHarness,
@@ -826,6 +829,14 @@ module.exports = async function afterPack(context) {
     path.join(resources, 'vendor', 'harness-upstream.json'),
     `${JSON.stringify(pin, null, 2)}\n`,
   );
+  syncDesktopInstallPackage();
+  linkDesktopBuiltinPackages(harnessDest, projectDir, { copy: true });
+  for (const pkg of DESKTOP_BUILTIN_VENDOR_PACKAGES) {
+    const dir = path.join(harnessDest, 'node_modules', ...pkg.name.split('/'));
+    if (!fs.existsSync(path.join(dir, 'package.json'))) {
+      throw new Error(`安装包缺少桌面内置包 ${pkg.name}`);
+    }
+  }
   assertHarnessRuntime(harnessDest, pin);
   // Skip compose contract against the REAL packaged CLI: unit tests mock
   // dsh.start, so this dist-path gate is the only automated place where the

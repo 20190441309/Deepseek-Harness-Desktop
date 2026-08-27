@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { DROPPED } = require('./plugins');
+const { DROPPED_CATALOG_IDS } = require('../shared/desktop-builtin-packages');
 const { isValidPackageName } = require('../host/install-dsh-plugin-client');
 const { isAllowedMarketplaceSpec } = require('./marketplace-spec');
 
@@ -9,6 +10,8 @@ const DEFAULT_REGISTRY_URL = 'https://awesome-dsh-plugin.com/plugins.json';
 const CACHE_VERSION = 3;
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 4000;
+const MAX_REGISTRY_BYTES = 2 * 1024 * 1024;
+const MAX_REGISTRY_PLUGINS = 5000;
 const USER_AGENT = 'Deepseek-Harness-Desktop';
 const SNAPSHOT_PATH = path.join(__dirname, 'marketplace-registry-snapshot.json');
 const WARNING_FRESH_CACHE = '正在使用一小时内的本地插件目录。';
@@ -171,6 +174,7 @@ function mapPlugin(plugin, locale) {
   }
   const npm = typeof plugin.npm === 'string' && plugin.npm ? plugin.npm : null;
   const deprecated = plugin.deprecated === true;
+  const installSpec = resolveInstallSpec(plugin);
   return {
     id: `${owner}/${name}`,
     owner,
@@ -179,7 +183,8 @@ function mapPlugin(plugin, locale) {
     stars: starCount(plugin.stars),
     packageName: npm || '',
     homepage: plugin.url || '',
-    installSpec: resolveInstallSpec(plugin),
+    installSpec,
+    installable: Boolean(installSpec) && !deprecated,
     isBundle: !deprecated,
     category: plugin.category || '',
     added: plugin.added,
@@ -191,7 +196,9 @@ function mapPlugin(plugin, locale) {
 }
 
 function isDropped(item) {
-  return DROPPED.includes(item.id) || DROPPED.includes(item.packageName);
+  return DROPPED.includes(item.id)
+    || DROPPED.includes(item.packageName)
+    || DROPPED_CATALOG_IDS.has(item.id);
 }
 
 function buildCategories(registry, items, locale) {
@@ -301,6 +308,9 @@ async function fetchRegistry() {
       signal: controller.signal,
     });
     const text = await response.text();
+    if (Buffer.byteLength(text, 'utf8') > MAX_REGISTRY_BYTES) {
+      throw new Error('插件目录响应过大');
+    }
     if (!response.ok) {
       throw new Error(`插件目录请求失败（${response.status}）`);
     }
@@ -312,6 +322,9 @@ async function fetchRegistry() {
     }
     if (!isValidRegistry(body)) {
       throw new Error('插件目录为空');
+    }
+    if (body.plugins.length > MAX_REGISTRY_PLUGINS) {
+      throw new Error('插件目录条目过多');
     }
     return body;
   } finally {

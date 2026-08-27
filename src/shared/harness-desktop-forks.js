@@ -23,6 +23,7 @@ const DESKTOP_PACKAGES = [
   { dir: 'packages/mcp/mcp-servers-file', name: '@deepseek-ai/dsh-mcp-servers-file' },
   { dir: 'packages/client/ui-directory-picker-browse', name: '@deepseek-ai/dsh-client-ui-directory-picker-browse' },
   { dir: 'packages/host/directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' },
+  { dir: 'packages/host/desktop-install', name: '@deepseek-ai/dsh-desktop-install' },
 ];
 
 const COMPOSITION_ROWS = [
@@ -45,6 +46,9 @@ const COMPOSITION_ROWS = [
   { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'ui-settings-skills', name: '@deepseek-ai/dsh-client-ui-settings-skills' },
   { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'ui-message-edit', name: '@deepseek-ai/dsh-client-ui-message-edit' },
   { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'ui-directory-picker-browse', name: '@deepseek-ai/dsh-client-ui-directory-picker-browse' },
+  { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'dshd-desktop-plugin-install', name: '@deepseek-ai/dsh-desktop-install' },
+  { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'xmanrui-dsh-im', name: '@xmanrui/dsh-im' },
+  { file: 'packages/bundle/web-app/cordis.patch.yml', id: 'usage-stats', name: 'dsh-usage-panel' },
 ];
 
 const LAYOUT_MARKERS = ['surfaces', 'shell.titlebar.trailing', 'shell.terminalDrawer'];

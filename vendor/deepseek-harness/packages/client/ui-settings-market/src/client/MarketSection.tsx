@@ -54,6 +54,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null
 type AllowBuildsAsk = { item: MarketItem; keys: string[] } | null
 
 const PROGRESS_LINES = 6
+const DISCOVER_PAGE_SIZE = 48
 
 /** The installed package name backing one catalog row, or null. */
 function installedNameFor(item: MarketItem, plugins: InstalledPlugin[]): string | null {
@@ -78,6 +79,7 @@ function catalogItemFor(plugin: InstalledPlugin, items: MarketItem[]): MarketIte
  * 安装按钮), matching the main-process gate that rejects them anyway.
  */
 function installable(item: MarketItem): boolean {
+  if (item.installable === false) return false
   return item.deprecated !== true && item.installSpec.trim().length > 0
 }
 
@@ -171,9 +173,14 @@ export function MarketSection({
   const [progress, setProgress] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice>(null)
   const [ask, setAsk] = useState<AllowBuildsAsk>(null)
+  const [visibleCount, setVisibleCount] = useState(DISCOVER_PAGE_SIZE)
   const alive = useRef(true)
 
   useEffect(() => () => { alive.current = false }, [])
+
+  useEffect(() => {
+    setVisibleCount(DISCOVER_PAGE_SIZE)
+  }, [category, query])
 
   const reloadInstalled = useCallback(async () => {
     try {
@@ -270,6 +277,11 @@ export function MarketSection({
       (category === 'all' || item.category === category) && matches(item, normalizedQuery)
     ))
   }, [category, normalizedQuery, state])
+
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleCount),
+    [items, visibleCount],
+  )
 
   const categoryLabels = useMemo(() => {
     if (state.status !== 'ready') return new Map<string, string>()
@@ -422,7 +434,7 @@ export function MarketSection({
                   : null}
                 {items.length > 0 ? (
                   <ul className={css.cards}>
-                    {items.map((item) => {
+                    {visibleItems.map((item) => {
                       const installedName = installedNameFor(item, installed)
                       const busyKind = busy !== null && busy.id === item.id ? busy.kind : null
                       return (
@@ -491,6 +503,18 @@ export function MarketSection({
                       )
                     })}
                   </ul>
+                ) : null}
+                {items.length > visibleCount ? (
+                  <div className={css.loadMoreRow}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isBusy}
+                      onClick={() => { setVisibleCount(count => count + DISCOVER_PAGE_SIZE) }}
+                    >
+                      {t('loadMore', { shown: String(visibleCount), total: String(items.length) })}
+                    </Button>
+                  </div>
                 ) : null}
               </>
             ) : (

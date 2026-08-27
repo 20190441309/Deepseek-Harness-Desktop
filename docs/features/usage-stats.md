@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `usage-stats` |
 | **status** | `active` |
-| **last verified** | 2026-08-26 — D1 挂载机制随 desktop-launcher 单一 overlay 收敛：`ensureUsagePanelPlugin` 不再向 `cordis.patch.yml` 写受管块，改写 `desktop-plugins/dsh-usage-panel/desktop-usage-panel.patch.yml`（控制器仅全量启动经 `--patch` 传；skip 启动不预置不变）；禁用 / ensure 失败 / 市场 bundle 接管时删 overlay 不传（杜绝双挂载与陈旧 overlay）；旧受管块每次启动被 strip（迁移）。此前 2026-08-24 — 热力图改为半年窗口内按月切换（默认当月 UTC，‹ › 选月；色阶按当月非零日四分位）。Host 仍返 182 日桶。自动化：`vendor/dsh-usage-panel` `npm test` + `npm run build`。 |
+| **last verified** | 2026-08-27 — 内置化：`dsh-usage-panel` / `@xmanrui/dsh-im` / `@deepseek-ai/dsh-desktop-install` 编入 `@deepseek-ai/dsh-web-app` bundle（非 overlay / 非用户受管块）；启动仅 `migrateLegacyDesktopBuiltins` 清理旧块与 overlay；Recovery / disable 拒绝内置别名。此前 2026-08-26 — D1 overlay 收敛。 |
 
 ## User paths
 
@@ -15,8 +15,8 @@
 ## Invariants
 
 - 预置包名 `dsh-usage-panel`；设置 section id `usage-stats`；投影 key `usagePanel`。同一 profile 只挂一份。
-- 挂载走桌面自有 overlay（`desktop-usage-panel.patch.yml`，仅全量启动经 `--patch` 传），不写 `cordis.patch.yml` 受管块（该文件纯用户所有，见 desktop-launcher 卡）；市场 bundle 已挂载或插件被禁用时 overlay 必须删除（insert + bundle 同时组合 = 双挂载）。
-- 桌面 `desktop-plugins` 副本赢过市场装的同名目录（junction 覆盖非 junction 安装）。
+- 挂载走 `@deepseek-ai/dsh-web-app` 官方 bundle（与 19 个 desktop fork 包同级），**不是**用户插件、overlay 或 `cordis.patch.yml` 受管块。启动只迁移清理旧 overlay / 受管块。
+- Recovery / `shell:disable-*` 拒绝 `dsh-usage-panel` / `usage-stats` 别名（内置组件损坏走「重装 / setup:harness」）。
 - 只统计 Token 四桶；不做余额 / CNY / 峰谷价。
 - 日桶 UTC；字幕声明 UTC。
 - 颜色只走 `--dsw-alias-*` / `--dsw-static-deepseek-*`；刷新/导出用 `ui-primitives`。

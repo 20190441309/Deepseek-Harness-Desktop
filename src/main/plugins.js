@@ -3,10 +3,12 @@ const { createRequire } = require('module');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { getDesktopDshHome } = require('../shared/dsh-home');
+const { isDesktopBuiltinAlias } = require('../shared/desktop-builtin-packages');
 
 const PROFILE = 'web';
 const DROPPED = [
   '@dsh-external/dsh-genui',
+  '@changfenhuang/dsh-genui',
   '@huanlin/dsh-plugin-yet-another-subagent',
   // The marketplace is desktop-owned (settings section `market` +
   // main-process curated engine). Mounting the third-party plugin again
@@ -194,78 +196,18 @@ function hostPluginDir() {
 }
 
 /**
- * Copy the desktop-only install_dsh_plugin Host plugin into the web profile
- * and keep its insert in a single desktop-owned overlay beside the copy.
- * EVERY start (full and skip) mounts the plugin through `--patch <overlay>`;
- * the profile's `cordis.patch.yml` is purely user-owned — this function only
- * strips the managed blocks earlier desktop versions wrote there (both marker
- * generations) and never writes one back. The strip and the overlay write
- * happen in the same call before every spawn, so no start can compose both
- * copies (the CLI's `insert` does not dedupe by id — two copies would
- * double-mount). Skip starts stay exact by construction: user layer =
- * profile patch + home patch, and neither is ever passed to `--patch`.
- * @param options - optional sourceDir / profileDir overrides for tests.
+ * @deprecated Built-ins compose through @deepseek-ai/dsh-web-app. Kept for
+ * tests and the skip-compose migration replay — strips legacy managed blocks
+ * and overlay files only.
  */
 function ensureDesktopInstallPlugin(options = {}) {
-  const sourceDir = options.sourceDir || hostPluginDir();
-  const profileDir = options.profileDir || webProfileDir();
-  const destDir = path.join(profileDir, 'desktop-plugins', 'install-dsh-plugin');
-  fs.mkdirSync(destDir, { recursive: true });
-  for (const name of DESKTOP_INSTALL_FILES) {
-    const src = path.join(sourceDir, name);
-    if (!fs.existsSync(src)) {
-      return { ok: false, reason: `missing-source:${name}` };
-    }
-    fs.copyFileSync(src, path.join(destDir, name));
-  }
-  const entry = path.join(destDir, 'install-dsh-plugin.mjs');
-  const href = pathToFileURL(entry).href;
-  const patchFile = path.join(profileDir, 'cordis.patch.yml');
-  const strippedLegacy = stripBlockFromFile(
-    patchFile,
-    LEGACY_DESKTOP_INSTALL_BEGIN,
-    LEGACY_DESKTOP_INSTALL_END,
-  );
-  const strippedManaged = stripBlockFromFile(
-    patchFile,
-    DESKTOP_INSTALL_BEGIN,
-    DESKTOP_INSTALL_END,
-  );
-  const body = [
-    '- insert:',
-    '    - id: dshd-desktop-plugin-install',
-    `      name: ${JSON.stringify(href)}`,
-  ].join('\n');
-  const overlayFile = path.join(destDir, DESKTOP_INSTALL_OVERLAY_FILENAME);
-  const overlayContents = [
-    '# Desktop-managed overlay passed to every start (full and skip) via',
-    '# --patch: only the install plugin insert, never the profile user layer.',
-    '# Regenerated on every start; do not edit.',
-    body,
-    '',
-  ].join('\n');
-  const existingOverlay = fs.existsSync(overlayFile)
-    ? fs.readFileSync(overlayFile, 'utf8')
-    : '';
-  if (existingOverlay !== overlayContents) {
-    writeAtomic(overlayFile, overlayContents);
-  }
-  const legacyOverlay = path.join(destDir, LEGACY_SKIP_OVERLAY_FILENAME);
-  if (fs.existsSync(legacyOverlay)) {
-    try {
-      fs.unlinkSync(legacyOverlay);
-    } catch {
-      // Stale skip-era overlay; never passed to --patch anymore, so a locked
-      // file is only cosmetic residue.
-    }
-  }
+  const { migrateLegacyDesktopBuiltins } = require('./desktop-builtin-migrate');
+  const result = migrateLegacyDesktopBuiltins(options);
   return {
     ok: true,
-    destDir,
-    href,
-    patchFile,
-    overlayFile,
-    patchChanged: strippedManaged || strippedLegacy,
+    patchChanged: result.stripped?.install || false,
+    overlayFile: null,
+    migrated: result,
   };
 }
 
@@ -356,7 +298,9 @@ function applyDisabledBundles(names, options = {}) {
   } catch {
     return { ok: false, reason: 'invalid-profile', changed: false, bundles: [] };
   }
-  const disabled = new Set(uniqueNames(names).filter((name) => !OFFICIAL_TEMPLATE_BUNDLES.has(name)));
+  const disabled = new Set(uniqueNames(names)
+    .filter((name) => !OFFICIAL_TEMPLATE_BUNDLES.has(name))
+    .filter((name) => !isDesktopBuiltinAlias(name)));
   const current = Array.isArray(manifest.dsh?.profile?.bundles) ? manifest.dsh.profile.bundles : [];
   const bundles = current.filter((name) => typeof name === 'string' && !disabled.has(name));
   const changed = bundles.length !== current.length || bundles.some((name, index) => name !== current[index]);

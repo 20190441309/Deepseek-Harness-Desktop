@@ -27,6 +27,7 @@ const {
 } = require('./plugins');
 const { scanImport, probeImportHold, runImport } = require('./data-import');
 const { inspectPlugins, isPresetPlugin } = require('./plugin-forensics');
+const { isDesktopBuiltinAlias } = require('../shared/desktop-builtin-packages');
 const { isPluginTreeFailure } = require('./plugin-tree-failure');
 const { readLastDesktopStart, recordLastDesktopStart, stickySkipActive } = require('./launcher-gate');
 const { listWallpaperCatalog, downloadWallpaper } = require('./wallpaper-catalog');
@@ -654,6 +655,9 @@ function registerIpc({
       if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
         return { ok: false, error: 'official-template', name: raw };
       }
+      if (isDesktopBuiltinAlias(raw)) {
+        return { ok: false, error: 'desktop-builtin', name: raw };
+      }
     }
     const config = loadConfig();
     const disabled = [...new Set([...(config.disabledPlugins || []), ...list])];
@@ -675,6 +679,9 @@ function registerIpc({
     }
     if (OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
       return { ok: false, error: 'official-template' };
+    }
+    if (isDesktopBuiltinAlias(raw)) {
+      return { ok: false, error: 'desktop-builtin' };
     }
     const config = loadConfig();
     const disabled = [...new Set([...(config.disabledPlugins || []), raw])];
@@ -715,7 +722,7 @@ function registerIpc({
     if (!raw) {
       return { ok: false, error: 'missing-name' };
     }
-    if (isPresetPlugin(raw) || OFFICIAL_TEMPLATE_BUNDLES.has(raw)) {
+    if (isPresetPlugin(raw) || OFFICIAL_TEMPLATE_BUNDLES.has(raw) || isDesktopBuiltinAlias(raw)) {
       return { ok: false, error: 'preset' };
     }
     const kernelStopped = await stopKernelIfRunning();

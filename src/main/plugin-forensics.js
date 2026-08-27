@@ -2,6 +2,7 @@
 
 const { OFFICIAL_TEMPLATE_BUNDLES } = require('./plugins');
 const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
+const { isDesktopBuiltinAlias } = require('../shared/desktop-builtin-packages');
 
 const GENERIC_OOM = /heap out of memory|js heap|allocation failed|oom\b/i;
 const GENERIC_PORT = /eaddrinuse|address already in use/i;
@@ -14,9 +15,8 @@ const EVIDENCE_PATTERNS = [
   { kind: 'compose', regex: /failed to compose[^\n]*['"](@?[\w./-]+)['"]/gi },
 ];
 
-// Usage panel remains a soft desktop preset; dsh-im is first-party Remote
-// channels (vendor/dsh-im) but still appears on the Recovery Board toggle list.
-const PRESET_PLUGINS = new Set(['dsh-usage-panel', '@xmanrui/dsh-im', 'dsh-im', 'xmanrui-dsh-im']);
+// User marketplace / dev preset rows only — desktop built-ins are in-box.
+const PRESET_PLUGINS = new Set([]);
 const EVIDENCE_LINE_MAX = 240;
 
 const IN_BOX_PACKAGE_NAMES = new Set(DESKTOP_PACKAGES.map((pkg) => pkg.name));
@@ -143,12 +143,14 @@ function inspectPlugins({
   const pluginNames = new Set((plugins || []).map((row) => row.name || row));
   const rows = (plugins || []).map((row) => {
     const name = row.name || row;
+    const inBox = isInBoxPackageName(name) || isDesktopBuiltinAlias(name);
     return {
       name,
       spec: row.spec || '',
       bundle: bundleSet.has(name) || row.bundle === true,
       preset: PRESET_PLUGINS.has(name),
       officialTemplate: OFFICIAL_TEMPLATE_BUNDLES.has(name),
+      inBox,
       disabled: disabled.has(name) || row.disabled === true,
       suspect: suspectSet.has(name),
       orphan: false,

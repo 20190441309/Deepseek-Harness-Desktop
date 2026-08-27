@@ -19,6 +19,8 @@ export type MarketItem = {
   homepage: string
   /** CLI spec the desktop engine resolved for this row. */
   installSpec: string
+  /** Main-process verdict: false hides Install even when installSpec is non-empty. */
+  installable?: boolean
   category: string
   deprecated?: boolean
   npm?: string | null

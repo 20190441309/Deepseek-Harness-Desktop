@@ -2,154 +2,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const { missingRuntimeFiles } = require('./plugin-runtime-files');
 const { webProfileDir, stripBlockFromFile } = require('./plugins');
 
 const USAGE_PANEL_PACKAGE = 'dsh-usage-panel';
 const USAGE_PANEL_BEGIN = '# --- dshd-gui-usage-panel ---';
 const USAGE_PANEL_END = '# --- end dshd-gui-usage-panel ---';
-const USAGE_PANEL_OVERLAY_FILENAME = 'desktop-usage-panel.patch.yml';
-
-function defaultSourceDir() {
-  try {
-    const { projectRoot } = require('./paths');
-    return path.join(projectRoot(), 'vendor', USAGE_PANEL_PACKAGE);
-  } catch {
-    return path.join(__dirname, '..', '..', 'vendor', USAGE_PANEL_PACKAGE);
-  }
-}
-
-function profileListsBundle(profileDir) {
-  const file = path.join(profileDir, 'package.json');
-  if (!fs.existsSync(file)) {
-    return false;
-  }
-  try {
-    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const bundles = manifest.dsh?.profile?.bundles;
-    return Array.isArray(bundles) && bundles.includes(USAGE_PANEL_PACKAGE);
-  } catch {
-    return false;
-  }
-}
-
-function missingRuntimeDependencies(sourceDir) {
-  return missingRuntimeFiles(sourceDir);
-}
-
-function pathExists(target) {
-  try {
-    fs.lstatSync(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function removeLinkOrDir(target) {
-  if (!pathExists(target)) {
-    return;
-  }
-  try {
-    fs.readlinkSync(target);
-    fs.unlinkSync(target);
-    return;
-  } catch {
-    // Real directory or file, not a junction/symlink.
-  }
-  const st = fs.lstatSync(target);
-  if (st.isSymbolicLink() || st.isFile()) {
-    fs.unlinkSync(target);
-    return;
-  }
-  fs.rmSync(target, { recursive: true, force: true });
-}
-
-function linkIntoProfileModules(destDir, profileDir) {
-  const linked = path.join(profileDir, 'node_modules', USAGE_PANEL_PACKAGE);
-  fs.mkdirSync(path.dirname(linked), { recursive: true });
-  removeLinkOrDir(linked);
-  fs.symlinkSync(destDir, linked, process.platform === 'win32' ? 'junction' : 'dir');
-}
-
-function removeOverlayFile(overlayFile) {
-  if (!fs.existsSync(overlayFile)) {
-    return;
-  }
-  try {
-    fs.unlinkSync(overlayFile);
-  } catch {
-    // A stale overlay only mounts when the controller passes it to --patch,
-    // and the controller only passes the overlay this call returned.
-  }
-}
 
 /**
- * Copy the bundled usage-panel package into the web profile and register it
- * through a desktop-owned overlay (`--patch`, full starts only). Does not
- * call `dsh plugin add`. The profile's `cordis.patch.yml` is user-owned:
- * this function only strips the managed block earlier desktop versions wrote
- * there and never writes one back. A non-junction marketplace install is
- * replaced with a junction to the desktop restyle so the projection key and
- * settings section stay unique. Missing `package.json` or zod returns
- * `{ ok: false }` and removes the overlay so the controller never passes a
- * stale one.
- * @param {{ sourceDir?: string, profileDir?: string, disabledPlugins?: string[] }} [options]
+ * @deprecated Usage stats composes through @deepseek-ai/dsh-web-app. Strips
+ * legacy managed blocks and overlay files only.
  */
 function ensureUsagePanelPlugin(options = {}) {
-  const sourceDir = options.sourceDir || defaultSourceDir();
-  if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
-    return { ok: false, added: false, error: 'missing-source:package.json' };
-  }
-  const profileDir = options.profileDir || webProfileDir();
-  const patchFile = path.join(profileDir, 'cordis.patch.yml');
-  stripBlockFromFile(patchFile, USAGE_PANEL_BEGIN, USAGE_PANEL_END);
-  const destDir = path.join(profileDir, 'desktop-plugins', USAGE_PANEL_PACKAGE);
-  const overlayFile = path.join(destDir, USAGE_PANEL_OVERLAY_FILENAME);
-  const disabled = require('./config').readDisabledPlugins(options);
-  if (disabled.includes(USAGE_PANEL_PACKAGE)) {
-    removeOverlayFile(overlayFile);
-    return { ok: true, added: false, destDir: null, disabled: true };
-  }
-  const missing = missingRuntimeDependencies(sourceDir);
-  if (missing.length) {
-    removeOverlayFile(overlayFile);
-    return {
-      ok: false,
-      added: false,
-      error: `missing-source:node_modules:${missing.join(',')}`,
-    };
-  }
-  const existed = fs.existsSync(path.join(destDir, 'package.json'));
-  fs.mkdirSync(destDir, { recursive: true });
-  fs.cpSync(sourceDir, destDir, { recursive: true, force: true });
-  linkIntoProfileModules(destDir, profileDir);
-  if (profileListsBundle(profileDir)) {
-    // A marketplace install already mounts the package as a profile bundle;
-    // adding the overlay insert too would mount it twice.
-    removeOverlayFile(overlayFile);
-    return { ok: true, added: false, destDir };
-  }
-  const contents = [
-    '# Desktop-managed overlay passed to full starts via --patch: only the',
-    '# usage-panel insert. Skip starts do not pass this file. Regenerated on',
-    '# every full start; do not edit.',
-    '- insert:',
-    '    - id: usage-stats',
-    `      name: ${JSON.stringify(USAGE_PANEL_PACKAGE)}`,
-    '',
-  ].join('\n');
-  const existing = fs.existsSync(overlayFile) ? fs.readFileSync(overlayFile, 'utf8') : '';
-  if (existing !== contents) {
-    const tmp = `${overlayFile}.tmp`;
-    fs.writeFileSync(tmp, contents, 'utf8');
-    fs.renameSync(tmp, overlayFile);
-  }
+  const { migrateLegacyDesktopBuiltins } = require('./desktop-builtin-migrate');
+  const result = migrateLegacyDesktopBuiltins(options);
   return {
     ok: true,
-    added: !existed,
-    destDir,
-    overlayFile,
+    added: false,
+    destDir: null,
+    overlayFile: null,
+    migrated: result,
   };
 }
 
