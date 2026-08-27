@@ -29,7 +29,7 @@ Diff `git diff-tree -r 528c682e^{tree} HEAD:vendor/deepseek-harness`, 1,372 chan
 
 The 604 unregistered-modified count is the §6.1 gap made machine-readable (analysis estimated ~605: 625 modified minus markers). Unregistered-added hotspots are dominated by `.agents/notes` (232) and desktop feature slices in `apps/web` / `ui-conversation` / `ui-theme`. Baseline constants live in `src/shared/harness-fork-delta.js` (`UNREGISTERED_BASELINE = { total: 921, modified: 604 }`); the CI gate fails only when a count **exceeds** its baseline, and prints a reminder to lower the baseline when drift shrinks.
 
-Sync dry-run vs upstream `dsh-v0.1.1-rc.2` (`b150a551`, current upstream HEAD): **20 conflict files** (runtime sessions contract, ui-conversation locales/skeleton, ui-permission-presets, apiproxy sessions API, llm/tool-fs docs + read-image snapshot, ui-layout package.json).
+Sync dry-run vs upstream `dsh-v0.1.1-rc.2` (`b150a551`, latest tag): **20 conflict files** (runtime sessions contract, ui-conversation locales/skeleton, ui-permission-presets, apiproxy sessions API, llm/tool-fs docs + read-image snapshot, ui-layout package.json). Upstream `HEAD` moved past rc.2 **during this session** (to `cd5ef814`) and the same dry-run against it reports **311 conflicts** — post-rc.2 development is fast; this live jump is the case for the weekly sentinel.
 
 ## Gates
 
