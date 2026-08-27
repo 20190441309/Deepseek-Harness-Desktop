@@ -352,13 +352,12 @@ describe('translate: defensive tool-call branches', () => {
     expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'c', name: 'f', argumentsDelta: '' })
   })
 
-  it('handles tool_call deltas with no function object at all', async () => {
-    const chunks = await collect(translate(feed(
+  it('rejects a completed tool call with no function object', async () => {
+    await expect(collect(translate(feed(
       firstChunk,
       { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c' }] } }] },
       { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       DONE,
-    )))
-    expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'c', argumentsDelta: '' })
+    )))).rejects.toMatchObject({ code: MALFORMED_RESPONSE_CODE })
   })
 })
