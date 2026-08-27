@@ -749,7 +749,9 @@ function startNewSessionChooser() {
 }
 
 function chooseNewSessionWorkspace(workspace) {
-  updateNewSession({ step: 'provider', workspace, loading: true, error: '', providers: [] });
+  updateNewSession({
+    step: 'provider', workspace, loading: true, creating: false, error: '', providers: [],
+  });
   const session = state.newSession;
   listReadyProviders(state.chisacode.client, workspace.cwd)
     .then((providers) => {
@@ -774,7 +776,7 @@ function submitNewSession(provider, modeId) {
   const session = state.newSession;
   const workspace = session?.workspace;
   if (!session || !workspace) return;
-  updateNewSession({ loading: true, error: '' });
+  updateNewSession({ loading: true, creating: true, error: '' });
   const active = state.newSession;
   createMobileAgent(state.chisacode.client, {
     workspaceId: workspace.id,
@@ -782,17 +784,21 @@ function submitNewSession(provider, modeId) {
     provider: provider.provider,
     ...(modeId ? { modeId } : {}),
   })
-    .then(async (agent) => {
+    .then((agent) => {
       if (state.newSession !== active) return;
       state.newSession = null;
       renderSheet();
       updateChisaCodeAgent(agent);
-      await openSession(agent.id);
       showBanner('');
+      // The agent exists; a timeline load failure must be visible, not
+      // swallowed by the chooser's create error handler.
+      return openSession(agent.id).catch((error) => {
+        showBanner(`会话已创建，但载入失败：${error?.message || '电脑没有响应'}`);
+      });
     })
     .catch((error) => {
       if (state.newSession !== active) return;
-      updateNewSession({ loading: false, error: error?.message || '电脑没有响应' });
+      updateNewSession({ loading: false, creating: false, error: error?.message || '电脑没有响应' });
     });
 }
 
@@ -1791,9 +1797,9 @@ function renderNewSessionSheet() {
   if (session.loading) {
     const note = document.createElement('p');
     note.className = 'sheet-note';
-    note.textContent = session.step === 'workspace'
-      ? '正在读取电脑端工作区…'
-      : session.step === 'provider' ? '正在读取提供方…' : '正在创建会话…';
+    note.textContent = session.creating
+      ? '正在创建会话…'
+      : session.step === 'workspace' ? '正在读取电脑端工作区…' : '正在读取提供方…';
     sheet.append(note);
     sheetRoot.append(layer);
     return;
