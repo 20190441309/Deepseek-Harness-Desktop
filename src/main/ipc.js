@@ -432,8 +432,7 @@ function registerIpc({
       return parkRemoteSnapshot(remote && typeof remote.snapshot === 'function' ? remote.snapshot() : {});
     }
     if (remote && typeof remote.rotateToken === 'function') {
-      remote.rotateToken();
-      return remote.sync();
+      return remote.rotateToken();
     }
     return null;
   });

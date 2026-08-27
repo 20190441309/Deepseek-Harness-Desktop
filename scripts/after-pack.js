@@ -1,6 +1,7 @@
 const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
 const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
 const { runSkipComposeContract } = require('./check-skip-compose-contract');
@@ -137,6 +138,35 @@ function assertVendoredPluginRuntimeDeps(resources, packageName) {
   const missing = missingPluginDependencies(destPkg);
   if (missing.length) {
     throw new Error(`packaged ${packageName} is missing node_modules: ${missing.join(', ')}`);
+  }
+}
+
+async function assertChisaCodeRuntime(resources) {
+  const root = path.join(resources, 'vendor', 'chisacode-remote');
+  const serverExport = path.join(root, 'packages', 'server', 'dist', 'server', 'server', 'exports.js');
+  const required = [
+    serverExport,
+    path.join(root, 'node_modules', '@chisacode', 'protocol', 'dist', 'connection-offer.js'),
+    path.join(root, 'node_modules', '@chisacode', 'relay', 'dist', 'e2ee.js'),
+    path.join(root, 'node_modules', 'pino', 'package.json'),
+    path.join(root, 'node_modules', 'ws', 'package.json'),
+  ];
+  const missing = required.filter((file) => !fs.existsSync(file));
+  if (missing.length > 0) {
+    throw new Error(
+      `安装包缺少 ChisaCode 远程运行时：${missing.map((file) => path.relative(root, file)).join(', ')}`,
+    );
+  }
+  const api = await import(pathToFileURL(serverExport).href);
+  for (const name of [
+    'createChisaCodeDaemon',
+    'createRootLogger',
+    'generateLocalPairingOffer',
+    'RelayDeviceCredentialStore',
+  ]) {
+    if (typeof api[name] !== 'function') {
+      throw new Error(`安装包 ChisaCode server 缺少导出：${name}`);
+    }
   }
 }
 
@@ -800,6 +830,7 @@ module.exports = async function afterPack(context) {
   // a half-broken tree that silently drops Settings → Remote → Channels).
   installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-im'), { skipIfComplete: false });
   assertVendoredPluginRuntimeDeps(resources, 'dsh-im');
+  await assertChisaCodeRuntime(resources);
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);
   const started = Date.now();
@@ -863,6 +894,7 @@ module.exports.assertHarnessRuntime = assertHarnessRuntime;
 module.exports.assertHarnessVersions = assertHarnessVersions;
 module.exports.assertNodePtyPrebuild = assertNodePtyPrebuild;
 module.exports.assertVendoredPluginRuntimeDeps = assertVendoredPluginRuntimeDeps;
+module.exports.assertChisaCodeRuntime = assertChisaCodeRuntime;
 module.exports.installPluginRuntimeDeps = installPluginRuntimeDeps;
 module.exports.nodePtyPrebuildRelative = nodePtyPrebuildRelative;
 module.exports.restoreVendoredPluginNodeModules = restoreVendoredPluginNodeModules;

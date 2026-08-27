@@ -62,3 +62,27 @@ test('foldEvents keeps image blocks on user bubbles', () => {
   assert.equal(rows[0].text, '看这张图');
   assert.deepEqual(rows[0].images, [{ mediaType: 'image/png', data: 'aGk=' }]);
 });
+
+test('foldEvents renders ChisaCode projected timeline entries', () => {
+  const rows = foldEvents([
+    { seqStart: 1, item: { type: 'user_message', messageId: 'u1', text: '检查远程' } },
+    { seqStart: 2, item: { type: 'assistant_message', messageId: 'a1', text: '正在检查' } },
+    {
+      seqStart: 3,
+      item: {
+        type: 'tool_call',
+        callId: 'tool-1',
+        name: 'read',
+        status: 'completed',
+      },
+    },
+    { seqStart: 4, item: { type: 'error', message: '连接中断' } },
+  ]);
+
+  assert.deepEqual(rows.map(row => [row.role, row.text, row.card || '']), [
+    ['user', '检查远程', ''],
+    ['assistant', '正在检查', ''],
+    ['tool', 'read', 'completed'],
+    ['assistant', '连接中断', ''],
+  ]);
+});

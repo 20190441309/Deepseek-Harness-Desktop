@@ -26,6 +26,7 @@ function isBindableIpv4(value) {
  *   remoteBindAddress?: string,
  *   remoteLanTls?: boolean,
  *   remoteRelayUrl?: string,
+ *   remoteRelayUseTls?: boolean,
  *   remoteRelayToken?: string,
  * }}
  */
@@ -74,7 +75,15 @@ function normalizeRemotePatch(patch) {
       if (typeof value !== 'string' || value.length > 2048) {
         throw new TypeError('remoteRelayUrl must be a valid string');
       }
-      next.remoteRelayUrl = value.trim();
+      const relayUrl = value.trim();
+      next.remoteRelayUrl = relayUrl;
+      if (/^https:\/\//i.test(relayUrl)) {
+        next.remoteRelayUseTls = true;
+      } else if (/^http:\/\//i.test(relayUrl)) {
+        next.remoteRelayUseTls = false;
+      } else {
+        next.remoteRelayUseTls = relayUrl !== '125.124.85.212:8411' && /:443(?:\/|$)/.test(relayUrl);
+      }
       continue;
     }
     if (key === 'remoteRelayToken') {

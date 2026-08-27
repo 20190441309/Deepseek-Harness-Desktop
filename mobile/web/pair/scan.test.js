@@ -6,29 +6,34 @@ function encodeOffer(value) {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 }
 
-const offerRaw = encodeOffer({ v: 1, token: 'secret-1', mode: 'lan' });
+const offerRaw = encodeOffer({
+  v: 2,
+  serverId: 'server-1',
+  daemonPublicKeyB64: 'daemon-key',
+  relay: { endpoint: '125.124.85.212:8411', useTls: false },
+});
 
-test('classifyScan logs in directly when scanned origin matches the page', () => {
+test('classifyScan pairs directly when scanned origin matches the page', () => {
   const result = classifyScan(
     `http://192.168.1.23:3180/#offer=${offerRaw}`,
     'http://192.168.1.23:3180',
   );
   assert.equal(result.kind, 'login');
-  assert.equal(result.offer.token, 'secret-1');
+  assert.match(result.offerUrl, /#offer=/);
 });
 
-test('classifyScan logs in for bare #offer= payloads without a URL', () => {
-  const result = classifyScan(`#offer=${offerRaw}`, 'https://relay.example');
+test('classifyScan pairs for bare #offer= payloads without a URL', () => {
+  const result = classifyScan(`#offer=${offerRaw}`, 'http://192.168.1.23:3180');
   assert.equal(result.kind, 'login');
-  assert.equal(result.offer.token, 'secret-1');
+  assert.match(result.offerUrl, /^http:\/\/192\.168\.1\.23:3180\/#offer=/);
 });
 
-test('classifyScan navigates for a different origin and keeps token in hash', () => {
-  const url = `https://relay.example/#offer=${offerRaw}`;
+test('classifyScan navigates for a different origin and keeps offer in hash', () => {
+  const url = `http://192.168.1.99:3180/#offer=${offerRaw}`;
   const result = classifyScan(url, 'http://192.168.1.23:3180');
   assert.equal(result.kind, 'navigate');
   assert.equal(result.url, url);
-  assert.ok(!result.url.includes('?offer='), 'token must stay in hash, never query');
+  assert.ok(!result.url.includes('?offer='), 'offer must stay in hash, never query');
 });
 
 test('classifyScan marks QR codes without a pairing offer invalid', () => {

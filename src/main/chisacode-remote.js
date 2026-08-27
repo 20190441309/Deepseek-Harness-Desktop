@@ -9,7 +9,6 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { createRequire } = require('module');
 const {
   DEFAULT_RELAY_ENDPOINT,
   DEFAULT_RELAY_USE_TLS,
@@ -59,11 +58,6 @@ function readDefaults() {
   };
 }
 
-function resolveVendorRequire() {
-  const req = createRequire(path.join(VENDOR_ROOT, 'package.json'));
-  return req;
-}
-
 /**
  * Load ESM @chisacode/server exports (full daemon API — not a slice).
  * @returns {Promise<typeof import('@chisacode/server')>}
@@ -74,13 +68,18 @@ async function loadServerApi() {
       `ChisaCode server export missing at ${SERVER_EXPORT}. Run vendor sync / build packages/server.`,
     );
   }
-  // Ensure workspace junctions resolve before dynamic import.
-  resolveVendorRequire();
   return import(pathToFileURL(SERVER_EXPORT).href);
 }
 
 function modeIsAway(config) {
   return config.remoteMode === 'relay' || config.remoteMode === 'away';
+}
+
+function relayUseTls(config, endpoint) {
+  if (typeof config.remoteRelayUseTls === 'boolean') {
+    return config.remoteRelayUseTls;
+  }
+  return endpoint !== DEFAULT_RELAY_ENDPOINT && /:443$/.test(endpoint);
 }
 
 function publicDevicesFromStore(store) {
@@ -94,7 +93,8 @@ function publicDevicesFromStore(store) {
       name: device.label || device.deviceId,
       createdAt: device.createdAt || '',
       boundAt: device.createdAt || '',
-      lastSeenAt: device.lastSeenAt || device.createdAt || '',
+      lastSeenAt: device.lastUsedAt || device.createdAt || '',
+      shortId: String(device.deviceId || '').slice(-4),
     }));
 }
 
@@ -189,7 +189,7 @@ class ChisaCodeRemote extends EventEmitter {
     this.relayState = { connected: false, lastError: '' };
     this.error = '';
     this.starting = null;
-    this._deviceStore = null;
+    this.runtimeKey = '';
   }
 
   async ensureApi() {
@@ -206,30 +206,18 @@ class ChisaCodeRemote extends EventEmitter {
   }
 
   deviceStore() {
-    if (this._deviceStore) {
-      return this._deviceStore;
+    const Store = this.serverApi && this.serverApi.RelayDeviceCredentialStore;
+    if (typeof Store !== 'function') {
+      return null;
     }
-    // Lazy require via dynamic path after API load is preferred; fall back to fs store path.
     try {
-      const storePath = path.join(
-        VENDOR_ROOT,
-        'packages',
-        'server',
-        'dist',
-        'server',
-        'server',
-        'relay-device-credential-store.js',
-      );
-      if (fs.existsSync(storePath)) {
-        const mod = resolveVendorRequire()(storePath);
-        const Store = mod.RelayDeviceCredentialStore || mod.default;
-        this._deviceStore = new Store(this.homeDir());
-        return this._deviceStore;
-      }
+      // The daemon writes through its own store instance. Re-open the file so
+      // snapshots immediately see pair, reconnect, and revoke updates.
+      return new Store(this.homeDir());
     } catch {
-      // listed after daemon start via API helpers when available
+      // The upstream store owns corrupt-file recovery.
+      return null;
     }
-    return null;
   }
 
   /**
@@ -347,6 +335,7 @@ class ChisaCodeRemote extends EventEmitter {
     const config = this.getConfig() || {};
     const defaults = readDefaults();
     const relayEndpoint = (config.remoteRelayEndpoint || config.remoteRelayUrl || defaults.relayEndpoint || '').trim();
+    const useTls = relayUseTls(config, relayEndpoint);
     const appBaseUrl = this.pairingAppBaseUrl();
 
     this.pairing = await api.generateLocalPairingOffer({
@@ -354,8 +343,8 @@ class ChisaCodeRemote extends EventEmitter {
       relayEnabled: true,
       relayEndpoint,
       relayPublicEndpoint: relayEndpoint,
-      relayUseTls: defaults.relayUseTls === true,
-      relayPublicUseTls: defaults.relayUseTls === true,
+      relayUseTls: useTls,
+      relayPublicUseTls: useTls,
       appBaseUrl,
       includeQr: false,
     });
@@ -364,6 +353,11 @@ class ChisaCodeRemote extends EventEmitter {
 
   async startDaemon() {
     if (this.daemon) {
+      const nextRuntimeKey = this.runtimeConfigKey(this.getConfig() || {});
+      if (nextRuntimeKey !== this.runtimeKey) {
+        await this.stopDaemon();
+        return this.startDaemon();
+      }
       await this.refreshPairing();
       return;
     }
@@ -378,6 +372,7 @@ class ChisaCodeRemote extends EventEmitter {
       const defaults = readDefaults();
       const home = this.homeDir();
       const relayEndpoint = (config.remoteRelayEndpoint || config.remoteRelayUrl || defaults.relayEndpoint || '').trim();
+      const useTls = relayUseTls(config, relayEndpoint);
       const listen = config.remoteListen || defaults.listen || '127.0.0.1:6767';
       const staticDir = path.join(VENDOR_ROOT, 'packages', 'server', 'dist', 'server');
       const agentStoragePath = path.join(home, 'agents');
@@ -405,8 +400,8 @@ class ChisaCodeRemote extends EventEmitter {
         relayEnabled: true,
         relayEndpoint,
         relayPublicEndpoint: relayEndpoint,
-        relayUseTls: defaults.relayUseTls === true,
-        relayPublicUseTls: defaults.relayUseTls === true,
+        relayUseTls: useTls,
+        relayPublicUseTls: useTls,
         appBaseUrl: this.pairingAppBaseUrl(),
         // Loopback listen: empty auth is allowed. Non-loopback requires a password
         // or CHISACODE_ALLOW_WILDCARD_NO_AUTH=1 (see ChisaCode assertWildcardAuth).
@@ -414,9 +409,10 @@ class ChisaCodeRemote extends EventEmitter {
       };
 
       // Full daemon — createChisaCodeDaemon, not a hello-only stub.
-      this.daemon = await api.createChisaCodeDaemon(daemonConfig, logger);
-      await this.daemon.start();
-      this._deviceStore = null;
+      const daemon = await api.createChisaCodeDaemon(daemonConfig, logger);
+      await daemon.start();
+      this.daemon = daemon;
+      this.runtimeKey = this.runtimeConfigKey(config);
       this.error = '';
       await this.refreshPairing();
       this.emit('listening', this.snapshot());
@@ -426,8 +422,18 @@ class ChisaCodeRemote extends EventEmitter {
       await this.starting;
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
+      const failedDaemon = this.daemon;
       this.daemon = null;
+      this.runtimeKey = '';
       this.relayState = { connected: false, lastError: this.error };
+      if (failedDaemon && typeof failedDaemon.stop === 'function') {
+        try {
+          await failedDaemon.stop();
+        } catch {
+          // Preserve the startup error; cleanup failure is secondary.
+        }
+      }
+      await this.stopMobileWebServer();
       throw err;
     } finally {
       this.starting = null;
@@ -443,6 +449,7 @@ class ChisaCodeRemote extends EventEmitter {
     }
     const current = this.daemon;
     this.daemon = null;
+    this.runtimeKey = '';
     try {
       await current.stop();
     } catch (err) {
@@ -479,6 +486,19 @@ class ChisaCodeRemote extends EventEmitter {
   ensureToken() {
     return '';
   }
+
+  runtimeConfigKey(config = this.getConfig() || {}) {
+    const defaults = readDefaults();
+    const endpoint = (config.remoteRelayEndpoint || config.remoteRelayUrl || defaults.relayEndpoint || '').trim();
+    return JSON.stringify({
+      endpoint,
+      useTls: relayUseTls(config, endpoint),
+      listen: config.remoteListen || defaults.listen || '127.0.0.1:6767',
+      mobileBind: config.remoteBindAddress === '127.0.0.1'
+        ? '0.0.0.0'
+        : (config.remoteBindAddress || '0.0.0.0'),
+    });
+  }
 }
 
 module.exports = {
@@ -487,5 +507,7 @@ module.exports = {
   VENDOR_ROOT,
   readDefaults,
   attachRelayStatusProbe,
+  publicDevicesFromStore,
+  relayUseTls,
   preferredLanIp,
 };

@@ -1,6 +1,4 @@
-import { offerFromHash, offerFromPaste, hashHasOffer } from './host/offer.js';
 import { callUnary, respond } from './host/rpc.js';
-import { loginWithOffer } from './host/login.js';
 import { handshake } from './host/handshake.js';
 import { openEventSockets } from './host/events.js';
 import { applyHostFrame, hostLabel } from './host/frames.js';
@@ -21,9 +19,12 @@ import { parseVcsStatus, parseBranchList } from './git/vcs-parse.js';
 import { resolveGitQuick } from './git/quick.js';
 import { classifyScan, detectScanSupport, scanUnavailableHint } from './pair/scan.js';
 import {
-  clearAllSecrets,
+  agentRows,
+  clearSecret,
   getMostRecentStickyServerId,
+  hasOfferFragment,
   listStickyServerIds,
+  pairFromOfferUrl,
   reconnectSticky,
 } from './chisacode/session.js';
 
@@ -342,11 +343,16 @@ async function call(method, payload = {}) {
 }
 
 function forceLogout(message) {
+  const serverId = state.chisacode?.serverId;
   try {
-    state.chisacode?.client?.close?.();
+    state.chisacode?.dispose?.();
+    const closing = state.chisacode?.client?.close?.();
+    if (closing && typeof closing.catch === 'function') {
+      void closing.catch(() => {});
+    }
   } catch { /* ignore */ }
-  if (state.transport === 'chisacode') {
-    clearAllSecrets();
+  if (state.transport === 'chisacode' && serverId) {
+    clearSecret(serverId);
   }
   sockets?.close();
   sockets = null;
@@ -423,13 +429,74 @@ function sessionItems(value) {
   return [];
 }
 
-async function connect(offer) {
-  showError('');
-  if (!offer || offer.protocol !== 'chisacode-v2') {
-    throw new Error('请使用桌面端扫码配对二维码（ChisaCode offer）');
+function updateChisaCodeAgent(agent) {
+  const next = agentRows({ entries: [{ agent }] })[0];
+  if (!next) return;
+  const index = state.sessions.findIndex(row => row.sessionId === next.sessionId);
+  if (index >= 0) {
+    state.sessions[index] = next;
+  } else {
+    state.sessions.unshift(next);
   }
-  const api = await loadChisaCodeApi();
-  const paired = await loginWithOffer({ offer, api });
+  if (state.sessionId === next.sessionId) {
+    state.cwd = next.cwd;
+  }
+  renderSessions();
+  renderHeader();
+}
+
+function bindChisaCodeEvents(paired) {
+  const disposers = [];
+  if (typeof paired.client.on !== 'function') {
+    return () => {};
+  }
+  disposers.push(paired.client.on('agent_update', (message) => {
+    const update = message?.payload;
+    if (update?.kind === 'upsert') {
+      updateChisaCodeAgent(update.agent);
+    } else if (update?.kind === 'remove') {
+      state.sessions = state.sessions.filter(row => row.sessionId !== update.agentId);
+      renderSessions();
+      renderHeader();
+    }
+  }));
+  disposers.push(paired.client.on('agent_stream', (message) => {
+    const payload = message?.payload;
+    if (!payload || payload.agentId !== state.sessionId) return;
+    const event = payload.event;
+    if (event?.type === 'timeline') {
+      state.events.push({
+        item: event.item,
+        timestamp: payload.timestamp,
+        seqStart: payload.seq,
+        seqEnd: payload.seq,
+      });
+      renderLog();
+    }
+    const row = currentRow();
+    if (row && event?.type === 'turn_started') row.running = true;
+    if (row && ['turn_completed', 'turn_failed', 'turn_canceled'].includes(event?.type)) {
+      row.running = false;
+    }
+    if (event?.type === 'permission_requested') {
+      state.pendingApproval = {
+        requestId: event.request?.id,
+        title: event.request?.title || event.request?.name || '需要审批',
+        command: event.request?.description || '',
+      };
+      renderApproval();
+    }
+    renderHeader();
+  }));
+  return () => {
+    for (const dispose of disposers) {
+      if (typeof dispose === 'function') dispose();
+    }
+  };
+}
+
+async function finishChisaCodeConnect(paired, reconnected) {
+  paired.dispose = bindChisaCodeEvents(paired);
   state.chisacode = paired;
   state.transport = 'chisacode';
   state.connected = true;
@@ -438,19 +505,28 @@ async function connect(offer) {
   state.cwd = '';
   state.hostName = paired.serverId;
   try {
-    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
-    state.sessions = Array.isArray(agents)
-      ? agents
-      : (agents.items || agents.agents || []);
+    state.sessions = agentRows(await paired.client.fetchAgents({
+      page: { limit: 100 },
+      subscribe: {},
+    }));
   } catch {
     state.sessions = [];
   }
   deviceLine.replaceChildren();
-  deviceLine.append(document.createTextNode(`已配对 ${paired.serverId}`));
-  showBanner('会话面迁移中；配对与重连已可用。');
+  deviceLine.append(document.createTextNode(`${reconnected ? '已重连' : '已配对'} ${paired.serverId}`));
+  showBanner('');
   renderSessions();
   renderHeader();
   renderScreen();
+}
+
+async function connect(offerUrl) {
+  showError('');
+  if (!hasOfferFragment(offerUrl)) {
+    throw new Error('请使用桌面端扫码配对二维码（ChisaCode offer）');
+  }
+  const api = await loadChisaCodeApi();
+  await finishChisaCodeConnect(await pairFromOfferUrl(api, offerUrl), false);
 }
 
 async function connectSticky() {
@@ -459,34 +535,36 @@ async function connectSticky() {
     throw new Error('没有已保存的配对；请重新扫码');
   }
   const api = await loadChisaCodeApi();
-  const paired = await reconnectSticky(api, serverId);
-  state.chisacode = paired;
-  state.transport = 'chisacode';
-  state.connected = true;
-  state.route = 'chat';
-  state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
-  state.cwd = '';
-  state.hostName = paired.serverId;
-  try {
-    const agents = await paired.client.fetchAgents?.() || await paired.client.listAgents?.() || [];
-    state.sessions = Array.isArray(agents)
-      ? agents
-      : (agents.items || agents.agents || []);
-  } catch {
-    state.sessions = [];
-  }
-  deviceLine.replaceChildren();
-  deviceLine.append(document.createTextNode(`已重连 ${paired.serverId}`));
-  showBanner('会话面迁移中；配对与重连已可用。');
-  renderSessions();
-  renderHeader();
-  renderScreen();
+  await finishChisaCodeConnect(await reconnectSticky(api, serverId), true);
 }
 
 async function openSession(sessionId) {
   state.sessionId = sessionId;
   phone.removeAttribute('data-drawer');
   backdrop.classList.add('hidden');
+  if (state.transport === 'chisacode') {
+    const history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
+      direction: 'tail',
+      limit: 200,
+      projection: 'projected',
+    });
+    state.events = Array.isArray(history?.entries) ? history.entries : [];
+    if (history?.agent) updateChisaCodeAgent(history.agent);
+    const pending = history?.agent?.pendingPermissions?.[0];
+    state.pendingApproval = pending
+      ? {
+          requestId: pending.id,
+          title: pending.title || pending.name || '需要审批',
+          command: pending.description || '',
+        }
+      : null;
+    state.cwd = currentRow()?.cwd || '';
+    renderHeader();
+    renderSessions();
+    renderLog();
+    renderApproval();
+    return;
+  }
   const history = await call('session.history', { sessionId });
   state.events = history.value?.events || [];
   state.pendingApproval = null;
@@ -501,6 +579,9 @@ async function openSession(sessionId) {
 }
 
 async function createSession() {
+  if (state.transport === 'chisacode') {
+    throw new Error('请先在电脑端新建会话；手机端可继续已有 ChisaCode 会话');
+  }
   const created = await call('session.create', {});
   const sessionId = created.value?.sessionId;
   if (!sessionId) return;
@@ -517,6 +598,25 @@ async function sendPrompt() {
   const images = state.attachments.slice();
   if (!state.sessionId || (!text && !images.length)) return;
   if (state.pendingApproval) return;
+  if (state.transport === 'chisacode') {
+    await state.chisacode.client.sendAgentMessage(
+      state.sessionId,
+      text || '请查看附件',
+      {
+        images: images.map(image => ({
+          data: image.data,
+          mimeType: image.mediaType,
+        })),
+      },
+    );
+    draft.value = '';
+    state.attachments = [];
+    const row = currentRow();
+    if (row) row.running = true;
+    renderComposer();
+    renderHeader();
+    return;
+  }
   const blocks = [];
   if (text) blocks.push(textBlock(text));
   for (const image of images) {
@@ -531,6 +631,10 @@ async function sendPrompt() {
 async function cancelRun() {
   if (!state.sessionId) return;
   try {
+    if (state.transport === 'chisacode') {
+      await state.chisacode.client.cancelAgent(state.sessionId);
+      return;
+    }
     await call('session.cancel', { sessionId: state.sessionId });
   } catch (error) {
     showBanner(error.message || '无法停止');
@@ -540,6 +644,16 @@ async function cancelRun() {
 async function answerApproval(outcome) {
   const pending = state.pendingApproval;
   if (!pending) return;
+  if (state.transport === 'chisacode') {
+    await state.chisacode.client.respondToPermission(
+      state.sessionId,
+      pending.requestId,
+      { behavior: outcome.startsWith('allowed') ? 'allow' : 'deny' },
+    );
+    state.pendingApproval = null;
+    renderApproval();
+    return;
+  }
   assertNotLegacyHostRpc();
   await respond({
     origin,
@@ -593,7 +707,7 @@ function handleScanHit(raw) {
   }
   state.route = 'connect';
   renderScreen();
-  connect(outcome.offer).catch((error) => {
+  connect(outcome.offerUrl).catch((error) => {
     showError(error.message || '连接失败');
   });
   return true;
@@ -1596,12 +1710,16 @@ el('permission-paste').addEventListener('click', () => {
   pasteInput.focus();
 });
 el('paste-enter').addEventListener('click', () => {
-  const offer = offerFromPaste(pasteInput.value);
-  if (!offer) {
+  const outcome = classifyScan(pasteInput.value, origin);
+  if (outcome.kind === 'invalid') {
     showError('链接无效');
     return;
   }
-  connect(offer).catch((error) => showError(error.message || '连接失败'));
+  if (outcome.kind === 'navigate') {
+    window.location.replace(outcome.url);
+    return;
+  }
+  connect(outcome.offerUrl).catch((error) => showError(error.message || '连接失败'));
 });
 el('menu').addEventListener('click', () => {
   phone.setAttribute('data-drawer', '');
@@ -1668,11 +1786,8 @@ renderComposer();
 renderScreen();
 initScanButton();
 
-const bootOffer = offerFromHash(window.location.hash);
-if (bootOffer && bootOffer.protocol === 'chisacode-v2') {
-  connect(bootOffer).catch((error) => showError(error.message || '连接失败'));
-} else if (hashHasOffer(window.location.hash) && !bootOffer) {
-  showError('配对链接无效：#offer= 无法解析。请重扫桌面二维码，或粘贴完整配对链接。');
+if (hasOfferFragment(window.location.hash)) {
+  connect(window.location.href).catch((error) => showError(error.message || '配对链接无效'));
 } else if (listStickyServerIds().length) {
   connectSticky().catch((error) => showError(error.message || '重连失败'));
 }

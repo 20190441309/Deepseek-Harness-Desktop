@@ -31,6 +31,7 @@ const DEFAULTS = {
   remoteLanTls: false,
   remoteRelayUrl: '',
   remoteRelayEndpoint: '',
+  remoteRelayUseTls: false,
   remoteAppBaseUrl: '',
   remoteRelayToken: '',
   harnessAutoRestart: true,
@@ -134,6 +135,7 @@ function normalizeRemoteConfig(config) {
   const endpoint = normalizeRelayEndpoint(relayCandidate) || DEFAULT_RELAY_ENDPOINT;
   next.remoteRelayEndpoint = endpoint;
   next.remoteRelayUrl = endpoint;
+  next.remoteRelayUseTls = next.remoteRelayUseTls === true;
   // Empty stays empty — never backfill the relay origin as an SPA landing host.
   next.remoteAppBaseUrl = typeof next.remoteAppBaseUrl === 'string'
     ? next.remoteAppBaseUrl.trim()

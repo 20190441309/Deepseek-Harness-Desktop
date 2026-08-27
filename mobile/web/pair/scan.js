@@ -1,22 +1,23 @@
 // 扫码结果分派与能力探测。镜像 Android ScanScreen → DshViewModel.onScanned 的分派语义：
-// 同 origin（或裸 #offer=）直接登录；异 origin 整页跳转（token 留在 hash）；无 offer 视为无效继续扫。
-import { offerFromPaste } from '../host/offer.js';
+// 同 origin（或裸 #offer=）直接配对；异 origin 整页跳转（offer 留在 hash）；无 offer 视为无效继续扫。
+import { hasOfferFragment, normalizeOfferUrl } from '../chisacode/session.js';
 
 function classifyScan(raw, currentOrigin) {
   const text = String(raw || '').trim();
   if (!text) return { kind: 'invalid' };
-  const offer = offerFromPaste(text);
-  if (!offer) return { kind: 'invalid' };
+  const currentUrl = `${String(currentOrigin || 'http://localhost').replace(/\/$/, '')}/`;
+  const offerUrl = normalizeOfferUrl(text, currentUrl);
+  if (!offerUrl || !hasOfferFragment(offerUrl)) return { kind: 'invalid' };
   let origin = null;
   try {
-    origin = new URL(text).origin;
+    origin = new URL(offerUrl).origin;
   } catch {
     origin = null;
   }
   if (!origin || origin === 'null' || origin === currentOrigin) {
-    return { kind: 'login', offer };
+    return { kind: 'login', offerUrl };
   }
-  return { kind: 'navigate', url: text };
+  return { kind: 'navigate', url: offerUrl };
 }
 
 // 三重探测：secure context（LAN http 页 mediaDevices 为 undefined）、getUserMedia、BarcodeDetector(qr_code)。

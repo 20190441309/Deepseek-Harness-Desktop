@@ -9,6 +9,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const vendorNm = path.join(root, 'vendor', 'chisacode-remote', 'node_modules');
 const entry = path.join(root, 'mobile', 'web', 'chisacode', 'entry.mjs');
 const outfile = path.join(root, 'mobile', 'web', 'chisacode', 'daemon-client.bundle.js');
+const esbuild = path.join(vendorNm, 'esbuild', 'bin', 'esbuild');
 
 const env = {
   ...process.env,
@@ -16,10 +17,9 @@ const env = {
 };
 
 const result = spawnSync(
-  'npx',
+  process.execPath,
   [
-    '--yes',
-    'esbuild',
+    esbuild,
     entry,
     '--bundle',
     '--format=esm',
@@ -28,7 +28,7 @@ const result = spawnSync(
     `--outfile=${outfile}`,
     '--sourcemap',
   ],
-  { cwd: root, stdio: 'inherit', shell: true, env },
+  { cwd: root, stdio: 'inherit', env },
 );
 
 if (result.status !== 0) {

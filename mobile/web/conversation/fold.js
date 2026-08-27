@@ -37,6 +37,45 @@ function foldEvents(entries) {
     }
   };
   for (const entry of entries || []) {
+    const item = entry?.item;
+    if (item?.type === 'user_message') {
+      flushAssistant();
+      rows.push({
+        id: String(item.messageId || entry.seqStart || rows.length),
+        role: 'user',
+        text: String(item.text || ''),
+        images: [],
+      });
+      continue;
+    }
+    if (item?.type === 'assistant_message' || item?.type === 'reasoning') {
+      flushAssistant();
+      rows.push({
+        id: String(item.messageId || entry.seqStart || rows.length),
+        role: 'assistant',
+        text: String(item.text || ''),
+      });
+      continue;
+    }
+    if (item?.type === 'tool_call') {
+      flushAssistant();
+      rows.push({
+        id: String(item.callId || entry.seqStart || rows.length),
+        role: 'tool',
+        text: String(item.name || ''),
+        card: item.status || 'tool',
+      });
+      continue;
+    }
+    if (item?.type === 'error') {
+      flushAssistant();
+      rows.push({
+        id: String(entry.seqStart || rows.length),
+        role: 'assistant',
+        text: String(item.message || ''),
+      });
+      continue;
+    }
     const event = entry?.event || entry;
     if (!event || typeof event.type !== 'string') continue;
     if (event.type === 'user/message') {

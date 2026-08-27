@@ -36,6 +36,8 @@ function run(command, args, cwd = root) {
   }
 }
 
+run(process.execPath, ['scripts/prepare-chisacode-remote.mjs']);
+
 const remotePkg = path.join(root, 'vendor', 'deepseek-harness', 'packages', 'client', 'ui-settings-remote');
 const remoteSrc = path.join(remotePkg, 'src');
 const remoteLib = path.join(remotePkg, 'lib', 'client.js');
@@ -46,18 +48,6 @@ if (srcNewest > libMtime + 500) {
   run('npm', ['run', 'bundle'], remotePkg);
 } else {
   console.log('[prestart] ui-settings-remote lib is current');
-}
-
-const mobileBundle = path.join(root, 'mobile', 'web', 'chisacode', 'daemon-client.bundle.js');
-if (!fs.existsSync(mobileBundle)) {
-  console.log('[prestart] bundling chisacode mobile client');
-  run('node', ['scripts/bundle-chisacode-mobile-client.mjs']);
-}
-
-const chisacodeNm = path.join(root, 'vendor', 'chisacode-remote', 'node_modules', '@chisacode', 'server');
-if (!fs.existsSync(chisacodeNm)) {
-  console.log('[prestart] linking chisacode-remote deps');
-  run('node', ['scripts/link-chisacode-deps.cjs']);
 }
 
 // Fail closed if gateway lib still has the retired host-token wall copy.

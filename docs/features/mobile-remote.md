@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — CI 修复：测试对齐 v2 接线（ChisaCodeRemote 取代 RemoteGateway、配对链接明示、devicesId 文案）；chisacode dist 未入库（嵌套 .gitignore），相关用例在 fresh clone 显式 skip；#offer= 用例 t.after 防泄漏挂起。 |
+| **last verified** | 2026-08-27 — SPA 实际接线修复：扫码/粘贴/启动统一解析 offer v2；DaemonClient 完成 bootstrap/sticky；已有 agent 列表、timeline、发送、停止与审批走 ChisaCode RPC。 |
 
 ## User paths
 
@@ -16,6 +16,7 @@
 ## Invariants
 
 - 手机 = **同协议客户端**（`mobile/web/chisacode/` + `@chisacode/client` bundle），不是旧 HTTP Host SPA。
+- SPA 不得从 `host/offer.js` / `host/login.js` 进入 v1 Cookie 登录；扫描结果保留完整 `#offer=` URL 后交给 `parseConnectionOfferFromUrl`。
 - QR **落地页** = 本机 `mobile/web` on `:3180`（`preferredLanIp`），**永不**把中继 origin 当 SPA。
 - Offer 内 `relay.endpoint` = 传输中继；WS 必须 `role=client`；`useTls` 读写一致（`=== true`）。
 - Offer v1 / `POST /__remote__/login` / RemoteGateway 配对 **退役**。
