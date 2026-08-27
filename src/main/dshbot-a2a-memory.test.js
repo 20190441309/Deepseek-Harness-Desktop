@@ -37,18 +37,27 @@ test('prioritizeAgentInbound puts priority first', async () => {
   assert.deepEqual(enqueueAgentInbound([{ text: 'q' }], { text: 'p', priority: true }).map((m) => m.text), ['p', 'q']);
 });
 
-test('resolveSendToAgentTarget rejects self and allows group targets', async () => {
+test('resolveSendToAgentTarget rejects self and non-member group posts', async () => {
   const { resolveSendToAgentTarget } = await import(messagingUrl);
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
     { id: 'b', kind: 'bot', name: 'B' },
-    { id: 'r', kind: 'room', name: 'Room' },
+    { id: 'r', kind: 'room', name: 'Room', memberBotIds: ['a', 'b'] },
+    { id: 'closed', kind: 'room', name: 'Closed', memberBotIds: ['b'] },
   ];
   assert.equal(resolveSendToAgentTarget(items, 'a', 'a').ok, false);
   const group = resolveSendToAgentTarget(items, 'a', 'r');
   assert.equal(group.ok, true);
   assert.equal(group.toGroup, true);
   assert.equal(resolveSendToAgentTarget(items, 'a', 'b').ok, true);
+  // Room posts are member-only; a legacy room without memberBotIds rejects too.
+  const outsider = resolveSendToAgentTarget(items, 'a', 'closed');
+  assert.equal(outsider.ok, false);
+  assert.match(outsider.error, /not a member of group Closed/);
+  assert.equal(
+    resolveSendToAgentTarget([...items, { id: 'bare', kind: 'room', name: 'Bare' }], 'a', 'bare').ok,
+    false,
+  );
 });
 
 test('buildAgentInboundWakePrompt includes cue segments', async () => {
@@ -85,6 +94,31 @@ test('inbox drain host does not clear catalog inside systemPrompt assemble', () 
     'utf8',
   );
   assert.match(indexSrc, /ackPendingInboxDrain\(scope, bot\.id\)/);
+});
+
+test('send_to_agent has no room inbox queue; an idle room fails honestly', () => {
+  const sendSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'send-to-agent.js'),
+    'utf8',
+  );
+  // The 1:1 inbox drain never assembles for rooms, so a room inbox would
+  // accept messages and never deliver them. Idle rooms return ok:false.
+  assert.equal(sendSrc.includes('Room session was idle; message queued'), false);
+  assert.equal(sendSrc.includes('Live post failed; message queued'), false);
+  assert.match(sendSrc, /is idle; the post was NOT delivered/);
+  assert.match(sendSrc, /ok: false,\s*\n\s*detail: `Group /);
+  // Group branch never enqueues onto the group inbox (1:1 branch still does).
+  const groupBranch = sendSrc.slice(
+    sendSrc.indexOf('if (resolved.toGroup) {'),
+    sendSrc.indexOf('const inbound = {'),
+  );
+  assert.ok(groupBranch.length > 0);
+  assert.equal(groupBranch.includes('enqueueAgentInbound'), false);
+  const drainSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vendor', 'dshbot', 'lib', 'inbox-drain.js'),
+    'utf8',
+  );
+  assert.match(drainSrc, /entry\.kind !== 'room'/);
 });
 
 test('memory read/write round-trips under a temp home', async () => {

@@ -176,15 +176,20 @@ test('turn epoch bumps and isCurrent flips', async () => {
   assert.equal(current(), false);
 });
 
-test('resolveSendToAgentTarget allows group ids', async () => {
+test('resolveSendToAgentTarget allows member group posts only', async () => {
   const { resolveSendToAgentTarget, buildAgentInboundWakePrompt } = await load('agent-messaging.js');
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
-    { id: 'g', kind: 'room', name: 'Group' },
+    { id: 'b', kind: 'bot', name: 'B' },
+    { id: 'g', kind: 'room', name: 'Group', memberBotIds: ['a'] },
   ];
   const ok = resolveSendToAgentTarget(items, 'a', 'g');
   assert.equal(ok.ok, true);
   assert.equal(ok.toGroup, true);
+  // Grok agent-messaging: only room members can post into a room.
+  const outsider = resolveSendToAgentTarget(items, 'b', 'g');
+  assert.equal(outsider.ok, false);
+  assert.match(outsider.error, /not a member/);
   const wake = buildAgentInboundWakePrompt({
     fromId: 'a',
     fromName: 'A',

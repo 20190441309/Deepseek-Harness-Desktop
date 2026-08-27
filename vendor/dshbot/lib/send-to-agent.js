@@ -24,7 +24,7 @@ export function registerSendToAgent(ctx, deps) {
   ctx.tools.register(defineTool({
     name: 'send_to_agent',
     description:
-      'Send an asynchronous message to another bot or post into a group room. Do not wait for a reply.',
+      'Send an asynchronous message to another bot or post into a group room you belong to. Do not wait for a reply.',
     timeoutMs: 30_000,
     parameters: {
       botId: {
@@ -86,13 +86,14 @@ export function registerSendToAgent(ctx, deps) {
       const priority = args.priority === true;
 
       if (resolved.toGroup) {
-        const notes = [];
-        if (priority) {
-          notes.push('Note: priority is 1:1 only — this post did not interrupt members.');
-        }
-        // Post into the room transcript (Grok postToGroup). No member interrupt.
+        // Post into the room transcript (Grok postToGroup). No member
+        // interrupt. There is deliberately NO room inbox fallback: the 1:1
+        // inbox drain only assembles for bots, so a room queue would accept
+        // the message and never deliver it — an idle room is an honest
+        // failure the sender can retry, not a silent black hole.
         const fromName = String(sender.name ?? 'Bot');
         const body = `[${fromName}]\n${text}`;
+        let posted = false;
         try {
           const live = ctx.sessions?.get?.(resolved.to.sessionId);
           const agent = live?.agent ?? live;
@@ -101,32 +102,21 @@ export function registerSendToAgent(ctx, deps) {
               content: [{ type: 'text', text: body }],
               source: { kind: 'user' },
             });
-          } else {
-            const inbound = {
-              fromId: sender.id,
-              fromName,
-              text,
-              timestampMs: Date.now(),
-            };
-            const nextInbox = enqueueAgentInbound(resolved.to.inbox, inbound);
-            const nextItems = upsertItem(items, { ...resolved.to, inbox: nextInbox, updatedAt: Date.now() });
-            scope.set({ ...catalog, items: nextItems });
-            notes.push('Room session was idle; message queued on the group inbox.');
+            posted = true;
           }
         } catch {
-          const inbound = {
-            fromId: sender.id,
-            fromName,
-            text,
-            timestampMs: Date.now(),
-          };
-          const nextInbox = enqueueAgentInbound(resolved.to.inbox, inbound);
-          const nextItems = upsertItem(items, { ...resolved.to, inbox: nextInbox, updatedAt: Date.now() });
-          scope.set({ ...catalog, items: nextItems });
-          notes.push('Live post failed; message queued on the group inbox.');
+          posted = false;
         }
-        const ack = `Posted to group ${resolved.to.name}.`;
-        return { ok: true, detail: notes.length === 0 ? ack : `${ack} ${notes.join(' ')}` };
+        if (!posted) {
+          return {
+            ok: false,
+            detail: `Group ${resolved.to.name} is idle; the post was NOT delivered. Rooms have no offline inbox — try again while the room is active, or tell the user in your own chat instead.`,
+          };
+        }
+        const note = priority
+          ? ' Note: priority is 1:1 only — this post did not interrupt members.'
+          : '';
+        return { ok: true, detail: `Posted to group ${resolved.to.name}.${note}` };
       }
 
       const inbound = {
