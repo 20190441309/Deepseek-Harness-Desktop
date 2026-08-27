@@ -61,11 +61,14 @@ message instead of half-publishing.
   `ask_participant`, members deliver visible text only through
   `send_room_message` or `(pass)` to stay silent. A member turn is
   tool-filtered to `send_room_message` only, and the member system prompt
-  says exactly that.
+  says exactly that. Rooms contain 2–6 bots. The fixed limits are 10 member
+  attempts and 3 rounds; pass, failure, and a replayed call without a result
+  consume an attempt, and member failures become silent passes.
 - A2A: `send_to_agent` messages another bot asynchronously or posts into a
   room; priority only reorders the inbox queue (no runner interrupt). Each
   1:1 bot sees a teammates/rooms directory section in its system prompt.
-- `remember` appends durable notes under `$DSH_HOME/dshbot-memory/`.
+- `remember` is the only memory write path and appends durable notes under
+  `$DSH_HOME/dshbot-memory/`; the profile editor has no memory field.
 
 Protocol symbols live in `lib/group-chat.js`; catalog/scheduling helpers in
 `lib/catalog.js`; host glue in `lib/index.js`.

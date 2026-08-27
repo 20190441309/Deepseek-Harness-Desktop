@@ -42,13 +42,20 @@ function profileListsBundle(profileDir) {
 
 function linkIntoProfileModules(destDir, profileDir) {
   const linked = path.join(profileDir, 'node_modules', DSHBOT_PACKAGE);
-  if (fs.existsSync(linked) && !fs.lstatSync(linked).isSymbolicLink()) {
+  let existing;
+  try {
+    existing = fs.lstatSync(linked);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      return;
+    }
+  }
+  if (existing) {
+    // pnpm and marketplace installs are symlinks too. Never rewrite an
+    // existing profile entry; an existing desktop link also needs no write.
     return;
   }
   fs.mkdirSync(path.dirname(linked), { recursive: true });
-  if (fs.existsSync(linked)) {
-    fs.unlinkSync(linked);
-  }
   fs.symlinkSync(destDir, linked, process.platform === 'win32' ? 'junction' : 'dir');
 }
 

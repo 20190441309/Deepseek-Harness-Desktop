@@ -13,7 +13,15 @@ async function load(name) {
 }
 
 test('orderRoundSpeakers rotates by round', async () => {
-  const { orderRoundSpeakers } = await load('group-chat.js');
+  const {
+    GROUP_MAX_MEMBER_TURNS,
+    GROUP_MAX_ROUNDS,
+    GROUP_MIN_MEMBERS,
+    orderRoundSpeakers,
+  } = await load('group-chat.js');
+  assert.equal(GROUP_MIN_MEMBERS, 2);
+  assert.equal(GROUP_MAX_MEMBER_TURNS, 10);
+  assert.equal(GROUP_MAX_ROUNDS, 3);
   assert.deepEqual(orderRoundSpeakers(['a', 'b', 'c'], 0), ['a', 'b', 'c']);
   assert.deepEqual(orderRoundSpeakers(['a', 'b', 'c'], 1), ['b', 'c', 'a']);
   assert.deepEqual(orderRoundSpeakers(['a', 'b', 'c'], 2), ['c', 'a', 'b']);
@@ -109,23 +117,49 @@ test('the unwired GroupChatOrchestrator parallel implementation stays deleted', 
   assert.equal(chat.buildGroupRedriveNote, undefined);
 });
 
-test('planCreateGroup requires one member and opens duplicate set', async () => {
-  const { planCreateGroup, SandGroupCreateError } = await load('group-chat-host.js');
+test('group membership requires 2-6 bots and opens a duplicate set', async () => {
+  const {
+    planCreateGroup,
+    planSetGroupMembers,
+    SandGroupCreateError,
+  } = await load('group-chat-host.js');
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
     { id: 'b', kind: 'bot', name: 'B' },
+    { id: 'c', kind: 'bot', name: 'C' },
+    { id: 'd', kind: 'bot', name: 'D' },
+    { id: 'e', kind: 'bot', name: 'E' },
+    { id: 'f', kind: 'bot', name: 'F' },
+    { id: 'g', kind: 'bot', name: 'G' },
     { id: 'r1', kind: 'room', name: 'G', memberBotIds: ['a', 'b'] },
   ];
   assert.throws(
     () => planCreateGroup({ name: 'x', memberIds: [], items }),
     SandGroupCreateError,
   );
+  assert.throws(
+    () => planCreateGroup({ name: 'x', memberIds: ['a'], items }),
+    /at least 2/,
+  );
   const open = planCreateGroup({ name: 'x', memberIds: ['b', 'a'], items });
   assert.equal(open.action, 'open');
   assert.equal(open.room.id, 'r1');
-  const create = planCreateGroup({ name: 'New', memberIds: ['a'], items });
+  const create = planCreateGroup({ name: 'New', memberIds: ['a', 'c'], items });
   assert.equal(create.action, 'create');
-  assert.deepEqual(create.memberIds, ['a']);
+  assert.deepEqual(create.memberIds, ['a', 'c']);
+  assert.equal(planSetGroupMembers({ groupId: 'r1', memberIds: ['a'], items }), null);
+  assert.deepEqual(
+    planSetGroupMembers({ groupId: 'r1', memberIds: ['a', 'c'], items }),
+    ['a', 'c'],
+  );
+  assert.deepEqual(
+    planCreateGroup({
+      name: 'Capped',
+      memberIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+      items,
+    }).memberIds,
+    ['a', 'b', 'c', 'd', 'e', 'f'],
+  );
 });
 
 test('turn epoch bumps and isCurrent flips', async () => {
@@ -142,15 +176,20 @@ test('turn epoch bumps and isCurrent flips', async () => {
   assert.equal(current(), false);
 });
 
-test('resolveSendToAgentTarget allows group ids', async () => {
+test('resolveSendToAgentTarget allows member group posts only', async () => {
   const { resolveSendToAgentTarget, buildAgentInboundWakePrompt } = await load('agent-messaging.js');
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
-    { id: 'g', kind: 'room', name: 'Group' },
+    { id: 'b', kind: 'bot', name: 'B' },
+    { id: 'g', kind: 'room', name: 'Group', memberBotIds: ['a'] },
   ];
   const ok = resolveSendToAgentTarget(items, 'a', 'g');
   assert.equal(ok.ok, true);
   assert.equal(ok.toGroup, true);
+  // Grok agent-messaging: only room members can post into a room.
+  const outsider = resolveSendToAgentTarget(items, 'b', 'g');
+  assert.equal(outsider.ok, false);
+  assert.match(outsider.error, /not a member/);
   const wake = buildAgentInboundWakePrompt({
     fromId: 'a',
     fromName: 'A',

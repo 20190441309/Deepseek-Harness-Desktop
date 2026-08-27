@@ -157,7 +157,8 @@ export function enqueueAgentInbound(inbox, message) {
 }
 
 /**
- * Validate send_to_agent targets. Groups are allowed (post into room).
+ * Validate send_to_agent targets. Group posts are member-only (Grok
+ * agent-messaging: an agent can only post into rooms it belongs to).
  * @param {readonly object[]} items
  * @param {string} fromBotId
  * @param {string} toBotId
@@ -172,5 +173,15 @@ export function resolveSendToAgentTarget(items, fromBotId, toBotId) {
   const to = items.find((entry) => entry.id === toBotId);
   if (!from) return { ok: false, error: 'Sender is not a catalog bot.' };
   if (!to) return { ok: false, error: `No agent found with id ${toBotId}.` };
-  return { ok: true, from, to, toGroup: to.kind === 'room' };
+  if (to.kind === 'room') {
+    const members = Array.isArray(to.memberBotIds) ? to.memberBotIds : [];
+    if (!members.includes(fromBotId)) {
+      return {
+        ok: false,
+        error: `You are not a member of group ${String(to.name ?? '') || toBotId}; only members can post into a room.`,
+      };
+    }
+    return { ok: true, from, to, toGroup: true };
+  }
+  return { ok: true, from, to, toGroup: false };
 }

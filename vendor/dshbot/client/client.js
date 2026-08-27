@@ -5,7 +5,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
   const { createElement: h, useState, useEffect, useMemo, useRef } = react;
   const {
-    Button, Input, Switch, Menu, Modal, Pill,
+    Button, Input, Menu, Modal, Pill,
     IconPlusOutline16, IconSearchOutline16, IconEllipsisOutline16,
     IconEditOutline16, IconTrashOutline16, IconCopyOutline16,
     IconAgentPresetOutline16,
@@ -14,6 +14,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   const NS = "dshbot";
   const TAB_ID = "bots";
   const DEFAULT_BOT_NAME = "新机器人";
+  const GROUP_MIN_MEMBERS = 2;
   const GROUP_MAX_MEMBERS = 6;
 
   const zh = {
@@ -23,7 +24,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     addBot: "添加新 Bot",
     addRoom: "创建群聊",
     empty: "还没有机器人",
-    emptyHint: "点右上角加号添加联系人或群聊。建群只需名称与成员（至少一人）。",
+    emptyHint: "点右上角加号添加联系人或群聊。群聊需要 2–6 名成员。",
     edit: "编辑资料",
     duplicate: "复制",
     delete: "删除",
@@ -41,18 +42,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     model: "模型",
     workspace: "工作区",
     workspaceNone: "无目录",
-    workspaceLocked: "已有对话的机器人不能改工作区，请新建一个。",
+    workspaceLocked: "有消息的机器人或已创建的群聊不能改工作区，请新建一个。",
     pin: "置顶",
     unpin: "取消置顶",
     hide: "隐藏",
     unhide: "取消隐藏",
     showHidden: "显示已隐藏",
     hideHidden: "收起已隐藏",
-    memoryLabel: "记忆笔记",
-    memoryHint: "长期偏好写在这里；也可让 bot 用 remember 工具追加。",
-    notifications: "通知",
     members: "成员",
-    membersHint: "选择 1–6 个已有机器人（不能选群）。",
+    membersHint: "选择 2–6 个已有机器人（不能选群）。",
     roomName: "群聊名称",
     defaultBotName: DEFAULT_BOT_NAME,
     defaultRoomName: "新群聊",
@@ -80,7 +78,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     addBot: "New bot",
     addRoom: "New group",
     empty: "No bots yet",
-    emptyHint: "Use the plus button to add a contact or group. Groups need a name and members (at least one).",
+    emptyHint: "Use the plus button to add a contact or group. Groups need 2–6 members.",
     edit: "Edit profile",
     duplicate: "Duplicate",
     delete: "Delete",
@@ -98,18 +96,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     model: "Model",
     workspace: "Workspace",
     workspaceNone: "No directory",
-    workspaceLocked: "A bot that already has turns cannot change workspace. Create a new one.",
+    workspaceLocked: "A bot with messages or an established group cannot change workspace. Create a new one.",
     pin: "Pin",
     unpin: "Unpin",
     hide: "Hide",
     unhide: "Unhide",
     showHidden: "Show hidden",
     hideHidden: "Hide hidden list",
-    memoryLabel: "Memory notes",
-    memoryHint: "Durable preferences go here; the bot can also append via the remember tool.",
-    notifications: "Notifications",
     members: "Members",
-    membersHint: "Pick 1–6 existing bots (not groups).",
+    membersHint: "Pick 2–6 existing bots (not groups).",
     roomName: "Group name",
     defaultBotName: "New bot",
     defaultRoomName: "New group",
@@ -760,7 +755,11 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           },
           items: [
             { id: "bot", label: t("addBot") },
-            { id: "room", label: t("addRoom"), disabled: items.filter((item) => item.kind !== "room").length < 1 },
+            {
+              id: "room",
+              label: t("addRoom"),
+              disabled: items.filter((item) => item.kind !== "room").length < GROUP_MIN_MEMBERS,
+            },
           ],
           anchor: h(Button, {
             variant: "ghost",
@@ -878,13 +877,12 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const isDelete = editor.mode === "delete";
     const isRoom = isRoomCreate || item?.kind === "room";
     const session = item ? sessions?.byId?.[item.sessionId] : undefined;
-    const workspaceLocked = Boolean(item && item.kind !== "room" && session && session.blank === false);
+    const workspaceLocked = Boolean(item && (item.kind === "room" || session?.blank === false));
 
     const [name, setName] = useState("");
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [workspaceId, setWorkspaceId] = useState("");
-    const [notifications, setNotifications] = useState(true);
     const [provider, setProvider] = useState("");
     const [model, setModel] = useState("");
     const [memberIds, setMemberIds] = useState([]);
@@ -908,7 +906,6 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       setTitle(item.title || "");
       setDescription(item.description || "");
       setWorkspaceId(item.workspaceId || "");
-      setNotifications(item.notifications !== false);
       setProvider(item.model?.provider || "");
       setModel(item.model?.model || "");
       setMemberIds(Array.isArray(item.memberBotIds) ? item.memberBotIds : []);
@@ -950,7 +947,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         h(Button, { variant: "outline", onClick: closeEditor, disabled: busy }, t("cancel")),
         h(Button, {
           variant: "primary",
-          disabled: busy || (isRoom && (memberIds.length < 1 || memberIds.length > GROUP_MAX_MEMBERS)),
+          disabled: busy || (isRoom && (
+            memberIds.length < GROUP_MIN_MEMBERS || memberIds.length > GROUP_MAX_MEMBERS
+          )),
           onClick: async () => {
             setBusy(true);
             try {
@@ -962,7 +961,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                   memberBotIds: memberIds,
                 });
               } else if (item) {
-                if (isRoom && (memberIds.length < 1 || memberIds.length > GROUP_MAX_MEMBERS)) {
+                if (isRoom && (
+                  memberIds.length < GROUP_MIN_MEMBERS || memberIds.length > GROUP_MAX_MEMBERS
+                )) {
                   throw new Error(t("membersHint"));
                 }
                 await saveItem({
@@ -974,7 +975,6 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                     ? (item.avatar || defaultBlobAvatar(item.id || name))
                     : normalizeAvatar(avatar, item.id || name),
                   workspaceId: workspaceId || undefined,
-                  notifications: isRoom ? false : notifications,
                   memberBotIds: isRoom ? memberIds : item.memberBotIds,
                   model: (!isRoom && provider && model) ? { provider, model } : undefined,
                   updatedAt: Date.now(),
@@ -1058,7 +1058,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                   type: "checkbox",
                   checked: memberIds.includes(bot.id),
                   onChange: (event) => {
-                    if (!event.target.checked && memberIds.length <= 1) return;
+                    if (!event.target.checked && memberIds.length <= GROUP_MIN_MEMBERS) return;
                     setMemberIds(event.target.checked
                       ? (memberIds.length >= GROUP_MAX_MEMBERS
                         ? memberIds
@@ -1066,7 +1066,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                       : memberIds.filter((id) => id !== bot.id));
                   },
                   disabled: (!memberIds.includes(bot.id) && memberIds.length >= GROUP_MAX_MEMBERS)
-                    || (memberIds.includes(bot.id) && memberIds.length <= 1),
+                    || (memberIds.includes(bot.id) && memberIds.length <= GROUP_MIN_MEMBERS),
                 }),
                 h(AvatarView, { avatar: bot.avatar, seed: bot.id || bot.name, size: 24 }),
                 bot.name,
@@ -1121,19 +1121,12 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             ),
             workspaceLocked ? h("div", { className: "dshbot-hint" }, t("workspaceLocked")) : null,
           ),
-          !isRoom ? h("label", { className: "dshbot-member" },
-            t("notifications"),
-            h(Switch, {
-              checked: notifications,
-              onChange: (event) => setNotifications(event.target.checked),
-            }),
-          ) : null,
         ),
     );
   }
 
-  function textFromContent(content) {
-    if (!Array.isArray(content)) return "";
+  function textsFromContent(content) {
+    if (!Array.isArray(content)) return [];
     const parts = [];
     for (const part of content) {
       if (part?.type === "text" && typeof part.text === "string") {
@@ -1141,11 +1134,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         continue;
       }
       if (part?.type === "tool-result" && Array.isArray(part.content)) {
-        const nested = textFromContent(part.content);
-        if (nested) parts.push(nested);
+        parts.push(...textsFromContent(part.content));
       }
     }
-    return parts.join("");
+    return parts;
   }
 
   function isPassContent(text) {
@@ -1175,10 +1167,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     } catch {
       botId = "";
     }
-    const resultText = settled
-      ? (textFromContent(block.content) || textFromContent(block.resultView?.content))
-      : "";
-    const visible = memberVisibleText(resultText);
+    // Each rendered text block is one send_room_message delivery (Grok
+    // parity): a two-message member turn stays two visible room messages.
+    const ownTexts = settled ? textsFromContent(block.content) : [];
+    const resultTexts = ownTexts.length > 0
+      ? ownTexts
+      : (settled ? textsFromContent(block.resultView?.content) : []);
+    const visibleTexts = resultTexts.map(memberVisibleText).filter(Boolean);
+    const visible = visibleTexts.length > 0;
     const resultName = (typeof block?.resultView?.title === "string" && block.resultView.title)
       || (typeof block?.callView?.title === "string" && block.callView.title)
       || "";
@@ -1194,10 +1190,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       h(AvatarView, { avatar: catalogAvatar, seed: botId, thinking, size: 32 }),
       h("div", { className: "dshbot-bubble-body" },
         h("div", { className: "dshbot-bubble-name" }, title),
-        h("div", {
-          className: "dshbot-bubble-text",
-          "data-pending": thinking ? "true" : undefined,
-        }, settled ? visible : thinkingLabel),
+        settled
+          ? visibleTexts.map((text, index) => h("div", {
+            key: index,
+            className: "dshbot-bubble-text",
+          }, text))
+          : h("div", {
+            className: "dshbot-bubble-text",
+            "data-pending": "true",
+          }, thinkingLabel),
       ),
     );
   }
@@ -1313,7 +1314,6 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             title: "",
             description: "",
             avatar: defaultBlobAvatar(id),
-            notifications: true,
             pinned: false,
             hidden: false,
             pinOrder: 0,
@@ -1333,7 +1333,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       },
       createRoomSubmit: async ({ name, description, workspaceId, memberBotIds }) => {
         try {
-          if (!Array.isArray(memberBotIds) || memberBotIds.length < 1 || memberBotIds.length > GROUP_MAX_MEMBERS) {
+          if (!Array.isArray(memberBotIds)
+            || memberBotIds.length < GROUP_MIN_MEMBERS
+            || memberBotIds.length > GROUP_MAX_MEMBERS) {
             fail(new Error(t("membersHint")));
             return;
           }
@@ -1364,7 +1366,6 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             avatar: defaultBlobAvatar(id),
             workspaceId,
             memberBotIds,
-            notifications: false,
             pinned: false,
             hidden: false,
             pinOrder: 0,
