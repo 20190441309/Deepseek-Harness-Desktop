@@ -87,9 +87,11 @@ test('live gateway snapshot marks the remote face available', () => {
   assert.equal(snap.listening, false);
 });
 
-test('main process constructs RemoteGateway instead of the disabled stub', () => {
+test('main process constructs the ChisaCode remote face instead of the disabled stub', () => {
   const index = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-  assert.match(index, /new RemoteGateway/);
+  // 产品配对面 = ChisaCode v2 daemon；HTTP RemoteGateway 已从主进程接线退役。
+  assert.match(index, /new ChisaCodeRemote/);
+  assert.doesNotMatch(index, /new RemoteGateway/);
   assert.doesNotMatch(index, /createDisabledRemote/);
   assert.match(index, /getTarget:/);
 });
@@ -776,7 +778,7 @@ function decodeLikeLoginPageScript(encoded) {
   return json && json.token ? String(json.token) : '';
 }
 
-test('#offer= first visit: login page auto-login decodes pairingUrl and lands on the parity SPA', async () => {
+test('#offer= first visit: login page auto-login decodes pairingUrl and lands on the parity SPA', async (t) => {
   const upstream = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (chunk) => { raw += chunk; });
@@ -798,6 +800,12 @@ test('#offer= first visit: login page auto-login decodes pairingUrl and lands on
   const gateway = new RemoteGateway(config);
   await gateway.start({ port: 0, token, target: { port: upstreamPort } });
   const port = gateway.port;
+  // 断言失败也必须放掉监听端口，否则整个 node --test 进程永不退出（CI 15 分钟超时）。
+  t.after(async () => {
+    await gateway.stop();
+    upstream.closeAllConnections();
+    await close(upstream);
+  });
 
   // 1. 未认证首访（浏览器打开二维码 URL；hash 不上行）→ 401 legacy 登录页。
   const first = await request(port, '/', { headers: { accept: 'text/html' } });
@@ -841,7 +849,9 @@ test('#offer= first visit: login page auto-login decodes pairingUrl and lands on
   assert.match(appJs.body, /settings-hub/);
   assert.match(appJs.body, /hashHasOffer/);
   assert.match(appJs.body, /配对链接无效/);
-  assert.match(appJs.body, /status === 401/);
+  // ChisaCode v2 会话层已接线（sticky 重连 + daemon-client bundle 懒加载）。
+  assert.match(appJs.body, /\.\/chisacode\/session\.js/);
+  assert.match(appJs.body, /daemon-client\.bundle\.js/);
 
   // 6. SPA 侧 ESM 模块（真实手机代码）对同一个二维码 payload 直接可用。
   const { pathToFileURL } = require('url');
@@ -876,9 +886,6 @@ test('#offer= first visit: login page auto-login decodes pairingUrl and lands on
   assert.equal(spaOfferFromHash('#offer=%%%broken%%%'), null);
   assert.equal(hashHasOffer('#offer=%%%broken%%%'), true);
   assert.equal(hashHasOffer('#'), false);
-
-  await gateway.stop();
-  await close(upstream);
 });
 
 // —— M-4 深化：绑定地址可配置 + LAN 自签 TLS ——
