@@ -24,7 +24,8 @@ interface TextRunData extends RunDataBase {
 }
 
 interface ToolCallRunData extends RunDataBase {
-  readonly id: Extract<StreamChunk, { type: 'tool-call-delta' }>['id']
+  /** Always present: {@link classify} packs only chunks carrying a string id. */
+  readonly id: NonNullable<Extract<StreamChunk, { type: 'tool-call-delta' }>['id']>
   readonly name?: string
   readonly args: string[]
 }
@@ -117,7 +118,7 @@ function buildRow(kind: DeltaKind, run: readonly DeltaEvent[]): ChunkRow {
       ...envelope,
       data: {
         ...base,
-        id: call.id as Extract<StreamChunk, { type: 'tool-call-delta' }>['id'],
+        id: call.id as ToolCallRunData['id'],
         ...Object.hasOwn(call, 'name') ? { name: call.name as string } : {},
         args: run.map(event => (event.data.chunk as { readonly argumentsDelta: string }).argumentsDelta),
       },
@@ -291,7 +292,7 @@ function expandRow(row: ChunkRow): SessionEvent[] {
         chunk = {
           type: 'tool-call-delta',
           index: row.data.index,
-          ...row.data.id === undefined ? {} : { id: row.data.id },
+          id: row.data.id,
           ...row.data.name === undefined ? {} : { name: row.data.name },
           argumentsDelta: members[index] as string,
         }
