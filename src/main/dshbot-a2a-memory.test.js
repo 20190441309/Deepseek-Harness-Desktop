@@ -37,17 +37,18 @@ test('prioritizeAgentInbound puts priority first', async () => {
   assert.deepEqual(enqueueAgentInbound([{ text: 'q' }], { text: 'p', priority: true }).map((m) => m.text), ['p', 'q']);
 });
 
-test('resolveSendToAgentTarget rejects self and allows group targets', async () => {
+test('resolveSendToAgentTarget rejects self and allows member group targets', async () => {
   const { resolveSendToAgentTarget } = await import(messagingUrl);
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
     { id: 'b', kind: 'bot', name: 'B' },
-    { id: 'r', kind: 'room', name: 'Room' },
+    { id: 'r', kind: 'room', name: 'Room', memberBotIds: ['a'] },
   ];
   assert.equal(resolveSendToAgentTarget(items, 'a', 'a').ok, false);
   const group = resolveSendToAgentTarget(items, 'a', 'r');
   assert.equal(group.ok, true);
   assert.equal(group.toGroup, true);
+  assert.equal(resolveSendToAgentTarget(items, 'b', 'r').ok, false);
   assert.equal(resolveSendToAgentTarget(items, 'a', 'b').ok, true);
 });
 

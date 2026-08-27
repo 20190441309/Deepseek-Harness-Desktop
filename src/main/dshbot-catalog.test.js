@@ -413,8 +413,8 @@ test('nextRoomSpeakerId ignores legacy NEXT footers for scheduling', async () =>
   ]), 'c');
 });
 
-test('nextRoomSpeakerId counts attempts and hard-clamps maxSpeaks and maxRounds', async () => {
-  const { memberTurnAttempts, nextRoomSpeakerId } = await loadCatalog();
+test('nextRoomSpeakerId counts visible deliveries and hard-clamps maxSpeaks and maxRounds', async () => {
+  const { memberTurnAttempts, nextRoomSpeakerId, visibleMemberMessageCount } = await loadCatalog();
   const items = roomCatalog();
   const room = items[0];
   const danglingAttempt = [userSaid('请讨论'), asked('c1', 'a')];
@@ -423,7 +423,8 @@ test('nextRoomSpeakerId counts attempts and hard-clamps maxSpeaks and maxRounds'
     text: '',
     completed: false,
   }]);
-  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), undefined);
+  assert.equal(visibleMemberMessageCount(danglingAttempt, items), 0);
+  assert.equal(nextRoomSpeakerId(items, room, danglingAttempt, { maxSpeaks: 1 }), 'a');
   assert.equal(nextRoomSpeakerId(items, room, [
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '一'),
@@ -439,6 +440,30 @@ test('nextRoomSpeakerId counts attempts and hard-clamps maxSpeaks and maxRounds'
     userSaid('请讨论'),
     asked('c1', 'a'), answered('c1', '(pass)'),
   ]), [{ botId: 'a', text: '(pass)', completed: true }]);
+  assert.equal(visibleMemberMessageCount([
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+  ], items), 0);
+});
+
+test('eventsToGroupHistory preserves separate ask_participant deliveries', async () => {
+  const { eventsToGroupHistory } = await loadCatalog();
+  const items = roomCatalog();
+  const payload = JSON.stringify({
+    botId: 'a',
+    name: 'A',
+    text: 'first',
+    deliveries: ['first', 'second'],
+  });
+  const history = eventsToGroupHistory([
+    userSaid('请讨论'),
+    asked('c1', 'a'),
+    answered('c1', payload),
+  ], items);
+  assert.deepEqual(
+    history.filter((message) => message.speaker.kind === 'member').map((message) => message.content),
+    ['first', 'second'],
+  );
 });
 
 test('isRoomConversationRequest skips 1:1 bots and auxiliary purposes', async () => {

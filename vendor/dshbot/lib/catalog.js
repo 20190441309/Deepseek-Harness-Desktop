@@ -427,6 +427,50 @@ function lastUserMessageIndex(events) {
 }
 
 /**
+ * Visible member deliveries extracted from an ask_participant tool result body.
+ * Supports plain text (legacy/tests) and JSON `{ text, deliveries[] }`.
+ * @param {string | undefined} raw
+ * @returns {string[]}
+ */
+export function visibleDeliveriesFromAskResult(raw) {
+  const body = String(raw ?? '').trim();
+  if (!body) return [];
+  try {
+    const parsed = JSON.parse(body);
+    if (Array.isArray(parsed?.deliveries)) {
+      return parsed.deliveries
+        .map((entry) => memberVisibleText(String(entry ?? '')))
+        .filter(Boolean);
+    }
+    if (typeof parsed?.text === 'string') {
+      const single = memberVisibleText(parsed.text);
+      return single ? [single] : [];
+    }
+  } catch {
+    // Plain text tool results stay as-is.
+  }
+  const single = memberVisibleText(body);
+  return single ? [single] : [];
+}
+
+/**
+ * Member-visible messages since the latest user message (Grok delivery counting).
+ * @param {readonly object[] | undefined} events
+ * @param {readonly object[]} items
+ * @returns {number}
+ */
+export function visibleMemberMessageCount(events, items) {
+  const history = eventsToGroupHistory(events, items);
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const message = history[i];
+    if (message.speaker.kind === 'user') break;
+    if (message.speaker.kind === 'member') count += 1;
+  }
+  return count;
+}
+
+/**
  * ask_participant attempts after the latest user message. A call without a
  * result is a pass attempt, so restart replay cannot bypass the turn cap.
  * @param {readonly object[] | undefined} events
@@ -500,8 +544,8 @@ export function eventsToGroupHistory(events, items) {
       const callId = event.data?.message?.source?.callId;
       const author = namesByCall.get(callId);
       if (!author?.id) continue;
-      const text = memberVisibleText(contentText(event.data.message?.content));
-      if (text) {
+      const deliveries = visibleDeliveriesFromAskResult(contentText(event.data.message?.content));
+      for (const text of deliveries) {
         messages.push({
           speaker: { kind: 'member', id: author.id, name: author.name },
           content: text,
@@ -613,7 +657,7 @@ export function nextRoomSpeakerId(items, room, events, limits = {}) {
   const responders = resolveResponders(members, history).map((member) => member.id);
   if (responders.length === 0) return undefined;
   const turns = memberTurnAttempts(events);
-  if (turns.length >= maxSpeaks) return undefined;
+  if (visibleMemberMessageCount(events, items) >= maxSpeaks) return undefined;
 
   let round = 0;
   let queue = orderRoundSpeakers(responders, round);
@@ -621,6 +665,7 @@ export function nextRoomSpeakerId(items, room, events, limits = {}) {
   let roundsCompleted = 0;
 
   for (const turn of turns) {
+    if (!turn.completed) continue;
     const at = queue.indexOf(turn.botId);
     if (at >= 0) queue.splice(at, 1);
     if (memberVisibleText(turn.text)) nonPassThisRound += 1;

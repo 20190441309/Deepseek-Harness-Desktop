@@ -11,6 +11,8 @@ import {
   DEFAULT_MAX_SPEAKS,
   GROUP_MAX_MEMBER_TURNS,
   GROUP_MAX_ROUNDS,
+  completedMemberTurns,
+  catalogRoom,
   isRoomConversationRequest,
   memberTurnAttempts,
   memberPersona,
@@ -25,6 +27,7 @@ import { buildAgentDirectoryPrompt } from './agent-messaging.js';
 import { ensureRoomPreset } from './room-preset.js';
 import {
   ackPendingInboxDrain,
+  drainRoomInboxPosts,
   registerInboxDrain,
   registerSendToAgent,
 } from './send-to-agent.js';
@@ -150,21 +153,26 @@ export function apply(ctx, config = {}) {
     const items = scope.get()?.items ?? [];
     if (isRoomConversationRequest(options, items)) {
       const session = options.sessionId ? ctx.sessions.get(options.sessionId) : undefined;
-      const events = session?.events ?? [];
-      // New user turn: bump epoch and abort any in-flight member spawn.
-      if (memberTurnAttempts(events).length === 0 && options.sessionId) {
-        abortRoomMemberTurns(options.sessionId);
-        nextTurnEpoch(options.sessionId);
-      }
-      const chunks = roomDispatchChunks({
-        items,
-        sessionId: options.sessionId,
-        events,
-        callId: globalThis.crypto.randomUUID(),
-        maxSpeaks,
-        maxRounds,
-      }) ?? emptyStopChunks();
+      let events = session?.events ?? [];
+      const room = catalogRoom(items, options.sessionId);
+      const isNewUserTurn = memberTurnAttempts(events).length === 0;
       return (async function* () {
+        if (isNewUserTurn && options.sessionId) {
+          abortRoomMemberTurns(options.sessionId);
+          nextTurnEpoch(options.sessionId);
+          if (room?.inbox?.length) {
+            await drainRoomInboxPosts(ctx, scope, room);
+            events = ctx.sessions.get(options.sessionId)?.events ?? events;
+          }
+        }
+        const chunks = roomDispatchChunks({
+          items: scope.get()?.items ?? items,
+          sessionId: options.sessionId,
+          events,
+          callId: globalThis.crypto.randomUUID(),
+          maxSpeaks,
+          maxRounds,
+        }) ?? emptyStopChunks();
         for (const chunk of chunks) yield chunk;
       })();
     }

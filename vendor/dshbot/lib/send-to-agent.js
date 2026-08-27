@@ -17,6 +17,35 @@ import { ackInboxMessages } from './inbox-drain.js';
 export { ackPendingInboxDrain, registerInboxDrain } from './inbox-drain.js';
 
 /**
+ * Flush queued A2A posts into a live room transcript and clear room.inbox.
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ * @param {{ get: () => any, set: (v: any) => void }} scope
+ * @param {object} room
+ */
+export async function drainRoomInboxPosts(ctx, scope, room) {
+  const inbox = Array.isArray(room.inbox) ? [...room.inbox] : [];
+  if (inbox.length === 0) return;
+  const catalog = scope.get() ?? { items: [] };
+  const items = catalog.items ?? [];
+  scope.set({
+    ...catalog,
+    items: upsertItem(items, { ...room, inbox: [], updatedAt: Date.now() }),
+  });
+  const live = ctx.sessions?.get?.(room.sessionId);
+  const agent = live?.agent ?? live;
+  if (!agent || typeof agent.followup !== 'function') return;
+  for (const msg of inbox) {
+    const fromName = String(msg.fromName ?? 'Bot');
+    const text = String(msg.text ?? '').trim();
+    if (!text) continue;
+    await agent.followup({
+      content: [{ type: 'text', text: `[${fromName}]\n${text}` }],
+      source: { kind: 'user' },
+    });
+  }
+}
+
+/**
  * @param {import('@deepseek-ai/cordis').Context} ctx
  * @param {{ getScope: () => { get: () => any, set: (v: any) => void } }} deps
  */

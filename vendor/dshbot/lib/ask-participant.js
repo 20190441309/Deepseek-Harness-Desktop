@@ -175,6 +175,10 @@ export function registerAskParticipant(ctx) {
           botId: { type: 'string', required: true },
           name: { type: 'string', required: true },
           text: { type: 'string', required: true },
+          deliveries: {
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
       render: (_args, value) => [{
@@ -263,7 +267,14 @@ export function registerAskParticipant(ctx) {
               ?? ctx.sessions?.get?.(run.id)?.events;
             const deliveries = extractSendRoomDeliveries(childEvents);
             if (deliveries.length > 0) {
-              return { botId: bot.id, name: bot.name, text: deliveries.join('\n\n') };
+              const base = {
+                botId: bot.id,
+                name: bot.name,
+                text: deliveries[0],
+              };
+              return deliveries.length > 1
+                ? { ...base, deliveries }
+                : base;
             }
             const bare = blocksText(result.output);
             if (isPassContent(bare)) {

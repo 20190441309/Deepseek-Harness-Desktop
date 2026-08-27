@@ -172,5 +172,11 @@ export function resolveSendToAgentTarget(items, fromBotId, toBotId) {
   const to = items.find((entry) => entry.id === toBotId);
   if (!from) return { ok: false, error: 'Sender is not a catalog bot.' };
   if (!to) return { ok: false, error: `No agent found with id ${toBotId}.` };
-  return { ok: true, from, to, toGroup: to.kind === 'room' };
+  if (to.kind === 'room') {
+    if (!(to.memberBotIds ?? []).includes(fromBotId)) {
+      return { ok: false, error: 'You can only post to group rooms you belong to.' };
+    }
+    return { ok: true, from, to, toGroup: true };
+  }
+  return { ok: true, from, to, toGroup: false };
 }
