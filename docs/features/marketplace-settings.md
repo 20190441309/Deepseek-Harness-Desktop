@@ -48,6 +48,33 @@
   目录刷新失败时保留已展示的目录并给出可重试的 `role="alert"` 行（只有首次加载才落纯错误态）；
   刷新进行中按钮禁用并改标「刷新中…」。
 
+## 安装通道治理（`install_dsh_plugin` 会话内工具）
+
+会话内模型可见的安装工具由桌面自有 Host 插件 `dshd-desktop-plugin-install`
+（`src/host/install-dsh-plugin.mjs`）注册；`@deepseek-ai/dsh-tools` 从运行中的
+Harness 解析，解析失败只跳过注册、不拖垮 Host。
+
+- **注册条件**：仅当主进程 `desktop-install-control.js` 把回环控制端点注入环境
+  （`DSH_DESKTOP_INSTALL_URL` / `DSH_DESKTOP_INSTALL_TOKEN`）时注册。端点只听
+  `127.0.0.1` 随机端口，鉴权是每次启动新生成的 64-hex Bearer token，body 上限 64 KiB。
+- **通道范围 github-only**：工具客户端与端点两侧共用同一份 `isValidGithubSpec`
+  （`src/host/install-dsh-plugin-client.js`）校验 `github:owner/repo[#ref]`
+  （owner/repo/ref 全模式校验；`..`、`@{`、尾 `.` / `/` 拒绝）。npm 名、tarball、
+  本地路径、git URL、`#path:` monorepo 规格一律进不了该通道——`#path:` 只能走
+  curated 目录 `installMarketplacePlugin(id)`（`shell:install-marketplace-plugin`）。
+- **allowBuilds 白名单**：`normalizeAllowBuilds` 上限 32 条，仅接受合法包名 /
+  `github.com/owner/repo` / `name@git+https://github.com/owner/repo.git` 三种 key；
+  非法整体拒绝，不进 CLI。`needsAllowBuilds` 握手：pnpm 拦下 prepare scripts 时
+  工具返回 key 列表，模型必须先问用户、再带获批 allowBuilds 重试。
+- **信任边界在主进程**：端点内 `installPlugin` 独立复验（github-only +
+  `isDroppedInstallSpec` 退役家族拒绝 + 与市场安装共享 `withPluginLock` 互斥）；
+  Host 工具侧校验只是提前失败，不是安全边界。
+- 安装成功（且无 needsAllowBuilds）后由 `startHarness` 延迟重启：HTTP 响应先
+  flush、工具结果先落会话日志，再触发重启。
+
+Gate：`src/host/install-dsh-plugin-client.test.js`、`src/main/desktop-install-control.test.js`、
+`marketplace-install.test.js` 的 `installPlugin` 拒绝面。
+
 ## Deferred（v1 明确不移植 — 产品裁剪）
 
 主题商店、备份 / Gist、诊断面板、插件热更新、多 registry 源管理、试用通道：
