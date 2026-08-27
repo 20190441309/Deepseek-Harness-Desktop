@@ -12,8 +12,12 @@
  */
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { isDroppedPluginName } = require('../src/main/plugins');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const snapshotPath = path.join(root, 'src', 'main', 'marketplace-registry-snapshot.json');
@@ -36,7 +40,12 @@ async function main() {
     if (!body || !Array.isArray(body.plugins) || body.plugins.length === 0) {
       throw new Error('registry empty');
     }
-    const plugins = body.plugins.slice(0, maxPlugins);
+    // Dropped-family rows are filtered at render time anyway; keeping them in
+    // the curated offline subset would be dead weight (and fails the snapshot
+    // regression test in marketplace-catalog.test.js).
+    const plugins = body.plugins
+      .filter((row) => row && !isDroppedPluginName(row.name) && !(row.npm && isDroppedPluginName(row.npm)))
+      .slice(0, maxPlugins);
     const snapshot = {
       name: body.name || 'awesome-dsh-plugin',
       url: body.url || 'https://awesome-dsh-plugin.com',
