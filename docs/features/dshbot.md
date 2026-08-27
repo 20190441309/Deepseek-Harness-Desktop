@@ -63,7 +63,7 @@
 - 发布链路：`scripts/check-dshbot-publish.mjs`、`.github/workflows/publish-dshbot.yml`（2026-08-25 扩围：npm 发布交付件）
 - 本卡、`docs/handbook/modules/dshbot.md`、`docs/qa` 的 `TC-EXT-007`（含执行手册 `tc-ext-007-dshbot-install-smoke.md`）
 - 协议 spec：`docs/superpowers/specs/2026-08-19-dshbot-design.md`
-- standalone supersession 标记：`vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-08-19-sidebar-tabs-dshbot-origin{,.zh}.md`
+- standalone supersession 标记：`vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-08-19-sidebar-tabs-dshbot-origin{,.zh}.md` 及 `.i18n.yaml`
 
 ## Gates
 
