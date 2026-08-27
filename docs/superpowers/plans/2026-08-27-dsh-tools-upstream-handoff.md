@@ -6,7 +6,7 @@
 
 ## What the patch contains
 
-All changes live under `vendor/deepseek-harness/` on branch `cursor/fix-unknown-tool-empty-name-8eab` and apply cleanly to the upstream tree because the touched packages carry no desktop-fork edits:
+All changes live under `vendor/deepseek-harness/` and are now **merged into `main`** via PR #54 (merge commit `cac4f790`; the fix itself is `f8c1deb7`, and the original head branch `cursor/fix-unknown-tool-empty-name-8eab` has been deleted). They apply cleanly to the upstream tree because the touched packages carry no desktop-fork edits:
 
 - `packages/llm/llm/` — `requireValidToolCallIdentity` / `isValidToolCallIdentity` (`content.ts`), assembler rejection of nameless or id-less tool calls, `MALFORMED_RESPONSE` failure code added to the default retryable set (`retry-policy.ts`, `error.ts`), optional `id`/`name` on `tool-call-delta` (`types.ts`).
 - `packages/llm/llm-deepseek/` + `packages/llm/llm-pi-ai/` — adapters stop defaulting absent tool-call ids/names to empty strings.
@@ -21,7 +21,7 @@ All changes live under `vendor/deepseek-harness/` on branch `cursor/fix-unknown-
 
 ## Submission checklist
 
-- [ ] Extract the `vendor/deepseek-harness/` diff onto a fresh branch of `deepseek-ai/deepseek-harness` (e.g. `git diff main...cursor/fix-unknown-tool-empty-name-8eab -- vendor/deepseek-harness/ | git apply -p3 --directory=.` from the upstream checkout, or cherry-pick with path rewrite).
+- [ ] Extract the `vendor/deepseek-harness/` diff onto a fresh branch of `deepseek-ai/deepseek-harness` (the source branch is deleted; diff the merge commit instead, e.g. `git diff cac4f790^1...cac4f790 -- vendor/deepseek-harness/ | git apply -p3 --directory=.` from the upstream checkout, or cherry-pick `f8c1deb7` with path rewrite).
 - [ ] Run upstream gates on Node ^22.19 || >=24: `pnpm run test`, `pnpm run test:coverage` (per-file 100% on changed sources — verified locally 2026-08-27), `pnpm run typecheck`, `pnpm run lint`, `pnpm run build`, `pnpm run test:snapshot`, `pnpm run doc-sync`.
 - [ ] Run real-API gates with `DEEPSEEK_API_KEY`: `pnpm run test:e2e` (blocked in the desktop CI environment — no key).
 - [ ] Open the upstream PR with one `kind/bug` label, `area/*` labels for llm / agent-loop / session / tools / session-persistence, and link the Agent Note.
