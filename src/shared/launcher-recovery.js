@@ -9,6 +9,7 @@ const GENERIC_LABELS = {
 const PLUGIN_ERROR_LABELS = {
   preset: '桌面预置插件不可移除。',
   'official-template': '官方模板插件不可禁用。',
+  'desktop-builtin': '桌面内置组件不可禁用。',
   'missing-name': '缺少插件名称。',
 };
 

@@ -345,6 +345,7 @@ test('logs and continues when the usage-panel preset fails', async () => {
 
 test('skip-user-plugins still wires first-party dsh-im', async () => {
   const order = [];
+  const imOverlay = 'C:/profiles/web/desktop-plugins/dsh-im/desktop-dsh-im.patch.yml';
   const f = fixture({
     ensureUsagePanelPlugin: async () => {
       order.push('usage-panel');
@@ -352,13 +353,14 @@ test('skip-user-plugins still wires first-party dsh-im', async () => {
     },
     ensureDshImPlugin: async () => {
       order.push('dsh-im');
-      return { ok: true, added: false };
+      return { ok: true, added: false, overlayFile: imOverlay };
     },
   });
   f.controller.writePluginSkip(new Error('recovery'));
   await f.controller.start();
   assert.deepEqual(order, ['dsh-im']);
   assert.equal(f.dsh.startOptions[0].skipUserPlugins, true);
+  assert.ok(f.dsh.startOptions[0].patchFiles.includes(imOverlay));
   assert.ok(f.dsh.logs.some((line) => /桌面内置 dsh-im/.test(line)));
 });
 
@@ -428,6 +430,29 @@ test('full start rides the usage overlay after the install overlay; skip start d
   await skipped.controller.start();
   assert.equal(skipped.dsh.startOptions[0].skipUserPlugins, true);
   assert.deepEqual(skipped.dsh.startOptions[0].patchFiles, [installOverlay]);
+});
+
+test('dsh-im overlay rides --patch on both full and skip starts', async () => {
+  const installOverlay = 'C:/profiles/web/desktop-plugins/install-dsh-plugin/desktop-install.patch.yml';
+  const usageOverlay = 'C:/profiles/web/desktop-plugins/dsh-usage-panel/desktop-usage-panel.patch.yml';
+  const imOverlay = 'C:/profiles/web/desktop-plugins/dsh-im/desktop-dsh-im.patch.yml';
+  const f = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, overlayFile: installOverlay }),
+    ensureUsagePanelPlugin: async () => ({ ok: true, added: false, overlayFile: usageOverlay }),
+    ensureDshImPlugin: async () => ({ ok: true, added: false, overlayFile: imOverlay }),
+  });
+  await f.controller.start();
+  assert.deepEqual(f.dsh.startOptions[0].patchFiles, [installOverlay, usageOverlay, imOverlay]);
+
+  const skipped = fixture({
+    ensureDesktopInstallPlugin: () => ({ ok: true, overlayFile: installOverlay }),
+    ensureUsagePanelPlugin: async () => ({ ok: true, added: false, overlayFile: usageOverlay }),
+    ensureDshImPlugin: async () => ({ ok: true, added: false, overlayFile: imOverlay }),
+  });
+  skipped.controller.writePluginSkip(new Error('recovery'));
+  await skipped.controller.start();
+  assert.equal(skipped.dsh.startOptions[0].skipUserPlugins, true);
+  assert.deepEqual(skipped.dsh.startOptions[0].patchFiles, [installOverlay, imOverlay]);
 });
 
 test('a failed usage-panel ensure never contributes a stale overlay path', async () => {

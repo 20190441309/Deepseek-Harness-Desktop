@@ -2,6 +2,7 @@
 
 const { OFFICIAL_TEMPLATE_BUNDLES } = require('./plugins');
 const { DESKTOP_PACKAGES } = require('../shared/harness-desktop-forks');
+const { DSH_IM_ALIASES } = require('./dsh-im-desktop');
 
 const GENERIC_OOM = /heap out of memory|js heap|allocation failed|oom\b/i;
 const GENERIC_PORT = /eaddrinuse|address already in use/i;
@@ -14,23 +15,37 @@ const EVIDENCE_PATTERNS = [
   { kind: 'compose', regex: /failed to compose[^\n]*['"](@?[\w./-]+)['"]/gi },
 ];
 
-// Usage panel remains a soft desktop preset; dsh-im is first-party Remote
-// channels (vendor/dsh-im) but still appears on the Recovery Board toggle list.
+// Usage panel remains a soft desktop preset that the launcher may disable;
+// dsh-im aliases stay here only to block `shell:remove-plugin` on a
+// same-named profile row (the built-in itself never appears in the profile
+// list — it mounts via the desktop overlay).
 const PRESET_PLUGINS = new Set(['dsh-usage-panel', '@xmanrui/dsh-im', 'dsh-im', 'xmanrui-dsh-im']);
 const EVIDENCE_LINE_MAX = 240;
 
-const IN_BOX_PACKAGE_NAMES = new Set(DESKTOP_PACKAGES.map((pkg) => pkg.name));
+// In-box names cover the harness fork packages plus the desktop built-in
+// dsh-im (overlay-mounted from vendor/dsh-im): breakage in either is desktop
+// runtime damage — disable and skip-user-plugins cannot repair it.
+const IN_BOX_PACKAGE_NAMES = new Set([
+  ...DESKTOP_PACKAGES.map((pkg) => pkg.name),
+  ...DSH_IM_ALIASES,
+]);
 
 /**
- * A suspect that names an in-box desktop fork package (exactly or via a
- * subpath specifier like `@scope/pkg/client`) is harness runtime damage, not a
- * user plugin: disabling plugins or skipping the user layer cannot repair it.
+ * A suspect that names an in-box desktop package (exactly or via a subpath
+ * specifier like `@scope/pkg/client`) is desktop runtime damage, not a user
+ * plugin: disabling plugins or skipping the user layer cannot repair it.
+ * The desktop install overlay mounts a file:// insert from
+ * `desktop-plugins/install-dsh-plugin`; a compose failure there surfaces the
+ * path, not a package name, so the path marker is matched too.
  * @param {string} name
  * @returns {boolean}
  */
 function isInBoxPackageName(name) {
   const text = String(name || '');
   if (IN_BOX_PACKAGE_NAMES.has(text)) {
+    return true;
+  }
+  if (text.replace(/\\/g, '/').includes('desktop-plugins/install-dsh-plugin')) {
     return true;
   }
   for (const pkg of IN_BOX_PACKAGE_NAMES) {

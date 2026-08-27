@@ -10,6 +10,8 @@ const {
   DSH_IM_PACKAGE,
   DSH_IM_BEGIN,
   DSH_IM_END,
+  DSH_IM_INSERT_ID,
+  DSH_IM_OVERLAY_FILENAME,
   ensureDesktopDshIm,
 } = require('./dsh-im-desktop');
 
@@ -28,7 +30,11 @@ function makeSource(root) {
   return dir;
 }
 
-test('ensureDesktopDshIm inserts package-name cordis and junctions node_modules', () => {
+function overlayPath(profileDir) {
+  return path.join(profileDir, 'desktop-plugins', 'dsh-im', DSH_IM_OVERLAY_FILENAME);
+}
+
+test('ensureDesktopDshIm writes the desktop overlay and junctions node_modules', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-'));
   try {
     const source = makeSource(root);
@@ -42,6 +48,7 @@ test('ensureDesktopDshIm inserts package-name cordis and junctions node_modules'
     assert.equal(result.ok, true);
     assert.equal(result.added, true);
     assert.equal(result.href, pathToFileURL(source).href);
+    assert.equal(result.overlayFile, overlayPath(profileDir));
     assert.equal(fs.existsSync(legacy), false);
 
     const linked = path.join(profileDir, 'node_modules', '@xmanrui', 'dsh-im');
@@ -51,12 +58,76 @@ test('ensureDesktopDshIm inserts package-name cordis and junctions node_modules'
       'export const name = "@xmanrui/dsh-im"\n',
     );
 
-    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.match(patch, new RegExp(DSH_IM_BEGIN));
-    assert.match(patch, new RegExp(DSH_IM_END));
-    assert.match(patch, /@xmanrui\/dsh-im/);
-    assert.doesNotMatch(patch, /file:\/\//);
-    assert.doesNotMatch(patch, /desktop-plugins/);
+    const overlay = fs.readFileSync(result.overlayFile, 'utf8');
+    assert.match(overlay, new RegExp(`id: ${DSH_IM_INSERT_ID}`));
+    assert.match(overlay, /@xmanrui\/dsh-im/);
+    assert.doesNotMatch(overlay, /file:\/\//);
+
+    // The user-owned cordis.patch.yml is never written.
+    assert.equal(fs.existsSync(path.join(profileDir, 'cordis.patch.yml')), false);
+
+    const again = ensureDesktopDshIm({ sourceDir: source, profileDir });
+    assert.equal(again.ok, true);
+    assert.equal(again.added, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureDesktopDshIm migrates the legacy managed block out of cordis.patch.yml', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-mig-'));
+  try {
+    const source = makeSource(root);
+    const profileDir = path.join(root, 'profile');
+    fs.mkdirSync(profileDir, { recursive: true });
+    const patchFile = path.join(profileDir, 'cordis.patch.yml');
+    fs.writeFileSync(patchFile, [
+      '- insert:',
+      '    - id: user-canary-row',
+      '      name: "user-canary-row"',
+      DSH_IM_BEGIN,
+      '- insert:',
+      `    - id: ${DSH_IM_INSERT_ID}`,
+      `      name: ${JSON.stringify(DSH_IM_PACKAGE)}`,
+      DSH_IM_END,
+      '',
+    ].join('\n'), 'utf8');
+
+    const result = ensureDesktopDshIm({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    assert.equal(result.patchChanged, true);
+    const patch = fs.readFileSync(patchFile, 'utf8');
+    assert.doesNotMatch(patch, new RegExp(DSH_IM_BEGIN));
+    assert.doesNotMatch(patch, new RegExp(DSH_IM_INSERT_ID));
+    assert.match(patch, /user-canary-row/);
+    assert.equal(fs.existsSync(result.overlayFile), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureDesktopDshIm normalizes a comments-only cordis.patch.yml back to []', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-norm-'));
+  try {
+    const source = makeSource(root);
+    const profileDir = path.join(root, 'profile');
+    fs.mkdirSync(profileDir, { recursive: true });
+    const patchFile = path.join(profileDir, 'cordis.patch.yml');
+    fs.writeFileSync(patchFile, [
+      '# user comment header',
+      DSH_IM_BEGIN,
+      '- insert:',
+      `    - id: ${DSH_IM_INSERT_ID}`,
+      `      name: ${JSON.stringify(DSH_IM_PACKAGE)}`,
+      DSH_IM_END,
+      '',
+    ].join('\n'), 'utf8');
+
+    const result = ensureDesktopDshIm({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    const patch = fs.readFileSync(patchFile, 'utf8');
+    assert.doesNotMatch(patch, new RegExp(DSH_IM_BEGIN));
+    assert.match(patch, /\[\]\s*$/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -77,7 +148,7 @@ test('ensureDesktopDshIm fails closed when the bundled package is missing', () =
   }
 });
 
-test('ensureDesktopDshIm fails closed on incomplete node_modules without stripping', () => {
+test('ensureDesktopDshIm fails closed on incomplete node_modules (start must fail)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-deps-'));
   try {
     const source = path.join(root, 'source');
@@ -90,35 +161,30 @@ test('ensureDesktopDshIm fails closed on incomplete node_modules without strippi
     }), 'utf8');
     const profileDir = path.join(root, 'profile');
     fs.mkdirSync(profileDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(profileDir, 'cordis.patch.yml'),
-      `${DSH_IM_BEGIN}\n- insert:\n    - id: xmanrui-dsh-im\n      name: "stale"\n${DSH_IM_END}\n`,
-      'utf8',
-    );
     const result = ensureDesktopDshIm({ sourceDir: source, profileDir });
     assert.equal(result.ok, false);
     assert.match(result.error, /missing-source:node_modules/);
-    const patch = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    assert.match(patch, new RegExp(DSH_IM_BEGIN));
+    // No overlay is produced on failure (the controller fails the start and
+    // never passes a stale overlay path).
+    assert.equal(fs.existsSync(overlayPath(profileDir)), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('ensureDesktopDshIm skips when disabled', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-off-'));
+test('ensureDesktopDshIm ignores the disable list (desktop built-in)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dshd-im-on-'));
   try {
     const source = makeSource(root);
     const profileDir = path.join(root, 'profile');
     const result = ensureDesktopDshIm({
       sourceDir: source,
       profileDir,
-      disabledPlugins: [DSH_IM_PACKAGE],
+      disabledPlugins: [DSH_IM_PACKAGE, 'dsh-im'],
     });
     assert.equal(result.ok, true);
-    assert.equal(result.disabled, true);
-    assert.equal(fs.existsSync(path.join(profileDir, 'desktop-plugins', '@xmanrui', 'dsh-im')), false);
-    assert.equal(fs.existsSync(path.join(profileDir, 'cordis.patch.yml')), false);
+    assert.equal(result.disabled, undefined);
+    assert.equal(fs.existsSync(overlayPath(profileDir)), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

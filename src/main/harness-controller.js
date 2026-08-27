@@ -431,8 +431,8 @@ class HarnessController extends EventEmitter {
     // cordis.patch.yml is purely user-owned (ensure only strips legacy
     // managed blocks). Never pass that file to --patch: overlays still apply
     // under --skip-user-plugins, so it would re-mount every user row the
-    // skip exists to bypass. The install overlay is required on all starts;
-    // the usage overlay joins below on full starts only.
+    // skip exists to bypass. The install and dsh-im overlays are required on
+    // all starts; the usage overlay joins below on full starts only.
     const patchFiles = [];
     if (desktopInstall?.overlayFile) {
       patchFiles.push(desktopInstall.overlayFile);
@@ -466,17 +466,20 @@ class HarnessController extends EventEmitter {
     } else {
       this.dsh.log('跳过用户插件：不预置用量统计插件', 'app');
     }
-    // dsh-im is first-party Settings → Remote → Channels — not an optional
-    // user plugin. Wire it on every start (including skipUserPlugins recovery)
-    // unless the user explicitly disabled it; missing vendor deps fail start.
+    // dsh-im is desktop built-in Settings → Remote → Channels — not a user
+    // plugin. Its overlay rides --patch on every start (including
+    // skipUserPlugins recovery); the disable list never applies; missing
+    // vendor deps fail start (desktop runtime damage, skip cannot fix it).
     try {
       const im = await this.ensureDshImPlugin();
       this.assertOperationCurrent(generation);
-      if (im && im.disabled) {
-        this.dsh.log('已按禁用名单跳过桌面内置 dsh-im（消息渠道）', 'app');
-      } else if (im && im.ok === false) {
+      if (im && im.ok === false) {
         throw new Error(`桌面内置 dsh-im 失败：${im.error || 'unknown'}`);
-      } else if (im && im.ok) {
+      }
+      if (im?.overlayFile) {
+        patchFiles.push(im.overlayFile);
+      }
+      if (im && im.ok) {
         this.dsh.log(im.added ? '已接入桌面内置 dsh-im（消息渠道）' : '桌面内置 dsh-im 已就绪', 'app');
       }
     } catch (error) {

@@ -9,25 +9,34 @@ const {
   DESKTOP_INSTALL_BEGIN,
   DESKTOP_INSTALL_END,
 } = require('../src/main/plugins');
+const {
+  ensureDesktopDshIm,
+  DSH_IM_PACKAGE,
+  DSH_IM_BEGIN,
+  DSH_IM_END,
+  DSH_IM_INSERT_ID,
+} = require('../src/main/dsh-im-desktop');
 
 /**
  * Skip compose contract against the REAL dsh CLI (`dsh web --dump-config`):
- * every desktop start passes the desktop-owned install overlay via `--patch`;
- * a skip start must compose the overlay while the user layer stays out, and
- * a full start must compose both. The fixture also replays the managed-block
- * migration: the temp profile starts with a canary user row PLUS the legacy
- * managed block, and ensure must strip the block (keeping the canary) or the
- * full round double-mounts the install row. Unit tests mock `dsh.start`, so
- * only this check catches CLI-side semantic drift (e.g. `--skip-user-plugins`
- * no longer excluding the user layer, or no longer applying `--patch`
- * overlays). Runs in after-pack against the assembled packaged runtime, and
- * standalone against a built source tree:
+ * every desktop start passes the desktop-owned install AND dsh-im overlays
+ * via `--patch`; a skip start must compose both overlays while the user
+ * layer stays out, and a full start must compose all three. The fixture also
+ * replays the managed-block migration: the temp profile starts with a canary
+ * user row PLUS the legacy install and dsh-im managed blocks, and ensure
+ * must strip the blocks (keeping the canary) or the full round double-mounts
+ * the desktop rows. Unit tests mock `dsh.start`, so only this check catches
+ * CLI-side semantic drift (e.g. `--skip-user-plugins` no longer excluding
+ * the user layer, or no longer applying `--patch` overlays). Runs in
+ * after-pack against the assembled packaged runtime, and standalone against
+ * a built source tree:
  *
  *   node scripts/check-skip-compose-contract.js [harnessRoot]
  */
 
 const CANARY_ID = 'dshd-contract-canary-user-plugin';
 const INSTALL_ID = 'dshd-desktop-plugin-install';
+const IM_ID = DSH_IM_INSERT_ID;
 const DUMP_TIMEOUT_MS = 120_000;
 
 const CANARY_PATCH = [
@@ -49,16 +58,50 @@ const LEGACY_MANAGED_BLOCK = (href) => [
   '',
 ].join('\n');
 
+const LEGACY_DSH_IM_BLOCK = [
+  DSH_IM_BEGIN,
+  '- insert:',
+  `    - id: ${IM_ID}`,
+  `      name: ${JSON.stringify(DSH_IM_PACKAGE)}`,
+  DSH_IM_END,
+  '',
+].join('\n');
+
 function countOccurrences(text, needle) {
   return String(text).split(needle).length - 1;
 }
 
 /**
+ * Minimal first-party dsh-im package fixture so the REAL ensureDesktopDshIm
+ * can junction it into the throwaway profile and emit its overlay. The
+ * packaged vendor copy's completeness is asserted separately in after-pack
+ * (`assertVendoredPluginRuntimeDeps`); this contract only proves compose
+ * semantics.
+ * @param {string} home - the throwaway DSH_HOME.
+ * @returns {string} the fixture source directory.
+ */
+function writeDshImFixture(home) {
+  const dir = path.join(home, 'fixtures', 'dsh-im');
+  fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+    name: DSH_IM_PACKAGE,
+    version: '0.0.0-contract',
+    main: './lib/index.js',
+    exports: { '.': './lib/index.js', './client': './lib/client.js' },
+    dependencies: {},
+  }, null, 2), 'utf8');
+  fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'export function apply() {}\n', 'utf8');
+  fs.writeFileSync(path.join(dir, 'lib', 'client.js'), 'export function apply() {}\n', 'utf8');
+  return dir;
+}
+
+/**
  * Pure verdict on one dump-config round. The positive assertion comes first:
- * an empty or truncated dump must fail on the missing install row, never
+ * an empty or truncated dump must fail on the missing desktop rows, never
  * pass because the canary also vanished with everything else. Exactly one
- * install row per round — a second one means a stale managed block composed
- * next to the overlay (the CLI's `insert` does not dedupe by id).
+ * install row and one dsh-im row per round — a second copy means a stale
+ * managed block composed next to the overlay (the CLI's `insert` does not
+ * dedupe by id).
  * @param {'skip'|'full'} round
  * @param {string} stdout
  * @returns {string[]} problems, empty when the round honors the contract.
@@ -72,6 +115,12 @@ function composeContractProblems(round, stdout) {
   } else if (installCount > 1) {
     problems.push(`${round}: 桌面安装插件行出现 ${installCount} 次——受管块残留与 overlay 双挂载`);
   }
+  const imCount = countOccurrences(text, IM_ID);
+  if (imCount === 0) {
+    problems.push(`${round}: dump 输出缺少桌面内置 dsh-im 行 ${IM_ID}`);
+  } else if (imCount > 1) {
+    problems.push(`${round}: 桌面内置 dsh-im 行出现 ${imCount} 次——受管块残留与 overlay 双挂载`);
+  }
   if (round === 'skip') {
     if (text.includes(CANARY_ID)) {
       problems.push(`${round}: 用户层 canary 行仍被 compose——--skip-user-plugins 未生效`);
@@ -84,16 +133,18 @@ function composeContractProblems(round, stdout) {
 
 /**
  * The two dump-config invocations, mirroring the desktop's production argv:
- * the overlay rides `--patch` on BOTH rounds (launcher flags stay in the CLI
- * grammar prefix, before any app arg).
+ * every desktop-owned overlay rides `--patch` on BOTH rounds (launcher flags
+ * stay in the CLI grammar prefix, before any app arg).
  * @param {string} binJs - absolute path of apps/cli/lib/bin.js.
- * @param {string} overlayFile - the desktop-owned install overlay.
+ * @param {string[]} overlayFiles - the desktop-owned overlays (install + dsh-im).
  * @returns {Array<{ round: 'skip'|'full', args: string[] }>}
  */
-function composeContractRounds(binJs, overlayFile) {
+function composeContractRounds(binJs, overlayFiles) {
+  const overlays = (Array.isArray(overlayFiles) ? overlayFiles : [overlayFiles])
+    .flatMap((file) => ['--patch', file]);
   return [
-    { round: 'skip', args: [binJs, 'web', '--skip-user-plugins', '--patch', overlayFile, '--dump-config'] },
-    { round: 'full', args: [binJs, 'web', '--patch', overlayFile, '--dump-config'] },
+    { round: 'skip', args: [binJs, 'web', '--skip-user-plugins', ...overlays, '--dump-config'] },
+    { round: 'full', args: [binJs, 'web', ...overlays, '--dump-config'] },
   ];
 }
 
@@ -119,22 +170,26 @@ function runSkipComposeContract(harnessRoot, options = {}) {
     const profileDir = path.join(home, 'profiles', 'web');
     fs.mkdirSync(profileDir, { recursive: true });
     // Migration replay: the profile starts as an upgraded install would —
-    // a canary user row plus the managed block an earlier desktop version
-    // upserted. ensureDesktopInstallPlugin must strip the block (keeping the
-    // canary) and write the overlay; the full round then proves exactly one
-    // install row composes.
+    // a canary user row plus the managed blocks an earlier desktop version
+    // upserted (install + dsh-im). The ensures must strip both blocks
+    // (keeping the canary) and write their overlays; the full round then
+    // proves exactly one copy of each desktop row composes.
     const stalePlaceholderHref = 'file:///stale/desktop-plugins/install-dsh-plugin/install-dsh-plugin.mjs';
     fs.writeFileSync(
       path.join(profileDir, 'cordis.patch.yml'),
-      `${CANARY_PATCH}\n${LEGACY_MANAGED_BLOCK(stalePlaceholderHref)}`,
+      `${CANARY_PATCH}\n${LEGACY_MANAGED_BLOCK(stalePlaceholderHref)}\n${LEGACY_DSH_IM_BLOCK}`,
       'utf8',
     );
     const ensure = ensureDesktopInstallPlugin({ profileDir });
     if (!ensure || ensure.ok !== true) {
       throw new Error(`skip compose 契约门禁：ensureDesktopInstallPlugin 失败（${(ensure && ensure.reason) || 'unknown'}）`);
     }
+    const imEnsure = ensureDesktopDshIm({ sourceDir: writeDshImFixture(home), profileDir });
+    if (!imEnsure || imEnsure.ok !== true) {
+      throw new Error(`skip compose 契约门禁：ensureDesktopDshIm 失败（${(imEnsure && imEnsure.error) || 'unknown'}）`);
+    }
     const migrated = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    if (migrated.includes(DESKTOP_INSTALL_BEGIN)) {
+    if (migrated.includes(DESKTOP_INSTALL_BEGIN) || migrated.includes(DSH_IM_BEGIN)) {
       throw new Error('skip compose 契约门禁：受管块迁移失败——cordis.patch.yml 仍含桌面受管块');
     }
     if (!migrated.includes(CANARY_ID)) {
@@ -146,7 +201,8 @@ function runSkipComposeContract(harnessRoot, options = {}) {
     delete env.DSHD_HOME;
     delete env.DSH_HARNESS_ROOT;
     const problems = [];
-    for (const { round, args } of composeContractRounds(binJs, ensure.overlayFile)) {
+    const overlayFiles = [ensure.overlayFile, imEnsure.overlayFile];
+    for (const { round, args } of composeContractRounds(binJs, overlayFiles)) {
       log(`dump-config ${round} 轮…`);
       const result = spawn(nodeBin, args, {
         encoding: 'utf8',
@@ -177,6 +233,7 @@ function runSkipComposeContract(harnessRoot, options = {}) {
 module.exports = {
   CANARY_ID,
   INSTALL_ID,
+  IM_ID,
   composeContractProblems,
   composeContractRounds,
   runSkipComposeContract,
