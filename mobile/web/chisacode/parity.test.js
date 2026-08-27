@@ -7,7 +7,6 @@ import {
   chisaCheckoutStatusToVcs,
   createMobileAgent,
   listAgentModels,
-  listMobileDirectory,
   listReadyProviders,
   listWorkspaceChoices,
   runChisaGitAction,
@@ -324,21 +323,4 @@ test('runChisaGitAction delegates mobile-safe actions and rejects structured fai
     () => runChisaGitAction(client, 'gitCreateBranch', '/repo', { name: 'feature/new' }),
     /请在电脑端操作/,
   );
-});
-
-test('listMobileDirectory uses daemon file explorer and preserves relative paths', async () => {
-  const client = {
-    async listDirectory(cwd, path) {
-      assert.equal(cwd, '/repo');
-      assert.equal(path, '');
-      return {
-        entries: [
-          { name: 'src', path: 'src', kind: 'directory' },
-          { name: 'README.md', path: 'README.md', kind: 'file' },
-        ],
-      };
-    },
-  };
-
-  assert.deepEqual(await listMobileDirectory(client, '/repo'), ['src/', 'README.md']);
 });

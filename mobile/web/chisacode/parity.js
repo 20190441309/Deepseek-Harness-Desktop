@@ -249,18 +249,6 @@ async function runChisaGitAction(client, name, cwd, extra = {}) {
   return assertDaemonSuccess(result, 'Git 操作失败');
 }
 
-async function listMobileDirectory(client, cwd, relativePath = '') {
-  const directory = await client.listDirectory(cwd, relativePath);
-  const entries = Array.isArray(directory?.entries) ? directory.entries : [];
-  return entries.flatMap((entry) => {
-    const path = typeof entry?.path === 'string' && entry.path
-      ? entry.path
-      : typeof entry?.name === 'string' ? entry.name : '';
-    if (!path) return [];
-    return [entry?.kind === 'directory' ? `${path.replace(/\/$/, '')}/` : path];
-  });
-}
-
 export {
   agentModelState,
   agentModeState,
@@ -268,7 +256,6 @@ export {
   chisaCheckoutStatusToVcs,
   createMobileAgent,
   listAgentModels,
-  listMobileDirectory,
   listReadyProviders,
   listWorkspaceChoices,
   runChisaGitAction,

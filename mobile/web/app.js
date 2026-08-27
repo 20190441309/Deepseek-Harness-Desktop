@@ -34,11 +34,27 @@ import {
   chisaCheckoutStatusToVcs,
   createMobileAgent,
   listAgentModels,
-  listMobileDirectory,
   listReadyProviders,
   listWorkspaceChoices,
   runChisaGitAction,
 } from './chisacode/parity.js';
+import {
+  breadcrumbSegments,
+  fileSizeLabel,
+  listDirectoryView,
+  previewSizeGate,
+  readFilePreview,
+  searchWorkspacePaths,
+} from './chisacode/files.js';
+import {
+  DIFF_SCOPES,
+  diffFileBadge,
+  fetchMobileDiff,
+} from './chisacode/diff.js';
+import {
+  listMobileMcpServers,
+  listMobileSkills,
+} from './chisacode/extensions.js';
 import {
   createDraftStore,
   resyncAfterReconnect,
@@ -208,6 +224,11 @@ const state = {
   wsTab: 'changes',
   fileQuery: '',
   fileEntries: [],
+  // Phase 2 work loops (chisacode only): Files drill-down, read-only diff,
+  // and read-only MCP / skills inventories.
+  filesPane: null,
+  diffPane: null,
+  extPane: { mcp: null, skills: null },
   scanSupport: { supported: false, reason: '' },
   transport: '',
   chisacode: null,
@@ -850,6 +871,8 @@ function forceLogout(message) {
   state.connPhase = 'online';
   state.connLabel = '';
   state.newSession = null;
+  resetWorkPanes();
+  state.extPane = { mcp: null, skills: null };
   showBanner('');
   renderConnBanner();
   renderSheet();
@@ -1082,6 +1105,8 @@ async function finishChisaCodeConnect(paired, reconnected) {
   state.route = 'chat';
   state.host = { protocol: 'chisacode-v2', serverId: paired.serverId };
   state.cwd = '';
+  resetWorkPanes();
+  state.extPane = { mcp: null, skills: null };
   state.hostName = paired.serverId;
   let loadError = '';
   try {
@@ -1146,9 +1171,13 @@ async function openSession(sessionId) {
     if (state.sessionId !== sessionId) return;
     state.events = Array.isArray(history?.entries) ? history.entries : [];
     state.timelinePage = timelinePageInfo(history);
+    // Capture before updateChisaCodeAgent, which already writes the new cwd.
+    const previousCwd = state.cwd;
     if (history?.agent) updateChisaCodeAgent(history.agent);
     state.pendingApprovals = approvalsFromAgent(history?.agent);
     state.cwd = currentRow()?.cwd || '';
+    // Files / diff panes are cwd-bound; a different workspace invalidates them.
+    if (state.cwd !== previousCwd) resetWorkPanes();
     renderHeader();
     renderSessions();
     renderLog();
@@ -1946,26 +1975,259 @@ function createBranch() {
   state.newBranchName = '';
 }
 
+/** Legacy HTTP-host flat root listing. The chisacode path uses the Files work loop. */
 async function loadFiles() {
-  if (!state.cwd) return;
+  if (!state.cwd || state.transport === 'chisacode') return;
   try {
-    if (state.transport === 'chisacode') {
-      state.fileEntries = await listMobileDirectory(state.chisacode.client, state.cwd);
-    } else {
-      const result = await shell('listDir', { cwd: state.cwd, relativePath: '' });
-      const entries = Array.isArray(result?.entries) ? result.entries : [];
-      state.fileEntries = entries
-        .map((entry) => {
-          const name = typeof entry?.name === 'string' ? entry.name : '';
-          if (!name) return '';
-          return entry?.kind === 'directory' ? `${name}/` : name;
-        })
-        .filter(Boolean);
-    }
+    const result = await shell('listDir', { cwd: state.cwd, relativePath: '' });
+    const entries = Array.isArray(result?.entries) ? result.entries : [];
+    state.fileEntries = entries
+      .map((entry) => {
+        const name = typeof entry?.name === 'string' ? entry.name : '';
+        if (!name) return '';
+        return entry?.kind === 'directory' ? `${name}/` : name;
+      })
+      .filter(Boolean);
   } catch (error) {
     showBanner(error.message || '无法列出文件');
   }
   if (state.settingsOpen) renderSettings();
+}
+
+// —— Phase 2：Files / Diff / MCP / Skills 工作环（chisacode 只读）—— //
+
+/** Drop cwd-bound work-loop state (session switch, logout). Revokes preview blob URLs. */
+function resetWorkPanes() {
+  if (state.filesPane?.preview?.blobUrl) {
+    URL.revokeObjectURL(state.filesPane.preview.blobUrl);
+  }
+  state.filesPane = null;
+  state.diffPane = null;
+  filesBodyHook = null;
+}
+
+function ensureFilesPane() {
+  if (!state.filesPane) {
+    state.filesPane = {
+      path: '',
+      entries: [],
+      loading: false,
+      loaded: false,
+      error: '',
+      loadSeq: 0,
+      preview: null,
+      search: { query: '', loading: false, error: '', results: [], ran: false },
+      scrollTops: {},
+      pendingScroll: null,
+    };
+  }
+  return state.filesPane;
+}
+
+/** Re-render only the files body (keeps the search input node and its focus). */
+let filesBodyHook = null;
+function refreshFilesBody() {
+  if (filesBodyHook?.node?.isConnected) {
+    filesBodyHook.render();
+    return;
+  }
+  if (state.settingsOpen
+    && (state.settingsPane === '文件' || (state.settingsPane === '工作区' && state.wsTab === 'files'))) {
+    renderSettings();
+  }
+}
+
+function closeFilePreview() {
+  const pane = state.filesPane;
+  if (!pane?.preview) return;
+  if (pane.preview.blobUrl) URL.revokeObjectURL(pane.preview.blobUrl);
+  pane.preview = null;
+  pane.pendingScroll = pane.scrollTops[pane.path] ?? 0;
+}
+
+/** Navigate the drill-down browser to a relative directory path. */
+async function loadFilesPath(path) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  if (pane.preview) closeFilePreview();
+  pane.scrollTops[pane.path] = options.scrollTop;
+  const seq = pane.loadSeq + 1;
+  pane.loadSeq = seq;
+  pane.loading = true;
+  pane.error = '';
+  refreshFilesBody();
+  try {
+    const view = await listDirectoryView(state.chisacode.client, state.cwd, path);
+    if (state.filesPane !== pane || pane.loadSeq !== seq) return;
+    pane.path = view.path;
+    pane.entries = view.entries;
+    pane.loaded = true;
+    pane.pendingScroll = pane.scrollTops[view.path] ?? 0;
+  } catch (error) {
+    if (state.filesPane !== pane || pane.loadSeq !== seq) return;
+    pane.error = error?.message || '无法读取目录';
+  }
+  pane.loading = false;
+  refreshFilesBody();
+}
+
+/** Open the read-only preview for one file entry ({ path, name?, size? }). */
+async function openFilePreview(entry) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  pane.scrollTops[pane.path] = options.scrollTop;
+  if (pane.preview?.blobUrl) URL.revokeObjectURL(pane.preview.blobUrl);
+  const preview = {
+    path: entry.path,
+    name: entry.name || entry.path.split('/').pop() || entry.path,
+    size: Number.isFinite(entry.size) ? entry.size : null,
+    loading: false,
+    error: '',
+    data: null,
+    blobUrl: '',
+  };
+  pane.preview = preview;
+  // Known-oversized files are never fetched — honest state without the cost.
+  if (previewSizeGate(entry.size)) {
+    preview.data = { kind: 'too-large', size: entry.size };
+    refreshFilesBody();
+    return;
+  }
+  preview.loading = true;
+  refreshFilesBody();
+  try {
+    const data = await readFilePreview(state.chisacode.client, state.cwd, entry.path);
+    if (state.filesPane !== pane || pane.preview !== preview) return;
+    preview.data = data;
+    preview.size = data.size;
+    if (data.kind === 'image') {
+      preview.blobUrl = URL.createObjectURL(new Blob([data.bytes], { type: data.mime || 'image/*' }));
+    }
+  } catch (error) {
+    if (state.filesPane !== pane || pane.preview !== preview) return;
+    preview.error = error?.message || '无法读取文件';
+  }
+  preview.loading = false;
+  refreshFilesBody();
+}
+
+let fileSearchTimer = 0;
+async function runFileSearch(query) {
+  const pane = ensureFilesPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  pane.search.loading = true;
+  pane.search.error = '';
+  refreshFilesBody();
+  try {
+    const results = await searchWorkspacePaths(state.chisacode.client, state.cwd, query, { limit: 30 });
+    if (state.filesPane !== pane || pane.search.query.trim() !== query) return;
+    pane.search.results = results;
+    pane.search.ran = true;
+  } catch (error) {
+    if (state.filesPane !== pane || pane.search.query.trim() !== query) return;
+    pane.search.error = error?.message || '路径搜索失败';
+    pane.search.ran = true;
+  }
+  pane.search.loading = false;
+  refreshFilesBody();
+}
+
+/** Entry point used by every "open the files surface" affordance. */
+function openFilesPane() {
+  if (state.transport !== 'chisacode') {
+    loadFiles();
+    return;
+  }
+  const pane = ensureFilesPane();
+  if (!pane.loaded && !pane.loading && state.cwd) {
+    void loadFilesPath(pane.path);
+  }
+}
+
+function ensureDiffPane() {
+  if (!state.diffPane) {
+    state.diffPane = {
+      scope: 'uncommitted',
+      loading: false,
+      error: '',
+      view: null,
+      open: {},
+      loadSeq: 0,
+    };
+  }
+  return state.diffPane;
+}
+
+function refreshDiffBody() {
+  if (state.settingsOpen && state.settingsPane === '工作区' && state.wsTab === 'changes') {
+    renderSettings();
+  }
+}
+
+/** Load the read-only diff for the current scope (one-shot getCheckoutDiff). */
+async function loadDiff() {
+  const pane = ensureDiffPane();
+  if (!state.cwd || state.transport !== 'chisacode') return;
+  const seq = pane.loadSeq + 1;
+  pane.loadSeq = seq;
+  pane.loading = true;
+  pane.error = '';
+  refreshDiffBody();
+  try {
+    const view = await fetchMobileDiff(state.chisacode.client, state.cwd, pane.scope);
+    if (state.diffPane !== pane || pane.loadSeq !== seq) return;
+    pane.view = view;
+  } catch (error) {
+    if (state.diffPane !== pane || pane.loadSeq !== seq) return;
+    pane.error = error?.message || '读取改动失败';
+    pane.view = null;
+  }
+  pane.loading = false;
+  refreshDiffBody();
+}
+
+function openChangesTab() {
+  if (state.transport !== 'chisacode') return;
+  const pane = ensureDiffPane();
+  if (!pane.view && !pane.loading && state.cwd) {
+    void loadDiff();
+  }
+}
+
+function ensureExtPane(kind) {
+  if (!state.extPane[kind]) {
+    state.extPane[kind] = { loading: false, loaded: false, error: '', rows: [], notes: [] };
+  }
+  return state.extPane[kind];
+}
+
+/** Load the read-only MCP / skills inventory. Strictly list RPCs — no writes. */
+async function loadExtensions(kind, force = false) {
+  if (state.transport !== 'chisacode') return;
+  const pane = ensureExtPane(kind);
+  if (pane.loading || (pane.loaded && !force)) return;
+  pane.loading = true;
+  pane.error = '';
+  renderExtIfVisible(kind);
+  try {
+    const result = kind === 'mcp'
+      ? await listMobileMcpServers(state.chisacode.client)
+      : await listMobileSkills(state.chisacode.client);
+    if (state.extPane[kind] !== pane) return;
+    pane.rows = result.rows;
+    pane.notes = result.errors;
+    pane.loaded = true;
+  } catch (error) {
+    if (state.extPane[kind] !== pane) return;
+    pane.error = error?.message || '无法读取清单';
+  }
+  pane.loading = false;
+  renderExtIfVisible(kind);
+}
+
+function renderExtIfVisible(kind) {
+  const paneName = kind === 'mcp' ? 'MCP' : '技能';
+  if (state.settingsOpen && state.settingsPane === paneName) renderSettings();
 }
 
 function insertMention(path) {
@@ -2103,6 +2365,7 @@ function renderSettingsHub() {
     accessMode: currentModeState().currentLabel,
     gitLine: gitStatusLine(state.gitStatus),
     scheme: store.scheme,
+    remoteReadOnly: state.transport === 'chisacode',
   });
   for (const group of groups) {
     const wrap = document.createElement('div');
@@ -2137,9 +2400,15 @@ function renderSettingsHub() {
           return;
         }
         state.settingsPane = row.pane;
-        if (row.pane === '工作区') refreshGit();
-        if (row.pane === '文件' || row.pane === '工作区') loadFiles();
+        if (row.pane === '工作区') {
+          refreshGit();
+          if (state.wsTab === 'files') openFilesPane();
+          else openChangesTab();
+        }
+        if (row.pane === '文件') openFilesPane();
         if (row.pane === '模型') state.modelPane = null;
+        if (row.pane === 'MCP') void loadExtensions('mcp');
+        if (row.pane === '技能') void loadExtensions('skills');
         renderSettings();
       });
       body.append(button);
@@ -2233,7 +2502,7 @@ function gitCapsuleNode() {
   return capsule;
 }
 
-function renderFilesInto(target) {
+function renderLegacyFilesInto(target) {
   const list = document.createElement('div');
   const renderRows = () => {
     const query = state.fileQuery.trim();
@@ -2268,6 +2537,419 @@ function renderFilesInto(target) {
   renderRows();
 }
 
+function mentionButton(path) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'file-insert';
+  button.textContent = '@';
+  button.setAttribute('aria-label', `把 ${path} 插入输入框`);
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    insertMention(path);
+  });
+  return button;
+}
+
+function fileEntryRow(entry, { onOpen, showPath = false } = {}) {
+  const row = document.createElement('div');
+  row.className = 'file-row';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'file-open';
+  const main = document.createElement('span');
+  main.className = 'file-main';
+  const name = document.createElement('span');
+  name.className = 'file-name';
+  const baseName = entry.name || entry.path.split('/').pop() || entry.path;
+  name.textContent = entry.kind === 'directory' ? `${baseName}/` : baseName;
+  main.append(name);
+  if (showPath) {
+    const full = document.createElement('span');
+    full.className = 'file-path';
+    full.textContent = entry.path;
+    main.append(full);
+  } else if (entry.kind === 'file') {
+    const meta = document.createElement('span');
+    meta.className = 'file-path';
+    meta.textContent = fileSizeLabel(entry.size);
+    main.append(meta);
+  }
+  button.append(main);
+  button.addEventListener('click', () => onOpen(entry));
+  row.append(button, mentionButton(entry.path));
+  return row;
+}
+
+function filePreviewNodes(pane) {
+  const preview = pane.preview;
+  const nodes = [];
+  const bar = document.createElement('div');
+  bar.className = 'preview-bar';
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'preview-back';
+  back.textContent = '‹ 返回';
+  back.addEventListener('click', () => {
+    closeFilePreview();
+    refreshFilesBody();
+  });
+  const title = document.createElement('span');
+  title.className = 'preview-title';
+  title.textContent = preview.path;
+  bar.append(back, title);
+  nodes.push(bar);
+  const meta = [];
+  if (Number.isFinite(preview.size)) meta.push(fileSizeLabel(preview.size));
+  meta.push('只读预览');
+  nodes.push(descNode(meta.join(' · ')));
+  nodes.push(primaryButton('插入 @路径 到输入框', () => insertMention(preview.path)));
+  if (preview.loading) {
+    nodes.push(descNode('正在读取文件…'));
+    return nodes;
+  }
+  if (preview.error) {
+    nodes.push(descNode(`读取失败：${preview.error}`));
+    nodes.push(ghostButton('重试', () => {
+      void openFilePreview({ path: preview.path, name: preview.name, size: null });
+    }));
+    return nodes;
+  }
+  const data = preview.data;
+  if (!data) return nodes;
+  if (data.kind === 'too-large') {
+    nodes.push(descNode(`文件过大（${fileSizeLabel(data.size)}），手机端不预览超过 2 MB 的文件。请在电脑端打开。`));
+    return nodes;
+  }
+  if (data.kind === 'binary') {
+    nodes.push(descNode(`二进制文件（${data.mime || '未知类型'}），手机端不预览。请在电脑端打开。`));
+    return nodes;
+  }
+  if (data.kind === 'image') {
+    const img = document.createElement('img');
+    img.className = 'preview-image';
+    img.alt = preview.path;
+    img.src = preview.blobUrl;
+    nodes.push(img);
+    return nodes;
+  }
+  if (data.truncated) {
+    nodes.push(descNode('文件较长，仅显示前 200 KB。'));
+  }
+  const pre = document.createElement('pre');
+  pre.className = 'preview-text';
+  pre.textContent = data.text;
+  nodes.push(pre);
+  return nodes;
+}
+
+function fileSearchNodes(pane) {
+  const nodes = [descNode('按路径匹配（daemon 模糊建议），不是内容全文搜索。')];
+  if (pane.search.loading) {
+    nodes.push(descNode('正在搜索…'));
+    return nodes;
+  }
+  if (pane.search.error) {
+    nodes.push(descNode(`搜索失败：${pane.search.error}`));
+    return nodes;
+  }
+  if (!pane.search.ran) return nodes;
+  if (!pane.search.results.length) {
+    nodes.push(descNode('没有匹配的路径'));
+    return nodes;
+  }
+  for (const entry of pane.search.results) {
+    nodes.push(fileEntryRow(entry, {
+      showPath: true,
+      onOpen: (hit) => {
+        pane.search.query = '';
+        pane.search.results = [];
+        pane.search.ran = false;
+        if (hit.kind === 'directory') {
+          void loadFilesPath(hit.path);
+        } else {
+          void openFilePreview({ path: hit.path, size: null });
+          refreshFilesBody();
+        }
+        renderSettings();
+      },
+    }));
+  }
+  return nodes;
+}
+
+function fileBrowserNodes(pane) {
+  const nodes = [];
+  const crumbs = document.createElement('div');
+  crumbs.className = 'crumbs';
+  const segments = breadcrumbSegments(pane.path);
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.textContent = '/';
+      crumbs.append(sep);
+    }
+    const crumb = document.createElement('button');
+    crumb.type = 'button';
+    crumb.className = 'crumb';
+    crumb.textContent = segment.label;
+    crumb.disabled = index === segments.length - 1;
+    crumb.addEventListener('click', () => {
+      void loadFilesPath(segment.path);
+    });
+    crumbs.append(crumb);
+  });
+  nodes.push(crumbs);
+  if (pane.loading) {
+    nodes.push(descNode('正在读取目录…'));
+    return nodes;
+  }
+  if (pane.error) {
+    nodes.push(descNode(`读取目录失败：${pane.error}`));
+    nodes.push(ghostButton('重试', () => { void loadFilesPath(pane.path); }));
+    return nodes;
+  }
+  if (!pane.entries.length) {
+    nodes.push(descNode('这个目录是空的'));
+    return nodes;
+  }
+  for (const entry of pane.entries) {
+    nodes.push(fileEntryRow(entry, {
+      onOpen: (hit) => {
+        if (hit.kind === 'directory') {
+          void loadFilesPath(hit.path);
+        } else {
+          void openFilePreview(hit);
+        }
+      },
+    }));
+  }
+  return nodes;
+}
+
+/** Files work loop: breadcrumb drill-down, daemon path search, read-only preview. */
+function renderFilesInto(target) {
+  if (state.transport !== 'chisacode') {
+    renderLegacyFilesInto(target);
+    return;
+  }
+  const pane = ensureFilesPane();
+  if (!state.cwd) {
+    target.append(descNode('先打开一个会话，文件浏览跟随该会话的工作区目录。'));
+    return;
+  }
+  const searchWrap = document.createElement('div');
+  const searchInput = fieldInput(pane.search.query, '按路径搜索（不是内容搜索）', (value) => {
+    pane.search.query = value;
+    clearTimeout(fileSearchTimer);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      pane.search.results = [];
+      pane.search.ran = false;
+      pane.search.loading = false;
+      pane.search.error = '';
+      refreshFilesBody();
+      return;
+    }
+    pane.search.loading = true;
+    refreshFilesBody();
+    fileSearchTimer = setTimeout(() => { void runFileSearch(trimmed); }, 250);
+  });
+  searchWrap.append(searchInput);
+  const body = document.createElement('div');
+  body.className = 'files-body';
+  const render = () => {
+    searchWrap.classList.toggle('hidden', Boolean(pane.preview));
+    if (pane.preview) {
+      body.replaceChildren(...filePreviewNodes(pane));
+    } else if (pane.search.query.trim()) {
+      body.replaceChildren(...fileSearchNodes(pane));
+    } else {
+      body.replaceChildren(...fileBrowserNodes(pane));
+      if (pane.pendingScroll !== null) {
+        options.scrollTop = pane.pendingScroll;
+        pane.pendingScroll = null;
+      }
+    }
+  };
+  filesBodyHook = { node: body, render };
+  target.append(searchWrap, body);
+  render();
+}
+
+function renderDiffInto(target) {
+  const pane = ensureDiffPane();
+  if (!state.cwd) {
+    target.append(descNode('先打开一个会话，改动视图跟随该会话的工作区目录。'));
+    return;
+  }
+  const scopes = document.createElement('div');
+  scopes.className = 'ws-tabs diff-scopes';
+  for (const scope of DIFF_SCOPES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ws-tab';
+    button.setAttribute('aria-selected', String(pane.scope === scope.id));
+    button.textContent = scope.label;
+    button.addEventListener('click', () => {
+      if (pane.scope === scope.id) return;
+      pane.scope = scope.id;
+      pane.view = null;
+      pane.open = {};
+      void loadDiff();
+      renderSettings();
+    });
+    scopes.append(button);
+  }
+  target.append(scopes);
+  target.append(descNode('只读视图。提交、暂存等操作请用顶部 Git 胶囊或电脑端。'));
+  if (pane.loading) {
+    target.append(descNode('正在读取改动…'));
+    return;
+  }
+  if (pane.error) {
+    target.append(descNode(`读取改动失败：${pane.error}`));
+    target.append(ghostButton('重试', () => { void loadDiff(); }));
+    return;
+  }
+  const view = pane.view;
+  if (!view) {
+    target.append(ghostButton('加载改动', () => { void loadDiff(); }));
+    return;
+  }
+  if (view.kind === 'non-git') {
+    target.append(descNode('这个目录不是 Git 仓库，没有改动视图。'));
+    return;
+  }
+  if (view.kind === 'empty') {
+    target.append(descNode(pane.scope === 'uncommitted' ? '没有未提交的改动。' : '与主干没有差异。'));
+    target.append(ghostButton('刷新', () => { void loadDiff(); }));
+    return;
+  }
+  for (const file of view.files) {
+    const details = document.createElement('details');
+    details.className = 'diff-file';
+    if (pane.open[file.path]) details.open = true;
+    details.addEventListener('toggle', () => {
+      pane.open[file.path] = details.open;
+    });
+    const summary = document.createElement('summary');
+    summary.className = 'diff-file-head';
+    const path = document.createElement('span');
+    path.className = 'diff-path';
+    path.textContent = file.path;
+    summary.append(path);
+    const badge = diffFileBadge(file);
+    if (badge) {
+      const badgeNode = document.createElement('span');
+      badgeNode.className = 'diff-badge';
+      badgeNode.textContent = badge;
+      summary.append(badgeNode);
+    }
+    const stat = document.createElement('span');
+    stat.className = 'diff-stat';
+    stat.textContent = `+${file.additions} −${file.deletions}`;
+    summary.append(stat);
+    details.append(summary);
+    if (file.status === 'binary') {
+      details.append(descNode('二进制文件，不显示行级差异。'));
+    } else if (file.status === 'too_large') {
+      details.append(descNode('差异过大，电脑端可查看完整内容。'));
+    } else if (!file.hunks.length) {
+      details.append(descNode('没有行级差异。'));
+    } else {
+      for (const hunk of file.hunks) {
+        const block = document.createElement('div');
+        block.className = 'diff-hunk';
+        const header = document.createElement('div');
+        header.className = 'diff-line header';
+        header.textContent = hunk.header;
+        block.append(header);
+        for (const line of hunk.lines) {
+          const row = document.createElement('div');
+          row.className = `diff-line ${line.type}`;
+          const sign = line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' ';
+          row.textContent = `${sign} ${line.content}`;
+          block.append(row);
+        }
+        details.append(block);
+      }
+    }
+    target.append(details);
+  }
+  target.append(ghostButton('刷新', () => { void loadDiff(); }));
+}
+
+/** MCP / Skills read-only inventory pane (kind: 'mcp' | 'skills'). */
+function renderExtensionsPane(kind) {
+  const pane = ensureExtPane(kind);
+  const noun = kind === 'mcp' ? 'MCP 服务器' : '技能';
+  options.append(noticeNode(`只读清单。启用、停用、安装、删除${noun}请在电脑端操作。`));
+  if (pane.loading) {
+    options.append(descNode('正在读取清单…'));
+    return;
+  }
+  if (pane.error) {
+    options.append(descNode(`读取失败：${pane.error}`));
+    options.append(ghostButton('重试', () => { void loadExtensions(kind, true); }));
+    return;
+  }
+  for (const note of pane.notes) {
+    options.append(descNode(`电脑端提示：${note}`));
+  }
+  if (!pane.rows.length) {
+    options.append(descNode(kind === 'mcp' ? '电脑端没有配置 MCP 服务器。' : '电脑端没有可用技能。'));
+    options.append(ghostButton('刷新', () => { void loadExtensions(kind, true); }));
+    return;
+  }
+  const group = document.createElement('div');
+  group.className = 'group';
+  for (const row of pane.rows) {
+    const item = document.createElement('div');
+    item.className = 'ext-row';
+    const main = document.createElement('div');
+    main.className = 'ext-main';
+    const title = document.createElement('span');
+    title.className = 'ext-name';
+    title.textContent = kind === 'mcp' ? row.label : row.name;
+    main.append(title);
+    if (row.description) {
+      const desc = document.createElement('span');
+      desc.className = 'ext-desc';
+      desc.textContent = row.description;
+      main.append(desc);
+    }
+    const metaParts = [];
+    if (kind === 'mcp') {
+      if (row.transport) metaParts.push(row.transport);
+      metaParts.push(row.source === 'system' ? '系统' : '用户');
+    } else {
+      for (const source of row.sources) metaParts.push(source.typeLabel);
+    }
+    if (row.overrides.providers) metaParts.push(`${row.overrides.providers} 处按提供方覆盖`);
+    if (row.overrides.agents) metaParts.push(`${row.overrides.agents} 处按会话覆盖`);
+    if (metaParts.length) {
+      const meta = document.createElement('span');
+      meta.className = 'ext-meta';
+      meta.textContent = metaParts.join(' · ');
+      main.append(meta);
+    }
+    for (const errorText of row.errors) {
+      const errorNode = document.createElement('span');
+      errorNode.className = 'ext-error';
+      errorNode.textContent = errorText;
+      main.append(errorNode);
+    }
+    const status = document.createElement('span');
+    status.className = `ext-status${row.enabled ? ' on' : ''}`;
+    status.textContent = row.statusLabel || '未知状态';
+    item.append(main, status);
+    group.append(item);
+  }
+  options.append(group);
+  options.append(ghostButton('刷新', () => { void loadExtensions(kind, true); }));
+}
+
 function renderWorkspacePane() {
   options.append(gitCapsuleNode());
   options.append(descNode(gitStatusLine(state.gitStatus)));
@@ -2281,7 +2963,8 @@ function renderWorkspacePane() {
     tab.textContent = label;
     tab.addEventListener('click', () => {
       state.wsTab = id;
-      if (id === 'files') loadFiles();
+      if (id === 'files') openFilesPane();
+      if (id === 'changes') openChangesTab();
       renderSettings();
     });
     tabs.append(tab);
@@ -2289,6 +2972,8 @@ function renderWorkspacePane() {
   options.append(tabs);
   if (state.wsTab === 'files') {
     renderFilesInto(options);
+  } else if (state.transport === 'chisacode') {
+    renderDiffInto(options);
   } else {
     options.append(descNode(state.gitStatus.hasWorkingTreeChanges
       ? '有未提交更改。用顶部胶囊提交，或到文件 Tab 插入路径。'
@@ -2596,6 +3281,10 @@ function renderSettings() {
     renderModelPane();
     return;
   }
+  if ((pane === 'MCP' || pane === '技能') && state.transport === 'chisacode') {
+    renderExtensionsPane(pane === 'MCP' ? 'mcp' : 'skills');
+    return;
+  }
   renderHostRequestPane(pane);
 }
 
@@ -2846,7 +3535,7 @@ function renderSheet() {
     sheet.append(
       sheetItem({ label: '拍照', onClick: () => { state.attachOpen = false; renderSheet(); fileCamera.click(); } }),
       sheetItem({ label: '从相册选择', onClick: () => { state.attachOpen = false; renderSheet(); fileGallery.click(); } }),
-      sheetItem({ label: '从工作区选文件', onClick: () => { state.attachOpen = false; renderSheet(); openSettings('文件'); loadFiles(); } }),
+      sheetItem({ label: '从工作区选文件', onClick: () => { state.attachOpen = false; renderSheet(); openSettings('文件'); openFilesPane(); } }),
     );
     sheetRoot.append(layer);
     return;
@@ -3249,7 +3938,8 @@ el('new-session').addEventListener('click', () => {
 el('open-workspace').addEventListener('click', () => {
   openSettings('工作区');
   refreshGit();
-  loadFiles();
+  if (state.wsTab === 'files') openFilesPane();
+  else openChangesTab();
 });
 el('open-settings').addEventListener('click', () => openSettings(''));
 settingsBack.addEventListener('click', () => {

@@ -39,7 +39,8 @@ function hostSettingsSection(pane) {
 }
 
 // 分组与行文案与 Android SettingsHub 同表。desc 为动态值时用占位键，由 settingsGroups 解析。
-function settingsGroups({ channel, accessMode, gitLine, scheme } = {}) {
+// remoteReadOnly = ChisaCode v2 传输：MCP / 技能有 daemon 只读清单，文件有下钻浏览。
+function settingsGroups({ channel, accessMode, gitLine, scheme, remoteReadOnly = false } = {}) {
   return [
     {
       label: '这次连接',
@@ -60,7 +61,7 @@ function settingsGroups({ channel, accessMode, gitLine, scheme } = {}) {
       label: '工作区',
       rows: [
         { pane: '工作区', desc: gitLine || '' },
-        { pane: '文件', desc: '搜索并插入到输入框' },
+        { pane: '文件', desc: remoteReadOnly ? '浏览 · 只读预览 · 插入路径' : '搜索并插入到输入框' },
       ],
     },
     {
@@ -77,8 +78,8 @@ function settingsGroups({ channel, accessMode, gitLine, scheme } = {}) {
     {
       label: 'Host',
       rows: [
-        { pane: 'MCP', desc: '在电脑上打开' },
-        { pane: '技能', desc: '在电脑上打开' },
+        { pane: 'MCP', desc: remoteReadOnly ? '只读清单 · 电脑端管理' : '在电脑上打开' },
+        { pane: '技能', desc: remoteReadOnly ? '只读清单 · 电脑端管理' : '在电脑上打开' },
         { pane: '插件', desc: '已挂载清单' },
         { pane: '市场', desc: '在电脑上安装' },
       ],
