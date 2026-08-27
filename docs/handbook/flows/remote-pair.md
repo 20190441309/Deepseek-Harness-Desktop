@@ -6,10 +6,12 @@
 2. 桌面在本机 `:3180` 提供 `mobile/web` SPA，并生成包含 ChisaCode offer v2 的 `#offer=` 二维码。中继地址只在 offer 内用作传输端点，不充当页面地址。
 3. 浏览器用系统相机、SPA 内扫码或粘贴完整链接；Android 原生扫码/粘贴后由 APK 内的同一份 SPA 在 `https://appassets.androidplatform.net` WebView origin 打开 offer。
 4. SPA 用 `parseConnectionOfferFromUrl` 校验 offer，创建 `DaemonClient`，以 `role=client` 连中继，并用桌面 daemon 公钥建立端到端加密会话。首次配对用短期 pairing token 换取 `deviceSecret`；后续从稳定 origin 的 localStorage sticky 重连。
-5. 配对后会话列表、时间线、发送、停止、审批和“新会话”都走 daemon RPC。“新会话”从已有 agent，或最近工作区 + ready provider，得到 `provider`/`cwd` 后调用 `createAgent`。
-6. Git 状态、提交、拉取、推送、创建 PR、切换已有分支及根目录文件列表走 ChisaCode checkout/file RPC。协议没有普通分支创建和电脑窗口控制 RPC；对应按钮禁用并明确提示在电脑端操作。
-7. offer 无效、重连、agent 目录、创建会话、Git、文件和桌面专属操作失败都必须显示在连接错误、banner 或 toast，不允许静默停留或抛到页面。
-8. 手机侧复用官方语义色（Web `tokens.css` 中的 `--dsw-alias-*`），不嵌官方插件树，不用启动页 `--boot-*`。
+5. 配对后会话列表、时间线、发送、停止、审批和“新会话”都走 daemon RPC。“新会话”打开 chooser sheet：`fetchWorkspaces` 选工作区 → `getProvidersSnapshot(cwd)` 选 ready 提供方 → 可选权限模式，然后把 `workspaceId/cwd/provider(/modeId)` 显式传给 `createAgent`；不猜已有 agent 的 `provider/cwd`。
+6. 会话权限模式来自 agent snapshot（`availableModes/currentModeId`）；切换调用 `setAgentMode`，失败回滚并显示 daemon 错误；`mode_changed` 流事件写回。
+7. SPA 经 `chisacode/controller.js` 订阅 `subscribeConnectionStatus`：断线/重连中在 chat 顶部连接条明示，断线时发送被可见拒绝、草稿按 serverId+sessionId 留在 localStorage；client 自动重连回到 connected 后执行权威 resync（`fetchAgents` + 当前会话 timeline 尾页），失败进 banner。
+8. Git 状态、提交、拉取、推送、创建 PR、切换已有分支及根目录文件列表走 ChisaCode checkout/file RPC。协议没有普通分支创建和电脑窗口控制 RPC；对应按钮禁用并明确提示在电脑端操作。
+9. offer 无效、重连、agent 目录、创建会话、Git、文件和桌面专属操作失败都必须显示在连接错误、banner 或 toast，不允许静默停留或抛到页面。
+10. 手机侧复用官方语义色（Web `tokens.css` 中的 `--dsw-alias-*`），不嵌官方插件树，不用启动页 `--boot-*`。
 
 ```mermaid
 sequenceDiagram
@@ -35,5 +37,5 @@ sequenceDiagram
 ## 入口
 
 - `src/main/chisacode-remote.js`、`src/main/mobile-web-server.js`
-- `mobile/web/chisacode/session.js`、`mobile/web/chisacode/parity.js`、`mobile/web/app.js`
+- `mobile/web/chisacode/session.js`、`mobile/web/chisacode/parity.js`、`mobile/web/chisacode/controller.js`、`mobile/web/app.js`
 - `mobile/android/`、`mobile/README.md`

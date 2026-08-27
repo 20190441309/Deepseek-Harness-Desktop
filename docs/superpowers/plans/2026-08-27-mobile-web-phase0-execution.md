@@ -47,14 +47,16 @@ Work branch: `cursor/mobile-web-phase0-ed5c`
 - 草稿：input 时 `draftStore.save(sessionId, text)`；`openSession` 恢复；发送成功后 `clear`；重连不清 textarea。
 - `settings-hub.settingsGroups` 的权限行 desc 使用真实 mode 标签（无则「由提供方决定」类文案）。
 
-## 验收标准（勾完才算 Phase 0 完成）
+## 验收标准（2026-08-27 全部达成，证据见 [QA 报告](../../qa/results/2026-08-27/mobile-web-phase0.md)）
 
-- [ ] 新会话可从 daemon workspace registry 选择目标；`createAgent` 收到的 `workspaceId/cwd/provider(/modeId)` 与选择一致；不再读“第一条 agent”。
-- [ ] 当前会话 mode 显示值 = snapshot `currentModeId`；切换调用 `setAgentMode`；daemon 拒绝时 UI 回滚且错误可见；`mode_changed` 流事件写回。
-- [ ] 连接条呈现 offline / reconnecting / online；重连后自动 `fetchAgents` + 当前 timeline 刷新；断线时发送被拒绝并提示，不假装在线。
-- [ ] 草稿按 serverId+sessionId 本地保留，重连与切会话不丢。
-- [ ] `node --test "mobile/web/**/*.test.js"` 全绿；controller / parity 新逻辑有 fake-client 单测；`src/main/chisacode-remote.test.js` 不回归。
-- [ ] 这些流程全路径无 `callUnary` / `callShell` / `/__remote__/*`；无静默 catch 吞 P0 错误。
+- [x] 新会话可从 daemon workspace registry 选择目标；`createAgent` 收到的 `workspaceId/cwd/provider(/modeId)` 与选择一致；不再读“第一条 agent”（浏览器集成检查记录到 `{provider:'dsh', cwd:'/repo/mobile', workspaceId:'ws-mobile', modeId:'plan'}`）。
+- [x] 当前会话 mode 显示值 = snapshot `currentModeId`；切换调用 `setAgentMode`；daemon 拒绝时 UI 回滚且错误可见；`mode_changed` 流事件写回。
+- [x] 连接条呈现 offline / reconnecting / online；重连后自动 `fetchAgents` + 当前 timeline 刷新；断线时发送被拒绝并提示，不假装在线。
+- [x] 草稿按 serverId+sessionId 本地保留，重连与切会话不丢。
+- [x] `node --test "mobile/web/**/*.test.js"` 全绿（86 pass）；controller / parity 新逻辑有 fake-client 单测；`src/main/chisacode-remote.test.js` 不回归（12 pass / 2 skipped 与基线一致）。
+- [x] 这些流程全路径无 `callUnary` / `callShell` / `/__remote__/*`；无静默 catch 吞 P0 错误（审查发现并修复一处 create 后 openSession 失败被吞的路径）。
+
+真机 relay / 多 workspace 实数据 / Android WebView 仍为 BLOCKED 发布验收项（见 QA 报告矩阵），不计入本轮可达成范围。
 
 ## 测试策略
 
