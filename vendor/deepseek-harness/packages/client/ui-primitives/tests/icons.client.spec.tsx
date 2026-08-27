@@ -37,7 +37,8 @@ describe('ic_ds_ icon set', () => {
   })
 
   it.each(settingsNavIconNames)('%s uses native 16px filled-path outline geometry', (name) => {
-    const { container } = render(icons[name]({}))
+    const Icon = icons[name]!
+    const { container } = render(<Icon />)
     const svg = container.querySelector('svg')!
     expect(svg.getAttribute('viewBox')).toBe('0 0 16 16')
     expect(svg.getAttribute('fill')).toBe('none')
