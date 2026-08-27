@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-tools` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — focused Harness unit and integration tests |
+| **last verified** | 2026-08-27 — host TypeScript compilation, 322 focused Harness tests, and 1,118 desktop tests |
 
 ## User paths
 
