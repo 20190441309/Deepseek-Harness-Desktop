@@ -2049,8 +2049,12 @@ function closeFilePreview() {
 async function loadFilesPath(path) {
   const pane = ensureFilesPane();
   if (!state.cwd || state.transport !== 'chisacode') return;
-  if (pane.preview) closeFilePreview();
-  pane.scrollTops[pane.path] = options.scrollTop;
+  if (pane.preview) {
+    closeFilePreview();
+  } else if (!pane.search.query.trim()) {
+    // Only record listing scroll when the listing itself is on screen.
+    pane.scrollTops[pane.path] = options.scrollTop;
+  }
   const seq = pane.loadSeq + 1;
   pane.loadSeq = seq;
   pane.loading = true;
@@ -2075,7 +2079,9 @@ async function loadFilesPath(path) {
 async function openFilePreview(entry) {
   const pane = ensureFilesPane();
   if (!state.cwd || state.transport !== 'chisacode') return;
-  pane.scrollTops[pane.path] = options.scrollTop;
+  if (!pane.preview && !pane.search.query.trim()) {
+    pane.scrollTops[pane.path] = options.scrollTop;
+  }
   if (pane.preview?.blobUrl) URL.revokeObjectURL(pane.preview.blobUrl);
   const preview = {
     path: entry.path,
