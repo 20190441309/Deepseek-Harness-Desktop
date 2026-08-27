@@ -655,6 +655,69 @@ export const IconApiOutline14 = ({ size = 14, className }: IconProps) => (
   </svg>
 )
 
+/**
+ * ic_ds_server_outline_16
+ * @param props - Icon size and CSS class.
+ * @returns The 16px server outline SVG.
+ */
+export const IconServerOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M2.5 1H13.5C14.3284 1 15 1.67157 15 2.5V5.5C15 6.32843 14.3284 7 13.5 7H2.5C1.67157 7 1 6.32843 1 5.5V2.5C1 1.67157 1.67157 1 2.5 1ZM2.5 2.25C2.36193 2.25 2.25 2.36193 2.25 2.5V5.5C2.25 5.63807 2.36193 5.75 2.5 5.75H13.5C13.6381 5.75 13.75 5.63807 13.75 5.5V2.5C13.75 2.36193 13.6381 2.25 13.5 2.25H2.5ZM2.5 9H13.5C14.3284 9 15 9.67157 15 10.5V13.5C15 14.3284 14.3284 15 13.5 15H2.5C1.67157 15 1 14.3284 1 13.5V10.5C1 9.67157 1.67157 9 2.5 9ZM2.5 10.25C2.36193 10.25 2.25 10.3619 2.25 10.5V13.5C2.25 13.6381 2.36193 13.75 2.5 13.75H13.5C13.6381 13.75 13.75 13.6381 13.75 13.5V10.5C13.75 10.3619 13.6381 10.25 13.5 10.25H2.5Z"
+      fill="currentColor"
+    />
+    <path d="M4.75 3.375V4.625H3.5V3.375H4.75ZM4.75 11.375V12.625H3.5V11.375H4.75Z" fill="currentColor" />
+  </svg>
+)
+
+/**
+ * ic_ds_device_outline_16
+ * @param props - Icon size and CSS class.
+ * @returns The 16px phone-device outline SVG.
+ */
+export const IconDeviceOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M5 0.5H11C12.1046 0.5 13 1.39543 13 2.5V13.5C13 14.6046 12.1046 15.5 11 15.5H5C3.89543 15.5 3 14.6046 3 13.5V2.5C3 1.39543 3.89543 0.5 5 0.5ZM5 1.75C4.58579 1.75 4.25 2.08579 4.25 2.5V13.5C4.25 13.9142 4.58579 14.25 5 14.25H11C11.4142 14.25 11.75 13.9142 11.75 13.5V2.5C11.75 2.08579 11.4142 1.75 11 1.75H5Z"
+      fill="currentColor"
+    />
+    <path d="M6.25 2.75H9.75V4H6.25V2.75ZM7.25 12H8.75V13.25H7.25V12Z" fill="currentColor" />
+  </svg>
+)
+
+/**
+ * ic_ds_info_outline_16
+ * @param props - Icon size and CSS class.
+ * @returns The 16px information outline SVG.
+ */
+export const IconInfoOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M8 0.5C12.1421 0.5 15.5 3.85786 15.5 8C15.5 12.1421 12.1421 15.5 8 15.5C3.85786 15.5 0.5 12.1421 0.5 8C0.5 3.85786 3.85786 0.5 8 0.5ZM8 1.8C4.57583 1.8 1.8 4.57583 1.8 8C1.8 11.4242 4.57583 14.2 8 14.2C11.4242 14.2 14.2 11.4242 14.2 8C14.2 4.57583 11.4242 1.8 8 1.8Z"
+      fill="currentColor"
+    />
+    <path d="M7.35 6.75H8.65V12H7.35V6.75ZM7.25 4H8.75V5.5H7.25V4Z" fill="currentColor" />
+  </svg>
+)
+
+/**
+ * ic_ds_chart_outline_16
+ * @param props - Icon size and CSS class.
+ * @returns The 16px usage-chart outline SVG.
+ */
+export const IconChartOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2.75 1.25V12.25C2.75 12.8023 3.19772 13.25 3.75 13.25H14.75V14.5H3.75C2.50736 14.5 1.5 13.4926 1.5 12.25V1.25H2.75Z" fill="currentColor" />
+    <path d="M4.5 8.5H6V11.5H4.5V8.5ZM8 5.5H9.5V11.5H8V5.5ZM11.5 2.5H13V11.5H11.5V2.5Z" fill="currentColor" />
+  </svg>
+)
+
 /** ic_ds_personalization_outline_16 (figma extract) */
 export const IconPersonalizationOutline16 = ({ size = 16, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none">

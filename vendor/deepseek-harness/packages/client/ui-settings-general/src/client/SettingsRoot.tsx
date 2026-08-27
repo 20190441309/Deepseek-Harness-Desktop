@@ -13,8 +13,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
-  IconPersonalizationOutline16, IconSettingsOutline16,
+  IconAgentPresetOutline16, IconBrowseOutline16, IconChartOutline16,
+  IconCloseOutline16, IconDataOutline16, IconDeviceOutline16,
+  IconInfoOutline16, IconLightOutline16, IconPanelLeftOutline16,
+  IconPersonalizationOutline16, IconServerOutline16, IconSettingsOutline16,
+  IconSkillOutline16,
   usePresence,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PresenceState } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -22,12 +25,25 @@ import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-con
 import { UpdateAction } from './UpdateAction.tsx'
 import css from './SettingsRoot.module.css'
 
+const NAV_ICONS: Readonly<Record<string, typeof IconSettingsOutline16>> = {
+  general: IconSettingsOutline16,
+  interface: IconPanelLeftOutline16,
+  appearance: IconLightOutline16,
+  models: IconDataOutline16,
+  'agent-presets': IconAgentPresetOutline16,
+  plugins: IconPersonalizationOutline16,
+  skills: IconSkillOutline16,
+  mcp: IconServerOutline16,
+  market: IconBrowseOutline16,
+  remote: IconDeviceOutline16,
+  about: IconInfoOutline16,
+  'usage-stats': IconChartOutline16,
+}
+
 /** Nav glyph by section id; unknown ids fall back to the settings gear. */
 function navIcon(id: string) {
-  if (id === 'models') return <IconDataOutline16 className={css.navIcon} size={16} />
-  if (id === 'agent-presets') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />
-  if (id === 'plugins') return <IconPersonalizationOutline16 className={css.navIcon} size={16} />
-  return <IconSettingsOutline16 className={css.navIcon} size={16} />
+  const Icon = NAV_ICONS[id] ?? IconSettingsOutline16
+  return <Icon className={css.navIcon} size={16} />
 }
 
 type PanelProps = {
