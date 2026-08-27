@@ -27,7 +27,7 @@ Status: implemented
 | `about` | `IconInfoOutline16` |
 | `usage-stats` | `IconChartOutline16` |
 
-图标表留在设置 shell，因为分区注册只携带标识、顺序与文案，不携带展示元数据。未知分区 id 继续回退到设置齿轮。`ui-primitives` 提供原先缺少合适 16px 同族图标的服务器、设备、信息与图表图标。
+图标表留在设置 shell，因为分区注册只携带标识、顺序与文案，不携带展示元数据。未知分区 id 继续回退到设置齿轮。`ui-primitives` 提供原先缺少合适 16px 同族图标的服务器、设备、信息与图表图标。这四个图标使用带圆润转折、符合官方图标族视觉重量的 `currentColor` 描边展开路径，不再采用类似 CSS 细矩形的几何。
 
 ## 考虑过的方案
 

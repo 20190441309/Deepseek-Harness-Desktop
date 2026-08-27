@@ -27,7 +27,7 @@ The Settings sidebar identified only Models, Agent presets, and Plugins with ded
 | `about` | `IconInfoOutline16` |
 | `usage-stats` | `IconChartOutline16` |
 
-The icon table stays in the Settings shell because section registrations carry identity, order, and copy but no presentation metadata. Unknown section ids retain the settings gear fallback. `ui-primitives` supplies the server, device, information, and chart glyphs that had no suitable 16px sibling.
+The icon table stays in the Settings shell because section registrations carry identity, order, and copy but no presentation metadata. Unknown section ids retain the settings gear fallback. `ui-primitives` supplies the server, device, information, and chart glyphs that had no suitable 16px sibling. Those four use stroke-expanded `currentColor` paths with rounded, official-family optical weight rather than CSS-like thin rectangles.
 
 ## Alternatives considered
 
