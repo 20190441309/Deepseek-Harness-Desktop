@@ -24,10 +24,12 @@
 - `vendor/deepseek-harness/packages/llm/` — shared validation, adapters, retry policy, and tests.
 - `vendor/deepseek-harness/packages/core/agent-loop/` — pre-persistence request-failure guard and tests.
 - `vendor/deepseek-harness/packages/core/session/` — poisoned-transcript projection repair and tests.
+- `vendor/deepseek-harness/packages/session/session-persistence-sqlite/src/codec.ts` — exact optional-field reconstruction for persisted tool-call chunks.
 - `vendor/deepseek-harness/packages/core/tools/` — registration validation and tests.
 - `vendor/deepseek-harness/packages/extensions/tool-cordis/src/api-catalog.ts` — generated public type catalog.
 - `vendor/deepseek-harness/.agents/notes/` — Harness decision record.
 - `docs/features/dsh-tools.md` and `docs/features/README.md` — desktop feature-spine contract.
+- `.cursor/rules/dsh-tools-product.mdc` — short always-on invariants.
 
 ## Do not touch
 

@@ -291,8 +291,8 @@ function expandRow(row: ChunkRow): SessionEvent[] {
         chunk = {
           type: 'tool-call-delta',
           index: row.data.index,
-          id: row.data.id,
-          ...Object.hasOwn(row.data, 'name') ? { name: row.data.name as string } : {},
+          ...row.data.id === undefined ? {} : { id: row.data.id },
+          ...row.data.name === undefined ? {} : { name: row.data.name },
           argumentsDelta: members[index] as string,
         }
         break
