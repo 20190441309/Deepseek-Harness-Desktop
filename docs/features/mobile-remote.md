@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — 手机 SPA 补齐 daemon 原生 createAgent、checkout Git 与 file explorer；普通分支创建/电脑窗口控制无协议能力时诚实禁用。Android APK 继续由安全 WebView asset origin 承载同一 v2 SPA。 |
+| **last verified** | 2026-08-27 — 完成 desktop vs mobile/web 系统差距审计：v2 配对/会话/发送/取消/基础审批/Git 主路径已可用；P0 为真实 mode 接线、workspace chooser、重连后 resync。分析不改产品行为，见 `docs/superpowers/plans/2026-08-27-mobile-web-desktop-gap-analysis.md`。 |
 
 ## User paths
 
@@ -54,3 +54,4 @@
 
 - Vendored ChisaCode client/app pairing runtime
 - Kill list：[_kill-http-remote](_kill-http-remote.md)
+- Gap analysis：[2026-08-27-mobile-web-desktop-gap-analysis](../superpowers/plans/2026-08-27-mobile-web-desktop-gap-analysis.md)
