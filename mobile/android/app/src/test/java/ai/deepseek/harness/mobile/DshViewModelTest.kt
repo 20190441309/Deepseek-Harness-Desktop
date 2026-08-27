@@ -14,7 +14,8 @@ class DshViewModelTest {
         val vm = DshViewModel(store)
 
         assertEquals(Route.Web, vm.route)
-        assertEquals("http://192.168.1.8:3180/", vm.webUrl)
+        assertEquals(DshViewModel.WEB_APP_URL, vm.webUrl)
+        assertEquals(DshViewModel.WEB_APP_URL, store.webAppUrl)
         assertEquals(1, store.legacyClearCalls)
     }
 
@@ -31,8 +32,8 @@ class DshViewModelTest {
         vm.pair(url)
 
         assertEquals(Route.Web, vm.route)
-        assertEquals(url, vm.webUrl)
-        assertEquals("http://192.168.1.8:3180/", store.webAppUrl)
+        assertEquals("${DshViewModel.WEB_APP_URL}#offer=$raw", vm.webUrl)
+        assertEquals(DshViewModel.WEB_APP_URL, store.webAppUrl)
     }
 
     @Test

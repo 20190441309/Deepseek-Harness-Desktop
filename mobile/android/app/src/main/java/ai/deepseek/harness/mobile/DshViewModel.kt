@@ -23,7 +23,8 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
     init {
         store.clearLegacyHttpCredentials()
         if (store.webAppUrl.isNotEmpty()) {
-            webUrl = store.webAppUrl
+            store.webAppUrl = WEB_APP_URL
+            webUrl = WEB_APP_URL
             route = Route.Web
         }
     }
@@ -45,11 +46,11 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
             return
         }
 
-        // The Web SPA owns the ChisaCode DaemonClient and stores its sticky
-        // deviceSecret in WebView localStorage. Native code remembers only the
-        // fragment-free LAN landing URL needed to reopen that same SPA.
-        store.webAppUrl = link.landingUrl
-        webUrl = link.url
+        // The bundled Web SPA owns the ChisaCode DaemonClient and stores its
+        // sticky deviceSecret in WebView localStorage. The desktop LAN URL is
+        // only used to validate and extract the fragment; it is never loaded.
+        store.webAppUrl = WEB_APP_URL
+        webUrl = "$WEB_APP_URL#offer=${link.url.substringAfter("#offer=")}"
         route = Route.Web
     }
 
@@ -69,5 +70,10 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
     fun persistScheme(value: String) {
         scheme = value
         store.scheme = value
+    }
+
+    companion object {
+        internal const val WEB_APP_URL =
+            "https://appassets.androidplatform.net/assets/index.html"
     }
 }

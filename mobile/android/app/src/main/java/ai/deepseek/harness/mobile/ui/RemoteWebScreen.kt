@@ -6,6 +6,7 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -19,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewAssetLoader
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -31,6 +33,11 @@ fun RemoteWebScreen(
 ) {
     val context = LocalContext.current
     val appOrigin = remember(url) { Uri.parse(url).origin() }
+    val assetLoader = remember {
+        WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+            .build()
+    }
     val webView = remember {
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -47,6 +54,13 @@ fun RemoteWebScreen(
     DisposableEffect(webView, chromeClient, appOrigin) {
         webView.webChromeClient = chromeClient
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? =
+                assetLoader.shouldInterceptRequest(request.url)
+                    ?: super.shouldInterceptRequest(view, request)
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,

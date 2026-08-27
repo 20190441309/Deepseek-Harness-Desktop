@@ -30,6 +30,15 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("main") {
+            // Package the repaired mobile/web SPA as the single Android chat
+            // implementation. WebViewAssetLoader serves these files from its
+            // secure HTTPS origin, so sticky relay reconnect does not depend
+            // on the desktop's LAN :3180 server after initial pairing.
+            assets.srcDir(rootProject.file("../web"))
+        }
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -49,6 +58,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.camera:camera-core:1.4.1")
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
