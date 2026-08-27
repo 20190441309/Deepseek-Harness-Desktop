@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RemoteSection } from '../src/client/RemoteSection.tsx'
 import type { RemoteSectionProps } from '../src/client/RemoteSection.tsx'
@@ -62,7 +62,7 @@ describe('RemoteSection', () => {
     expect(screen.getByRole('button', { name: en.trigger }).hasAttribute('data-on')).toBe(true)
   })
 
-  it('opens a popup with on/off and the pairing QR, without LAN/relay or leaking the URL', async () => {
+  it('opens a popup with on/off, the QR plus its pairing link, without LAN/relay controls', async () => {
     renderRemote()
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByRole('dialog', { name: en.heading })
@@ -71,8 +71,26 @@ describe('RemoteSection', () => {
     expect(screen.queryByRole('radio', { name: en.modeLan })).toBeNull()
     expect(screen.queryByRole('radio', { name: en.modeRelay })).toBeNull()
     expect(screen.getByRole('img', { name: en.qr })).toBeTruthy()
-    expect(screen.queryByText(/#offer=/)).toBeNull()
-    expect(screen.queryByText('3180')).toBeNull()
+    expect(screen.getByText(en.pairingUrl)).toBeTruthy()
+    expect(screen.getByText('http://10.0.0.4:3180/#offer=abc')).toBeTruthy()
+  })
+
+  it('states plainly that pairing cannot finish while the relay is offline', async () => {
+    renderRemote()
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('dialog', { name: en.heading })
+    expect(screen.getByText(en.relayDown)).toBeTruthy()
+    cleanup()
+    renderRemote({
+      getRemote: vi.fn(async () => snap({ relayConnected: false, relayError: 'Unexpected server response: 401' })),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByText(en.relayDownWithError.replace('{message}', 'Unexpected server response: 401'))
+    cleanup()
+    renderRemote({ getRemote: vi.fn(async () => snap({ relayConnected: true })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByRole('img', { name: en.qr })
+    expect(screen.queryByText(en.relayDown)).toBeNull()
   })
 
   it('shows the off hint until the gateway is enabled', async () => {
@@ -198,13 +216,13 @@ describe('RemoteSection', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     fireEvent.click(await screen.findByRole('button', { name: `${en.devices} 1` }))
-    await screen.findByRole('dialog', { name: en.devicesManage })
-    expect(screen.getByText('iPhone')).toBeTruthy()
-    expect(screen.getByText(en.devicesOnline)).toBeTruthy()
-    expect(screen.getByText('iPhone · iOS 18 · Safari')).toBeTruthy()
-    expect(screen.getByText(`ID ${device.shortId}`)).toBeTruthy()
-    expect(screen.getByText(/Bound /)).toBeTruthy()
-    expect(screen.getByText(/Last seen /)).toBeTruthy()
+    const manage = within(await screen.findByRole('dialog', { name: en.devicesManage }))
+    expect(manage.getByText('iPhone')).toBeTruthy()
+    expect(manage.getByText(en.devicesOnline)).toBeTruthy()
+    expect(manage.getByText('iPhone · iOS 18 · Safari')).toBeTruthy()
+    expect(manage.getByText(en.devicesId.replace('{id}', device.shortId))).toBeTruthy()
+    expect(manage.getByText(new RegExp(`^${en.devicesBound.split('{time}')[0]}`))).toBeTruthy()
+    expect(manage.getByText(new RegExp(`^${en.devicesSeen.split('{time}')[0]}`))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: en.unbind }))
     await waitFor(() => { expect(props.unbindRemoteDevice).toHaveBeenCalledWith('dev-1') })
     await screen.findByText(en.devicesEmpty)
