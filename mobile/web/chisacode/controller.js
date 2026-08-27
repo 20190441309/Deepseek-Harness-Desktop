@@ -81,12 +81,17 @@ async function resyncAfterReconnect(client, { sessionId = '', agentLimit = 100, 
  * Per-server draft store: keeps unsent composer text per sessionId so drafts
  * survive reconnects and session switches. Best-effort local convenience —
  * storage failures degrade to in-memory for this page load, never throw.
+ *
+ * Attachments are kept per session in memory only: image bytes would blow
+ * the localStorage quota, so they survive session switches but not a page
+ * reload (documented product behavior, not a bug).
  * @param {Storage | null} storage
  * @param {string} serverId
  */
 function createDraftStore(storage, serverId) {
   const key = `${DRAFT_KEY_PREFIX}${serverId}`;
   const memory = {};
+  const attachmentsBySession = new Map();
 
   function readAll() {
     try {
@@ -128,12 +133,26 @@ function createDraftStore(storage, serverId) {
       const all = readAll();
       delete all[sessionId];
       writeAll(all);
+      attachmentsBySession.delete(sessionId);
     },
     clearAll() {
       for (const id of Object.keys(memory)) delete memory[id];
+      attachmentsBySession.clear();
       try {
         storage.removeItem(key);
       } catch { /* ignore */ }
+    },
+    loadAttachments(sessionId) {
+      if (!sessionId) return [];
+      return attachmentsBySession.get(sessionId)?.slice() || [];
+    },
+    saveAttachments(sessionId, images) {
+      if (!sessionId) return;
+      if (Array.isArray(images) && images.length) {
+        attachmentsBySession.set(sessionId, images.slice());
+      } else {
+        attachmentsBySession.delete(sessionId);
+      }
     },
   };
 }

@@ -69,6 +69,17 @@ async function listReadyProviders(client, cwd) {
         ? entry.modes.filter((mode) => typeof mode?.id === 'string' && mode.id)
         : [],
       defaultModeId: typeof entry.defaultModeId === 'string' ? entry.defaultModeId : null,
+      models: Array.isArray(entry.models)
+        ? entry.models.flatMap((model) => (
+            typeof model?.id === 'string' && model.id
+              ? [{
+                  id: model.id,
+                  label: typeof model.label === 'string' && model.label ? model.label : model.id,
+                  isDefault: model.isDefault === true,
+                }]
+              : []
+          ))
+        : [],
     }];
   });
   if (!ready.length) {
@@ -80,9 +91,9 @@ async function listReadyProviders(client, cwd) {
 /**
  * Create an agent from explicit user choices. Phase 0 contract: the caller
  * (workspace/provider chooser) supplies workspaceId + cwd + provider; modeId
- * is optional. No guessing from the existing agent list.
+ * and model are optional. No guessing from the existing agent list.
  */
-async function createMobileAgent(client, { workspaceId, cwd, provider, modeId } = {}) {
+async function createMobileAgent(client, { workspaceId, cwd, provider, modeId, model } = {}) {
   if (typeof cwd !== 'string' || !cwd || typeof provider !== 'string' || !provider) {
     throw new Error('请先选择工作区和提供方');
   }
@@ -91,6 +102,7 @@ async function createMobileAgent(client, { workspaceId, cwd, provider, modeId } 
     cwd,
     ...(typeof workspaceId === 'string' && workspaceId ? { workspaceId } : {}),
     ...(typeof modeId === 'string' && modeId ? { modeId } : {}),
+    ...(typeof model === 'string' && model ? { model } : {}),
   });
   if (!agent || typeof agent.id !== 'string' || !agent.id) {
     throw new Error('电脑端没有返回会话；请重试');
@@ -123,6 +135,48 @@ function agentModeState(agent) {
     currentModeId,
     currentLabel: current ? current.label : (currentModeId || ''),
   };
+}
+
+/**
+ * Derive the model view state from an agent snapshot. The snapshot is the
+ * only truth (`model`, falling back to `runtimeInfo.model`); null means the
+ * provider default is in effect.
+ */
+function agentModelState(agent) {
+  const fromSnapshot = typeof agent?.model === 'string' && agent.model ? agent.model : null;
+  const fromRuntime = typeof agent?.runtimeInfo?.model === 'string' && agent.runtimeInfo.model
+    ? agent.runtimeInfo.model
+    : null;
+  const modelId = fromSnapshot ?? fromRuntime;
+  return { modelId, label: modelId || '' };
+}
+
+/**
+ * List the selectable models for the current session's provider. A daemon
+ * error string or an empty catalog is a visible failure, not a blank picker.
+ */
+async function listAgentModels(client, provider, cwd) {
+  if (typeof provider !== 'string' || !provider) {
+    throw new Error('当前会话没有提供方信息');
+  }
+  const payload = await client.listProviderModels(provider, cwd ? { cwd } : {});
+  const message = errorMessage(payload?.error);
+  if (message) throw new Error(message);
+  const models = Array.isArray(payload?.models) ? payload.models : [];
+  const rows = models.flatMap((model) => (
+    typeof model?.id === 'string' && model.id
+      ? [{
+          id: model.id,
+          label: typeof model.label === 'string' && model.label ? model.label : model.id,
+          description: typeof model.description === 'string' ? model.description : '',
+          isDefault: model.isDefault === true,
+        }]
+      : []
+  ));
+  if (!rows.length) {
+    throw new Error('提供方没有返回可选模型；请在电脑端检查提供方设置');
+  }
+  return rows;
 }
 
 function chisaCheckoutStatusToVcs(status, prPayload = null) {
@@ -208,10 +262,12 @@ async function listMobileDirectory(client, cwd, relativePath = '') {
 }
 
 export {
+  agentModelState,
   agentModeState,
   chisaBranchRows,
   chisaCheckoutStatusToVcs,
   createMobileAgent,
+  listAgentModels,
   listMobileDirectory,
   listReadyProviders,
   listWorkspaceChoices,
