@@ -315,12 +315,7 @@ test('groupTranscript omits pass replies and legacy NEXT footers', async () => {
 });
 
 test('isPassContent and memberVisibleText accept pass variants', async () => {
-  const {
-    isPassContent,
-    memberTurnOrPass,
-    memberVisibleText,
-    resolveGroupProtocolLimits,
-  } = await loadCatalog();
+  const { isPassContent, memberVisibleText } = await loadCatalog();
   assert.equal(isPassContent(''), true);
   assert.equal(isPassContent('(pass)'), true);
   assert.equal(isPassContent(' pass '), true);
@@ -329,6 +324,10 @@ test('isPassContent and memberVisibleText accept pass variants', async () => {
   assert.equal(memberVisibleText('方案A\nNEXT: pass'), '方案A');
   assert.equal(memberVisibleText('(pass)'), '');
   assert.equal(memberVisibleText('NEXT: pass'), '');
+});
+
+test('memberTurnOrPass converts a non-abort member failure to silent pass', async () => {
+  const { memberTurnOrPass } = await loadCatalog();
   await assert.doesNotReject(async () => {
     assert.deepEqual(
       await memberTurnOrPass({ id: 'a', name: 'Agent A' }, async () => {
@@ -337,6 +336,10 @@ test('isPassContent and memberVisibleText accept pass variants', async () => {
       { botId: 'a', name: 'Agent A', text: '' },
     );
   });
+});
+
+test('resolveGroupProtocolLimits hard-clamps direct callers to 10 turns and 3 rounds', async () => {
+  const { resolveGroupProtocolLimits } = await loadCatalog();
   assert.deepEqual(resolveGroupProtocolLimits({ maxSpeaks: 999, maxRounds: 999 }), {
     maxSpeaks: 10,
     maxRounds: 3,
@@ -587,6 +590,7 @@ test('client registers the bots tab, overlay, and ask_participant toolview', () 
   assert.match(src, /setDescription\(chip\.text\)/);
   assert.match(src, /GROUP_MIN_MEMBERS = 2/);
   assert.match(src, /memberIds\.length < GROUP_MIN_MEMBERS/);
+  assert.match(src, /items\.filter\(\(item\) => item\.kind !== "room"\)\.length < GROUP_MIN_MEMBERS/);
   assert.match(src, /item\.kind === "room" \|\| session\?\.blank === false/);
   assert.equal(src.includes('notifications'), false);
   assert.equal(src.includes('memoryLabel'), false);
@@ -645,6 +649,7 @@ test('room preset tool registers ask_participant as a one-shot child', () => {
   assert.match(src, /childPersonaText/);
   assert.match(src, /memberPersona/);
   assert.match(src, /roomTurnPromptForSpeaker/);
+  assert.match(src, /memberTurnOrPass/);
   assert.match(src, /abortRoomMemberTurns/);
   assert.equal(src.includes('speakerSeat'), false);
   assert.equal(src.includes('roomSpeakInstruction'), false);
@@ -656,6 +661,7 @@ test('room preset tool registers ask_participant as a one-shot child', () => {
   assert.match(src, /isPassContent/);
   assert.match(src, /allow: \['send_room_message'\]/);
   assert.match(src, /restrict\(\{ allow: \['ask_participant'\] \}\)/);
+  assert.equal(src.includes('throw err'), false);
   assert.equal(/export function apply[\s\S]*tools\.register/.test(src), false);
   assert.match(src, /content: \[\]/);
   assert.equal(src.includes("kind: 'coordinator'"), false);
