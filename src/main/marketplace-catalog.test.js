@@ -315,7 +315,9 @@ test('fetch errors without cache fall back to the packed snapshot', async () => 
   assert.equal(result.ok, true);
   assert.ok(result.warning);
   assert.ok(result.items.length > 0);
-  assert.equal(byId(result.items, '01Virex/dsh-status-rotator').installSpec, 'github:01Virex/dsh-status-rotator');
+  // Snapshot anchors track the shipped snapshot content: since the 2026-08-27
+  // refresh the status-rotator row is npm-published, so its spec is the npm name.
+  assert.equal(byId(result.items, '01Virex/dsh-status-rotator').installSpec, 'dsh-status-rotator');
   assert.equal(
     byId(result.items, 'DamonKoy/dsh-web-ui#dsh-aionui-panel').installSpec,
     'github:DamonKoy/dsh-web-ui#path:/packages/dsh-aionui-panel',
