@@ -4,7 +4,7 @@
 
 **Do not** update `vendor/harness-upstream.json` until upstream has merged and tagged a release containing the fix; the pin records the integrated official baseline, never a pending PR.
 
-**Upstream status check (2026-08-27):** upstream has since tagged `dsh-v0.1.1-rc.2` (`b150a551`, current upstream HEAD). Verified it does **not** contain the fix (`requireValidToolCallIdentity` absent from `b150a551:packages/llm/llm/src/content.ts`), so this handoff is still pending; base the upstream branch on rc.2.
+**Upstream status check (2026-08-27):** upstream has since tagged `dsh-v0.1.1-rc.2` (`b150a551`, latest tag; HEAD keeps moving past it). Verified rc.2 does **not** contain the fix (`requireValidToolCallIdentity` absent from `b150a551:packages/llm/llm/src/content.ts`), so this handoff is still pending; base the upstream branch on rc.2 or newer.
 
 ## What the patch contains
 
