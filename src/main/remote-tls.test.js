@@ -35,6 +35,32 @@ test('generateTlsMaterial stays parseable when the random serial starts with zer
   assert.equal(x509.checkPrivateKey(crypto.createPrivateKey(material.key)), true);
 });
 
+test('serial DER edge shapes stay parseable: multi-zero stripping and high-bit zero retention', (t) => {
+  // Beyond the 0x00 0x42 regression: several redundant zero bytes must all be
+  // stripped, while a zero byte that pads a following high bit must be kept
+  // (dropping it would flip the INTEGER negative).
+  const realRandomBytes = crypto.randomBytes;
+  const fixtures = [
+    [0x00, 0x00, 0x42],
+    [0x00, 0x9c, 0x11],
+  ];
+  let fixture = fixtures[0];
+  t.mock.method(crypto, 'randomBytes', (size) => {
+    const bytes = realRandomBytes(size);
+    if (size === 12) {
+      [bytes[0], bytes[1], bytes[2]] = fixture;
+    }
+    return bytes;
+  });
+  for (fixture of fixtures) {
+    const material = generateTlsMaterial();
+    const x509 = new crypto.X509Certificate(material.cert);
+    assert.equal(x509.checkPrivateKey(crypto.createPrivateKey(material.key)), true);
+    // Minimal encoding: parsed serial must not carry redundant leading zeros.
+    assert.doesNotMatch(x509.serialNumber || '', /^00(?:[0-7])/i);
+  }
+});
+
 test('generateTlsMaterial mints a parseable self-signed P-256 certificate', () => {
   const material = generateTlsMaterial({ addresses: ['192.168.1.20', 'not-an-ip', '192.168.1.20'] });
   const x509 = new crypto.X509Certificate(material.cert);
