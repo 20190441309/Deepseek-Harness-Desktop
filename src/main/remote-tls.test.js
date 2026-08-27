@@ -17,6 +17,24 @@ function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-remote-tls-'));
 }
 
+test('generateTlsMaterial stays parseable when the random serial starts with zero bytes', (t) => {
+  // Regression: a serial of 0x00 0x00-0x7f … used to produce a non-minimal
+  // DER INTEGER ("illegal padding" in OpenSSL 3) roughly once in 256 runs.
+  const realRandomBytes = crypto.randomBytes;
+  t.mock.method(crypto, 'randomBytes', (size) => {
+    const bytes = realRandomBytes(size);
+    if (size === 12) {
+      bytes[0] = 0x00;
+      bytes[1] = 0x42; // high bit clear: the zero byte above is redundant padding
+    }
+    return bytes;
+  });
+  const material = generateTlsMaterial();
+  // Before the fix this constructor threw ERR_OSSL_ASN1_ILLEGAL_PADDING.
+  const x509 = new crypto.X509Certificate(material.cert);
+  assert.equal(x509.checkPrivateKey(crypto.createPrivateKey(material.key)), true);
+});
+
 test('generateTlsMaterial mints a parseable self-signed P-256 certificate', () => {
   const material = generateTlsMaterial({ addresses: ['192.168.1.20', 'not-an-ip', '192.168.1.20'] });
   const x509 = new crypto.X509Certificate(material.cert);

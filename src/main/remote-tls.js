@@ -57,6 +57,14 @@ function derSet(...parts) {
 
 function derInteger(value) {
   let content = Buffer.isBuffer(value) ? value : Buffer.from([value]);
+  // DER INTEGER content must be minimal: drop redundant leading zero bytes
+  // (a 0x00 is only kept when it pads a high bit). Without this, a random
+  // serial starting 0x00 0x00-0x7f is "illegal padding" to OpenSSL 3.
+  let start = 0;
+  while (start < content.length - 1 && content[start] === 0x00 && !(content[start + 1] & 0x80)) {
+    start += 1;
+  }
+  content = content.subarray(start);
   // INTEGER is signed: a leading high bit needs a zero pad to stay positive.
   if (content.length === 0 || content[0] & 0x80) {
     content = Buffer.concat([Buffer.from([0x00]), content]);
