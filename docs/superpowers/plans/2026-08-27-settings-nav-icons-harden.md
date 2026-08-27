@@ -34,7 +34,7 @@
 - [x] 中英文 Agent Note 同步记录最终图标实现事实；不新增 Feature Card 或 `.cursor/rules`。
 
 ## 验证
-- [x] 在真实组装 `dsh web` 设置页逐项查看 8 个已注册可见 section；其余 4 个桌面插件 section 由映射测试覆盖。
+- [x] 在真实组装 `dsh web` 设置页逐项查看 9 个已注册可见 section；其余 3 个桌面插件 section 由映射测试覆盖。
 - [x] 浅色、深色导航栏截图分别保存为 `/opt/cursor/artifacts/settings_nav_light_final_20260827.png` 与 `/opt/cursor/artifacts/settings_nav_dark_final_20260827.png`。
 - [x] 成功短录屏已复核：`/opt/cursor/artifacts/settings_nav_assembled_walk_final_20260827.webm`。
 - [x] 最终 review 无新增阻断项，提交并推送 PR #51 分支。
