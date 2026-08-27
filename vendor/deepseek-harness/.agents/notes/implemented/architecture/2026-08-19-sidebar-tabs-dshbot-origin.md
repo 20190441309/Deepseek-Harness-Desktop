@@ -1,6 +1,6 @@
 # Agent Note: Sidebar region tabs, dshbot session origin, and session-only model selection
 
-Status: implemented
+Status: implemented — **historical (2026-08-19 room protocol).** Current standalone dshbot contract, Grok-aligned Talking Circle protocol, and desktop integration live in [docs/features/dshbot.md](../../../../docs/features/dshbot.md) and [docs/handbook/modules/dshbot.md](../../../../docs/handbook/modules/dshbot.md). This note preserves Harness sidebar/origin/`selectModel` decisions; **do not** treat the `NEXT:` scheduling, default 12/4 limits, or desktop-bundled copy sections below as current product truth.
 
 English | [中文](2026-08-19-sidebar-tabs-dshbot-origin.zh.md)
 

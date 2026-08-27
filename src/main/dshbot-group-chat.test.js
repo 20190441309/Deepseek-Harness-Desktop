@@ -109,23 +109,28 @@ test('the unwired GroupChatOrchestrator parallel implementation stays deleted', 
   assert.equal(chat.buildGroupRedriveNote, undefined);
 });
 
-test('planCreateGroup requires one member and opens duplicate set', async () => {
+test('planCreateGroup requires two members and opens duplicate set', async () => {
   const { planCreateGroup, SandGroupCreateError } = await load('group-chat-host.js');
   const items = [
     { id: 'a', kind: 'bot', name: 'A' },
     { id: 'b', kind: 'bot', name: 'B' },
+    { id: 'c', kind: 'bot', name: 'C' },
     { id: 'r1', kind: 'room', name: 'G', memberBotIds: ['a', 'b'] },
   ];
   assert.throws(
     () => planCreateGroup({ name: 'x', memberIds: [], items }),
     SandGroupCreateError,
   );
+  assert.throws(
+    () => planCreateGroup({ name: 'x', memberIds: ['a'], items }),
+    SandGroupCreateError,
+  );
   const open = planCreateGroup({ name: 'x', memberIds: ['b', 'a'], items });
   assert.equal(open.action, 'open');
   assert.equal(open.room.id, 'r1');
-  const create = planCreateGroup({ name: 'New', memberIds: ['a'], items });
+  const create = planCreateGroup({ name: 'New', memberIds: ['a', 'c'], items });
   assert.equal(create.action, 'create');
-  assert.deepEqual(create.memberIds, ['a']);
+  assert.deepEqual(create.memberIds, ['a', 'c']);
 });
 
 test('turn epoch bumps and isCurrent flips', async () => {

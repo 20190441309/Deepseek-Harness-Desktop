@@ -8,6 +8,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   GROUP_MAX_MEMBER_TURNS,
   GROUP_MAX_MEMBERS,
+  GROUP_MIN_MEMBERS,
   GROUP_MAX_MESSAGES_PER_TURN,
   GROUP_MAX_ROUNDS,
   buildGroupMemberSystemPrompt,
@@ -24,6 +25,7 @@ import {
 export {
   GROUP_MAX_MEMBER_TURNS,
   GROUP_MAX_MEMBERS,
+  GROUP_MIN_MEMBERS,
   GROUP_MAX_MESSAGES_PER_TURN,
   GROUP_MAX_ROUNDS,
   buildGroupMemberSystemPrompt,
@@ -391,6 +393,18 @@ function lastUserMessageIndex(events) {
 }
 
 /**
+ * Clamp a protocol limit to [1, max].
+ * @param {number | undefined} value
+ * @param {number} max
+ * @param {number} fallback
+ * @returns {number}
+ */
+export function clampProtocolLimit(value, max, fallback) {
+  const n = Number.isFinite(value) ? Math.floor(value) : fallback;
+  return Math.min(Math.max(1, n), max);
+}
+
+/**
  * Completed ask_participant turns after the latest user message.
  * @param {readonly object[] | undefined} events
  * @returns {{ botId: string, text: string }[]}
@@ -416,6 +430,16 @@ export function completedMemberTurns(events) {
     turns.push({ botId, text: contentText(event.data.message?.content) });
   }
   return turns;
+}
+
+/**
+ * Visible (non-pass) member turns after the latest user message.
+ * Used for maxSpeaks cap — aligns with Grok orchestrator delivery counting.
+ * @param {readonly object[] | undefined} events
+ * @returns {number}
+ */
+export function visibleMemberTurnCount(events) {
+  return completedMemberTurns(events).filter((turn) => memberVisibleText(turn.text)).length;
 }
 
 /**
@@ -554,14 +578,22 @@ export function stripRoomNext(text) {
 export function nextRoomSpeakerId(items, room, events, limits = {}) {
   const history = eventsToGroupHistory(events, items);
   if (!history.some((message) => message.speaker.kind === 'user')) return undefined;
-  const maxSpeaks = Number.isFinite(limits.maxSpeaks) ? limits.maxSpeaks : GROUP_MAX_MEMBER_TURNS;
-  const maxRounds = Number.isFinite(limits.maxRounds) ? limits.maxRounds : GROUP_MAX_ROUNDS;
+  const maxSpeaks = clampProtocolLimit(
+    limits.maxSpeaks,
+    GROUP_MAX_MEMBER_TURNS,
+    GROUP_MAX_MEMBER_TURNS,
+  );
+  const maxRounds = clampProtocolLimit(
+    limits.maxRounds,
+    GROUP_MAX_ROUNDS,
+    GROUP_MAX_ROUNDS,
+  );
   const members = roomMembersFromCatalog(items, room);
   if (members.length === 0) return undefined;
   const responders = resolveResponders(members, history).map((member) => member.id);
   if (responders.length === 0) return undefined;
   const turns = completedMemberTurns(events);
-  if (turns.length >= maxSpeaks) return undefined;
+  if (visibleMemberTurnCount(events) >= maxSpeaks) return undefined;
 
   let round = 0;
   let queue = orderRoundSpeakers(responders, round);

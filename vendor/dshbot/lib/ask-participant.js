@@ -276,7 +276,8 @@ export function registerAskParticipant(ctx) {
         if (localAbort.signal.aborted || !isCurrent()) {
           return { botId: bot.id, name: bot.name, text: '' };
         }
-        throw err;
+        // Member spawn failures count as pass — do not abort the room chain.
+        return { botId: bot.id, name: bot.name, text: '' };
       } finally {
         if (inFlightByRoom.get(roomSessionId) === localAbort) {
           inFlightByRoom.delete(roomSessionId);

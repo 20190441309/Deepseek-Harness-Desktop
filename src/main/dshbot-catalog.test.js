@@ -406,6 +406,35 @@ test('nextRoomSpeakerId empty-stops at maxSpeaks and maxRounds', async () => {
   ], { maxRounds: 1 }), undefined);
 });
 
+test('nextRoomSpeakerId maxSpeaks ignores pass-only turns', async () => {
+  const { nextRoomSpeakerId } = await loadCatalog();
+  const items = roomCatalog();
+  const room = items[0];
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '(pass)'),
+  ], { maxSpeaks: 1 }), 'b');
+  assert.equal(nextRoomSpeakerId(items, room, [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '一'),
+  ], { maxSpeaks: 1 }), undefined);
+});
+
+test('clampProtocolLimit clamps out-of-range config limits', async () => {
+  const { clampProtocolLimit, nextRoomSpeakerId, GROUP_MAX_MEMBER_TURNS } = await loadCatalog();
+  assert.equal(clampProtocolLimit(99, GROUP_MAX_MEMBER_TURNS, 10), GROUP_MAX_MEMBER_TURNS);
+  assert.equal(clampProtocolLimit(0, 3, 3), 1);
+  const items = roomCatalog();
+  const room = items[0];
+  const events = [
+    userSaid('请讨论'),
+    asked('c1', 'a'), answered('c1', '一'),
+    asked('c2', 'b'), answered('c2', '二'),
+    asked('c3', 'c'), answered('c3', '三'),
+  ];
+  assert.notEqual(nextRoomSpeakerId(items, room, events, { maxSpeaks: 999 }), undefined);
+});
+
 test('isRoomConversationRequest skips 1:1 bots and auxiliary purposes', async () => {
   const { isRoomConversationRequest } = await loadCatalog();
   const items = roomCatalog();

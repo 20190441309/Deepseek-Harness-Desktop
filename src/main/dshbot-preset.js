@@ -42,8 +42,15 @@ function profileListsBundle(profileDir) {
 
 function linkIntoProfileModules(destDir, profileDir) {
   const linked = path.join(profileDir, 'node_modules', DSHBOT_PACKAGE);
-  if (fs.existsSync(linked) && !fs.lstatSync(linked).isSymbolicLink()) {
-    return;
+  if (fs.existsSync(linked)) {
+    if (!fs.lstatSync(linked).isSymbolicLink()) {
+      // Real directory install (e.g. marketplace copy) — never replace.
+      return;
+    }
+    if (!isDesktopPresetLink(linked, destDir)) {
+      // External symlink (pnpm / dsh plugin add) — never replace.
+      return;
+    }
   }
   fs.mkdirSync(path.dirname(linked), { recursive: true });
   if (fs.existsSync(linked)) {

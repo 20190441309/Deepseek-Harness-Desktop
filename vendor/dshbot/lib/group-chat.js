@@ -4,6 +4,7 @@
  */
 
 export const GROUP_CONFIG_VERSION = 1;
+export const GROUP_MIN_MEMBERS = 2;
 export const GROUP_MAX_MEMBERS = 6;
 export const GROUP_MAX_MEMBER_TURNS = 10;
 export const GROUP_MAX_ROUNDS = 3;

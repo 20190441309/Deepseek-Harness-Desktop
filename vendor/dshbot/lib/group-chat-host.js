@@ -3,6 +3,7 @@
  */
 import {
   GROUP_MAX_MEMBERS,
+  GROUP_MIN_MEMBERS,
   assertMembersAreNotGroups,
   isSameMemberSet,
 } from './group-chat.js';
@@ -96,8 +97,10 @@ export function planCreateGroup(args) {
     existingBotIds,
     groupIds,
   });
-  if (memberIds.length === 0) {
-    throw new SandGroupCreateError('A group needs at least one existing member agent.');
+  if (memberIds.length < GROUP_MIN_MEMBERS) {
+    throw new SandGroupCreateError(
+      `A group needs at least ${GROUP_MIN_MEMBERS} existing member agents.`,
+    );
   }
   const duplicate = args.items.find(
     (entry) => entry.kind === 'room' && isSameMemberSet(entry.memberBotIds ?? [], memberIds),
@@ -136,6 +139,6 @@ export function planSetGroupMembers(args) {
     groupIds,
     excludeGroupId: args.groupId,
   });
-  if (cleaned.length === 0) return null;
+  if (cleaned.length < GROUP_MIN_MEMBERS) return null;
   return cleaned;
 }

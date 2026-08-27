@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-26 — 云端 Linux 源码级 GUI 三相轮换 PASS（未装分支 → `dsh plugin add github:…#path:` 探针翻转 + `dshbot-room` 自装 → remove 后回未装分支且残留全净；9 套件 95/95，报告 `docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）；TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups）。此前：npm 发布链路落地 + standalone 拆除 + 市场第一方行 + inbox/epoch 韧性 |
+| **last verified** | 2026-08-27 — 协议与契约修复：成员失败视为 pass、maxSpeaks/maxRounds 硬 clamp、maxSpeaks 仅计可见投递、pnpm symlink 保护、群最少 2 人、移除无效 notifications UI、房间 workspace 锁定；dshbot 单测套件扩充后全 PASS。此前 2026-08-26 Linux GUI 三相轮换 PASS（`docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）；TC-EXT-007 Windows 安装包仍阻塞。 |
 
 ## User paths
 
@@ -23,7 +23,11 @@
 - A2A inbox 投递 at-least-once：assemble 只 PEEK（`lib/inbox-drain.js`），ack 在消费该 peek 的 turn 之后；peek 与 ack 之间崩溃/重启只丢进程内快照、不丢消息（下次 assemble 重投）；ack 幂等，重复注入 drain listener 不会双删；peek 后新到消息在 ack 后保留。
 - 房间 turn epoch 进程内单调：崩溃重启从 0 重新起算，崩溃前铸出的 epoch token 永远过期（stale member turn 无法回写）。
 - 群父会话不调聊天模型；可见气泡仅用户消息与成员投递（`send_room_message`，`(pass)` 静默）。
-- 协议常量：`GROUP_MAX_MEMBERS=6`、`GROUP_MAX_ROUNDS=3`、`GROUP_MAX_MEMBER_TURNS=10`、`GROUP_MAX_MESSAGES_PER_TURN=2`、`GROUP_PROMPT_HISTORY_LIMIT=24`。
+- 协议常量：`GROUP_MIN_MEMBERS=2`、`GROUP_MAX_MEMBERS=6`、`GROUP_MAX_ROUNDS=3`、`GROUP_MAX_MEMBER_TURNS=10`、`GROUP_MAX_MESSAGES_PER_TURN=2`、`GROUP_PROMPT_HISTORY_LIMIT=24`；`Config.maxSpeaks` / `maxRounds` 在 apply 时 clamp 到上述上限。
+- 成员 spawn 失败视为 `(pass)`，不中断房间链。
+- `maxSpeaks` 计数仅含可见成员投递（不含 pass 尝试），与 Grok orchestrator 投递计数对齐。
+- 开发预置 `ensureDshbotPlugin` 不替换外部 pnpm / marketplace symlink 或真实目录安装。
+- 记忆仅通过 `remember` 工具追加（无编辑器字段）；无桌面通知开关（Harness 无 hook）。
 - 成员 system prompt 与 toolFilter 一致：talking-circle 措辞，明说 `send_room_message` 是唯一工具（不再谎称 full toolkit）。
 - 无 `speakerSeat` / later 默认 pass / `NEXT:` 调度 / redrive（`buildGroupRedriveNote` 已删）/ 平行 `GroupChatOrchestrator`（已删，事件链调度是唯一实现）。
 - 1:1 系统提示含 teammates 目录段（`dshbot:teammates`，Grok agent-directory），列可 `send_to_agent` 的同伴与所在群；hidden bot 不列。

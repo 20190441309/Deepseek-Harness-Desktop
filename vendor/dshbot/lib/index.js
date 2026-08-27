@@ -9,6 +9,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import {
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MAX_SPEAKS,
+  GROUP_MAX_MEMBER_TURNS,
+  GROUP_MAX_ROUNDS,
+  clampProtocolLimit,
   completedMemberTurns,
   isRoomConversationRequest,
   memberPersona,
@@ -73,7 +76,6 @@ const ItemSchema = z.object({
   avatar: AvatarSchema.default({ kind: 'blob' }),
   model: ModelSchema,
   workspaceId: z.string(),
-  notifications: z.boolean().default(true),
   pinned: z.boolean().default(false),
   hidden: z.boolean().default(false),
   pinOrder: z.number().default(0),
@@ -97,8 +99,16 @@ function dshHomeDir() {
  * @param {{ maxSpeaks?: number, maxRounds?: number }} [config]
  */
 export function apply(ctx, config = {}) {
-  const maxSpeaks = config.maxSpeaks ?? DEFAULT_MAX_SPEAKS;
-  const maxRounds = config.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const maxSpeaks = clampProtocolLimit(
+    config.maxSpeaks,
+    GROUP_MAX_MEMBER_TURNS,
+    DEFAULT_MAX_SPEAKS,
+  );
+  const maxRounds = clampProtocolLimit(
+    config.maxRounds,
+    GROUP_MAX_ROUNDS,
+    DEFAULT_MAX_ROUNDS,
+  );
   // Standalone install path: provision the dshbot-room agent preset into
   // $DSH_HOME so sessions.create({ agentPreset: 'dshbot-room' }) mounts
   // without any desktop shell copying presets for us.

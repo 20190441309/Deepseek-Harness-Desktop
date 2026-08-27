@@ -153,6 +153,32 @@ test('ensureDshbotPlugin does not replace a pnpm-installed dshbot directory', ()
   }
 });
 
+test('ensureDshbotPlugin does not replace an external pnpm symlink install', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-src-')));
+  const pnpmStore = writeSource(fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-pnpm-')));
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    const linked = path.join(profileDir, 'node_modules', 'dshbot');
+    fs.mkdirSync(path.dirname(linked), { recursive: true });
+    fs.symlinkSync(pnpmStore, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    ensureDshbotPlugin({ sourceDir: source, profileDir });
+    assert.ok(fs.lstatSync(linked).isSymbolicLink());
+    assert.equal(
+      fs.realpathSync(linked),
+      fs.realpathSync(pnpmStore),
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(linked, 'package.json'), 'utf8')).version,
+      '0.2.0',
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(pnpmStore, { recursive: true, force: true });
+  }
+});
+
 test('ensureDshbotPlugin fails closed when the workspace package is missing', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = fs.mkdtempSync(path.join(os.tmpdir(), 'dshbot-missing-'));
