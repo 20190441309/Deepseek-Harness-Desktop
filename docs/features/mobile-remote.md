@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `mobile-remote` |
 | **status** | `active` |
-| **last verified** | 2026-08-27 — Phase 1 落地：会话目录游标分页 + 子智能体折叠、时间线向上分页（seq 去重 + 滚动锚点）、归档/历史/删除/重命名（确认 + 可见错误，取消归档 = `refreshAgent` 诚实标注）、审批按 daemon `actions` 原样渲染 + 跨端 `permission_resolved`、模型 chip/pane（`listProviderModels` + `setAgentModel` 失败回滚，新会话透传 model）、`/` 斜杠命令（`listCommands`）、草稿文本 + 附件跨会话切换、注入安全结构化 Markdown 与工具 detail/未知类型 fallback、`.phone` 固定 app-shell 高度修复时间线滚动。121 单测 + 19 项 fake-daemon 浏览器集成检查全绿；真机 relay 链路 BLOCKED，见 `docs/qa/results/2026-08-27/mobile-web-phase1.md`。 |
+| **last verified** | 2026-08-27 — Phase 2 落地：Files 工作环（`listDirectory` 目录下钻 + breadcrumb + 每层滚动恢复、`readFile` 只读预览 text/image/binary/too-large/error 五态、`getDirectorySuggestions` 路径搜索、显式插入 @路径）、Diff 工作环（`getCheckoutDiff` 只读 uncommitted/base 两 scope，file+hunk 视图，non-git/空/失败/binary/too-large 判别）、MCP/Skills 只读清单（`listAgentMcpServers`/`listAgentSkills`，状态/来源/覆盖计数/错误）。零写 RPC（QA 断言）。144 单测 + 41 项 fake-daemon 浏览器集成检查全绿；真机 relay 链路 BLOCKED，见 `docs/qa/results/2026-08-27/mobile-web-phase2.md`（Phase 1 报告：`mobile-web-phase1.md`）。 |
 
 ## User paths
 
@@ -13,13 +13,16 @@
 3. Android：原生扫码或粘贴完整配对 URL → 提取 offer 后由应用内 WebView 打开 APK 内置的同一 SPA → 后续启动直接从安全 asset origin 触发 SPA sticky 重连，不必重新访问 LAN `:3180` 页面。
 4. 设置 → 远程 → 网关：局域网 | 外出（文案区分）；传输始终走中继主机。
 5. 手机「新会话」→ chooser sheet：`fetchWorkspaces` 列工作区（名称 · 项目 · 分支 · cwd）→ `getProvidersSnapshot(cwd)` 列 ready 提供方 → 可选权限模式（snapshot `modes`/`defaultModeId`）→ 把选中的 `workspaceId/cwd/provider(/modeId)` 显式传给 `DaemonClient.createAgent` → 打开新会话。
-6. 手机工作区 → daemon checkout/file RPC 提供 Git 状态、提交、拉取、推送、创建 PR、切换已有分支和根目录文件；普通分支创建与电脑窗口操作禁用并提示在电脑端完成。
+6. 手机工作区 → daemon checkout/file RPC 提供 Git 状态、提交、拉取、推送、创建 PR、切换已有分支；普通分支创建与电脑窗口操作禁用并提示在电脑端完成。
 7. 会话权限模式：composer chip 与设置「权限」pane 显示 agent snapshot 的当前 mode；切换调用 `setAgentMode`，daemon 拒绝时回滚并显示错误原文；`mode_changed` 流事件写回 UI。
 8. 断线：chat 顶部连接条显示「连接已断开 / 正在重新连接」，发送被拒绝且草稿保留（按 serverId+sessionId 存 localStorage；附件仅内存跨会话切换，不跨刷新）；client 自动重连成功后自动重拉 agent 目录与当前会话 timeline 并提示「已重新连接并同步」。
 9. 会话抽屉：`fetchAgents` 游标分页（「加载更多会话」）；子智能体（snapshot `relation.parentAgentId/kind`）折叠在父会话下、父未加载时顶层标注「子智能体」，打开为只读（composer 换成只读说明）。行尾 ⋯ 菜单：重命名 / 重新生成标题（`updateAgent`）、归档（`archiveAgent`）、删除（`deleteAgent`），均确认对话框 + daemon 错误可见；「已归档会话」sheet 走 `fetchAgentHistory(includeArchived, updated_at desc)` 分页，「取消归档」调用 `refreshAgent` 并明示不会恢复运行中任务。
 10. 时间线：tail 200 起步，顶部「加载更早消息」向上分页（`direction:'before'` 游标，seq 去重，滚动锚点保持，`reset/staleCursor` 时整页重置）；助手消息经 `conversation/markdown.js` 结构化解析 + createElement 渲染（原始 HTML 保持字面文本，链接仅 http/https）；工具卡显示状态 + detail 摘要/可展开正文；reasoning/todo/压缩/turn_changes/generative_ui/未知类型都有可见 fallback 行。
 11. 审批：daemon `permission_requested` 的 `actions` 列表按 label/variant/顺序原样渲染，回传 `selectedActionId`；无 actions 才显示通用「允许一次/拒绝」；`permission_resolved`（含跨端解决）清除 pending 并恢复 composer。
 12. 模型：composer 模型 chip 显示 snapshot `model`（空 = 提供方默认）；设置「模型」pane 用 `listProviderModels` 列清单、`setAgentModel` 切换，失败回滚 + banner；新会话 chooser 模式步之后可选模型并透传 `createAgent`。输入框以 `/` 开头触发 `listCommands` 斜杠命令弹层（前缀优先过滤，点击插入 `/name `）。
+13. 文件（工作区「文件」tab 与「文件」pane 同一实现）：`listDirectory` 目录下钻，目录行点击 = 导航（不插入 mention），breadcrumb 回任意上层且每层滚动位置恢复；文件行点击 = 只读预览（`readFile`：text `<pre>`（>200KB 截断明示）/ image blob URL / binary 明确状态 / >2MB 不发 readFile 直接标「文件过大」/ error 显示 daemon 原文可重试）；「插入 @路径 到输入框」与行尾「@」是显式插入动作；搜索框走 `getDirectorySuggestions` 路径模糊匹配（UI 明示不是内容全文搜索），结果目录 → 定位进浏览器、文件 → 预览、「@」→ 插入。
+14. 更改（Diff）：`getCheckoutDiff` 只读视图，scope 切换「未提交 / 对比主干」（`mode:'uncommitted'|'base'`）；文件行显示 `+a −d` 与 新增/已删除/二进制/文件过大 badge，点击展开 hunk（`@@` header + add/remove/context 行级着色，纯文本不伪造语法高亮）；non-git（按 `error.code==='NOT_GIT_REPO'`）/ 空 diff / 加载失败（可重试）各有明确状态；提交、暂存等操作提示走顶部 Git 胶囊或电脑端。
+15. MCP / 技能 pane：chisacode 传输下渲染只读清单（hub desc 标注「只读清单 · 电脑端管理」）——MCP 显示 transport/来源（系统/用户）、全局启用状态、按提供方/会话覆盖计数、server 级错误；技能显示描述、来源 scope（项目 / AGENTS / Codex / Claude 主目录 / 内置）与状态；payload 级 errors 进提示条；管理动作一律指向电脑端。
 
 ## Invariants
 
@@ -42,6 +45,10 @@
 - 审批 UI 不得改写 daemon `actions`（label/variant/顺序原样，回传 `selectedActionId`）；通用允许/拒绝仅在 actions 为空时出现。
 - 助手 Markdown 渲染禁止 `innerHTML` 注入路径：结构化 block/span → createElement/textContent，链接 href 仅 http/https；未知时间线类型必须有可见 fallback，不得静默丢行。
 - 时间线向上分页必须按 seq 去重并保持滚动锚点；`.phone` 保持固定 app-shell 高度（内部面板各自滚动），否则时间线锚定失效。
+- 文件与 Diff 是**只读工作环**：不得出现保存/写入/Stage/Unstage/Discard/暂存/放弃类控件，不得调用 `writeFile`/`saveFile` 或任何 stage RPC；目录行点击必须是导航，插入 @路径 只能是显式用户动作。
+- 文件搜索只做路径匹配（`getDirectorySuggestions`），UI 必须明示不是内容全文搜索；不得借 terminal/agent 模拟内容搜索。
+- 预览大小上限：目录条目 `size > 2MB` 不发起 `readFile`；文本渲染 >200KB 截断并明示；图片 blob URL 离开预览时 revoke；非 git 判别用 `CheckoutError.code`，不匹配 message 字符串。
+- MCP / Skills 本阶段纯只读：不得调用 upsert/patch/install/uninstall/delete 类扩展 RPC；空清单是合法状态不是错误；payload 级 errors 必须可见。
 - 设计语言仍抄 `--dsw-alias-*`。
 
 ## Allowed touch
@@ -62,9 +69,9 @@
 
 | Kind | What |
 | --- | --- |
-| Automated | `mobile/web/**/*.test.js`（含 `chisacode/{session,parity,controller,directory,timeline,approvals,commands}.test.js`、`conversation/{fold,markdown}.test.js`、`pair/scan.test.js`）；Android JVM tests；`src/shared/lan.test.js`；`chisacode-remote.test.js` |
-| Browser | `node tools/mobile-web-qa/run-qa.mjs`（fake DaemonClient + 真实 SPA 栈；需 `npm i --no-save puppeteer-core` 与 Chrome） |
-| Manual | 中继已连接 → 扫码配对 → chooser 新建会话（多 workspace，含模型步）→ 切换权限模式/模型 → 会话重命名/归档/历史/删除 → >100 会话分页 + >200 时间线向上分页 → 审批 actions → Git/文件 → 断网重连 resync + 草稿保留 → sticky 重连 → 解除 |
+| Automated | `mobile/web/**/*.test.js`（含 `chisacode/{session,parity,controller,directory,timeline,approvals,commands,files,diff,extensions}.test.js`、`conversation/{fold,markdown}.test.js`、`pair/scan.test.js`）；Android JVM tests；`src/shared/lan.test.js`；`chisacode-remote.test.js` |
+| Browser | `node tools/mobile-web-qa/run-qa.mjs`（fake DaemonClient + 真实 SPA 栈；需 `npm i --no-save puppeteer-core` 与 Chrome；41 检查含 Files/Diff/MCP/Skills 工作环 + kill-list 零写断言） |
+| Manual | 中继已连接 → 扫码配对 → chooser 新建会话（多 workspace，含模型步）→ 切换权限模式/模型 → 会话重命名/归档/历史/删除 → >100 会话分页 + >200 时间线向上分页 → 审批 actions → Git → 文件下钻/预览/搜索/插入 → Diff 两 scope → MCP/技能清单 → 断网重连 resync + 草稿保留 → sticky 重连 → 解除 |
 
 ## Sources
 
@@ -73,3 +80,4 @@
 - Gap analysis：[2026-08-27-mobile-web-desktop-gap-analysis](../superpowers/plans/2026-08-27-mobile-web-desktop-gap-analysis.md)
 - Phase 0 执行：[2026-08-27-mobile-web-phase0-execution](../superpowers/plans/2026-08-27-mobile-web-phase0-execution.md)
 - Phase 1 执行：[2026-08-27-mobile-web-phase1-execution](../superpowers/plans/2026-08-27-mobile-web-phase1-execution.md)
+- Phase 2 执行：[2026-08-27-mobile-web-phase2-execution](../superpowers/plans/2026-08-27-mobile-web-phase2-execution.md)
