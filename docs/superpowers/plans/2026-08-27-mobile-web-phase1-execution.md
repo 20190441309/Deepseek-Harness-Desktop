@@ -117,7 +117,7 @@ Phase 2（Files 下钻 / Diff / MCP / Skills）、终端、Browser surface、mar
 ## 测试策略
 
 1. **单测（node:test + fake client）**：`directory.test.js`、`timeline.test.js`、`approvals.test.js`、`commands.test.js`、`parity.test.js`（模型/model 透传）、`controller.test.js`（附件草稿）、`fold.test.js`（新 item 类型）、`markdown.test.js`（安全性：HTML 原文保持文本、javascript: 链接降级）。
-2. **浏览器集成（提交至 `mobile/web/qa/`，非产品路由）**：把 Phase 0 的临时 harness 落成仓库资产——`qa/fake-daemon-bundle.mjs`（行为等价 fake DaemonClient：可注入 >100 agents、>200 timeline、permission actions、远端 resolved、model 拒绝一次）+ `qa/serve.mjs`（静态 server，将 `chisacode/daemon-client.bundle.js` 路由到 fake）+ `qa/run-phase1-qa.mjs`（puppeteer-core 驱动 headless Chrome 断言 + 截图）。puppeteer-core 临时安装（node_modules 已 gitignore）。
+2. **浏览器集成（提交至 `tools/mobile-web-qa/`，产品包外）**：把 Phase 0 的临时 harness 落成仓库资产——`fake-daemon-client.mjs`（行为等价 fake DaemonClient：可注入 >100 agents、>200 timeline、permission actions、远端 resolved、model 拒绝一次）+ `server.mjs`（静态 server，将 `chisacode/daemon-client.bundle.js` 路由到 fake）+ `run-qa.mjs`（puppeteer-core 驱动 headless Chrome 断言 + 截图）。放 `tools/` 而非 `mobile/web/qa/`：electron-builder `files` 打包 `mobile/web/**/*`（仅排除 `*.test.js`），QA 资产不得进产品包。puppeteer-core 临时安装（node_modules 已 gitignore）。
 3. **BLOCKED（真机）**：真实 relay 配对、真 provider setAgentModel/listCommands、真实归档→取消归档 reload、Android WebView——云环境无 Trent 桌面，与 Phase 0 相同记入 QA 矩阵。
 
 ## 文件 touch list
