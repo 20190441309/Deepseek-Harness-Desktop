@@ -303,13 +303,13 @@ describe('SkillsSection', () => {
     })} />)
     await screen.findByText(groupedA.name)
 
-    const groupSwitch = screen.getByRole('switch', { name: en.groupToggleFor.replace('{group}', 'review') })
+    const groupSwitch = screen.getByRole<HTMLInputElement>('switch', { name: en.groupToggleFor.replace('{group}', 'review') })
     fireEvent.click(groupSwitch)
     // The echo lands without waiting for the writes to settle.
     expect(setInvocation).toHaveBeenCalledTimes(2)
     const rows = screen.getAllByRole('switch', { name: /Model invocation for/ })
     expect(rows.every(item => !(item as HTMLInputElement).checked)).toBe(true)
-    expect((groupSwitch as HTMLInputElement).checked).toBe(false)
+    expect(groupSwitch.checked).toBe(false)
     expect(groupSwitch.disabled).toBe(true)
 
     pending.resolve(undefined)
