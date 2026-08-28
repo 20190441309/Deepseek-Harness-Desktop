@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchOlderTimeline, mergeOlderEntries, timelinePageInfo } from './timeline.js';
+import {
+  fetchOlderTimeline,
+  mergeOlderEntries,
+  resolveLogAnchor,
+  timelinePageInfo,
+} from './timeline.js';
 
 test('timelinePageInfo extracts the older edge and requires a usable cursor', () => {
   assert.deepEqual(
@@ -68,4 +73,26 @@ test('mergeOlderEntries prepends and drops seq ranges already rendered', () => {
 test('mergeOlderEntries keeps keyless entries instead of hiding rows', () => {
   const merged = mergeOlderEntries([{ item: { type: 'error' } }], [{ seqStart: 5 }]);
   assert.equal(merged.length, 2);
+});
+
+test('resolveLogAnchor passes explicit anchors through', () => {
+  assert.equal(resolveLogAnchor({ anchor: 'bottom', scrollTop: 0, scrollHeight: 900, clientHeight: 300 }), 'bottom');
+  assert.equal(resolveLogAnchor({ anchor: 'preserve', scrollTop: 800, scrollHeight: 900, clientHeight: 300 }), 'preserve');
+  assert.equal(resolveLogAnchor({ anchor: 'hold', scrollTop: 0, scrollHeight: 900, clientHeight: 300 }), 'hold');
+});
+
+test('resolveLogAnchor auto sticks to bottom only when already near it', () => {
+  // Pinned exactly at the bottom.
+  assert.equal(resolveLogAnchor({ scrollTop: 600, scrollHeight: 900, clientHeight: 300 }), 'bottom');
+  // Within the slack threshold still counts as "at bottom".
+  assert.equal(resolveLogAnchor({ scrollTop: 560, scrollHeight: 900, clientHeight: 300 }), 'bottom');
+  // Reading history above the threshold must hold the position.
+  assert.equal(resolveLogAnchor({ scrollTop: 120, scrollHeight: 900, clientHeight: 300 }), 'hold');
+  assert.equal(resolveLogAnchor({ scrollTop: 551, scrollHeight: 900, clientHeight: 300, threshold: 48 }), 'hold');
+});
+
+test('resolveLogAnchor treats an empty or non-overflowing log as bottom', () => {
+  assert.equal(resolveLogAnchor({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 }), 'bottom');
+  assert.equal(resolveLogAnchor({ scrollTop: 0, scrollHeight: 200, clientHeight: 300 }), 'bottom');
+  assert.equal(resolveLogAnchor(), 'bottom');
 });

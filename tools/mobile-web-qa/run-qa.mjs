@@ -194,6 +194,95 @@ async function main() {
     );
   });
 
+  // —— stick-to-bottom: stream events must not fight reading history —— //
+  const emitTimelineText = (seq, text) => page.evaluate((eventSeq, eventText) => {
+    window.__qa.emitStream('agent-1', {
+      type: 'timeline',
+      item: { type: 'assistant_message', messageId: `m${eventSeq}`, text: eventText },
+    }, eventSeq);
+  }, seq, text);
+
+  await check('流事件：阅读历史时保持位置不拉底', async () => {
+    const before = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      log.scrollTop = 300;
+      return { rows: log.children.length, scrollTop: log.scrollTop };
+    });
+    await emitTimelineText(500, '阅读历史时到达的流事件');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#log .assistant')]
+        .some((node) => node.textContent.includes('阅读历史时到达的流事件')),
+      'stream row appended',
+    );
+    const after = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      return { rows: log.children.length, scrollTop: log.scrollTop };
+    });
+    assert(after.rows === before.rows + 1, `rows ${before.rows} → ${after.rows}`);
+    assert(after.scrollTop === before.scrollTop, `scrollTop yanked ${before.scrollTop} → ${after.scrollTop}`);
+  });
+
+  await check('流事件：位于底部时继续贴底', async () => {
+    await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      log.scrollTop = log.scrollHeight;
+    });
+    await emitTimelineText(501, '贴底时到达的流事件');
+    await waitFor(
+      page,
+      () => [...document.querySelectorAll('#log .assistant')]
+        .some((node) => node.textContent.includes('贴底时到达的流事件')),
+      'bottom stream row appended',
+    );
+    const gap = await page.evaluate(() => {
+      const log = document.querySelector('#log');
+      return log.scrollHeight - log.scrollTop - log.clientHeight;
+    });
+    assert(gap <= 2, `log not pinned to bottom, gap ${gap}`);
+  });
+
+  // —— openSession failure: stale timeline must clear —— //
+  await check('打开会话失败：清空旧内容并显示错误占位', async () => {
+    await page.click('#menu');
+    await page.evaluate(() => window.__qa.setFail('fetchAgentTimeline', 'timeline exploded'));
+    await clickByText(page, '#session-list .session', '会话 3');
+    await waitFor(
+      page,
+      () => Boolean(document.querySelector('#log .timeline-error')),
+      'error placeholder rendered',
+    );
+    const view = await page.evaluate(() => ({
+      rows: document.querySelector('#log').children.length,
+      placeholder: document.querySelector('#log .timeline-error')?.textContent || '',
+      staleAssistant: [...document.querySelectorAll('#log .assistant')].length,
+      banner: document.querySelector('#banner').textContent,
+      bannerHidden: document.querySelector('#banner').classList.contains('hidden'),
+    }));
+    assert(view.rows === 1, `stale rows still in log: ${view.rows}`);
+    assert(view.staleAssistant === 0, 'previous session rows leaked under the new session');
+    assert(view.placeholder.includes('载入会话失败'), `placeholder copy: ${view.placeholder}`);
+    assert(view.placeholder.includes('timeline exploded'), 'daemon error text missing from placeholder');
+    assert(!view.bannerHidden && view.banner.includes('timeline exploded'), 'banner missing');
+  });
+  await shot('mobile-web-phase3-open-failure');
+
+  await check('打开会话失败：重试恢复时间线并清 banner', async () => {
+    await clickByText(page, '#log .timeline-error button', '重试');
+    await waitFor(
+      page,
+      () => !document.querySelector('#log .timeline-error')
+        && document.querySelectorAll('#log > *').length >= 2,
+      'retry recovered the timeline',
+    );
+    const bannerHidden = await page.evaluate(() => document.querySelector('#banner').classList.contains('hidden'));
+    assert(bannerHidden, 'banner should clear after successful retry');
+    // Back to 会话 1 for the downstream checks.
+    await page.click('#menu');
+    await clickByText(page, '#session-list .session', '会话 1');
+    await waitFor(page, () => document.querySelectorAll('#log > *').length > 150, 'agent-1 reopened');
+  });
+
   // —— slash commands —— //
   await check('斜杠命令：/ 弹出、过滤、插入', async () => {
     await page.focus('#draft');
@@ -865,6 +954,71 @@ async function main() {
         .map((call) => call.method);
     });
     assert(writes.length === 0, `write RPCs were called: ${writes.join(', ')}`);
+  });
+
+  // —— Phase 3：多台已保存电脑 chooser（纯本地状态，放最后：要断开当前设备）—— //
+  await check('已保存电脑：断开后连接页列出其它电脑（最近优先）', async () => {
+    await page.evaluate(() => {
+      const key = 'dsh-chisacode-device-secrets';
+      const all = JSON.parse(localStorage.getItem(key) || '{}');
+      all['qa-second'] = {
+        deviceId: 'dev_qa2', deviceSecret: 'secret_qa2',
+        daemonPublicKeyB64: 'pk2', relayEndpoint: '10.0.0.2:8411',
+        savedAt: Date.now() - 86400000,
+      };
+      all['qa-third'] = {
+        deviceId: 'dev_qa3', deviceSecret: 'secret_qa3',
+        daemonPublicKeyB64: 'pk3', relayEndpoint: '10.0.0.3:8411',
+        savedAt: Date.now() - 1000,
+      };
+      localStorage.setItem(key, JSON.stringify(all));
+    });
+    await page.evaluate(() => document.querySelector('#settings-back').click());
+    await clickByText(page, '#options .link-row', '连接详情');
+    await clickByText(page, '#options button', '断开这台设备');
+    await waitFor(page, () => !document.querySelector('#screen-connect').classList.contains('hidden'), 'back on connect screen');
+    const view = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('#saved-computers .saved-open')].map((row) => row.textContent),
+      secrets: Object.keys(JSON.parse(localStorage.getItem('dsh-chisacode-device-secrets') || '{}')),
+    }));
+    // Disconnecting cleared the current pairing (qa-server); the others stay.
+    assert(!view.secrets.includes('qa-server'), 'disconnect must clear the active secret');
+    assert(view.rows.length === 2, `saved rows: ${JSON.stringify(view.rows)}`);
+    assert(view.rows[0].includes('qa-third') && view.rows[0].includes('10.0.0.3:8411'), `newest first: ${view.rows[0]}`);
+    assert(view.rows[1].includes('qa-second'), `second row: ${view.rows[1]}`);
+  });
+  await shot('mobile-web-phase3-saved-computers');
+
+  await check('已保存电脑：忘记移除该台且不再列出', async () => {
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#saved-computers .saved-row')]
+        .find((node) => node.textContent.includes('qa-third'));
+      row.querySelector('.saved-forget').click();
+    });
+    await waitFor(
+      page,
+      () => document.querySelectorAll('#saved-computers .saved-row').length === 1,
+      'row removed after forget',
+    );
+    const secrets = await page.evaluate(
+      () => Object.keys(JSON.parse(localStorage.getItem('dsh-chisacode-device-secrets') || '{}')),
+    );
+    assert(!secrets.includes('qa-third'), 'forget must clear the stored secret');
+  });
+
+  await check('已保存电脑：点选后 sticky 重连进入 chat', async () => {
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#saved-computers .saved-row')]
+        .find((node) => node.textContent.includes('qa-second'));
+      row.querySelector('.saved-open').click();
+    });
+    await waitFor(page, () => !document.querySelector('#screen-chat').classList.contains('hidden'), 'chat visible again');
+    const device = await page.evaluate(() => document.querySelector('#device-line').textContent);
+    assert(device.includes('已重连 qa-second'), `device line: ${device}`);
+    await waitFor(page, () => {
+      const calls = window.__qa.calls.filter((call) => call.method === 'fetchAgents');
+      return calls.length > 0;
+    }, 'agents refetched after saved-computer reconnect');
   });
 
   await check('控制台：0 应用错误', async () => {

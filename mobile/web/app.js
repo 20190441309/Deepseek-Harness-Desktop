@@ -24,8 +24,10 @@ import {
   getMostRecentStickyServerId,
   hasOfferFragment,
   listStickyServerIds,
+  loadSecrets,
   pairFromOfferUrl,
   reconnectSticky,
+  savedComputerRows,
 } from './chisacode/session.js';
 import {
   agentModelState,
@@ -75,6 +77,7 @@ import {
 import {
   fetchOlderTimeline,
   mergeOlderEntries,
+  resolveLogAnchor,
   timelinePageInfo,
 } from './chisacode/timeline.js';
 import {
@@ -109,6 +112,7 @@ const screenScan = el('screen-scan');
 const screenPermission = el('screen-permission');
 const screenChat = el('screen-chat');
 const connectError = el('connect-error');
+const savedComputersEl = el('saved-computers');
 const deviceLine = el('device-line');
 const pasteInput = el('paste');
 const scanOpen = el('scan-open');
@@ -192,6 +196,10 @@ const state = {
   agentsLoadingMore: false,
   timelinePage: { startCursor: null, hasOlder: false },
   timelineLoadingOlder: false,
+  timelineLoading: false,
+  // Daemon error from the open session's timeline fetch; renders an in-log
+  // placeholder with retry instead of leaving stale rows on screen.
+  timelineError: '',
   sessionMenu: '',
   sessionConfirm: null,
   sessionRename: null,
@@ -260,6 +268,67 @@ function showError(message) {
   connectError.classList.toggle('hidden', !message);
 }
 
+// —— 已保存的电脑（多台 sticky 选择，纯本地状态） —— //
+
+let connectBusy = false;
+
+async function connectSaved(serverId) {
+  if (connectBusy) return;
+  connectBusy = true;
+  renderSavedComputers();
+  showError('');
+  try {
+    const api = await loadChisaCodeApi();
+    await finishChisaCodeConnect(await reconnectSticky(api, serverId), true);
+  } catch (error) {
+    showError(error?.message || '重连失败');
+  } finally {
+    connectBusy = false;
+    renderSavedComputers();
+  }
+}
+
+function renderSavedComputers() {
+  const rows = savedComputerRows(loadSecrets());
+  savedComputersEl.classList.toggle('hidden', rows.length === 0);
+  savedComputersEl.replaceChildren();
+  if (!rows.length) return;
+  const heading = document.createElement('p');
+  heading.className = 'saved-title';
+  heading.textContent = '已保存的电脑';
+  savedComputersEl.append(heading);
+  for (const entry of rows) {
+    const row = document.createElement('div');
+    row.className = 'saved-row';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'saved-open';
+    open.disabled = connectBusy;
+    const name = document.createElement('b');
+    name.textContent = entry.serverId;
+    const desc = document.createElement('span');
+    desc.className = 'saved-desc';
+    desc.textContent = [
+      entry.relayEndpoint,
+      entry.savedAt ? new Date(entry.savedAt).toLocaleDateString('zh-CN') : '',
+    ].filter(Boolean).join(' · ');
+    open.append(name, desc);
+    open.addEventListener('click', () => { void connectSaved(entry.serverId); });
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'saved-forget';
+    forget.textContent = '忘记';
+    forget.disabled = connectBusy;
+    forget.setAttribute('aria-label', `忘记 ${entry.serverId}`);
+    forget.addEventListener('click', () => {
+      clearSecret(entry.serverId);
+      renderSavedComputers();
+    });
+    row.append(open, forget);
+    savedComputersEl.append(row);
+  }
+}
+
 function showBanner(message) {
   state.banner = message || '';
   bannerEl.textContent = state.banner;
@@ -302,6 +371,7 @@ function openPullRequest() {
 
 function renderScreen() {
   const name = visibleScreen(state);
+  if (name === 'connect') renderSavedComputers();
   screenConnect.classList.toggle('hidden', name !== 'connect');
   screenScan.classList.toggle('hidden', name !== 'scan');
   screenPermission.classList.toggle('hidden', name !== 'permission');
@@ -689,19 +759,56 @@ function logRowNode(row) {
   return node;
 }
 
+/** In-log placeholder when the open session's timeline fetch failed. */
+function timelineErrorNode() {
+  const node = document.createElement('div');
+  node.className = 'timeline-error';
+  const text = document.createElement('p');
+  text.className = 'log-error';
+  text.textContent = `载入会话失败：${state.timelineError}`;
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'ghost-btn';
+  retry.textContent = '重试';
+  retry.addEventListener('click', () => {
+    showBanner('');
+    openSession(state.sessionId).catch((error) => showBanner(error?.message || '电脑没有响应'));
+  });
+  node.append(text, retry);
+  return node;
+}
+
 /**
- * @param {{ anchor?: 'bottom' | 'preserve' }} options 'preserve' keeps the
- * visual scroll position across a prepend (load-older), 'bottom' follows the
- * newest message.
+ * @param {{ anchor?: 'auto' | 'bottom' | 'preserve' | 'hold' }} options
+ * 'preserve' keeps the visual scroll position across a prepend (load-older),
+ * 'bottom' follows the newest message, 'hold' keeps scrollTop as-is across an
+ * append, and 'auto' (default) resolves to 'bottom' only when the viewport
+ * was already at the bottom — stream events must not pull a user reading
+ * history back down.
  */
-function renderLog({ anchor = 'bottom' } = {}) {
+function renderLog({ anchor = 'auto' } = {}) {
   const rows = foldEvents(state.events);
-  blankEl.classList.toggle('hidden', rows.length > 0);
-  logEl.classList.toggle('hidden', rows.length === 0);
+  const placeholder = Boolean(state.timelineError) || state.timelineLoading;
+  blankEl.classList.toggle('hidden', rows.length > 0 || placeholder);
+  logEl.classList.toggle('hidden', rows.length === 0 && !placeholder);
   const prevHeight = logEl.scrollHeight;
   const prevTop = logEl.scrollTop;
+  const resolved = resolveLogAnchor({
+    anchor,
+    scrollTop: prevTop,
+    scrollHeight: prevHeight,
+    clientHeight: logEl.clientHeight,
+  });
   const nodes = [];
-  if (state.transport === 'chisacode' && state.timelinePage.hasOlder) {
+  if (state.timelineError) {
+    nodes.push(timelineErrorNode());
+  } else if (state.timelineLoading && !rows.length) {
+    const loading = document.createElement('p');
+    loading.className = 'meta-row';
+    loading.textContent = '正在载入会话…';
+    nodes.push(loading);
+  }
+  if (!state.timelineError && state.transport === 'chisacode' && state.timelinePage.hasOlder) {
     const older = document.createElement('button');
     older.type = 'button';
     older.className = 'load-older';
@@ -710,11 +817,15 @@ function renderLog({ anchor = 'bottom' } = {}) {
     older.addEventListener('click', () => loadOlderMessages());
     nodes.push(older);
   }
-  nodes.push(...rows.map(logRowNode));
+  if (!state.timelineError) {
+    nodes.push(...rows.map(logRowNode));
+  }
   logEl.replaceChildren(...nodes);
   if (!rows.length) return;
-  if (anchor === 'preserve') {
+  if (resolved === 'preserve') {
     logEl.scrollTop = prevTop + (logEl.scrollHeight - prevHeight);
+  } else if (resolved === 'hold') {
+    logEl.scrollTop = prevTop;
   } else {
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -858,6 +969,8 @@ function forceLogout(message) {
   state.agentsLoadingMore = false;
   state.timelinePage = { startCursor: null, hasOlder: false };
   state.timelineLoadingOlder = false;
+  state.timelineLoading = false;
+  state.timelineError = '';
   state.sessionMenu = '';
   state.sessionConfirm = null;
   state.sessionRename = null;
@@ -983,6 +1096,8 @@ function bindChisaCodeEvents(paired) {
         state.events = [];
         state.pendingApprovals = [];
         state.timelinePage = { startCursor: null, hasOlder: false };
+        state.timelineError = '';
+        state.timelineLoading = false;
         renderLog();
         renderApproval();
         renderComposer();
@@ -1065,13 +1180,15 @@ async function runReconnectResync() {
     if (timeline) {
       state.events = Array.isArray(timeline.entries) ? timeline.entries : [];
       state.timelinePage = timelinePageInfo(timeline);
+      state.timelineError = '';
+      state.timelineLoading = false;
       if (timeline.agent) updateChisaCodeAgent(timeline.agent);
       state.pendingApprovals = approvalsFromAgent(timeline.agent);
       state.cwd = currentRow()?.cwd || state.cwd;
     }
     renderSessions();
     renderHeader();
-    renderLog();
+    renderLog({ anchor: 'bottom' });
     renderApproval();
     renderComposer();
     setToast('已重新连接并同步');
@@ -1161,14 +1278,33 @@ async function openSession(sessionId) {
     state.attachments = draftStore?.loadAttachments(sessionId) || [];
     state.timelinePage = { startCursor: null, hasOlder: false };
     state.timelineLoadingOlder = false;
+    // Clear the previous session's rows before the fetch: if it fails, stale
+    // content must not sit under the new session's header.
+    state.events = [];
+    state.pendingApprovals = [];
+    state.timelineError = '';
+    state.timelineLoading = true;
     renderComposer();
     renderSlashPop();
-    const history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
-      direction: 'tail',
-      limit: 200,
-      projection: 'projected',
-    });
+    renderLog({ anchor: 'bottom' });
+    renderApproval();
+    renderHeader();
+    let history;
+    try {
+      history = await state.chisacode.client.fetchAgentTimeline(sessionId, {
+        direction: 'tail',
+        limit: 200,
+        projection: 'projected',
+      });
+    } catch (error) {
+      if (state.sessionId !== sessionId) return;
+      state.timelineLoading = false;
+      state.timelineError = error?.message || '电脑没有响应';
+      renderLog({ anchor: 'bottom' });
+      throw error;
+    }
     if (state.sessionId !== sessionId) return;
+    state.timelineLoading = false;
     state.events = Array.isArray(history?.entries) ? history.entries : [];
     state.timelinePage = timelinePageInfo(history);
     // Capture before updateChisaCodeAgent, which already writes the new cwd.
@@ -1180,7 +1316,7 @@ async function openSession(sessionId) {
     if (state.cwd !== previousCwd) resetWorkPanes();
     renderHeader();
     renderSessions();
-    renderLog();
+    renderLog({ anchor: 'bottom' });
     renderApproval();
     renderComposer();
     return;
@@ -1194,7 +1330,7 @@ async function openSession(sessionId) {
   }
   renderHeader();
   renderSessions();
-  renderLog();
+  renderLog({ anchor: 'bottom' });
   renderApproval();
 }
 
@@ -1308,6 +1444,8 @@ function clearSessionView(sessionId) {
   state.events = [];
   state.pendingApprovals = [];
   state.timelinePage = { startCursor: null, hasOlder: false };
+  state.timelineError = '';
+  state.timelineLoading = false;
   renderLog();
   renderApproval();
   renderComposer();
@@ -3999,5 +4137,14 @@ initScanButton();
 if (hasOfferFragment(window.location.hash)) {
   connect(window.location.href).catch((error) => showError(error.message || '配对链接无效'));
 } else if (listStickyServerIds().length) {
-  connectSticky().catch((error) => showError(error.message || '重连失败'));
+  // Auto-reconnect targets the most recent computer; the connect screen's
+  // saved-computer rows stay disabled until this attempt settles.
+  connectBusy = true;
+  renderSavedComputers();
+  connectSticky()
+    .catch((error) => showError(error.message || '重连失败'))
+    .finally(() => {
+      connectBusy = false;
+      if (state.route === 'connect') renderSavedComputers();
+    });
 }

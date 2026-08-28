@@ -6,6 +6,7 @@ import {
   normalizeOfferUrl,
   pairFromOfferUrl,
   reconnectSticky,
+  savedComputerRows,
 } from './session.js';
 
 if (!globalThis.localStorage) {
@@ -167,6 +168,26 @@ test('normalizeOfferUrl accepts full and pasted offer fragments without decoding
     'http://192.168.1.8:3180/#offer=v2-payload',
   );
   assert.equal(normalizeOfferUrl('https://example.com/no-offer', current), '');
+});
+
+test('savedComputerRows lists complete sticky records most-recent first', () => {
+  const complete = {
+    deviceId: 'dev_a',
+    deviceSecret: 'sec_a',
+    daemonPublicKeyB64: 'pk_a',
+    relayEndpoint: '192.168.1.8:8411',
+  };
+  assert.deepEqual(savedComputerRows({
+    srv_old: { ...complete, savedAt: 100 },
+    srv_new: { ...complete, relayEndpoint: 'relay.lan:8411', savedAt: 200 },
+    // Incomplete records cannot reconnect — they must not render as choices.
+    srv_broken: { deviceId: 'dev_b', savedAt: 300 },
+  }), [
+    { serverId: 'srv_new', relayEndpoint: 'relay.lan:8411', savedAt: 200 },
+    { serverId: 'srv_old', relayEndpoint: '192.168.1.8:8411', savedAt: 100 },
+  ]);
+  assert.deepEqual(savedComputerRows({}), []);
+  assert.deepEqual(savedComputerRows(undefined), []);
 });
 
 test('agentRows maps the upstream directory payload into the mobile session list', () => {
