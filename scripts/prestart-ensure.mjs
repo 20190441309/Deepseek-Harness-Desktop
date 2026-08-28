@@ -1,14 +1,13 @@
-'use strict';
-
 /**
  * Ensure runtime artifacts match latest source before Electron starts.
  * Stops shipping stale ui-settings-remote/lib or missing ChisaCode links.
  */
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const root = path.join(__dirname, '..');
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function newestMtime(dir, filter) {
   let newest = 0;
