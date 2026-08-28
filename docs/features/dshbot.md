@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-27（合并后收口复核）— 发布链路预检实跑通过：`node scripts/check-dshbot-publish.mjs dshbot-v0.2.0` PASS（manifest 完整、tag 校验一致）；协议/目录/preset 单测含在合并树 desktop `npm test` 1219 绿内；唯一发布缺口仍是仓库 `NPM_TOKEN` secret（Settings → Secrets → Actions 配好后推 `dshbot-v0.2.0` tag 即发，workflow 缺 token 会明确报错不半发）。此前同日 — Grok 对齐补丁完成源码门禁：`maxSpeaks` 改计可见投递（pass/失败/悬挂尝试不耗额度）、同 turn 双投递保持独立可见条目、`send_to_agent` 群投递仅限成员、闲置群不再假入队（诚实 ok:false）；此前同日：失败即 pass、10/3 硬顶、2–6 成员、pnpm 软链保护、UI 去伪。云端 Linux 源码级 GUI 三相轮换仍沿用 2026-08-26 PASS 证据（`docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）。TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups） |
+| **last verified** | 2026-08-28（官方原版 CLI 全量测试）— 用 npm 官方 `@deepseek-ai/dsh@0.1.1-rc.2`（隔离 `$DSH_HOME`，非 Desktop 壳）跑通安装/加载/卸载闭环：`#path:` 规格安装 PASS（`dependencies`+`bundles` 双写、`dsh plugin list` 可见、dump-config 出 `dsh-bot` 层、`.agent-presets/dshbot-room` 自装）、`dsh web` 服务端挂载与 client.js 注入 PASS、`remove` 干净摘除依赖与 bundles；**但官方 web UI 下 Bots 页签静默缺席**——`sidebar.nav.tab`/`sidebar.page` 是桌面 fork 槽位，官方 npm 包与 GitHub 上游都没有（见 Known limitations 与 [docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md)）；门禁单测 100/100 绿、发布预检 PASS；建群真跑仍 BLOCKED（无 `DEEPSEEK_API_KEY`）。此前 2026-08-27（合并后收口复核）— 发布链路预检实跑通过：`node scripts/check-dshbot-publish.mjs dshbot-v0.2.0` PASS（manifest 完整、tag 校验一致）；协议/目录/preset 单测含在合并树 desktop `npm test` 1219 绿内；唯一发布缺口仍是仓库 `NPM_TOKEN` secret（Settings → Secrets → Actions 配好后推 `dshbot-v0.2.0` tag 即发，workflow 缺 token 会明确报错不半发）。此前同日 — Grok 对齐补丁完成源码门禁：`maxSpeaks` 改计可见投递（pass/失败/悬挂尝试不耗额度）、同 turn 双投递保持独立可见条目、`send_to_agent` 群投递仅限成员、闲置群不再假入队（诚实 ok:false）；此前同日：失败即 pass、10/3 硬顶、2–6 成员、pnpm 软链保护、UI 去伪。云端 Linux 源码级 GUI 三相轮换仍沿用 2026-08-26 PASS 证据（`docs/qa/results/2026-08-26/tc-ext-007-dshbot.md`）。TC-EXT-007 Windows 安装包三相与手工建群仍阻塞（见 Open follow-ups） |
 
 ## User paths
 
@@ -36,6 +36,7 @@
 
 ## Known limitations（诚实边界）
 
+- **官方原版 dsh 下无 Bots 页签 UI（2026-08-28 实测）**：dshbot client 注入的 `sidebar.nav.tab`/`sidebar.page` 是桌面 fork 在 vendored `ui-sidebar` 里新增的槽位（fork 注记 `2026-08-19-sidebar-tabs-dshbot-origin.md`），未上游到 `deepseek-ai/deepseek-harness`、未随官方 npm 包（≤0.1.1-rc.2）发布。官方 CLI 下插件服务端完全正常（bundle 挂载、preset 自装、client.js 注入零报错），但页签静默不渲染；「侧栏出现 Bots 页签」这条 user path 仅在桌面 fork web UI 成立。官方 `dsh plugin remove` 也没有桌面的 `removeDshbotPreset`，卸载后 `.agent-presets/dshbot-room` 留存。证据：[docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md)。
 - 房间推进仍借 Harness `llm/stream` → 链式 `ask_participant`；对齐 Grok orchestrator 算法，不是 Grok exclusive room job。
 - 无 runner interrupt / redrive；priority 仅队列序。
 - 群没有 Grok exclusive room job，闲置房间收不到 A2A post（工具明说失败，发送方可稍后重试或在自己会话里告知用户）；离线投递仅 1:1 inbox 支持。
@@ -50,6 +51,7 @@
 | Pri | 项 | 验收 |
 | --- | --- | --- |
 | P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」。**阻塞原因（2026-08-25，2026-08-26 复核仍在）：** 云端 Linux 环境跑不了 Windows NSIS 安装包/GUI（无 wine），且无 `DEEPSEEK_API_KEY` 做建群轮转发言；执行手册已脚本化到「拿到下一 CI artifact 一键执行」：[docs/qa/tc-ext-007-dshbot-install-smoke.md](../qa/tc-ext-007-dshbot-install-smoke.md)。**已缩小的风险面（2026-08-26）：** Linux 源码级 GUI 三相轮换（同规格安装通道 + 同 walk 探针 + 残留抽查）全 PASS：[docs/qa/results/2026-08-26/tc-ext-007-dshbot.md](../qa/results/2026-08-26/tc-ext-007-dshbot.md)；真正未覆盖 = NSIS 安装器 + Windows 打包运行时 + 手工建群 | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
+| P1 | **官方原版 Bots UI 缺口**（2026-08-28 发现）：`sidebar.nav.tab`/`sidebar.page` 槽位未上游，官方 dsh（≤0.1.1-rc.2）装 dshbot 后页签静默缺席。两条路线择一：把槽位 PR 到 `deepseek-ai/deepseek-harness`，或 client 在槽位缺席时降级走官方已有槽位入口 | 官方 npm CLI 干净 profile 装 dshbot 后 Bots 入口可见并截图归档；[docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md) 的 B5-FAIL 翻绿 |
 | P1 | **npm 独立发布** `dshbot@<semver>`：发布链路已落地——`publishConfig.access=public` + LICENSE、tag `dshbot-v<semver>` 触发 `.github/workflows/publish-dshbot.yml`（预检 `scripts/check-dshbot-publish.mjs` + `npm publish --provenance`）、桌面套件 `dshbot-publish-manifest.test.js` 锁 manifest。**剩余缺口：** 仓库未配 `NPM_TOKEN` secret（无 registry 凭证），workflow 会明确报错而非半发；配好 token 后推 tag 即发 | 首个 `dshbot-v0.2.0` tag 发布成功；README / 发布说明写清 `dsh plugin add dshbot@x.y.z` 规格；registry 收录后第一方行可删或让位 |
 | P1 | ~~**设计 spec 废弃段**~~ | **已落地（2026-08-25）：** spec 文首与决定 2 标 Deprecated；以 Grok-aligned 段与本卡为准 |
 | P2 | **成员全工具房间**：解 `toolFilter` 限制时同步改 `buildGroupMemberSystemPrompt`；另开 feature 卡，本史诗不做 | 新卡 + 单测锁 prompt/toolFilter 同口径 |
