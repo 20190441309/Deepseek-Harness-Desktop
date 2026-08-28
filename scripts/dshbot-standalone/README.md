@@ -4,66 +4,48 @@ Sidebar bot contacts and group rooms for DeepSeek Harness — a **standalone
 dsh plugin**. The desktop shell does not bundle or force-load it; install and
 remove it like any other plugin.
 
+Primary development happens in
+[ChisaAlter/Deepseek-Harness-Desktop](https://github.com/ChisaAlter/Deepseek-Harness-Desktop)
+(`vendor/dshbot`, exported here with
+`scripts/export-dshbot-standalone.mjs`); this repository is the standalone
+distribution and npm release home.
+
 ## Install
 
 In the desktop app: Settings → 插件市场 lists dshbot as a first-party row;
-one click installs it through the curated catalog channel (spec below).
+one click installs it through the curated catalog channel.
 
 Through the official plugin CLI channels:
 
 ```sh
-# from this repository (the marketplace row uses exactly this spec)
-dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot
+# straight from this repository
+dsh plugin --profile web add github:ChisaAlter/dshbot
 
-# once published to a registry
+# once published to the npm registry
 dsh plugin --profile web add dshbot@0.2.0
-
-# or straight from a GitHub mirror repo
-dsh plugin --profile web add github:<owner>/<repo>
 ```
 
 On first load the plugin provisions its `dshbot-room` agent preset into
 `$DSH_HOME/.agent-presets/` by itself (and refreshes it on upgrades), so no
 host-side preset copying is required. Removing the plugin with
-`dsh plugin remove dshbot` removes the sidebar tab; the desktop shell also
-cleans up the preset directory when no dshbot install remains.
-
-Desktop development: set `dshbotPreset: true` in the desktop config to have
-the shell copy this workspace package into the web profile on start
-(non-blocking; a failure only logs).
+`dsh plugin remove dshbot` removes the sidebar tab.
 
 ## Publishing to npm
 
-The package is publish-ready (`publishConfig.access: public`, MIT LICENSE,
-`files` manifest locked by `src/main/dshbot-publish-manifest.test.js`).
 To release `dshbot@<semver>`:
 
 ```sh
-# 1. bump "version" in vendor/dshbot/package.json (and land it on main)
-# 2. preflight locally (also runs in the desktop unit suite)
-node scripts/check-dshbot-publish.mjs dshbot-v0.2.0
-# 3. tag exactly dshbot-v<version> and push; CI publishes with provenance
-git tag dshbot-v0.2.0 && git push origin dshbot-v0.2.0
+# 1. bump "version" in package.json (land it on main)
+# 2. preflight locally (the release workflow runs the same script)
+node scripts/check-publish.mjs v0.2.0
+# 3. tag exactly v<version> and push; CI publishes with provenance
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The `Publish dshbot` workflow (`.github/workflows/publish-dshbot.yml`)
-requires the `NPM_TOKEN` repository secret (an npm automation token with
-publish rights on the `dshbot` name); without it the job fails with a clear
-message instead of half-publishing.
-
-## Standalone repository split
-
-The standalone distribution repo (`ChisaAlter/dshbot`, package at the root)
-is generated from this directory — never hand-edited — with:
-
-```sh
-node scripts/export-dshbot-standalone.mjs <output-dir>
-```
-
-The export rewrites `repository`/`homepage` to the standalone repo, ships a
-root-layout preflight (`scripts/check-publish.mjs`, `v<semver>` tags) and its
-own publish workflow. `src/main/dshbot-publish-manifest.test.js` keeps the
-exported tree publishable.
+The `Publish dshbot` workflow (`.github/workflows/publish.yml`) requires the
+`NPM_TOKEN` repository secret (an npm automation token with publish rights on
+the `dshbot` name); without it the job fails with a clear message instead of
+half-publishing.
 
 ## What it does
 
