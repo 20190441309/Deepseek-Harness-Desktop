@@ -761,6 +761,8 @@ class ChisaCodeRemote extends EventEmitter {
 
   async stopDaemon() {
     this.relayState = { connected: false, lastError: '' };
+    // A deliberate stop clears any stale crash/start error.
+    this.error = '';
     const handle = this.daemon;
     this.daemon = null;
     this.runtimeKey = '';
