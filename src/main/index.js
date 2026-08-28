@@ -61,6 +61,12 @@ function qaEnv(name) {
 }
 
 const dsh = new DshManager();
+// Broken-pipe hardening must precede anything that can write to stdio or run
+// the in-process ChisaCode daemon (see docs/superpowers/plans/
+// 2026-08-28-remote-epipe-hardening.md).
+const { installStdioGuard, installUncaughtBrokenPipeGuard } = require('./stdio-guard');
+installStdioGuard({ log: (message) => dsh.log(message, 'app') });
+installUncaughtBrokenPipeGuard({ log: (message) => dsh.log(message, 'app') });
 // Product remote = full ChisaCode daemon + offer v2 (not HTTP RemoteGateway).
 const remote = new ChisaCodeRemote({
   getConfig: loadConfig,
