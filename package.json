@@ -62,6 +62,9 @@
       "assets/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "src/main/chisacode-daemon-runner.mjs"
+    ],
     "extraResources": [
       {
         "from": "vendor",

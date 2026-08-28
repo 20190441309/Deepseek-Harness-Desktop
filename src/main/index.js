@@ -12,7 +12,7 @@ const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { safeStorage } = require('electron');
-const { ChisaCodeRemote } = require('./chisacode-remote');
+const { ChisaCodeRemote, resolveDesktopChisaCodeHome } = require('./chisacode-remote');
 const { invokeDesktopShell } = require('./remote-shell');
 const git = require('./git');
 const { listDir } = require('./workspace-fs');
@@ -71,8 +71,15 @@ installUncaughtBrokenPipeGuard({ log: (message) => dsh.log(message, 'app') });
 const remote = new ChisaCodeRemote({
   getConfig: loadConfig,
   saveConfig,
-  getHomeDir: () => require('path').join(app.getPath('userData'), 'chisacode-home'),
+  // Desktop-facing override is DSHD_CHISACODE_HOME (debug; packaged builds
+  // need DSHD_ALLOW_ENV_HOME=1). CHISACODE_HOME itself only ever exists
+  // inside the daemon child env bridge.
+  getHomeDir: () => resolveDesktopChisaCodeHome({
+    defaultDir: require('path').join(app.getPath('userData'), 'chisacode-home'),
+    isPackaged: app.isPackaged,
+  }),
   safeStorage,
+  log: (line) => dsh.log(line, 'app'),
   // Kept for any residual shell helpers that still expect a loopback target.
   getTarget: () => {
     if (dsh.state !== 'ready') {
