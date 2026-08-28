@@ -133,6 +133,7 @@ export function RemoteSection({
   const pairingUrl = snap?.urls?.[0]?.pairingUrl || ''
   const qr = useMemo(() => qrSvg(pairingUrl), [pairingUrl])
   const enabled = Boolean(snap?.enabled)
+  const listening = Boolean(snap?.listening)
   const devices = snap?.devices ?? []
   const relayConnected = Boolean(snap?.relayConnected)
   const relayError = typeof snap?.relayError === 'string' ? snap.relayError : ''
@@ -174,7 +175,9 @@ export function RemoteSection({
                     role="radio"
                     aria-checked={enabled}
                     disabled={busy}
-                    onClick={() => { if (!enabled) void save({ remoteEnabled: true }) }}
+                    // Enabled-but-not-listening = daemon start failed; the
+                    // resave runs sync() again, so On doubles as retry.
+                    onClick={() => { if (!enabled || !listening) void save({ remoteEnabled: true }) }}
                   >
                     {t('enabledOn')}
                   </Button>
@@ -220,7 +223,9 @@ export function RemoteSection({
                     ) : null}
                   </>
                 ) : (
-                  <p className={css.hint}>{enabled ? t('noQr') : t('offHint')}</p>
+                  <p className={css.hint}>
+                    {!enabled ? t('offHint') : listening ? t('noQr') : t('notListening')}
+                  </p>
                 )}
               </>
             )}

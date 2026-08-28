@@ -187,6 +187,30 @@ describe('RemoteSection', () => {
     await screen.findByText(en.noQr)
   })
 
+  it('treats On as a retry when enabled but the daemon is not listening', async () => {
+    const props = renderRemote({
+      getRemote: vi.fn(async () => snap({
+        enabled: true,
+        listening: false,
+        urls: [],
+        error: 'EADDRINUSE :3180',
+      })),
+      saveRemote: vi.fn(async () => SNAP),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    // Startup failure is visible, not a generic no-QR shrug.
+    await screen.findByText(en.notListening)
+    await screen.findByText('Remote error: EADDRINUSE :3180')
+    expect(screen.queryByText(en.noQr)).toBeNull()
+    // On re-saves remoteEnabled → main-process sync() restarts the daemon.
+    fireEvent.click(screen.getByRole('radio', { name: en.enabledOn }))
+    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteEnabled: true }) })
+    await screen.findByRole('img', { name: en.qr })
+    // Once listening again, On returns to a no-op.
+    fireEvent.click(screen.getByRole('radio', { name: en.enabledOn }))
+    expect(props.saveRemote).toHaveBeenCalledTimes(1)
+  })
+
   it('renders the rail trigger without a text label', async () => {
     renderRemote({ wide: false })
     const trigger = await screen.findByRole('button', { name: en.trigger })
