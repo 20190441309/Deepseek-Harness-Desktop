@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const {
   ChisaCodeRemote,
+  desktopDshVendorDir,
   loadServerApi,
   publicDevicesFromStore,
   readDefaults,
@@ -255,6 +256,68 @@ test('loadServerApi exposes createChisaCodeDaemon + generateLocalPairingOffer', 
 
 test('loadServerApi fails loud with the vendor-build hint when dist is absent', { skip: VENDOR_BUILT ? 'dist 已构建，缺失路径不可达' : false }, async () => {
   await assert.rejects(loadServerApi(), /ChisaCode server export missing/);
+});
+
+function fakeHarnessRoot(builtPackages, unbuiltPackages = []) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-harness-'));
+  for (const pkg of builtPackages) {
+    fs.mkdirSync(path.join(root, 'node_modules', '@deepseek-ai', pkg, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', '@deepseek-ai', pkg, 'lib', 'index.js'), '');
+  }
+  for (const pkg of unbuiltPackages) {
+    fs.mkdirSync(path.join(root, 'node_modules', '@deepseek-ai', pkg), { recursive: true });
+  }
+  return root;
+}
+
+test('desktopDshVendorDir requires every package to be present and built', () => {
+  const packages = ['dsh-llm-deepseek', 'dsh-tool-fs'];
+  const complete = fakeHarnessRoot(packages);
+  assert.equal(
+    desktopDshVendorDir({ root: complete, packages }),
+    path.join(complete, 'node_modules', '@deepseek-ai'),
+  );
+  // Present but unbuilt (no lib/index.js) must not qualify — the managed
+  // cordis.yml points plugin URLs at lib/index.js.
+  const unbuilt = fakeHarnessRoot(['dsh-llm-deepseek'], ['dsh-tool-fs']);
+  assert.equal(desktopDshVendorDir({ root: unbuilt, packages }), null);
+  const missing = fakeHarnessRoot(['dsh-llm-deepseek']);
+  assert.equal(desktopDshVendorDir({ root: missing, packages }), null);
+  assert.equal(desktopDshVendorDir({ root: complete, packages: [] }), null);
+  assert.equal(desktopDshVendorDir({ root: complete }), null);
+});
+
+test('applyDshVendorDir sets the override for a complete bundle and never overrides the user', (t) => {
+  const original = process.env.CHISACODE_DSH_VENDOR_DIR;
+  t.after(() => {
+    if (original === undefined) {
+      delete process.env.CHISACODE_DSH_VENDOR_DIR;
+    } else {
+      process.env.CHISACODE_DSH_VENDOR_DIR = original;
+    }
+  });
+  const packages = ['dsh-llm-deepseek'];
+  const complete = fakeHarnessRoot(packages);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cc-'));
+  const remote = new ChisaCodeRemote({ getConfig: () => ({}), getHomeDir: () => home });
+
+  // User-set value always wins.
+  process.env.CHISACODE_DSH_VENDOR_DIR = '/user/choice';
+  remote.applyDshVendorDir({ DSH_VENDOR_PACKAGES: packages }, { root: complete });
+  assert.equal(process.env.CHISACODE_DSH_VENDOR_DIR, '/user/choice');
+
+  // Incomplete bundle keeps the npm-global fallback (env stays unset).
+  delete process.env.CHISACODE_DSH_VENDOR_DIR;
+  remote.applyDshVendorDir({ DSH_VENDOR_PACKAGES: packages }, { root: fakeHarnessRoot([]) });
+  assert.equal(process.env.CHISACODE_DSH_VENDOR_DIR, undefined);
+
+  // Complete bundle becomes the override → upstream resolveDshVendorDir stops
+  // probing `npm root -g` on the desktop entirely.
+  remote.applyDshVendorDir({ DSH_VENDOR_PACKAGES: packages }, { root: complete });
+  assert.equal(
+    process.env.CHISACODE_DSH_VENDOR_DIR,
+    path.join(complete, 'node_modules', '@deepseek-ai'),
+  );
 });
 
 test('ChisaCodeRemote snapshot is chisacode-v2 and has no host-token wall', () => {

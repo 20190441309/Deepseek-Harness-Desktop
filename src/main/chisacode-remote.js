@@ -43,6 +43,35 @@ const SERVER_EXPORT = path.join(
   'exports.js',
 );
 
+function defaultHarnessRoot() {
+  try {
+    // Packaged: extracted harness runtime; dev: repo vendor tree.
+    return require('./paths').harnessRoot();
+  } catch {
+    // Plain-node tests: same fallback shape as resolveVendorRoot above.
+    return path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
+  }
+}
+
+/**
+ * Bundled-harness plugin tree that can serve as `CHISACODE_DSH_VENDOR_DIR`.
+ * Complete only when every dsh vendor package is present AND built
+ * (`lib/index.js` — the managed cordis.yml points plugin URLs there, so a
+ * source-only checkout must not qualify).
+ * @param {{ root?: string, packages?: readonly string[] }} [options]
+ * @returns {string | null}
+ */
+function desktopDshVendorDir(options = {}) {
+  const packages = options.packages;
+  if (!Array.isArray(packages) || packages.length === 0) {
+    return null;
+  }
+  const root = options.root || defaultHarnessRoot();
+  const candidate = path.join(root, 'node_modules', '@deepseek-ai');
+  const complete = packages.every((pkg) => fs.existsSync(path.join(candidate, pkg, 'lib', 'index.js')));
+  return complete ? candidate : null;
+}
+
 /**
  * Product Away defaults — always from hardcoded `lan.js` constants so Setup.exe
  * works with zero user config (no reliance on defaults.json surviving the pack).
@@ -351,6 +380,27 @@ class ChisaCodeRemote extends EventEmitter {
     return this.pairing;
   }
 
+  /**
+   * Point the daemon's dsh provider at the bundled harness plugin tree when it
+   * is complete. With the override set, upstream `resolveDshVendorDir` never
+   * runs `execSync("npm root -g")` on the desktop (the EPIPE vector) and the
+   * provider composes against desktop-shipped plugins instead of hoping for a
+   * global npm install. A user-set `CHISACODE_DSH_VENDOR_DIR` always wins; an
+   * incomplete bundle keeps the (stdio-hardened) npm-global fallback so users
+   * with `npm i -g @deepseek-ai/dsh` keep working.
+   * @param {{ DSH_VENDOR_PACKAGES?: readonly string[] }} [api]
+   * @param {{ root?: string }} [options] - harness root override (tests)
+   */
+  applyDshVendorDir(api = this.serverApi, options = {}) {
+    if (process.env.CHISACODE_DSH_VENDOR_DIR) {
+      return;
+    }
+    const dir = desktopDshVendorDir({ packages: api && api.DSH_VENDOR_PACKAGES, root: options.root });
+    if (dir) {
+      process.env.CHISACODE_DSH_VENDOR_DIR = dir;
+    }
+  }
+
   async startDaemon() {
     if (this.daemon) {
       const nextRuntimeKey = this.runtimeConfigKey(this.getConfig() || {});
@@ -368,6 +418,7 @@ class ChisaCodeRemote extends EventEmitter {
 
     this.starting = (async () => {
       const api = await this.ensureApi();
+      this.applyDshVendorDir(api);
       const config = this.getConfig() || {};
       const defaults = readDefaults();
       const home = this.homeDir();
@@ -505,6 +556,7 @@ module.exports = {
   ChisaCodeRemote,
   loadServerApi,
   VENDOR_ROOT,
+  desktopDshVendorDir,
   readDefaults,
   attachRelayStatusProbe,
   publicDevicesFromStore,
