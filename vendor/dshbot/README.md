@@ -12,14 +12,14 @@ one click installs it through the curated catalog channel (spec below).
 Through the official plugin CLI channels:
 
 ```sh
-# from this repository (the marketplace row uses exactly this spec)
-dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot
+# from the standalone repository (the marketplace row uses exactly this spec)
+dsh plugin --profile web add github:ChisaAlter/dshbot
 
 # once published to a registry
 dsh plugin --profile web add dshbot@0.2.0
 
-# or straight from a GitHub mirror repo
-dsh plugin --profile web add github:<owner>/<repo>
+# legacy monorepo path spec (curated-catalog-only channel; superseded)
+dsh plugin --profile web add github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot
 ```
 
 On first load the plugin provisions its `dshbot-room` agent preset into
@@ -53,8 +53,11 @@ message instead of half-publishing.
 
 ## Standalone repository split
 
-The standalone distribution repo (`ChisaAlter/dshbot`, package at the root)
-is generated from this directory — never hand-edited — with:
+The standalone distribution repo [ChisaAlter/dshbot](https://github.com/ChisaAlter/dshbot)
+(package at the root) is the public install source; this directory stays the
+development copy inside the desktop monorepo (used by the `dshbotPreset` dev
+flow and as the export source). The standalone tree is generated from this
+directory — never hand-edited — with:
 
 ```sh
 node scripts/export-dshbot-standalone.mjs <output-dir>
