@@ -73,6 +73,16 @@ describe('RemoteSection', () => {
     expect(screen.getByRole('img', { name: en.qr })).toBeTruthy()
     expect(screen.getByText(en.pairingUrl)).toBeTruthy()
     expect(screen.getByText('http://10.0.0.4:3180/#offer=abc')).toBeTruthy()
+    // One QR, two entries: the hint explaining App = link device vs
+    // browser = web client must ride with the QR.
+    expect(screen.getByText(en.scanSplitHint)).toBeTruthy()
+  })
+
+  it('keeps the entry-split hint tied to the QR (absent while off)', async () => {
+    renderRemote({ getRemote: vi.fn(async () => snap({ enabled: false, listening: false, urls: [] })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByText(en.offHint)
+    expect(screen.queryByText(en.scanSplitHint)).toBeNull()
   })
 
   it('states plainly that pairing cannot finish while the relay is offline', async () => {

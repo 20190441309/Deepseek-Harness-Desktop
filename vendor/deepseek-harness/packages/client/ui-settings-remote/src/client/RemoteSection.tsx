@@ -214,6 +214,10 @@ export function RemoteSection({
                 {enabled && qr ? (
                   <>
                     <div className={css.qr} role="img" aria-label={t('qr')} dangerouslySetInnerHTML={{ __html: qr }} />
+                    {/* One QR, two entries: the in-app scanner links the
+                        device, a camera/browser scan lands on the web client
+                        (mobile-remote card). Spell it out for the user. */}
+                    <p className={css.hint}>{t('scanSplitHint')}</p>
                     {pairingUrl ? (
                       <p className={css.hint} data-dsh-pairing-url="">
                         <span className={css.pairingUrlLabel}>{t('pairingUrl')}</span>
