@@ -1,5 +1,7 @@
 # dsh decoupling review — necessity and stability audit of the landed work
 
+> **SUPERSEDED (2026-08-28).** Trent confirmed a **full revert (全量回撤)** of all dsh decoupling work. PR #67 was merged into main (`541d36d5`) as-is, reverting both #64 and #66 in their entirety — including the token-mirror gate and handoff-doc corrections this review recommended keeping. The narrow-revert recommendation below was not adopted; this doc stays on its branch as a historical record and is not merged into main.
+
 **Date:** 2026-08-28 · **Reviewed tree:** `main@47a35cec` (merge of PR #66) · **In flight:** PR #67 (`cursor/revert-dsh-decoupling-aebd`, OPEN, clean two-commit revert of #66 then #64, exactly the 13 landed files)
 
 **Kind:** review note (doc-only, no product-contract change; no feature card touched). Strict audit of PR #64 (decoupling analysis) and PR #66 (Phase 0 instrumentation): was it necessary, and does it affect application stability or day-to-day usage?
