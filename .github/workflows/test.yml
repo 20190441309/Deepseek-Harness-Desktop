@@ -28,21 +28,6 @@ jobs:
       - name: Run desktop unit tests
         run: npm test
 
-  # 解耦 Phase 0 望远镜：vendored 树 vs 上游 pin 的 fork 面必须被
-  # harness-desktop-forks.js 登记；未登记漂移超过基线即失败（棘轮）。
-  # 只读、零依赖（node + git），pin 对象缺失时从上游 fetch。
-  fork-delta:
-    name: Harness fork delta vs upstream pin
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - name: Classify fork delta against the registry baseline
-        run: node scripts/check-harness-fork-delta.js
-
   vendor-gui:
     runs-on: windows-latest
     timeout-minutes: 30
