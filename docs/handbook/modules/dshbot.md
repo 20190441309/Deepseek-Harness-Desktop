@@ -40,7 +40,7 @@
 
 ## 未完成（文档落地）
 
-详见 feature 卡 **Open follow-ups**：安装包实机冒烟（手册就绪、实机阻塞）、npm 独立发布（链路就绪、缺 `NPM_TOKEN`）、成员全工具另卡、Grok exclusive/interrupt/Shared Room 另史诗。
+详见 feature 卡 **Open follow-ups**：安装包实机冒烟（手册就绪、实机阻塞）、独立仓拆分 + npm 发布（导出脚本 `scripts/export-dshbot-standalone.mjs` 与种子分支就绪、peers 已放宽覆盖 `0.1.1-rc.*`；缺仓主建 `ChisaAlter/dshbot` 与 `NPM_TOKEN`）、成员全工具另卡、Grok exclusive/interrupt/Shared Room 另史诗。
 
 ## 延伸阅读
 
