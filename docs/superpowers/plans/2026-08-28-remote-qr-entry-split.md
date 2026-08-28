@@ -45,14 +45,44 @@ Touching: `remote-settings` + `mobile-remote`（2026-08-28）
 - 全部为文案 + 只读断言，零行为改动；回滚 = revert 对应 commit。
 - 不改 QR 内容、不改 offer 协议、不改 `:3180` 自动配对行为（mobile-remote QA 48 检查依赖它）。
 
-## Defer（App 侧依赖，写进下一步建议）
+## 第二批（已实施 2026-08-28）：App 侧系统相机 handoff
 
-- Android manifest `VIEW` intent filter（`http` + `android:host="*"` + `android:port="3180"`）+ `MainActivity` 从 intent data 提取 fragment offer → 复用现有扫码 handoff：让**系统相机**扫码时 Android 弹「用 App 打开」，选 App＝链接设备、选浏览器＝web 端，把分流从「口径」升级为「系统级选择」。需要 Android SDK 构建 + 真机验证（本 VM BLOCKED）。
+把分流从「口径」升级为「系统级选择」：系统相机扫同一张码时，Android 弹选择器——**用 App 打开＝链接设备，用浏览器打开＝web 端**。
+
+### 范围 / 非目标
+
+- 范围：`mobile/android` manifest `VIEW` intent filter、`MainActivity` 冷/热启动 intent 提取、复用现有 `pair()` handoff、纯 JVM 校验逻辑 + 测试、manifest tripwire。
+- 非目标：不自造 scheme（上游无移动端 deep link）；不加 `autoVerify` App Links（LAN IP 无法验证，且选择器本身就是想要的 UX）；不改 QR 内容 / offer 协议 / `:3180` 浏览器自动连入。
+
+### 设计
+
+- **Intent filter**：`VIEW` + `DEFAULT` + `BROWSABLE`，`data android:scheme="http" android:host="*" android:port="3180"`。fragment 进不了 intent filter、LAN IP 动态 → 宽 host 匹配是唯一解；安全闸门下移到 App 内。
+- **闸门**：`protocol` 模块新增 `PairingIntent.fromViewIntent(action, dataString)`（纯 JVM）——仅 `ACTION_VIEW` + `OfferCodec.parsePairingLink` 全语法通过才算配对链接（http/https、无 userInfo、fragment 严格 `^offer=[A-Za-z0-9_-]+$`、offer v2 可解码）。与 App 内扫码/粘贴完全同一套语法，无第二协议。
+- **handoff**：`DshViewModel.openPairingLink()` —— 合法 → 走既有 `pair()`（进内置 SPA WebView 配对）；`:3180` 垃圾链接 → Connect 屏提示「没有配对密钥」，且**绝不**把已连接的 Web 会话踢回 Connect。非 VIEW 启动零副作用。
+- **冷/热启动**：`onCreate` 在 `setContent` 前处理 `intent`；`android:launchMode="singleTask"` + `onNewIntent`（含 `setIntent`）复用实例，不堆叠 Activity。
+- **安全评估（宽 host 匹配）**：intent data 只被解析、永不加载——WebView 只载 APK 内置 SPA（WebViewAssetLoader origin），恶意 `http://evil:3180/#offer=` 最坏等价于扫恶意二维码（同一信任模型，用户主动触发）；offer 是公开材料 + 一次性 bootstrap token，无凭据外泄面。
+
+### 验收标准
+
+1. 系统相机扫桌面 QR → Android 弹「用 App 打开 / 用浏览器打开」；选 App 直接进配对 WebView，选浏览器进 `:3180` web 端（原路径不回归）。
+2. App 已开且在 Web 会话中时点击垃圾 `:3180` 链接：不被踢出会话。
+3. `LAUNCHER` 正常启动行为不变。
+
+### 测试与验证
+
+- 本 VM 装了 JDK 17 + Android SDK（compileSdk 36）后全部可跑：`:protocol:test` 9/9（`OfferTest` 5 + `PairingIntentTest` 4）、`:app:testDebugUnitTest` 5/5（含 VIEW handoff 3 例）、`:app:assembleDebug` 成功且 merged manifest 复核（VIEW+BROWSABLE、host=`*`、port=3180、无 `android:autoVerify`、singleTask）。
+- `mobile/web/landing.test.js` 新增 manifest tripwire（node 环境即可跑）。
+- **真机 Manual gate（BLOCKED，无真机/模拟器）**：见 Gates。
+
+### 回滚
+
+revert 对应 commit 即可——不涉及协议/存储迁移；卸掉 intent filter 后系统相机回落为「全走浏览器」，App 内扫码不受影响。
+
 - 若未来上游给移动端引入正式 scheme / App Link，跟随上游，不自造。
 
 ## Gates
 
 | Kind | What |
 | --- | --- |
-| Automated | `remote-section.client.spec.tsx`（分流说明随 QR 可见）；`mobile/web/landing.test.js`（落地页口径 + 浏览器 web 端自动连入 tripwire）；locale 键齐全编译期锁 |
-| Manual | 浏览器扫码 → 进 web 端且落地页可见分流说明；Android App 内扫码 → 链接设备；桌面弹窗可见分流说明 |
+| Automated | `remote-section.client.spec.tsx`（分流说明随 QR 可见）；`mobile/web/landing.test.js`（落地页口径 + 浏览器 web 端自动连入 tripwire + Android manifest VIEW/:3180/无 autoVerify tripwire）；locale 键齐全编译期锁；`:protocol:test`（`PairingIntentTest` 宽匹配下拒非法语法）；`:app:testDebugUnitTest`（VIEW handoff 配对 / 垃圾链接提示 / 不踢 Web 会话） |
+| Manual（真机） | ① 系统相机扫码 → 选择器出现，选 App＝直接进配对 WebView，选浏览器＝web 端；② 冷启动（App 未运行时点链接）与热启动（App 在前台/后台再扫）都能配对且不堆叠 Activity；③ App 在 Web 会话中点垃圾 `:3180` 链接不被踢出；④ 浏览器扫码 → 进 web 端且落地页可见分流说明；⑤ Android App 内扫码 → 链接设备；⑥ 桌面弹窗可见分流说明 |
