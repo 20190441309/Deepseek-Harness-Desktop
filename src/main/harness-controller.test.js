@@ -151,7 +151,8 @@ function fixture(overrides = {}) {
       this.syncCalls += 1;
       events.push('remote:sync');
     },
-    async stop() {
+    // Real face is ChisaCodeRemote: teardown is stopDaemon(), not stop().
+    async stopDaemon() {
       this.stopCalls += 1;
       events.push('remote:stop');
     },
@@ -735,6 +736,13 @@ test('reload reopens the ready Web UI through showHarness', async () => {
   assert.deepEqual(f.events.filter((event) => event.startsWith('harness:') || event.startsWith('reload:')), [
     'harness:http://127.0.0.1:3080',
   ]);
+});
+
+test('remote sync failure during start is logged, not fatal', async () => {
+  const f = fixture();
+  f.remote.sync = async () => { throw new Error('EADDRINUSE :3180'); };
+  await f.controller.start();
+  assert.ok(f.dsh.logs.some((line) => /手机 Remote 同步失败/.test(line) && /EADDRINUSE/.test(line)));
 });
 
 test('shutdown cancels recovery and does not navigate or restart afterward', async () => {
