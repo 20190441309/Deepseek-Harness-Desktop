@@ -31,7 +31,7 @@ Touching: `remote-settings` + `mobile-remote`（只测不改产品行为；发�
 | T4 | ✅（修复后） | 新工具 `tools/remote-web-qa/run-e2e.mjs` 8/8：真 daemon 子进程 + `:3180` + 真 offer + headless Chrome 全链路 E2EE 配对（中继用 vendored relay `wrangler dev --local`，见下）；首轮暴露 P0 `crypto.randomUUID`（见「发现的 bug」），修复并重建 bundle 后全绿 |
 | T5 | ✅ | 垃圾 offer 可见错误「无效的配对链接（需要 ChisaCode offer v2）」不假装配对；stopDaemon 后浏览器显示「正在重新连接电脑…」不假装在线 |
 | T6 | ✅ | stopDaemon 后 daemon 子进程退出、`:3180` 与 daemon 端口拒连、snapshot `listening:false` 且无残留 error |
-| T7 | ◐ | xvfb 下真 Electron 跑 `qa:remote`（TC-NEG-001/TC-REM-001）：主进程 6 项 gate 全 PASS（守门、启停、pairing offer、端口回收）；`neg.footerPresent`/`rem.qrVisible` 两个渲染层探针 FAIL 原因是 smoke 环境 harness web UI 未构建（boot 日志明示「请运行 npm run setup:harness」），非产品回归——构建 harness 后复跑见附录 |
+| T7 | ✅ | xvfb 下真 Electron 跑 `qa:remote`（TC-NEG-001/TC-REM-001）**8/8 全 PASS**（守门、启停、pairing offer、侧栏 Remote 入口、弹窗 QR SVG、关闭后端口回收）。首两轮 `neg.footerPresent`/`rem.qrVisible` FAIL 是 harness web UI 未构建（boot 日志明示），构建 `build:lib`+`build:web` 后全绿；运行录像与帧截图留档 |
 
 ### 发现的 bug（本轮修复）
 
@@ -44,6 +44,7 @@ Touching: `remote-settings` + `mobile-remote`（只测不改产品行为；发�
 1. 产品默认外部中继 `125.124.85.212:8411` 对 WS 升级返回 **503**（daemon 侧持续退避重连、主进程与 UI 不受影响——隔离与失败面符合设计），本轮真实 E2EE 配对经 vendored relay 本地实例（`wrangler dev --local`，需 `@cloudflare/workerd-linux-64`）完成。真机/生产前需确认该中继服务状态。
 2. vendored `better-sqlite3` 因 `npm ci --ignore-scripts` 无原生绑定，daemon 降级「Agent SQLite index disabled」（非致命、按设计降级）；打包链路 `--runtime` 构建不受此影响，源码开发环境如需 agent index 需补一次 rebuild。
 3. `:3180` 落地页 favicon 404（纯外观噪音）。
+4. 本 VM node 22.14 低于 harness 引擎要求（`^22.19.0 || >=24`）时：根 `pnpm run build`（`scripts/build.ts`）**静默退出 0 但什么也没构建**；`build:lib` 的 tsdown 报缺 `unrun`。nvm 切 node 24 后 `build:lib`+`build:web` 正常出 `apps/cli/lib/bin.js` 与 `apps/web/dist`。vendored 上游行为，仅记录。
 
 ### 证据
 
