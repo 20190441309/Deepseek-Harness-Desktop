@@ -39,20 +39,46 @@ Work branch: `cursor/remote-epipe-hardening-2f82`
    - `harness-controller.test.js`：shutdown 调 `stopDaemon`。
    - `remote-section.client.spec.tsx`：enabled+未监听 → 开启按钮重试、`notListening` 提示。
 
-### 阶段 2（后续轮）— daemon 子进程隔离（对齐上游架构）
+### 阶段 2（2026-08-28 第二轮实施）— daemon 子进程隔离（对齐上游架构）
 
-把 `createChisaCodeDaemon` 迁出主进程，对齐上游 `daemon-manager.ts`：
+上游对照（`packages/desktop/src/daemon/daemon-manager.ts`）：daemon 以 `ELECTRON_RUN_AS_NODE` runner 子进程运行，`stdio: ['ignore','pipe','pipe']` 捕获启动输出，pid-lock + CLI `daemon status` 轮询就绪；配对 offer 由**另一个进程**（CLI `daemon pair`）对同一 chisacode home 生成——`websocket-server.ts` 每次 pairing 握手都 `new RelayDeviceCredentialStore(home)` 从磁盘重读，跨进程签发的一次性 token 可被 daemon 消费。上游无自动退避重启（仅版本不匹配重启 + 手动 restart）。
 
-1. 新增 daemon 入口脚本（vendored server dist 直接可用），用 `ELECTRON_RUN_AS_NODE=1` + `utilityProcess.fork` 或 `child_process.spawn(process.execPath)` 拉起，stdio 全显式 pipe，日志接入 dsh 日志。
-2. `ChisaCodeRemote` 改为进程管理面：健康探测（上游用 `/health` + pid lock）、退出重启退避、`stopDaemon` 发 SIGTERM + 超时 SIGKILL。
-3. 快照/配对改走 daemon HTTP/WS 面（上游即如此），删除 in-process 的 logger 探针 hack（`attachRelayStatusProbe`）。
-4. 风险：Windows 打包环境的 spawn 兼容（`.cmd` shell 引号规则见 launcher 卡）、utilityProcess 与 sandbox 的交互、mobile-web server 归属（留主进程或随子进程）。需要真机 QA，不与本轮混合交付。
+本仓库落法（差异点：产品把 daemon 生命周期绑定桌面应用，不用 detached 常驻）：
 
-### 阶段 3（后续轮）— dsh provider 全量接通
+1. **runner**：新增 `src/main/chisacode-daemon-runner.mjs`（纯 node ESM，`asarUnpack`）。argv 传 launch JSON 路径（`<home>/daemon-launch.json`，0600，含 serverExport 路径 + daemonConfig，不含任何密钥）。runner `import()` vendored server dist，`createRootLogger(format: 'json', file: false)`（pino JSON → stdout），`createChisaCodeDaemon` + `start()` 后打 `dshd_daemon_ready` 日志行；stdin 收到 `stop` 或 **stdin 关闭（父进程死亡）** 都优雅 `daemon.stop()` 后退出——attached 语义，主进程崩溃不留孤儿。SIGTERM/SIGINT（posix）同样优雅停。未捕获异常 → fatal 日志 + exit(1)。
+2. **父进程（`ChisaCodeRemote`）改为进程管理面**：`spawn(process.execPath, [runner, launchFile], { stdio: ['pipe','pipe','pipe'], env: bridge })`，逐行解析子进程 stdout 的 pino JSON：`dshd_daemon_ready` → 就绪；`relay_control_connected` / `relay_error` / `relay_control_disconnected` → relay 状态（**替换** in-process 的 `attachRelayStatusProbe` logger 探针——同一批上游稳定日志标识，只是改在进程边界上读，不发明第二套协议）；全部行转发进 dsh 日志。就绪超时（30s）→ 杀子进程 + 抛出含 stderr 尾部的错误。运行中意外退出 → `snapshot.error` 置「守护进程异常退出」+ listening=false（阶段 1 的弹窗重试即恢复路径；与上游一致**不做**自动退避重启循环）。
+3. **快照/配对不走 daemon 面**：`generateLocalPairingOffer` / `RelayDeviceCredentialStore` 本就 file-backed，主进程继续 in-process 调用（与上游 `daemon pair` 独立进程的形状一致）；`snapshot()`、设备列表、unbind 全部不变。mobile-web :3180 留在主进程（静态 SPA，不依赖 daemon）。
+4. **stop**：stdin 写 `stop\n` → 等退出 ≤5s → 超时 `kill()`（Windows 无 SIGTERM 语义，stdin 通道即优雅路径）。
+5. **打包**：runner 加入 `build.asarUnpack`（node 子进程读不了 asar），运行时以 `app.asar → app.asar.unpacked` 替换解析；vendored dist + 生产 node_modules 本就走 extraResources（asar 外）。
 
-1. `CHISACODE_HOME` 收敛进 `userData`（需解决 env 泄漏到 PTY 子进程的问题，参照 dsh-home 规则的 overwrite 策略，或 fork 掉 `resolveManagedDshHome` 的 env 依赖）。
-2. `dsh-acp-demo` 启动路径：桌面无全局安装时用 `agentProviderSettings.dsh.command`（replace argv）指向桌面可执行入口；密钥沿用 shell `DEEPSEEK_API_KEY` 通道（dsh-home 卡的 https 白名单规则）。
-3. 手机端 provider 就绪矩阵与 mobile-remote 卡 gates 对齐。
+### 阶段 3（2026-08-28 第二轮实施）— dsh provider 接通 + DSHD_* 命名收敛
+
+**命名表**（桌面对外一律 `DSHD_*`；`CHISACODE_*` 只出现在 daemon 子进程 env 的受控注入里，主进程自身 env 不再写任何 `CHISACODE_*`）：
+
+| 桌面字段（对外 / 文档） | 语义 | Bridge（仅 daemon 子进程 env） |
+| --- | --- | --- |
+| `DSHD_CHISACODE_HOME`（debug env） | 覆盖 remote 运行时 home，默认 `userData/chisacode-home`；打包版仅 `DSHD_ALLOW_ENV_HOME=1` 时生效（复用 dsh-home 的守卫开关，语义一致） | `CHISACODE_HOME=<resolved home>` |
+| `DSHD_DSH_VENDOR_DIR`（env） | dsh provider 插件树覆盖；优先级：`DSHD_DSH_VENDOR_DIR` > 继承的 `CHISACODE_DSH_VENDOR_DIR`（上游兼容）> 自带 harness 完备目录 > 不设（子进程内走已加固的 npm 回退） | `CHISACODE_DSH_VENDOR_DIR=<resolved>` |
+
+选名理由：字面量 `DSHD_HOME` 已被 dsh-home 卡占用（桌面 dsh home debug 覆盖），不可抢占；`DSHD_REMOTE_HOME` 与 mobile-web/remote 配置面易混；`DSHD_CHISACODE_HOME` / `DSHD_DSH_VENDOR_DIR` 与上游名一一对应、映射自明。
+
+1. **home 收敛**：daemon 子进程 env 注入 `CHISACODE_HOME`，dsh provider 的 managed home（`resolveManagedDshHome`）随之落在 `userData/chisacode-home/provider-runtime/…`，不再泄漏 `~/.chisacode`；主进程 env 零污染（PTY / `dsh web` 子进程不再看到任何 CHISACODE_*）——阶段 1 里 `applyDshVendorDir` 对主进程 `process.env` 的全局写入随之**移除**。
+2. **`dsh-acp-demo` 启动路径**：自带 harness 存在 `packages/examples/acp-demo/lib/bin.js` 时，向 `<home>/bin/` 物化 `dsh-acp-demo`（sh）与 `dsh-acp-demo.cmd`（Windows）shim——`ELECTRON_RUN_AS_NODE=1 "<execPath>" "<bin.js>" "$@"`——并 prepend 到子进程 PATH。上游 `resolveProviderLaunch`/`findExecutable` 走 PATH 查找、`spawnProcess` 自带 Windows `.cmd` shim 处理，零上游改动。不走 `command replace`：保留上游 managed cordis.yml 组合与每会话模型 pin。harness 未构建时不物化（provider 显示不可用，诚实降级）。
+3. **凭据通道**：daemon 子进程 env 经 `applyOfficialDeepSeekSpawnEnv`（`src/shared/official-deepseek-env.js`）注入 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`——与 `dsh web` 子进程同一策略（仅官方 https 主机），provider 继承 daemon env。密钥只进 env，不进 launch JSON。
+
+### 阶段 2/3 风险与回滚
+
+- **Windows spawn**：runner 由 `process.execPath` 直接拉起（非 `.cmd`，不涉 shell 引号）；provider 侧 `.cmd` shim 交由上游 `spawnProcess` 的 Windows shim 逻辑。打包真机 QA 仍是 Manual gate。
+- **asar**：runner 必须在 `asarUnpack`；after-pack 若有布局校验后续可加断言（本轮 Gates 记录）。
+- **孤儿进程**：stdin-close 自停 + attached（不 detach、不 unref）双保险。
+- **回滚**：整段迁移集中在 `chisacode-remote.js` + runner 新文件，revert 对应 commits 即回到阶段 1 的 in-process 形态；launch JSON / shim 均为运行时生成物，无迁移负担。
+
+### 阶段 2/3 Gates
+
+| Kind | What |
+| --- | --- |
+| Automated | runner 集成测试（stub server export：ready / stdin stop / stdin-close 自停 / 崩溃 exit code）；父进程假 runner 测试（就绪、relay 状态解析、意外退出可见、stop 优雅+超时杀）；env bridge 纯函数测试（home/vendor 优先级、DEEPSEEK 官方策略、PATH prepend、ELECTRON_RUN_AS_NODE）；acp shim 物化测试；`DSHD_CHISACODE_HOME` 打包守卫测试；dist 存在时真实 daemon 起停集成测试 |
+| Manual | Windows 打包机：开启远程 → 子进程隔离下扫码配对 → 强杀主进程无孤儿 daemon → 重启后设备仍在；dev 机（harness 已构建）：手机端 dsh provider 可创建会话 |
 
 ## 回滚
 
