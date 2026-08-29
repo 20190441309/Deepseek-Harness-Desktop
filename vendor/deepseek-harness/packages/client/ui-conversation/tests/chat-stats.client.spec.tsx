@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // StatsLine (composer.dock entry): totals derivation + the RFC hard
-// acceptance — zero renders during streaming.
+// acceptance — zero parent renders during streaming.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -214,6 +214,29 @@ describe('StatsLine', () => {
     expect(emptyView.container.textContent).toBe('')
   })
 
+  it('keeps the stats row gap while a turn is running before any closed step', () => {
+    const empty = makeSource({ running: true })
+    const view = render(<StatsLine {...props(empty.source, {
+      tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      sessionStats: sessionStats({}),
+    })} />)
+    const row = view.container.querySelector('[data-stats-line="pending"]')
+    expect(row).not.toBeNull()
+    expect(row?.getAttribute('aria-hidden')).toBe('true')
+    expect(row?.textContent).toBe('')
+  })
+
+  it('keeps the stats row gap while running even when statsLine is off', () => {
+    const empty = makeSource({ running: true })
+    const view = render(<StatsLine {...props(empty.source, {
+      tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      sessionStats: sessionStats({}),
+    })} useStatsLine={sel => sel(false)} />)
+    const row = view.container.querySelector('[data-stats-line="hidden"]')
+    expect(row).not.toBeNull()
+    expect(row?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('keeps the stats row gap and hides the figures when statsLine is off', () => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsLine {...props(source)} useStatsLine={sel => sel(false)} />)
@@ -223,6 +246,16 @@ describe('StatsLine', () => {
     expect(row?.getAttribute('aria-hidden')).toBe('true')
     expect(row?.textContent).toContain('1 turns')
     expect(view.container.querySelector('[role="tooltip"]')).toBeNull()
+  })
+
+  it('keeps settled figures while a later turn is running', () => {
+    const { source } = makeSource({ running: true, nodes: [assistant(1, 1)] })
+    const view = render(<StatsLine {...props(source, {
+      tokenUsage: USAGE,
+      sessionStats: sessionStats({ turns: 1, steps: 1, llmMs: 3_800 }),
+    })} />)
+    expect(view.container.textContent).toContain('1 turns · 1 steps')
+    expect(view.container.textContent).toContain('LLM 3.8s')
   })
 
   it('keeps no row on an empty session even when statsLine is off', () => {
@@ -439,6 +472,7 @@ describe('StatsLine', () => {
     render(<Counting {...props(source)} />)
     const before = renders
     // Chunk frames swap partial only; nodes keeps its reference (object-layer contract).
+    // `running` is a StatsLine-internal selector: it must not invalidate this parent.
     act(() => { set({ partial: { turn: 1, step: 2, blocks: [{ kind: 'text', text: 'a' }] } }) })
     act(() => { set({ partial: { turn: 1, step: 2, blocks: [{ kind: 'text', text: 'ab' }] } }) })
     act(() => { set({ running: true }) })

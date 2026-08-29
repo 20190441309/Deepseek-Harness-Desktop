@@ -794,14 +794,21 @@ export function InputBar({
             onPointerUp={onResizePointerUp}
           />
         )}
-        <span className={css.beamInner} aria-hidden />
-        <span className={css.beamStroke} aria-hidden />
-        <span className={css.beamBloom} aria-hidden />
+        {/* One unfiltered wrapper owns pointer-events:none. Chromium compositor
+            hit-testing ignores that declaration on the filtered bloom child, so
+            a sibling wrapper is what keeps the toolbar reachable while the
+            send/think beam is live. */}
+        <div className={css.beamLayer} data-composer-beam="" aria-hidden>
+          <span className={css.beamInner} />
+          <span className={css.beamStroke} />
+          <span className={css.beamBloom} />
+        </div>
         {(overlay !== undefined) && (
           <div className={css.overlayAnchor}>
             {overlay}
           </div>
         )}
+        <div className={css.cardBody}>
         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
         {edit !== null && (
           <div className={css.editRow} role="status" data-edit-session>
@@ -946,6 +953,7 @@ export function InputBar({
               </button>
             </Tooltip>
           </div>
+        </div>
         </div>
       </div>
       {footer}

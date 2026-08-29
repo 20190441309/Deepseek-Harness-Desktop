@@ -220,6 +220,7 @@ export interface StatsLineInjected {
 
 export const StatsLine = memo(function StatsLine({ useSession, useProjection, useStatsLine, t }: StatsLineProps) {
   const statsLine = useStatsLine(value => value)
+  const running = useSession(s => s.running)
   const settledNodes = useSession(s => s.chat.legacy.nodes)
   const usage = useProjection('tokenUsage')
   // Every figure rides the durable sessionStats projection, so paging and
@@ -277,13 +278,18 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, us
     observer.observe(el)
     return () => { observer.disconnect() }
   }, [line])
-  if (groups.length === 0) return null
+  // An in-flight first step has no closed counts and no billed usage yet;
+  // unmounting here collapses the dock under the composer. Keep the row's
+  // height while `running` so the capsule does not jump, idle empty sessions
+  // still render nothing.
+  if (groups.length === 0 && !running) return null
+  const rowState = !statsLine ? 'hidden' : groups.length === 0 ? 'pending' : undefined
   const row = (
     <div
       ref={rootRef}
       className={css.root}
-      data-stats-line={statsLine ? undefined : 'hidden'}
-      aria-hidden={statsLine ? undefined : true}
+      data-stats-line={rowState}
+      aria-hidden={rowState === undefined ? undefined : true}
     >
       {groups.map((group, i) => (
         <Fragment key={group}>
@@ -293,7 +299,7 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, us
       ))}
     </div>
   )
-  if (!statsLine) return row
+  if (!statsLine || groups.length === 0) return row
   return (
     <Tooltip label={line} side="top" delayMs={500} disabled={!truncated}>
       {row}

@@ -91,13 +91,32 @@
 }
 
 /* Border beam (Beam / jakubantalik): a traveling colorful filament on the
-   composer capsule while send / think / stream is live. Layers are pointer-
-   inert overlays so they never fight the draft, menus, or the workspace
-   dashed-ring ::after. */
+   composer capsule while send / think / stream is live. The unfiltered
+   .beamLayer wrapper is pointer-inert so Chromium compositor hit-testing
+   cannot land on the filtered bloom; .cardBody stacks above it so the draft
+   and toolbar remain the paint-order targets. */
 @property --dsh-composer-beam-angle {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
+}
+
+.beamLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.cardBody {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  min-width: 0;
 }
 
 .beamInner,
@@ -278,6 +297,7 @@
     animation: none;
   }
 
+  .beamLayer,
   .beamInner,
   .beamStroke,
   .beamBloom {

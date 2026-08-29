@@ -28,14 +28,15 @@ function newestMtime(dir, filter) {
   return newest;
 }
 
-function run(command, args, cwd = root) {
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: true });
+function run(command, args, cwd = root, { shell = process.platform === 'win32' } = {}) {
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell });
   if (result.status !== 0) {
     process.exit(result.status || 1);
   }
 }
 
-run(process.execPath, ['scripts/prepare-chisacode-remote.mjs']);
+// Absolute node paths with spaces break under shell:true on Windows.
+run(process.execPath, ['scripts/prepare-chisacode-remote.mjs'], root, { shell: false });
 
 const remotePkg = path.join(root, 'vendor', 'deepseek-harness', 'packages', 'client', 'ui-settings-remote');
 const remoteSrc = path.join(remotePkg, 'src');

@@ -319,9 +319,11 @@
   );
 }
 
-/* Wallpaper glass mixes bg-base translucent; the sticky seat must stay
-   opaque so the stats strip and input card read on a solid surface. */
-:global(html[data-dsh-wallpaper]) .root[data-phase='active'] .composerSeat {
+/* Wallpaper glass mixes bg-base translucent; the sticky seat stays
+   opaque so the stats strip and input card read on a solid surface.
+   Transparent theme is the exception: every chrome fill including this
+   seat is 0%, so the static canvas colors must not paint a black slab. */
+:global(html[data-dsh-wallpaper]:not([data-dsh-transparent])) .root[data-phase='active'] .composerSeat {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 0%, transparent) 0px,
@@ -329,7 +331,7 @@
   );
 }
 
-:global(html[data-dsh-wallpaper] body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat {
+:global(html[data-dsh-wallpaper]:not([data-dsh-transparent]) body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--dsw-static-neutral-bluish-950) 0%, transparent) 0px,

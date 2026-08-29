@@ -101,6 +101,8 @@ interface BenchOptions {
   addImages?: (files: readonly File[]) => string | null
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
+  /** Live composer-beam preference; production default is on, benches stay off unless a case needs the overlay. */
+  composerBeam?: boolean
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
   origin?: 'dshbot'
   agentPreset?: string
@@ -208,7 +210,7 @@ function bench(over?: BenchOptions) {
     useNotices: bindSnapshotSelector(shell.notices),
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(menuLauncher),
-    useComposerBeam: bindSnapshotSelector(createSnapshotStore(false)),
+    useComposerBeam: bindSnapshotSelector(createSnapshotStore(over?.composerBeam ?? false)),
     useComposerResize: bindSnapshotSelector(createSnapshotStore(false)),
     useComposerResizeHeight: bindSnapshotSelector(createSnapshotStore(null)),
     useComposerResizeWidth: bindSnapshotSelector(createSnapshotStore(null)),
@@ -1688,6 +1690,24 @@ describe('command launcher chrome and control seats', () => {
     cleanup()
     const live = bench({ running: true, permissions })
     expect((live.view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('thinking beam stays in a pointer-inert overlay that does not wrap toolbar chips', () => {
+    const toggleCommandMenu = vi.fn()
+    const permissions = { options: [{ value: 'workspace-write', name: 'workspace-write' }], currentValue: 'workspace-write' }
+    const { view } = bench({ running: true, composerBeam: true, permissions, toggleCommandMenu })
+    const card = view.container.querySelector('[data-composer-card]')!
+    expect(card.hasAttribute('data-beam')).toBe(true)
+    const beam = card.querySelector('[data-composer-beam]')
+    expect(beam).not.toBeNull()
+    const command = view.getByLabelText('命令') as HTMLButtonElement
+    const access = view.getByLabelText(/^访问模式/) as HTMLButtonElement
+    expect(beam!.contains(command)).toBe(false)
+    expect(beam!.contains(access)).toBe(false)
+    expect(command.disabled).toBe(false)
+    expect(access.disabled).toBe(false)
+    fireEvent.click(command)
+    expect(toggleCommandMenu).toHaveBeenCalledOnce()
   })
 
   it('skips the model seat when the session agent preset is dshbot-room', () => {
