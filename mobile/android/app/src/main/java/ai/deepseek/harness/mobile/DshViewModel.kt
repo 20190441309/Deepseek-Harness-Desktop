@@ -1,6 +1,7 @@
 package ai.deepseek.harness.mobile
 
 import ai.deepseek.harness.mobile.pair.OfferCodec
+import ai.deepseek.harness.mobile.pair.PairingIntent
 import ai.deepseek.harness.mobile.store.DeviceStore
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,23 @@ class DshViewModel(private val store: DeviceStore) : ViewModel() {
         store.webAppUrl = WEB_APP_URL
         webUrl = "$WEB_APP_URL#offer=${link.url.substringAfter("#offer=")}"
         route = Route.Web
+    }
+
+    /**
+     * System camera / browser VIEW handoff (manifest claims `http` on any host at port 3180).
+     * A valid offer-v2 URL takes the exact same pairing path as the in-app
+     * scanner; junk :3180 links show a hint instead of pretending to pair,
+     * and never yank an already-connected WebView session back to Connect.
+     */
+    fun openPairingLink(action: String?, dataString: String?) {
+        if (PairingIntent.fromViewIntent(action, dataString) != null) {
+            pair(dataString.orEmpty())
+            return
+        }
+        if (action == PairingIntent.ACTION_VIEW && dataString != null) {
+            error = "打开的链接里没有配对密钥——请扫桌面远程弹窗里的二维码"
+            if (route != Route.Web) route = Route.Connect
+        }
     }
 
     fun reopenWebApp() {

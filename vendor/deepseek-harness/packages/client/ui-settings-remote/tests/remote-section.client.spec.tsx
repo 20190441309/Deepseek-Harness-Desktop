@@ -73,6 +73,16 @@ describe('RemoteSection', () => {
     expect(screen.getByRole('img', { name: en.qr })).toBeTruthy()
     expect(screen.getByText(en.pairingUrl)).toBeTruthy()
     expect(screen.getByText('http://10.0.0.4:3180/#offer=abc')).toBeTruthy()
+    // One QR, two entries: the hint explaining App = link device vs
+    // browser = web client must ride with the QR.
+    expect(screen.getByText(en.scanSplitHint)).toBeTruthy()
+  })
+
+  it('keeps the entry-split hint tied to the QR (absent while off)', async () => {
+    renderRemote({ getRemote: vi.fn(async () => snap({ enabled: false, listening: false, urls: [] })) })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    await screen.findByText(en.offHint)
+    expect(screen.queryByText(en.scanSplitHint)).toBeNull()
   })
 
   it('states plainly that pairing cannot finish while the relay is offline', async () => {
@@ -185,6 +195,30 @@ describe('RemoteSection', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
     await screen.findByText(en.noQr)
+  })
+
+  it('treats On as a retry when enabled but the daemon is not listening', async () => {
+    const props = renderRemote({
+      getRemote: vi.fn(async () => snap({
+        enabled: true,
+        listening: false,
+        urls: [],
+        error: 'EADDRINUSE :3180',
+      })),
+      saveRemote: vi.fn(async () => SNAP),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: en.trigger }))
+    // Startup failure is visible, not a generic no-QR shrug.
+    await screen.findByText(en.notListening)
+    await screen.findByText('Remote error: EADDRINUSE :3180')
+    expect(screen.queryByText(en.noQr)).toBeNull()
+    // On re-saves remoteEnabled → main-process sync() restarts the daemon.
+    fireEvent.click(screen.getByRole('radio', { name: en.enabledOn }))
+    await waitFor(() => { expect(props.saveRemote).toHaveBeenCalledWith({ remoteEnabled: true }) })
+    await screen.findByRole('img', { name: en.qr })
+    // Once listening again, On returns to a no-op.
+    fireEvent.click(screen.getByRole('radio', { name: en.enabledOn }))
+    expect(props.saveRemote).toHaveBeenCalledTimes(1)
   })
 
   it('renders the rail trigger without a text label', async () => {

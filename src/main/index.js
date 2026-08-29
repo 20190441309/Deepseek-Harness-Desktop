@@ -12,7 +12,7 @@ const { ensureDshbotPlugin, removeDshbotPreset } = require('./dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
 const { registerIpc } = require('./ipc');
 const { safeStorage } = require('electron');
-const { ChisaCodeRemote } = require('./chisacode-remote');
+const { ChisaCodeRemote, resolveDesktopChisaCodeHome } = require('./chisacode-remote');
 const { invokeDesktopShell } = require('./remote-shell');
 const git = require('./git');
 const { listDir } = require('./workspace-fs');
@@ -61,12 +61,25 @@ function qaEnv(name) {
 }
 
 const dsh = new DshManager();
+// Broken-pipe hardening must precede anything that can write to stdio or run
+// the in-process ChisaCode daemon (see docs/superpowers/plans/
+// 2026-08-28-remote-epipe-hardening.md).
+const { installStdioGuard, installUncaughtBrokenPipeGuard } = require('./stdio-guard');
+installStdioGuard({ log: (message) => dsh.log(message, 'app') });
+installUncaughtBrokenPipeGuard({ log: (message) => dsh.log(message, 'app') });
 // Product remote = full ChisaCode daemon + offer v2 (not HTTP RemoteGateway).
 const remote = new ChisaCodeRemote({
   getConfig: loadConfig,
   saveConfig,
-  getHomeDir: () => require('path').join(app.getPath('userData'), 'chisacode-home'),
+  // Desktop-facing override is DSHD_CHISACODE_HOME (debug; packaged builds
+  // need DSHD_ALLOW_ENV_HOME=1). CHISACODE_HOME itself only ever exists
+  // inside the daemon child env bridge.
+  getHomeDir: () => resolveDesktopChisaCodeHome({
+    defaultDir: require('path').join(app.getPath('userData'), 'chisacode-home'),
+    isPackaged: app.isPackaged,
+  }),
   safeStorage,
+  log: (line) => dsh.log(line, 'app'),
   // Kept for any residual shell helpers that still expect a loopback target.
   getTarget: () => {
     if (dsh.state !== 'ready') {

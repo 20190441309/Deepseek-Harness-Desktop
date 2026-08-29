@@ -87,6 +87,7 @@ import type {
 } from "@chisacode/protocol/agent-types";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@chisacode/protocol/messages";
 
+import { safeRandomId } from "./daemon-client-transport-utils.js";
 import { CheckoutCommandClient } from "./daemon-client-checkout-commands.js";
 import { CheckoutSubscriptionClient } from "./daemon-client-checkout-subscriptions.js";
 import { ConfigCommandClient } from "./daemon-client-config-commands.js";
@@ -1811,7 +1812,9 @@ export class DaemonClient {
   // ============================================================================
 
   private createRequestId(requestId?: string): string {
-    return requestId ?? crypto.randomUUID();
+    // safeRandomId: `crypto.randomUUID` does not exist on insecure origins
+    // (http://<lan-ip> pairing pages) — only localhost/https get it.
+    return requestId ?? safeRandomId();
   }
 
   getLastServerInfoMessage(): ServerInfoStatusPayload | null {
