@@ -53,9 +53,13 @@ message instead of half-publishing.
 
 ## What it does
 
-- Sidebar "Bots" tab (`sidebar.nav.tab` slot): 1:1 bot contacts and group
-  rooms, sessions created with `origin: 'dshbot'` (hidden from workspace
-  session lists).
+- **Desktop fork** — Sidebar "Bots" region tab (`sidebar.nav.tab` /
+  `sidebar.page`): 1:1 bot contacts and group rooms, sessions created with
+  `origin: 'dshbot'` (hidden from workspace session lists).
+- **Official `@deepseek-ai/dsh`** — When the host does not declare region-tab
+  seats, the client falls back to a visible `sidebar.footer.action` control
+  that opens the same Bot list in a panel (`data-dshbot-official-trigger`).
+  Requires **Node ≥ 22.15** (`engines.node`).
 - Group rooms follow the Grok talking-circle contract: the room parent never
   calls a chat model; scheduling is peer-equal rounds over
   `ask_participant`, members deliver visible text only through
@@ -71,4 +75,5 @@ message instead of half-publishing.
   `$DSH_HOME/dshbot-memory/`; the profile editor has no memory field.
 
 Protocol symbols live in `lib/group-chat.js`; catalog/scheduling helpers in
-`lib/catalog.js`; host glue in `lib/index.js`.
+`lib/catalog.js`; host glue in `lib/index.js`; host slot probe in
+`lib/sidebar-host.js`.

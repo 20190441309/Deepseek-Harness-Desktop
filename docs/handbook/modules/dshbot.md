@@ -7,7 +7,7 @@
 
 ## 用户路径
 
-- 默认无 Bots 页签。设置 → 插件市场第一方行一键安装，或 `dsh plugin add`（`github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot`）；装后建 Bot、建群（名称 + description + 2–6 成员）、打开 1:1 或群；卸载后页签消失，桌面启动清无主 preset。
+- 默认无 Bots 页签。设置 → 插件市场第一方行一键安装，或 `dsh plugin add`（`github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot`）；桌面 fork 装后侧栏 Bots **页签**；官方原版 dsh 装后侧栏脚 Bots **入口**（footer 面板）。建 Bot、建群、打开 1:1 或群；卸载后入口消失，桌面启动清无主 preset。
 - 契约见 Feature 卡 `dshbot` 与 `TC-EXT-007`。
 
 ## 架构要点
