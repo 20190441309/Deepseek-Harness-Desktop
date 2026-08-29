@@ -4,14 +4,14 @@
 | --- | --- |
 | **id** | `dshbot` |
 | **status** | `standalone`（独立可发布 dsh 插件；桌面默认**不装**、不预置；市场一键安装） |
-| **last verified** | 2026-08-28（独立仓迁移推进 + 官方原版 CLI 全量测试）— 仓主已建 `ChisaAlter/dshbot`（建仓时 main 仅占位 README 提交 `a003247`）；云端在占位提交上合并种子 `9767241a` 得快进提交 `b18d76e6`（树与 `scripts/export-dshbot-standalone.mjs` 最新导出逐字节一致），根布局预检 `node scripts/check-publish.mjs v0.2.0` PASS，`npm install git+file:<合并树>` 实测装出 `dshbot@0.2.0`（peers 全解析、lib/client/presets 齐全）；但 `git push` 到独立仓被 403 挡（云端 `cursor[bot]` integration token 仅辖 monorepo），合并提交已推 monorepo 分支 `cursor/dshbot-migrated-main-8045`，仓主一条命令即可完成迁移（见 Open follow-ups P1）。市场第一方行安装规格随之切 `github:ChisaAlter/dshbot`（**合并门槛：** 本卡该变更须待独立仓 main 含插件内容后再合入 main，否则市场一键安装会装到空仓失败）。此前同日：peerDependencies 放宽为 `^0.1.0-rc.7 \|\| ^0.1.1-rc.1`（旧区间因 semver 预发布规则匹配不到 registry 最新 `0.1.1-rc.*`；实测 npm 现解析 peers 到 `0.1.1-rc.2`）；独立仓树由 `scripts/export-dshbot-standalone.mjs` 确定性导出。同日用 npm 官方 `@deepseek-ai/dsh@0.1.1-rc.2`（隔离 `$DSH_HOME`，非 Desktop 壳）跑通安装/加载/卸载闭环：`#path:` 规格安装 PASS、`dsh web` 服务端挂载与 client.js 注入 PASS、`remove` 干净；**但官方 web UI 下 Bots 页签静默缺席**——`sidebar.nav.tab`/`sidebar.page` 是桌面 fork 槽位（见 Known limitations 与 [docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md)）。**仍阻塞：** 独立仓内容推送需仓主执行，`NPM_TOKEN` secret 仍未配；建群真跑曾 BLOCKED（无 key）。此前 2026-08-27：发布预检 PASS；Grok 对齐补丁；云端 Linux GUI 三相沿用 2026-08-26 PASS。TC-EXT-007 Windows 仍阻塞（见 Open follow-ups） |
+| **last verified** | 2026-08-29 — 官方原版 Bots UI 缺口修复：client 探测宿主是否声明 `sidebar.nav.tab`/`sidebar.page`；有则走桌面页签，无则降级 `sidebar.footer.action` 面板承载 `BotPage`（计划 [../superpowers/plans/2026-08-29-dshbot-official-bots-ui-fallback.md](../superpowers/plans/2026-08-29-dshbot-official-bots-ui-fallback.md)）。`engines.node: >=22.15.0`。门禁含 `dshbot-official-ui-fallback`。此前 2026-08-28：独立仓迁移推进（`cursor/dshbot-migrated-main-8045`，仓主 push 至 `ChisaAlter/dshbot` 仍 403 阻塞）+ 官方 CLI 全量测试发现 Bots 页签缺口（已由本条 footer 降级修复）；市场行已切 `github:ChisaAlter/dshbot`（**仓主须先推独立仓内容**，否则市场一键安装会装到空仓）。TC-EXT-007 Windows 仍阻塞。 |
 
 ## User paths
 
 1. 默认桌面：侧栏**没有**「机器人 / Bots」页签——dshbot 不再随桌面预置。
 2. 产品内安装：设置 → 插件市场列出第一方 `ChisaAlter/dshbot` 行（本地合并，不等外部 registry 收录），一键安装走 curated 目录通道，规格 `github:ChisaAlter/dshbot`（独立仓；旧 `github:ChisaAlter/Deepseek-Harness-Desktop#path:/vendor/dshbot` 已退位，仍只可能出现在 curated 通道）。
-3. CLI 安装（官方插件通道）：上面 `github:ChisaAlter/dshbot` 规格、`dsh plugin --profile web add dshbot@<semver>`（发布后）或旧 `#path:` 规格；插件首载时自装 `dshbot-room` preset 到 `$DSH_HOME/.agent-presets/`，侧栏出现 Bots 页签。
-4. 卸载：`dsh plugin remove dshbot`（或市场「已安装」移除）→ 页签消失；桌面启动清理会移除无主的 preset 目录与旧版桌面预置残留（managed patch 块、`desktop-plugins/dshbot` 拷贝、预置软链）。
+3. CLI 安装（官方插件通道）：上面 `github:ChisaAlter/dshbot` 规格、`dsh plugin --profile web add dshbot@<semver>`（发布后）或旧 `#path:` 规格；插件首载时自装 `dshbot-room` preset。桌面 fork web UI：侧栏出现 Bots **页签**；官方原版 dsh（无 region-tab 槽位）：侧栏脚出现 Bots **入口**（footer.action 面板，同 BotPage）。
+4. 卸载：`dsh plugin remove dshbot`（或市场「已安装」移除）→ 页签/脚入口消失；桌面启动清理会移除无主的 preset 目录与旧版桌面预置残留（managed patch 块、`desktop-plugins/dshbot` 拷贝、预置软链）。官方 CLI 卸载不删 `.agent-presets/dshbot-room`（无桌面 `removeDshbotPreset`）。
 5. 开发：桌面 config 写 `dshbotPreset: true` → 启动时把工作区 `vendor/dshbot` 拷入 profile（失败仅记日志，不阻断启动）。
 
 ## Invariants
@@ -36,13 +36,15 @@
 
 ## Known limitations（诚实边界）
 
-- **官方原版 dsh 下无 Bots 页签 UI（2026-08-28 实测）**：dshbot client 注入的 `sidebar.nav.tab`/`sidebar.page` 是桌面 fork 在 vendored `ui-sidebar` 里新增的槽位（fork 注记 `2026-08-19-sidebar-tabs-dshbot-origin.md`），未上游到 `deepseek-ai/deepseek-harness`、未随官方 npm 包（≤0.1.1-rc.2）发布。官方 CLI 下插件服务端完全正常（bundle 挂载、preset 自装、client.js 注入零报错），但页签静默不渲染；「侧栏出现 Bots 页签」这条 user path 仅在桌面 fork web UI 成立。官方 `dsh plugin remove` 也没有桌面的 `removeDshbotPreset`，卸载后 `.agent-presets/dshbot-room` 留存。证据：[docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md)。
+- ~~**官方原版 dsh 下无 Bots 页签 UI（2026-08-28 实测）**~~：当时页签静默缺席；**已由 2026-08-29 footer.action 降级修复**（见下条）。证据基线：[docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md)。
 - 房间推进仍借 Harness `llm/stream` → 链式 `ask_participant`；对齐 Grok orchestrator 算法，不是 Grok exclusive room job。
 - 无 runner interrupt / redrive；priority 仅队列序。
 - 群没有 Grok exclusive room job，闲置房间收不到 A2A post（工具明说失败，发送方可稍后重试或在自己会话里告知用户）；离线投递仅 1:1 inbox 支持。
 - 成员 turn `toolFilter` 仅 `send_room_message`（Talking Circle）；全工具另卡。
 - 市场行是桌面本地第一方合并，外部 registry 收录后以 registry 行为准；`github:ChisaAlter/dshbot` 规格未钉 SHA 时装独立仓 main 最新（存有 GitHub token 时安装通道自动钉 SHA）。
 - avatar 助手在 lib 与 client 各一份（client 无法 import 服务端 ESM）；单测锁两份 lockstep。
+- **官方原版 Bots 入口是 footer 面板，不是 region 页签**（2026-08-29）：`sidebar.nav.tab`/`sidebar.page` 仍仅桌面 fork 有；官方 npm 走 `sidebar.footer.action` 降级。真 region-tab UX 需上游合入槽位。官方 `dsh plugin remove` 不清理 `.agent-presets/dshbot-room`。
+- 官方 `@deepseek-ai/dsh` 0.1.1-rc.2 需要 Node ≥ 22.15（`createZstdDecompress`）；插件 `engines.node` 已声明。
 
 ## Open follow-ups（未完成 · 已文档落地，不挡本卡合并）
 
@@ -51,11 +53,12 @@
 | Pri | 项 | 验收 |
 | --- | --- | --- |
 | P0 | **安装包实机冒烟** `TC-EXT-007`：对 CI windows 安装包跑「默认无页签 → 市场一键装 → 建群冒烟 → 卸载重启无残留」。**阻塞原因（2026-08-25，2026-08-26 复核仍在）：** 云端 Linux 环境跑不了 Windows NSIS 安装包/GUI（无 wine），且无 `DEEPSEEK_API_KEY` 做建群轮转发言；执行手册已脚本化到「拿到下一 CI artifact 一键执行」：[docs/qa/tc-ext-007-dshbot-install-smoke.md](../qa/tc-ext-007-dshbot-install-smoke.md)。**已缩小的风险面（2026-08-26）：** Linux 源码级 GUI 三相轮换（同规格安装通道 + 同 walk 探针 + 残留抽查）全 PASS：[docs/qa/results/2026-08-26/tc-ext-007-dshbot.md](../qa/results/2026-08-26/tc-ext-007-dshbot.md)；真正未覆盖 = NSIS 安装器 + Windows 打包运行时 + 手工建群 | 汇总表 TC-EXT-007 填 Pass + CI SHA；不得用旧「停放 Pass」冒充 |
-| P1 | **独立仓拆分 + npm 发布** `ChisaAlter/dshbot` / `dshbot@<semver>`：拆分交付件已就绪（2026-08-28）——`scripts/export-dshbot-standalone.mjs` 确定性导出独立仓树（根布局、`repository`/`homepage` 指新仓、`v<semver>` tag 触发独立 `publish.yml`、根布局预检 `check-publish.mjs` 含 repository guard 防错仓发布），种子分支 `cursor/dshbot-standalone-seed-f2c5`（单干净提交）已推 monorepo 且 `npm install github:…#<seed>` 实测装通；monorepo 内 tag `dshbot-v<semver>` 链路（`publish-dshbot.yml` + `check-dshbot-publish.mjs`）保留可用。2026-08-28 迁移推进：仓主已建 `ChisaAlter/dshbot`；云端把「占位 README + 种子」快进合并提交推到 monorepo 分支 `cursor/dshbot-migrated-main-8045`（树=最新导出，preflight PASS、本地 git 安装实测装出 `dshbot@0.2.0`），但推独立仓被 403 挡（integration token 仅辖 monorepo）。**剩余缺口（都需要仓主）：** ① 一条命令完成内容迁移（快进、不覆盖占位提交）：`git clone --no-checkout --branch cursor/dshbot-migrated-main-8045 https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git /tmp/dshbot-mig && git -C /tmp/dshbot-mig push https://github.com/ChisaAlter/dshbot.git HEAD:main`；② 在独立仓配 `NPM_TOKEN` secret 后推 `v0.2.0` tag 即发（monorepo `dshbot-v0.2.0` 链路保留可用） | 首个 tag 发布成功；README / 发布说明写清 `dsh plugin add dshbot@x.y.z` 规格；第一方行已切 `github:ChisaAlter/dshbot`（本变更；**合并须晚于 ①**，registry 收录后让位） |
-| P1 | **官方原版 Bots UI 缺口**（2026-08-28 发现）：`sidebar.nav.tab`/`sidebar.page` 槽位未上游，官方 dsh（≤0.1.1-rc.2）装 dshbot 后页签静默缺席。两条路线择一：把槽位 PR 到 `deepseek-ai/deepseek-harness`，或 client 在槽位缺席时降级走官方已有槽位入口 | 官方 npm CLI 干净 profile 装 dshbot 后 Bots 入口可见并截图归档；[docs/qa/results/2026-08-28/dshbot-official-cli.md](../qa/results/2026-08-28/dshbot-official-cli.md) 的 B5-FAIL 翻绿 |
+| P1 | **独立仓拆分 + npm 发布** `ChisaAlter/dshbot` / `dshbot@<semver>`：拆分交付件已就绪（2026-08-28）——`scripts/export-dshbot-standalone.mjs` 确定性导出；种子分支 `cursor/dshbot-standalone-seed-f2c5` 已推；迁移提交在 `cursor/dshbot-migrated-main-8045`。**剩余缺口（都需要仓主）：** ① `git clone --no-checkout --branch cursor/dshbot-migrated-main-8045 https://github.com/ChisaAlter/Deepseek-Harness-Desktop.git /tmp/dshbot-mig && git -C /tmp/dshbot-mig push https://github.com/ChisaAlter/dshbot.git HEAD:main`；② 独立仓配 `NPM_TOKEN` 后推 `v0.2.0` | 首个 tag 发布成功；第一方行已切 `github:ChisaAlter/dshbot`（**须晚于 ①**） |
+| P1 | ~~**官方原版 Bots UI 缺口**~~ | **已落地（2026-08-29）：** client 槽位探测 + footer.action 降级；见计划与 QA `docs/qa/results/2026-08-29/`。上游合入 region-tab 槽位仍为可选增强 |
 | P1 | ~~**设计 spec 废弃段**~~ | **已落地（2026-08-25）：** spec 文首与决定 2 标 Deprecated；以 Grok-aligned 段与本卡为准 |
 | P2 | **成员全工具房间**：解 `toolFilter` 限制时同步改 `buildGroupMemberSystemPrompt`；另开 feature 卡，本史诗不做 | 新卡 + 单测锁 prompt/toolFilter 同口径 |
 | P2 | **Grok 未搬能力**（明确不做直至新卡）：exclusive room job / runner interrupt / Shared Room / Routines / 云电脑 / 富 SendMessage / 真 multi-lane interrupt | 新史诗卡批准前禁止静默实现 |
+| P2 | **上游 region-tab 槽位**：把 `sidebar.nav.tab`/`sidebar.page` 贡献到 `deepseek-ai/deepseek-harness`，官方也可走真页签 | 上游 PR 合并 + 官方 npm 发版后可删 footer 降级（或保留作双路径） |
 
 ## Allowed touch
 
@@ -68,13 +71,14 @@
 - 独立仓拆分：`scripts/export-dshbot-standalone.mjs`、`scripts/dshbot-standalone/**`（2026-08-28 扩围：独立仓交付件；种子分支 `cursor/dshbot-standalone-seed-f2c5`）
 - 本卡、`docs/handbook/modules/dshbot.md`、`docs/qa` 的 `TC-EXT-007`（含执行手册 `tc-ext-007-dshbot-install-smoke.md`）
 - 协议 spec：`docs/superpowers/specs/2026-08-19-dshbot-design.md`
+- 官方 UI 降级计划：`docs/superpowers/plans/2026-08-29-dshbot-official-bots-ui-fallback.md`
 - standalone supersession 标记：`vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-08-19-sidebar-tabs-dshbot-origin{,.zh}.md` 及 `.i18n.yaml`
 
 ## Gates
 
 | Kind | What |
 | --- | --- |
-| Automated | `dshbot-preset`（ensure/remove 语义 + pnpm 软链保护）、`dshbot-room-preset`（自装）、`dshbot-market-row`（第一方目录行 + curated `#path:` 安装 + Host 通道拒绝）、`dshbot-runtime-resilience`（epoch 重启 / inbox at-least-once / ack 幂等）、`dshbot-publish-manifest`（发布 manifest 完整性 + 预检脚本 tag 校验 + 独立仓导出树自预检）、`harness-controller`（清理/开发预置/skip）、`release-ui-walk` `plugin.dshbot.tabAbsent`（未装则缺席、已装则允许）；catalog/group 单测锁失败即 pass、可见投递计数（pass/悬挂不耗额度）、双投递独立条目、群投递成员鉴权、闲置群诚实失败、硬顶、2–6 成员与 UI 清理 |
+| Automated | `dshbot-preset`（ensure/remove 语义 + pnpm 软链保护）、`dshbot-room-preset`（自装）、`dshbot-market-row`（第一方目录行 + curated `#path:` 安装 + Host 通道拒绝）、`dshbot-runtime-resilience`（epoch 重启 / inbox at-least-once / ack 幂等）、`dshbot-publish-manifest`（发布 manifest 完整性 + 预检脚本 tag 校验 + 独立仓导出树自预检）、`dshbot-official-ui-fallback`（宿主槽位探测 + client 双路径契约）、`harness-controller`（清理/开发预置/skip）、`release-ui-walk` `plugin.dshbot.tabAbsent`（未装则缺席、已装则允许）；catalog/group 单测锁失败即 pass、可见投递计数（pass/悬挂不耗额度）、双投递独立条目、群投递成员鉴权、闲置群诚实失败、硬顶、2–6 成员与 UI 清理 |
 | Manual | 未装：无 Bots 页签、启动正常；市场一键或 `dsh plugin add` 安装后：页签出现、可建群；卸载后重启：页签消失、无残留 |
 
 ## Sources
