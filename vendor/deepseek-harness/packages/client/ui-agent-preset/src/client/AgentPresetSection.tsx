@@ -248,7 +248,7 @@ export function AgentPresetSection(props: AgentPresetSectionProps): ReactNode {
           checked={state.showPicker}
           label={t('showPicker')}
           disabled={state.status !== 'ready' || state.policySaving}
-          onChange={(next) => { void props.setPickerVisible(next) }}
+          onChange={(next: boolean) => { void props.setPickerVisible(next) }}
         />
       </div>
       {state.error === null ? null : <p className={css.error} role="alert">{state.error}</p>}

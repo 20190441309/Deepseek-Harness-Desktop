@@ -62,7 +62,7 @@ async function client(mock: RemoteMock, start: () => Promise<TestClient>, hasDoc
 }
 
 /** This plugin's rows in a seat: the list seats also carry feature-owned rows (the product's other sections and actions). */
-function ownEntries(c: TestClient, name: (typeof SEATS)[number][0]) {
+function ownEntries(c: TestClient, name: (typeof SEATS)[number][0] | 'settings.general.item') {
   return c.ctx.slots.entries(name).filter(entry => entry.locale === NS)
 }
 

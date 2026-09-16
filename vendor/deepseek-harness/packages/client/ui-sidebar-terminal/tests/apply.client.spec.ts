@@ -6,6 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WebTerminalId, WebTerminalInfo } from '@deepseek-ai/dsh-api-terminal-controller/types'
+import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { SidebarRightCloseHandler } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { apply, inject } from '../src/client/index.ts'
@@ -21,6 +22,49 @@ import { en, zh } from '../src/client/locales.ts'
 vi.mock('@xterm/xterm', () => ({ Terminal: vi.fn() }))
 
 const terminalInfo = (id: string): WebTerminalInfo => ({ id: id as WebTerminalId, title: id, shell: { path: '/bin/sh', name: 'sh', args: ['-i'] }, cwd: '/workspace', cols: 80, rows: 24, state: 'running', exitCode: null })
+
+function themeSnapshot(): ThemeSnapshot {
+  const active = { id: 'light', colorScheme: 'light' as const, tokens: {} }
+  return {
+    preference: 'light',
+    fontSize: 14,
+    active,
+    themes: [active],
+    families: [],
+    activeLightThemeId: 'deepseek',
+    activeDarkThemeId: 'deepseek',
+    customThemes: [],
+    glassOpacity: 80,
+    transparentTheme: false,
+    sidebarMaskHidden: false,
+    wallpaperImage: '',
+    wallpaperBlur: 0,
+    wallpaperPixelate: 0,
+    wallpaperBingEnabled: false,
+    wallpaperCatalogUrls: [],
+    wallpaperSources: [],
+    wallpaperFavorites: [],
+    backgroundEffect: 'none',
+    backgroundEffectColors: [],
+    backgroundEffectSpeed: 100,
+    backgroundEffectCount: 5,
+    backgroundEffectPreset: 'default',
+    backgroundEffectVariant: 'orbs',
+    cursorEffectEnabled: false,
+    cursorEffect: 'trail',
+    cursorEffectColors: [],
+    cursorEffectSpeed: 100,
+    cursorEffectSize: 100,
+    cursorEffectPreset: 'default',
+    fontFamilySans: '',
+    fontFamilyCode: '',
+    fontSizeInterface: 16,
+    fontSizeCode: 13,
+    fontFamilyComposer: '',
+    fontFamilyTerminal: '',
+    revision: 0,
+  }
+}
 
 async function mountPlugin() {
   const ctx = new Context()
@@ -58,7 +102,7 @@ async function mountPlugin() {
     bind: () => (key: string) => key,
     register: (name: string, values: unknown) => { dictionaries.set(name, values); return () => { dictionaries.delete(name) } },
   } as never)
-  const theme = { preference: 'light' as const, fontSize: 14, active: { id: 'light', colorScheme: 'light' as const, tokens: {} }, themes: [], revision: 0 }
+  const theme = themeSnapshot()
   ctx.provide('theme', { getTheme: () => theme } as never)
   const fiber = await ctx.plugin({ inject, apply })
   return {

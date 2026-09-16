@@ -69,10 +69,53 @@ const titleSurfaces = [
     wrap: (title: ReactNode) => <header data-dockkit-float-grip="pane"><div data-dockkit-float-title><span>{title}</span></div></header>,
   },
 ]
+function themeSnapshot(): ThemeSnapshot {
+  const active = { id: 'light', colorScheme: 'light' as const, tokens: {} }
+  return {
+    preference: 'light',
+    fontSize: 14,
+    active,
+    themes: [active],
+    families: [],
+    activeLightThemeId: 'deepseek',
+    activeDarkThemeId: 'deepseek',
+    customThemes: [],
+    glassOpacity: 80,
+    transparentTheme: false,
+    sidebarMaskHidden: false,
+    wallpaperImage: '',
+    wallpaperBlur: 0,
+    wallpaperPixelate: 0,
+    wallpaperBingEnabled: false,
+    wallpaperCatalogUrls: [],
+    wallpaperSources: [],
+    wallpaperFavorites: [],
+    backgroundEffect: 'none',
+    backgroundEffectColors: [],
+    backgroundEffectSpeed: 100,
+    backgroundEffectCount: 5,
+    backgroundEffectPreset: 'default',
+    backgroundEffectVariant: 'orbs',
+    cursorEffectEnabled: false,
+    cursorEffect: 'trail',
+    cursorEffectColors: [],
+    cursorEffectSpeed: 100,
+    cursorEffectSize: 100,
+    cursorEffectPreset: 'default',
+    fontFamilySans: '',
+    fontFamilyCode: '',
+    fontSizeInterface: 16,
+    fontSizeCode: 13,
+    fontFamilyComposer: '',
+    fontFamilyTerminal: '',
+    revision: 0,
+  }
+}
+
 function mount(initial: TerminalViewState | undefined = idle, dictionary = en) {
   let state: TerminalViewState | undefined = initial
   let visible = true
-  let theme: ThemeSnapshot = { preference: 'light', fontSize: 14, active: { id: 'light', colorScheme: 'light', tokens: {} }, themes: [], revision: 0 }
+  let theme: ThemeSnapshot = themeSnapshot()
   const detach = vi.fn()
   const model = {
     mount: vi.fn(() => detach), refresh: vi.fn(async () => {}),

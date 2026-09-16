@@ -99,7 +99,7 @@ const FORK_FILE_MARKERS = [
   { file: 'packages/client/ui-workspace/src/client/WorkspacePicker.tsx', includes: ['NO_DIRECTORY', 'onPickNoDirectory'] },
   { file: 'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx', includes: ['TasksSectionHeader', 'connectNoDirectory', 'GroupSessionRun'] },
   { file: 'packages/client/ui-workspace/src/client/locales.ts', includes: ['menu.noDirectory'], excludes: ['Ungrouped'] },
-  { file: 'packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx', includes: ['selectNoDirectory', 'noDirectorySession'] },
+  { file: 'packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx', includes: ['selectNoDirectory', 'noDirectorySession'] },
   { file: 'packages/client/ui-conversation/src/client/apply.ts', includes: ['selectNoDirectory', 'connectNoDirectory'] },
   { file: 'packages/client/ui-conversation/src/client/locales.ts', includes: ['hero.noDirectory'] },
   // Desktop launcher recovery flag on the upstream CLI args parser.
@@ -146,7 +146,8 @@ const FORK_FILE_MARKERS = [
   { file: 'packages/client/ui-conversation/src/client/input/editor/typing-fx.ts', includes: ['typingFxInsertedText', 'MAX_TYPING_FX_ECHOES'] },
   { file: 'packages/client/ui-conversation/src/client/TypingFxLayer.tsx', includes: ['data-typing-fx-echo', 'registerUpdateListener'] },
   { file: 'packages/client/ui-conversation/src/client/TypingFxLayer.module.css', includes: ['dsh-typing-fx-drop', 'prefers-reduced-motion'] },
-  { file: 'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx', includes: ['TypingFxLayer', 'data-typing-fx-caret'] },
+  { file: 'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx', includes: ['TypingFxLayer'] },
+  { file: 'packages/client/ui-conversation/src/client/input/editor/DraftEditor.tsx', includes: ['data-typing-fx-caret'] },
   { file: 'packages/client/ui-conversation/src/client/skeleton/InputBar.module.css', includes: ['caret-color: transparent'] },
   { file: 'packages/client/ui-conversation/src/client/settings/TypingFxRow.tsx', includes: ["'settings.appearance.item'", 'TypingFxModal'] },
   { file: 'packages/client/ui-conversation/src/client/settings/TypingFxModal.tsx', includes: ["'dsh-typing-fx'", 'data-typing-fx-root'] },

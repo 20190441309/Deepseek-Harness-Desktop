@@ -22,9 +22,9 @@ export interface DraftEditorProps {
   readonly hint: string | null
   readonly showPlaceholder: boolean
   /** Extra CSS custom properties on the editable (e.g. typing-fx colors). */
-  readonly inputStyle?: CSSProperties
+  readonly inputStyle?: CSSProperties | undefined
   /** Custom typing-fx caret kind; the attribute hides the native caret. */
-  readonly typingFxCaret?: string
+  readonly typingFxCaret?: string | undefined
   /** Extra overlay layers rendered inside the grow box beside the chip portals. */
   readonly layers?: ReactNode
 }

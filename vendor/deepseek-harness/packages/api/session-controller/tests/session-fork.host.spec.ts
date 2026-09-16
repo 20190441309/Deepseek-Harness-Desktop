@@ -93,7 +93,7 @@ describe('sessions.fork', () => {
   it('releases plugin presentation on a user fork without changing its source', async () => {
     const ctx = await composed()
     try {
-      const source = liveAgent(ctx, 'plugin-source', 0)
+      const source = await liveAgent(ctx, 'plugin-source', 0)
       const presentation = { owner: 'plugin:bot', title: 'Bot' }
       source.append('session/presentation', presentation)
       source.append('turn/start', { turn: 1 })
@@ -387,7 +387,7 @@ describe('sessions.fork', () => {
 
   it('seeds an empty child when beforeSeq is the first user message', async () => {
     const ctx = await composed()
-    const source = liveAgent(ctx, 'session-before-first', 2)
+    const source = await liveAgent(ctx, 'session-before-first', 2)
     expect(source.snapshotEvents().find(event => event.type === 'user/message')?.seq).toBe(1)
     const response = await remote(ctx).fork(request({ sessionId: source.id, beforeSeq: 1 }))
     expect(response.ok).toBe(true)
@@ -401,7 +401,7 @@ describe('sessions.fork', () => {
 
   it('keeps the first completed turn when beforeSeq is the second user message', async () => {
     const ctx = await composed()
-    const source = liveAgent(ctx, 'session-before-second', 2)
+    const source = await liveAgent(ctx, 'session-before-second', 2)
     const secondUser = source.snapshotEvents().filter(event => event.type === 'user/message')[1]
     expect(secondUser?.seq).toBe(4)
     const response = await remote(ctx).fork(request({ sessionId: source.id, beforeSeq: 4 }))

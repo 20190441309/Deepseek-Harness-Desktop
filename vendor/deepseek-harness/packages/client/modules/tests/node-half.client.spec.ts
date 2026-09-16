@@ -809,7 +809,7 @@ describe('client bundle activation', () => {
       },
     } as unknown as ServerResponse
 
-    await route.handler({
+    await (await route).handler({
       method: 'GET',
       url: `/plugins/${packageName}/assets/ghostty-vt.wasm`,
     } as IncomingMessage, response)
@@ -822,7 +822,7 @@ describe('client bundle activation', () => {
     expect(body.equals(wasm)).toBe(true)
 
     writeFileSync(join(dirname(clientPath), 'assets', 'SymbolsNerdFontMono-Regular.woff2'), Buffer.from('font'))
-    await route.handler({
+    await (await route).handler({
       method: 'GET',
       url: `/plugins/${packageName}/assets/SymbolsNerdFontMono-Regular.woff2`,
     } as IncomingMessage, response)
@@ -832,20 +832,20 @@ describe('client bundle activation', () => {
       'cache-control': 'no-cache',
     })
 
-    await route.handler({
+    await (await route).handler({
       method: 'GET',
       url: `/plugins/${packageName}/assets/../secret.wasm`,
     } as IncomingMessage, response)
     expect(status).toBe(404)
 
-    await route.handler({
+    await (await route).handler({
       method: 'GET',
       url: `/plugins/${packageName}/assets/missing.wasm`,
     } as IncomingMessage, response)
     expect(status).toBe(404)
 
     writeFileSync(join(dirname(clientPath), 'assets', 'notes.txt'), 'note')
-    await route.handler({
+    await (await route).handler({
       method: 'GET',
       url: `/plugins/${packageName}/assets/notes.txt`,
     } as IncomingMessage, response)

@@ -191,7 +191,7 @@ describe('composer edit session', () => {
     shell.beginEdit(spec)
     shell.setDraft('/compact')
     const accepted = shell.beginCommand(
-      { token: '/compact ', submit: vi.fn() },
+      { name: 'compact', token: '/compact ', submit: vi.fn() },
       { start: 0, end: 8, draftRev: shell.snapshot.draftRev },
     )
     expect(accepted).toBe(false)
