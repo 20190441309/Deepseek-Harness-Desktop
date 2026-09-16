@@ -16,6 +16,7 @@ import {
   findTask,
   isTerminalTaskStatus,
 } from './tasks.js';
+import { pushWorkNote } from './memory-review.js';
 
 const states = new WeakMap();
 const RELAY_SOURCE = { kind: 'plugin', plugin: 'dshbot', form: 'relay' };
@@ -146,6 +147,11 @@ async function settleTurn(scope, ctx, binding, reason, now) {
 
   for (const taskId of settled) {
     const task = findTask(final.tasks, taskId);
+    if (task && isTerminalTaskStatus(task.status)) {
+      const label = String(task.task || task.id).replace(/\s+/g, ' ').slice(0, 120);
+      const detail = String(task.error || task.resultSummary || '').slice(0, 200);
+      pushWorkNote(binding.botId, `[work] task "${label}": ${task.status}${detail ? ` ${detail}` : ''}`);
+    }
     const lastEvent = task?.events?.at(-1);
     if (task?.status !== TASK_STATUS.FAILED
       || task.error !== detail

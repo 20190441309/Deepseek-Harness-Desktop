@@ -83,6 +83,9 @@ export interface PermissionSelectProps {
   t: ComposerBarProps['t']
 }
 
+/** Bound for an optimistic pick whose confirming projection frame never arrives. */
+const PICK_SETTLE_TIMEOUT_MS = 5_000
+
 export function PermissionSelect({ value, locked, command, t }: PermissionSelectProps) {
   const [pick, setPick] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -95,6 +98,21 @@ export function PermissionSelect({ value, locked, command, t }: PermissionSelect
     setAcknowledged(false)
     setConfirmation(null)
   }, [locked, value])
+
+  // The command RPC and the control-stream projection frame travel on
+  // different transports: clearing the pick on admission would flash the
+  // pre-switch value. A pick holds until the projection lands on it,
+  // reverts at once when the command is rejected, and falls back to the
+  // timeout when no frame ever arrives.
+  useEffect(() => {
+    if (pick === null) return
+    if (value?.currentValue === pick) {
+      setPick(null)
+      return
+    }
+    const timer = setTimeout(() => { setPick(null) }, PICK_SETTLE_TIMEOUT_MS)
+    return () => { clearTimeout(timer) }
+  }, [pick, value])
 
   if (value === undefined) return null
 
@@ -120,7 +138,11 @@ export function PermissionSelect({ value, locked, command, t }: PermissionSelect
     setPick(id)
     void command(`/permission ${id}`)
       .catch(() => false)
-      .then(() => { setPick(null) })
+      .then((ok) => {
+        // A rejected or unmatched admission publishes no knob events, so no
+        // frame will land on the pick — revert immediately.
+        if (!ok) setPick(null)
+      })
   }
 
   const choose = (id: string): void => {

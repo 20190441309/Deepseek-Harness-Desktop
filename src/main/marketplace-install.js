@@ -334,6 +334,18 @@ function hasLoadableEntry(packageName) {
   return isExistingFile(resolveExportFile(pkg, dir, '.'));
 }
 
+/**
+ * Whether the installed package manifest carries the name/version pair the
+ * request-time plugin inventory reports. A mounted package whose manifest
+ * lacks either throws during request preparation and fails every official
+ * DeepSeek request, so install treats it as unusable.
+ */
+function hasInventoryIdentity(packageName) {
+  const pkg = readJsonFile(path.join(packageInstallDir(packageName), 'package.json'));
+  return Boolean(pkg) && typeof pkg.name === 'string' && pkg.name !== ''
+    && typeof pkg.version === 'string' && pkg.version !== '';
+}
+
 function pluginNames(installed) {
   return (installed?.plugins || []).map((row) => row.name).filter(Boolean);
 }
@@ -402,6 +414,12 @@ function resolveInstalledNames(spec, before, after, beforeModules, afterModules)
   }
   if (isValidPackageName(spec)) {
     return [spec];
+  }
+  // A reinstall adds no new name; a `name@semver` registry spec can then only
+  // be matched by its parsed name, never by github identity.
+  const registry = parseImportRegistrySpec(spec);
+  if (registry && pluginNames(after).includes(registry.name)) {
+    return [registry.name];
   }
   return (after.plugins || [])
     .filter((row) => specMatchesInstall(row.spec, spec))
@@ -516,6 +534,79 @@ function loadableInstallFailure(added, error) {
   };
 }
 
+/**
+ * Validate what a successful `plugin add` produced: every resolved package
+ * must be loadable and carry the name/version the request-time plugin
+ * inventory reports. A missing manifest pair throws during request
+ * preparation and fails every official DeepSeek request, so the install is
+ * refused. On failure the added packages and any newly added dependencies
+ * are removed before the failure is returned.
+ * @param {object} added - `addPluginSpec` success result.
+ * @param {object} before - `listInstalledPlugins()` snapshot from before add.
+ * @param {string[]} beforeModules - `listNodeModuleNames()` snapshot.
+ * @param {Set<string>} beforeDependencies - `listProfileDependencyNames()` snapshot.
+ * @param {Function} runner - `pluginCommand(options)` runner.
+ * @param {Function} [onProgress]
+ * @returns {Promise<{ names: string[], remove: () => Promise<void>, failure: object | null }>}
+ */
+async function validateAddedPlugins(added, before, beforeModules, beforeDependencies, runner, onProgress) {
+  const names = resolveInstalledNames(
+    added.spec,
+    before,
+    added.installed,
+    beforeModules,
+    listNodeModuleNames(),
+  );
+  const rollbackNames = [...new Set([
+    ...names,
+    ...listProfileDependencyNames().filter((name) => !beforeDependencies.has(name)),
+  ])];
+  const remove = async () => {
+    for (const name of rollbackNames) {
+      if (isValidPackageName(name)) {
+        await runner(['remove', name], onProgress);
+      }
+    }
+  };
+  // A successful add with no discoverable package is still a failed install.
+  if (names.length === 0 || !names.every(hasLoadableEntry)) {
+    await remove();
+    return { names: [], remove, failure: loadableInstallFailure(added) };
+  }
+  const unidentifiable = names.find((name) => !hasInventoryIdentity(name));
+  if (unidentifiable !== undefined) {
+    await remove();
+    return {
+      names: [],
+      remove,
+      failure: loadableInstallFailure(added, `插件包 ${unidentifiable} 缺少 name 或 version 声明`),
+    };
+  }
+  return { names, remove, failure: null };
+}
+
+/**
+ * Run `plugin add` and validate what it produced. `failure` is the `added`
+ * result itself when the CLI failed, so callers can return it directly.
+ * @param {string} spec
+ * @param {object} options - forwarded to `addPluginSpec` / `pluginCommand`.
+ * @returns {Promise<{ added: object, names: string[], remove: () => Promise<void>, failure: object | null }>}
+ */
+async function addAndValidate(spec, options) {
+  const before = listInstalledPlugins();
+  const beforeModules = listNodeModuleNames();
+  const beforeDependencies = new Set(listProfileDependencyNames());
+  const added = await addPluginSpec(spec, options);
+  if (!added.ok) {
+    return { added, names: [], remove: async () => {}, failure: added };
+  }
+  const checked = await validateAddedPlugins(
+    added, before, beforeModules, beforeDependencies,
+    pluginCommand(options), options.onProgress,
+  );
+  return { added, ...checked };
+}
+
 async function pinInstallSpec(spec, token) {
   if (!token) {
     return spec;
@@ -579,7 +670,8 @@ async function installPlugin(spec, options = {}) {
     if (isDroppedInstallSpec(name)) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
-    return addPluginSpec(name, options);
+    const { added, failure } = await addAndValidate(name, options);
+    return failure || added;
   });
 }
 
@@ -631,7 +723,8 @@ async function installImportPlugin(spec, options = {}) {
     if (dropped) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
-    return addPluginSpec(value, options);
+    const { added, failure } = await addAndValidate(value, options);
+    return failure || added;
   });
 }
 
@@ -683,47 +776,17 @@ async function installMarketplacePlugin(id, options = {}) {
       return { ok: false, error: '该插件已退役，不再提供安装' };
     }
     const before = listInstalledPlugins();
-    const beforeModules = listNodeModuleNames();
-    const beforeDependencies = new Set(listProfileDependencyNames());
-    const added = await addPluginSpec(spec, options);
-    if (!added.ok) {
-      return added;
-    }
-    const names = resolveInstalledNames(
-      added.spec,
-      before,
-      added.installed,
-      beforeModules,
-      listNodeModuleNames(),
-    );
-    const dependencyNames = listProfileDependencyNames()
-      .filter((name) => !beforeDependencies.has(name));
-    const rollbackNames = [...new Set([...names, ...dependencyNames])];
-    const runner = pluginCommand(options);
-    async function removeNames() {
-      for (const name of rollbackNames) {
-        if (isValidPackageName(name)) {
-          await runner(['remove', name], options.onProgress);
-        }
-      }
-    }
-    if (rollbackNames.length === 0) {
-      // A successful add with no discoverable package is still a failed
-      // install. Remove the profile mutation before returning the error.
-      await removeNames();
-      return loadableInstallFailure(added);
+    const { added, names, remove, failure } = await addAndValidate(spec, options);
+    if (failure !== null) {
+      return failure;
     }
     const clashes = names.flatMap((name) => conflictingEntryIds(name, pluginNames(before)));
     if (clashes.length > 0) {
-      await removeNames();
+      await remove();
       return loadableInstallFailure(added, `插件会与已装包冲突（loader id: ${clashes[0].id}）`);
     }
-    if (names.every(hasLoadableEntry)) {
-      invalidateMarketplaceUpdates();
-      return added;
-    }
-    await removeNames();
-    return loadableInstallFailure(added);
+    invalidateMarketplaceUpdates();
+    return added;
   });
 }
 
@@ -841,6 +904,9 @@ async function updateMarketplacePluginLocked(id, options = {}) {
     }
     if (!hasLoadableEntry(status.packageName)) {
       return failedMarketplaceUpdate(added, snapshot, options, '更新后的插件缺少可加载入口');
+    }
+    if (!hasInventoryIdentity(status.packageName)) {
+      return failedMarketplaceUpdate(added, snapshot, options, '更新后的插件缺少 name 或 version 声明');
     }
     const clashes = conflictingEntryIds(status.packageName, pluginNames(before));
     if (clashes.length > 0) {

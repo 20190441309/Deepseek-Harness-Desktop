@@ -231,6 +231,53 @@ describe('ModelSelect reasoning effort', () => {
     })
   })
 
+  it('closes the card on the pick and replays the last open frame through the exit', async () => {
+    const groups = [{
+      id: 'deepseek-official',
+      name: 'DeepSeek',
+      models: [
+        { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
+        { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+      ],
+    }]
+    const directory = createSnapshotStore<ModelDirectoryState>(state({ groups }))
+    let release: (value: boolean) => void = () => {}
+    const select = vi.fn((_selection: ModelSelection) => {
+      // The real directory publishes 'selecting' synchronously, then settles.
+      directory.set(state({ groups, status: 'selecting' }))
+      return new Promise<boolean>((resolve) => { release = resolve })
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }))
+
+    expect(select).toHaveBeenCalledExactlyOnceWith({ provider: 'deepseek-official', model: 'deepseek-v4-pro' })
+    // The card is already exiting even though the settle is still in flight,
+    // and the frozen frame keeps the 'selecting' publish from disabling the
+    // rows or moving the check mid-fade.
+    const menu = screen.getByRole('menu', { hidden: true })
+    expect(menu.getAttribute('data-state')).toBe('closed')
+    const picked = screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/, hidden: true })
+    expect(picked.hasAttribute('disabled')).toBe(false)
+    expect(picked.getAttribute('aria-checked')).toBe('false')
+    const current = screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Flash/, hidden: true })
+    expect(current.getAttribute('aria-checked')).toBe('true')
+
+    await act(async () => { release(true) })
+    await waitFor(() => {
+      expect(screen.queryByRole('menu', { hidden: true })).toBeNull()
+    })
+  })
+
   it('announces a rejected selection as a transient toast and keeps the in-menu strip for loads', async () => {
     const groups = [{
       id: 'deepseek-official',

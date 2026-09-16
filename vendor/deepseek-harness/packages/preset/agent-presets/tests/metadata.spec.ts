@@ -85,6 +85,15 @@ describe('reading display metadata', () => {
     expect(await readPresetMetadata(await presetDir('order: .inf\n'))).toEqual({})
   })
 
+  it('reads a hidden flag only from the literal true', async () => {
+    // Plugin-provisioned presets declare `hidden` to stay off the roster a
+    // client reads while still composing sessions; anything weaker stays
+    // visible rather than a mistyped flag silently removing a preset.
+    expect(await readPresetMetadata(await presetDir('hidden: true\n'))).toEqual({ hidden: true })
+    expect(await readPresetMetadata(await presetDir('hidden: false\n'))).toEqual({})
+    expect(await readPresetMetadata(await presetDir('hidden: "yes"\n'))).toEqual({})
+  })
+
   it('cannot carry identity or trust', async () => {
     const dir = await presetDir('name: mine\nid: standard\ntrust: system\n')
 
@@ -112,10 +121,17 @@ describe('rendering display metadata', () => {
     expect(renderPresetMetadata({ description: '只做检索。' })).toBe('description: 只做检索。\n')
   })
 
+  it('stores a hidden flag', () => {
+    expect(renderPresetMetadata({ hidden: true })).toBe('hidden: true\n')
+    expect(renderPresetMetadata({ name: '内部', hidden: true })).toBe('name: 内部\nhidden: true\n')
+  })
+
   it('renders nothing when there is nothing to store', () => {
     // Clearing both fields removes the file; an empty document would read as
     // an intentional blank name.
     expect(renderPresetMetadata({})).toBeUndefined()
     expect(renderPresetMetadata({ name: '  ', description: '' })).toBeUndefined()
+    // A `hidden` that is not literally true stores nothing either.
+    expect(renderPresetMetadata({ hidden: false })).toBeUndefined()
   })
 })

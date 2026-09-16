@@ -111,6 +111,49 @@ test('ensureDesktopInstallPlugin copies the Host plugin and keeps cordis.patch.y
   }
 });
 
+test('ensureDesktopInstallPlugin writes a manifest the request-time inventory can resolve', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
+  const source = sourceDir();
+  try {
+    const profileDir = path.join(home, 'profiles', 'web');
+    fs.mkdirSync(profileDir, { recursive: true });
+    // The profile marker declares a name but no version. Without a
+    // package.json beside the mounted .mjs, the harness inventory's
+    // nearest-manifest walk reaches this file and throws, failing every
+    // DeepSeek request.
+    fs.writeFileSync(
+      path.join(profileDir, 'package.json'),
+      '{"name":"dsh-profile-web","private":true}\n',
+      'utf8',
+    );
+    const result = ensureDesktopInstallPlugin({ sourceDir: source, profileDir });
+    assert.equal(result.ok, true);
+    const entry = path.join(
+      profileDir, 'desktop-plugins', 'install-dsh-plugin', 'install-dsh-plugin.mjs',
+    );
+    // Same walk as the harness inventory: nearest package.json climbing from
+    // the module's directory must be the plugin's own manifest.
+    let dir = path.dirname(entry);
+    let manifest;
+    while (manifest === undefined) {
+      const candidate = path.join(dir, 'package.json');
+      if (fs.existsSync(candidate)) manifest = candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    assert.equal(manifest, path.join(path.dirname(entry), 'package.json'));
+    const parsed = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+    assert.equal(typeof parsed.name, 'string');
+    assert.ok(parsed.name.length > 0);
+    assert.equal(typeof parsed.version, 'string');
+    assert.ok(parsed.version.length > 0);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
 test('ensureDesktopInstallPlugin writes one overlay holding only the install insert', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-home-'));
   const source = sourceDir();

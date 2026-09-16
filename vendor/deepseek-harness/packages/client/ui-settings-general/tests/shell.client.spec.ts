@@ -30,12 +30,17 @@ async function bench() {
     subscribe: () => () => {},
   }
   ctx.provide('connection', { state: connectionState, reconnect } as never)
+  const session = {
+    modelCatalog: async () => ({ ok: true, value: { groups: [] } }),
+  }
   ctx.provide('remote', {
     $on: () => () => {},
     $host: { home: undefined, isLoopback: false },
     settings,
+    session,
   } as never)
   ctx.provide('remote.settings', settings as never)
+  ctx.provide('remote.session', session as never)
   await ctx.plugin({ inject: [...settingsInject], apply: settingsApply }).await()
   return { ctx, slots: ctx.get('slots') as SlotRegistry, connectionState, reconnect }
 }
@@ -65,7 +70,8 @@ const CHILD_SPECS = {
 describe('ui-settings apply', () => {
   it('declares only the slot registry (a pure composition face, no locale)', () => {
     expect(inject).toEqual([
-      'slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope',
+      'slots', 'locale', 'connection', 'remote', 'remote.settings', 'remote.session',
+      'settingsScope',
     ])
   })
 

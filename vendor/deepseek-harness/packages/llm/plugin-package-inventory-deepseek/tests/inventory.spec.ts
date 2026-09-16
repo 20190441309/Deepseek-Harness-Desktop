@@ -110,6 +110,29 @@ describe('DeepSeek plugin package inventory', () => {
       .resolves.toMatchObject({ fields: { dsh_plugin_packages: { version: 1, packages: [] } } })
   })
 
+  it('omits a loose module whose nearest manifest is an incomplete private marker', async () => {
+    const { ctx, root } = await harness()
+    // Profile and workspace package.json files declare private (often with a
+    // name but no version); a loose module mounted beneath one owns no package.
+    await writeFile(join(root, 'package.json'), `${JSON.stringify({ name: 'profile-marker', private: true })}\n`)
+    await mkdir(join(root, 'loose'), { recursive: true })
+    await writeFile(join(root, 'loose/plugin.mjs'), 'export default () => {}\n')
+    await ctx.loader.create({ name: './loose/plugin.mjs' })
+    await expect(ctx.deepseekLlmApiExtensions.prepare({ body: { messages: [] }, signal: SIGNAL }))
+      .resolves.toMatchObject({ fields: { dsh_plugin_packages: { version: 1, packages: [] } } })
+  })
+
+  it('reports a complete private package identity found beside a loose module', async () => {
+    const { ctx, root } = await harness()
+    const priv = await packagePlugin(root, 'private-package', {
+      name: 'private-package', version: '1.2.3', private: true,
+    })
+    await ctx.loader.create({ name: priv })
+    const prepared = await ctx.deepseekLlmApiExtensions.prepare({ body: { messages: [] }, signal: SIGNAL })
+    expect(prepared.fields.dsh_plugin_packages?.packages)
+      .toEqual([{ name: 'private-package', version: '1.2.3' }])
+  })
+
   it('uses the host inventory when a request has no matching or joined live agent', async () => {
     const { ctx, root } = await harness()
     const plugin = await packagePlugin(root, 'host-only', { name: 'host-only', version: '3.0.0' })

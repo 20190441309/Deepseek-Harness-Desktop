@@ -78,7 +78,7 @@ describe('theme-family helpers', () => {
 })
 
 describe('builtin families', () => {
-  it('ships DeepSeek plus the six desktop palettes', () => {
+  it('ships DeepSeek plus the desktop palettes', () => {
     expect(BUILTIN_THEME_FAMILIES.map(family => family.id)).toEqual([
       'deepseek', 'midnight', 'celadon', 'violet', 'amber', 'paper', 'contrast',
     ])

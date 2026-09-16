@@ -28,6 +28,8 @@ import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
 import { queueDockEntry } from './queue/QueueDock.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
+import { CustomInstructionsRow } from './settings/CustomInstructionsRow.tsx'
+import type { CustomInstructionsRowInjected } from './settings/CustomInstructionsRow.tsx'
 import { BeamRow } from './settings/BeamRow.tsx'
 import type { BeamRowInjected } from './settings/BeamRow.tsx'
 import { ResizeRow } from './settings/ResizeRow.tsx'
@@ -40,6 +42,8 @@ import { CostSettingsRow } from './settings/CostSettingsRow.tsx'
 import type { CostSettingsRowInjected } from './settings/CostSettingsRow.tsx'
 import { ViewTabsRow } from './settings/ViewTabsRow.tsx'
 import type { ViewTabsRowInjected } from './settings/ViewTabsRow.tsx'
+import { TypingFxRow } from './settings/TypingFxRow.tsx'
+import type { TypingFxRowInjected } from './settings/TypingFxRow.tsx'
 import { PeakValleyRow, type PeakValleyRowInjected } from './chat/PeakValleyRow.tsx'
 import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
 import { ConversationPanel } from './skeleton/ConversationPanel.tsx'
@@ -162,6 +166,20 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     }),
   }, EnterBehaviorRow))
 
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'custom-instructions',
+    order: 30,
+    locale: NS,
+    inject: (): CustomInstructionsRowInjected => ({
+      hooks: {
+        customInstructions: submissionPolicy.customInstructions,
+        writable: submissionPolicy.writable,
+      },
+      setCustomInstructions: (text) => { submissionPolicy.setCustomInstructions(text) },
+    }),
+  }, CustomInstructionsRow))
+
   ctx.slots.inject('settings.interface.item', () => ctx.slots.register({
     name: 'settings.interface.item',
     id: 'composer-beam',
@@ -244,6 +262,27 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       setViewTabs: (value) => { submissionPolicy.setViewTabs(value) },
     }),
   }, ViewTabsRow))
+
+  // The typing-effect row lives under Appearance (the section renders a
+  // `settings.appearance.item` list); the preference itself stays in this
+  // package's namespace like every other composer setting.
+  ctx.slots.inject('settings.appearance.item', () => ctx.slots.register({
+    name: 'settings.appearance.item',
+    id: 'composer-typing-fx',
+    order: 10,
+    locale: NS,
+    inject: (): TypingFxRowInjected => ({
+      hooks: {
+        typingFx: submissionPolicy.typingFx,
+        typingFxStyle: submissionPolicy.typingFxStyle,
+        typingFxPresets: submissionPolicy.typingFxPresets,
+        writable: submissionPolicy.writable,
+      },
+      setTypingFx: (value) => { submissionPolicy.setTypingFx(value) },
+      saveTypingFxConfiguration: (value, presets) =>
+        submissionPolicy.setTypingFxConfiguration(value, presets),
+    }),
+  }, TypingFxRow))
 
   const viewTabs = (): ViewTab[] => {
     const tabs: ViewTab[] = []
@@ -464,6 +503,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
             composerResize: submissionPolicy.composerResize,
             composerResizeHeight: submissionPolicy.composerResizeHeight,
             composerResizeWidth: submissionPolicy.composerResizeWidth,
+            typingFx: submissionPolicy.typingFx,
+            typingFxStyle: submissionPolicy.typingFxStyle,
           },
           setComposerResizeSize: (size) => { submissionPolicy.setComposerResizeSize(size) },
         }
@@ -528,6 +569,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           composerResize: submissionPolicy.composerResize,
           composerResizeHeight: submissionPolicy.composerResizeHeight,
           composerResizeWidth: submissionPolicy.composerResizeWidth,
+          typingFx: submissionPolicy.typingFx,
+          typingFxStyle: submissionPolicy.typingFxStyle,
         },
         setComposerResizeSize: (size) => { submissionPolicy.setComposerResizeSize(size) },
       }

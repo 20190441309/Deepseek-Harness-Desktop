@@ -32,7 +32,9 @@ import type {
 import type { DraftAttachmentId } from '../src/client/contract/input.ts'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
-import { DEFAULT_COMPOSER_BEAM_STYLE, type ComposerBeamStyle } from '../src/submission-settings.ts'
+import {
+  DEFAULT_COMPOSER_BEAM_STYLE, DEFAULT_TYPING_FX_STYLE, type ComposerBeamStyle, type TypingFxStyle,
+} from '../src/submission-settings.ts'
 import { zh } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
@@ -55,6 +57,13 @@ function currentLabel(element: HTMLElement): string {
   return element.querySelector('[data-dsh-motion-part="current"]')?.textContent ?? element.textContent ?? ''
 }
 Range.prototype.getBoundingClientRect = ZERO_RECT
+
+// jsdom ships no ClipboardEvent; the editor's plain-text paste listener
+// instanceof-checks the global when routing a paste payload, and every
+// fireEvent.paste below would otherwise surface a ReferenceError.
+Object.defineProperty(globalThis, 'ClipboardEvent', {
+  value: class ClipboardEvent extends Event {},
+})
 
 const SCTX = {} as Context
 const SID = 's1' as SessionId
@@ -115,6 +124,8 @@ interface BenchOptions {
   composerBeam?: boolean
   composerBeamStyle?: ComposerBeamStyle
   composerResize?: boolean
+  typingFx?: boolean
+  typingFxStyle?: TypingFxStyle
   presentation?: SessionSummary['presentation']
   contextPressure?: { pressureTokens?: number; projectedTokens?: number; contextWindow?: number }
 }
@@ -170,6 +181,10 @@ function bench(over?: BenchOptions) {
   const removeAttachment = vi.fn((id: DraftAttachmentId) => { shell.removeAttachment(id) })
   const menuLauncher = createSnapshotStore<string | null>(over?.commandMenuOpen === true ? 'command' : null)
   const busyEnter = createSnapshotStore<'queue' | 'steer'>(over?.busyEnter ?? 'queue')
+  // The `permissions` projection is store-backed so Access-chip cases can
+  // land a control-stream frame mid-flight; the remaining keys stay static.
+  const permissionProjection = createSnapshotStore<BenchOptions['permissions']>(over?.permissions)
+  const usePermissionProjection = bindSnapshotSelector(permissionProjection)
   const slotCalls: { key: string; owner: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
     slotCalls.push({ key, owner })
@@ -209,12 +224,12 @@ function bench(over?: BenchOptions) {
       items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     })),
     useProjection: ((key: string, selector?: (v: unknown) => unknown) =>
-      (selector ?? (v => v))(key === 'permissions'
-        ? over?.permissions
-        : key === 'plan' ? over?.plan
+      key === 'permissions'
+        ? usePermissionProjection((selector ?? ((v: unknown) => v)) as never)
+        : (selector ?? (v => v))(key === 'plan' ? over?.plan
           : key === 'goal' ? over?.goal
-             : key === 'imageLimits' ? over?.imageLimits
-               : key === 'contextPressure' ? over?.contextPressure : undefined)),
+            : key === 'imageLimits' ? over?.imageLimits
+              : key === 'contextPressure' ? over?.contextPressure : undefined)),
     useInput: bindSnapshotSelector(shell.state),
     inputActions: shell.actions,
     keyboard: shell,
@@ -236,6 +251,8 @@ function bench(over?: BenchOptions) {
     useComposerResize: bindSnapshotSelector(createSnapshotStore(over?.composerResize ?? false)),
     useComposerResizeHeight: bindSnapshotSelector(createSnapshotStore<number | null>(null)),
     useComposerResizeWidth: bindSnapshotSelector(createSnapshotStore<number | null>(null)),
+    useTypingFx: bindSnapshotSelector(createSnapshotStore(over?.typingFx ?? false)),
+    useTypingFxStyle: bindSnapshotSelector(createSnapshotStore(over?.typingFxStyle ?? DEFAULT_TYPING_FX_STYLE)),
     setComposerResizeSize: vi.fn(),
     stop,
     command: over?.command ?? (() => Promise.resolve(true)),
@@ -277,7 +294,7 @@ function bench(over?: BenchOptions) {
   const interruptButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="停止生成"]')
   return {
     view, textarea, button, interruptButton, props, sink, shell, wiring: shell, session, stop, removeAttachment, slotCalls,
-    menuLauncher, busyEnter,
+    menuLauncher, busyEnter, permissionProjection,
     steerQueue: over?.steerQueue,
     get placeholder() { return placeholderOf(view.container) },
     get inputDisabled() { return textarea.getAttribute('aria-disabled') === 'true' },
@@ -329,7 +346,7 @@ describe('composer placeholder visibility', () => {
   it('hides for pasted spaces and restores after clearing', async () => {
     const { view, shell, textarea } = bench()
     fireEvent.paste(textarea, {
-      clipboardData: { items: [], getData: () => '   ' },
+      clipboardData: { items: [], files: [], getData: () => '   ' },
     })
     await vi.waitFor(() => { expect(shell.snapshot.draft).toBe('   ') })
     expect(view.container.querySelector('[data-composer-placeholder]')).toBeNull()
@@ -359,8 +376,9 @@ describe('image draft rail', () => {
       clipboardData: {
         items: [
           { kind: 'string', type: 'text/plain', getAsFile: () => null },
-          { kind: 'file', type: 'image/png', getAsFile: () => image },
+          { kind: 'file', type: 'image/png', getAsFile: () => image, webkitGetAsEntry: () => null },
         ],
+        files: [image],
         getData: () => '同时粘贴的文字',
       },
     })
@@ -530,7 +548,12 @@ describe('image draft rail', () => {
       const paste = () => {
         fireEvent.paste(textarea, {
           clipboardData: {
-            items: [{ kind: 'file', type: 'text/plain', getAsFile: () => new File(['x'], 'note.txt', { type: 'text/plain' }) }],
+            items: [{
+              kind: 'file', type: 'text/plain',
+              getAsFile: () => new File(['x'], 'note.txt', { type: 'text/plain' }),
+              webkitGetAsEntry: () => null,
+            }],
+            files: [],
             getData: () => '',
           },
         })
@@ -556,6 +579,89 @@ describe('image draft rail', () => {
       ])
     })
     expect(result.view.getByRole('alert').textContent).toContain('图片读取服务不可用')
+  })
+
+  it('announces a dropped folder as rejected and still drafts the real files', () => {
+    const addFiles = vi.fn(() => null)
+    const result = bench({ addFiles })
+    const file = new File([Uint8Array.of(1)], 'note.txt', { type: 'text/plain' })
+    const folder = new File([], 'autoshop-mcp-server-main')
+    act(() => { attachmentOwner(result.slotCalls).onAddFiles([file], [folder]) })
+    expect(result.view.getByRole('alert').textContent).toContain('「autoshop-mcp-server-main」是文件夹，无法作为附件')
+    expect(addFiles).toHaveBeenCalledWith([file])
+  })
+
+  it('announces a folder-only intake without drafting anything', () => {
+    const addFiles = vi.fn(() => null)
+    const result = bench({ addFiles })
+    act(() => {
+      attachmentOwner(result.slotCalls).onAddFiles([], [new File([], 'a'), new File([], 'b')])
+    })
+    expect(result.view.getByRole('alert').textContent).toContain('2 个文件夹无法作为附件')
+    expect(addFiles).not.toHaveBeenCalled()
+    // A nameless File stub falls back to the generic file label.
+    act(() => {
+      attachmentOwner(result.slotCalls).onAddFiles([], [new File([], '')])
+    })
+    expect(result.view.getByRole('alert').textContent).toContain('「文件」是文件夹，无法作为附件')
+  })
+
+  it('keeps the folder rejection visible when the same batch is also refused', () => {
+    // The toast has one slot: a mixed folder + refused-file batch must carry
+    // both notices, not let the refusal overwrite the rejection.
+    const addFiles = vi.fn(() => '图片读取服务不可用')
+    const result = bench({ addFiles })
+    const file = new File([Uint8Array.of(1)], 'x.png', { type: 'image/png' })
+    const folder = new File([], 'payload')
+    act(() => { attachmentOwner(result.slotCalls).onAddFiles([file], [folder]) })
+    const alert = result.view.getByRole('alert')
+    expect(alert.textContent).toContain('「payload」是文件夹，无法作为附件')
+    expect(alert.textContent).toContain('图片读取服务不可用')
+    expect(addFiles).toHaveBeenCalledWith([file])
+  })
+
+  it('rejects a pasted folder through the same announcement', () => {
+    const addFiles = vi.fn(() => null)
+    const { view, textarea } = bench({ addFiles })
+    const folder = new File([], 'payload')
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => folder,
+            webkitGetAsEntry: () => ({ isFile: false, isDirectory: true, name: 'payload' }),
+          },
+        ],
+        files: [folder],
+        getData: () => '',
+      },
+    })
+    expect(view.getByRole('alert').textContent).toContain('「payload」是文件夹，无法作为附件')
+    expect(addFiles).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed upload rather than a pending one when Enter hits the gate', () => {
+    const file = {
+      kind: 'file' as const, id: 'file-1' as DraftAttachmentId,
+      file: new File(['x'], 'note.txt', { type: 'text/plain' }),
+    }
+    const failed = bench({
+      draft: '带附件', attachments: [file],
+      fileUploads: { [file.id]: { status: 'error', message: 'upload failed' } },
+    })
+    fireEvent.keyDown(failed.textarea, { key: 'Enter' })
+    expect(failed.view.getByRole('alert').textContent).toContain('上传失败，点击重试')
+    expect(failed.sink).not.toHaveBeenCalled()
+    failed.view.unmount()
+
+    const pending = bench({
+      draft: '带附件', attachments: [file],
+      fileUploads: { [file.id]: { status: 'uploading', loaded: 0 } },
+    })
+    fireEvent.keyDown(pending.textarea, { key: 'Enter' })
+    expect(pending.view.getByRole('alert').textContent).toContain('文件还在上传')
+    expect(pending.sink).not.toHaveBeenCalled()
   })
 })
 
@@ -767,7 +873,7 @@ describe('Enter semantics', () => {
     // PASTE_TAG still gives it its own undo entry. The paste commits inside
     // the PASTE_COMMAND update, a microtask away.
     fireEvent.paste(textarea, {
-      clipboardData: { items: [], getData: () => ' two' },
+      clipboardData: { items: [], files: [], getData: () => ' two' },
     })
     await vi.waitFor(() => { expect(shell.snapshot.draft).toBe('typed one two') })
     const flush = (): void => { act(() => { shell.editor.update(() => {}, { discrete: true }) }) }
@@ -1568,7 +1674,7 @@ describe('command launcher chrome and control seats', () => {
       ],
       currentValue: 'read-only',
     }
-    const { view } = bench({ permissions, command })
+    const { view, permissionProjection } = bench({ permissions, command })
     const trigger = view.getByLabelText(/^访问模式/) as HTMLButtonElement
     // Product-label display is presentation only; the menu ids stay machine names.
     expect(currentLabel(trigger)).toBe('仅可查看')
@@ -1578,13 +1684,89 @@ describe('command launcher chrome and control seats', () => {
     const items = view.getAllByRole('menuitem')
     expect(items.map(o => o.textContent)).toEqual(['仅可查看', '工作区内修改', '完全权限'])
     fireEvent.click(items[1]!)
-    // Optimistic pick + disable until admission resolves (command stub resolves true).
+    // Optimistic pick + disable until the projection frame lands.
     const busy = view.getByLabelText(/^访问模式/) as HTMLButtonElement
     expect(currentLabel(busy)).toBe('工作区内修改')
     expect(busy.disabled).toBe(true)
     expect(command).toHaveBeenCalledWith('/permission workspace-write')
     await act(async () => {})
+    // The command RPC settles ahead of the control-stream frame; the pick
+    // still owns the chip rather than flashing the pre-switch value.
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('工作区内修改')
+    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(true)
+    act(() => { permissionProjection.set({ ...permissions, currentValue: 'workspace-write' }) })
     expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('the Access chip holds the pick through an intermediate projection value', async () => {
+    const command = vi.fn(() => Promise.resolve(true))
+    const permissions = {
+      options: [
+        { value: 'read-only', name: 'read-only' },
+        { value: 'workspace-write', name: 'workspace-write' },
+      ],
+      currentValue: 'read-only',
+    }
+    const { view, permissionProjection } = bench({ permissions, command })
+    fireEvent.click(view.getByLabelText(/^访问模式/))
+    fireEvent.click(view.getByRole('menuitem', { name: '工作区内修改' }))
+    await act(async () => {})
+    // A knob event landing ahead of the preset (the derived `custom` state)
+    // must not release the pick either.
+    act(() => {
+      permissionProjection.set({
+        options: [...permissions.options, { value: 'custom', name: 'Custom' }],
+        currentValue: 'custom',
+      })
+    })
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('工作区内修改')
+    act(() => { permissionProjection.set({ ...permissions, currentValue: 'workspace-write' }) })
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('工作区内修改')
+    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('the Access chip reverts a pick whose admission is rejected', async () => {
+    const command = vi.fn(() => Promise.resolve(false))
+    const permissions = {
+      options: [
+        { value: 'read-only', name: 'read-only' },
+        { value: 'workspace-write', name: 'workspace-write' },
+      ],
+      currentValue: 'read-only',
+    }
+    const { view } = bench({ permissions, command })
+    fireEvent.click(view.getByLabelText(/^访问模式/))
+    fireEvent.click(view.getByRole('menuitem', { name: '工作区内修改' }))
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('工作区内修改')
+    await act(async () => {})
+    // A rejected admission publishes no knob events, so the pick reverts to
+    // the projection value as soon as the command settles.
+    expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('仅可查看')
+    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('the Access chip releases a stale pick when no projection frame arrives', async () => {
+    vi.useFakeTimers()
+    try {
+      const command = vi.fn(() => Promise.resolve(true))
+      const permissions = {
+        options: [
+          { value: 'read-only', name: 'read-only' },
+          { value: 'workspace-write', name: 'workspace-write' },
+        ],
+        currentValue: 'read-only',
+      }
+      const { view } = bench({ permissions, command })
+      fireEvent.click(view.getByLabelText(/^访问模式/))
+      fireEvent.click(view.getByRole('menuitem', { name: '工作区内修改' }))
+      await act(async () => {})
+      expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('工作区内修改')
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(currentLabel(view.getByLabelText(/^访问模式/) as HTMLButtonElement)).toBe('仅可查看')
+      expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('the Access chip preserves host labels for built-in preset values', () => {
@@ -1786,5 +1968,38 @@ describe('command launcher chrome and control seats', () => {
     expect(view.getByLabelText('添加附件')).toBeTruthy()
     expect(view.queryByText('发消息或做任务… / 调用指令 @ 文件或对话')).toBeNull()
     expect(view.getByRole('textbox').getAttribute('data-placeholder')).toBe('发送消息')
+  })
+
+  it('marks the editable surface for caret replacement only while a custom typing-fx caret is live', () => {
+    const off = bench()
+    expect(off.textarea.getAttribute('data-typing-fx-caret')).toBeNull()
+    off.view.unmount()
+
+    const native = bench({ typingFx: true, typingFxStyle: { ...DEFAULT_TYPING_FX_STYLE, cursor: 'native' } })
+    expect(native.textarea.getAttribute('data-typing-fx-caret')).toBeNull()
+    expect(native.view.container.querySelector('[data-typing-fx]')).not.toBeNull()
+    native.view.unmount()
+
+    const block = bench({ typingFx: true, typingFxStyle: { ...DEFAULT_TYPING_FX_STYLE, cursor: 'block' } })
+    expect(block.textarea.getAttribute('data-typing-fx-caret')).toBe('block')
+  })
+
+  it('publishes the scheme text color as a CSS var on the editable surface only while enabled', () => {
+    const themed = bench({ typingFx: true, typingFxStyle: DEFAULT_TYPING_FX_STYLE })
+    expect(themed.textarea.style.getPropertyValue('--dsh-typing-fx-text-color')).toBe('')
+    themed.view.unmount()
+
+    const ocean = bench({
+      typingFx: true,
+      typingFxStyle: { ...DEFAULT_TYPING_FX_STYLE, colors: { kind: 'preset', id: 'ocean' } },
+    })
+    expect(ocean.textarea.style.getPropertyValue('--dsh-typing-fx-text-color')).toBe('#0284c7')
+    ocean.view.unmount()
+
+    const off = bench({
+      typingFx: false,
+      typingFxStyle: { ...DEFAULT_TYPING_FX_STYLE, colors: { kind: 'preset', id: 'ocean' } },
+    })
+    expect(off.textarea.style.getPropertyValue('--dsh-typing-fx-text-color')).toBe('')
   })
 })

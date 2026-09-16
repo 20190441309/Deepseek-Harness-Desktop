@@ -16,31 +16,49 @@ import {
   BUSY_ENTER_FIELD, COMPOSER_BEAM_FIELD, COMPOSER_BEAM_PRESETS_FIELD, COMPOSER_BEAM_STYLE_FIELD,
   COMPOSER_RESIZE_FIELD,
   COMPOSER_RESIZE_HEIGHT_FIELD, COMPOSER_RESIZE_WIDTH_FIELD,
+  CUSTOM_INSTRUCTIONS_FIELD,
   DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_BEAM_PRESETS, DEFAULT_COMPOSER_BEAM_STYLE,
   DEFAULT_COMPOSER_RESIZE,
   DEFAULT_COMPOSER_RESIZE_HEIGHT, DEFAULT_COMPOSER_RESIZE_WIDTH,
+  DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_OFFICIAL_PEAK_VALLEY, DEFAULT_SESSION_COST, DEFAULT_SESSION_COST_PRICES,
-  DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
+  DEFAULT_STATS_LINE, DEFAULT_TYPING_FX, DEFAULT_TYPING_FX_PRESETS, DEFAULT_TYPING_FX_STYLE, DEFAULT_VIEW_TABS,
   normalizeComposerBeamPresets, normalizeComposerBeamStyle,
+  normalizeTypingFxPresets, normalizeTypingFxStyle,
   OFFICIAL_PEAK_VALLEY_FIELD, SESSION_COST_FIELD, SESSION_COST_PRICES_FIELD,
-  STATS_LINE_FIELD, VIEW_TABS_FIELD,
+  STATS_LINE_FIELD, TYPING_FX_FIELD, TYPING_FX_PRESETS_FIELD, TYPING_FX_STYLE_FIELD, VIEW_TABS_FIELD,
 } from '../../submission-settings.ts'
-import type { ComposerBeamPresets, ComposerBeamStyle, ConversationSettings, SessionCostPrices } from '../../submission-settings.ts'
+import type {
+  ComposerBeamPresets, ComposerBeamStyle, ConversationSettings, SessionCostPrices,
+  TypingFxPresets, TypingFxStyle,
+} from '../../submission-settings.ts'
 
 export {
   DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM, DEFAULT_COMPOSER_BEAM_PRESETS, DEFAULT_COMPOSER_BEAM_STYLE,
   DEFAULT_COMPOSER_RESIZE,
   DEFAULT_COMPOSER_RESIZE_HEIGHT, DEFAULT_COMPOSER_RESIZE_WIDTH,
   DEFAULT_OFFICIAL_PEAK_VALLEY, DEFAULT_SESSION_COST, DEFAULT_SESSION_COST_PRICES,
-  DEFAULT_STATS_LINE, DEFAULT_VIEW_TABS,
+  DEFAULT_STATS_LINE, DEFAULT_TYPING_FX, DEFAULT_TYPING_FX_PRESETS, DEFAULT_TYPING_FX_STYLE, DEFAULT_VIEW_TABS,
 } from '../../submission-settings.ts'
 export type { SessionCostModelPrice, SessionCostPrices } from '../../submission-settings.ts'
+export type { TypingFxPresets, TypingFxStyle } from '../../submission-settings.ts'
 export { normalizeComposerBeamPresets, normalizeComposerBeamStyle } from '../../submission-settings.ts'
+export { normalizeTypingFxPresets, normalizeTypingFxStyle } from '../../submission-settings.ts'
+export { CUSTOM_INSTRUCTIONS_MAX_LENGTH } from '../../submission-settings.ts'
+
+/** Delay between the last keystroke and the durable custom-instructions write. */
+const CUSTOM_INSTRUCTIONS_WRITE_DELAY = 400
 
 const sameBeamStyle = (left: ComposerBeamStyle, right: ComposerBeamStyle): boolean =>
   JSON.stringify(left) === JSON.stringify(right)
 
 const sameBeamPresets = (left: ComposerBeamPresets, right: ComposerBeamPresets): boolean =>
+  JSON.stringify(left) === JSON.stringify(right)
+
+const sameTypingFxStyle = (left: TypingFxStyle, right: TypingFxStyle): boolean =>
+  JSON.stringify(left) === JSON.stringify(right)
+
+const sameTypingFxPresets = (left: TypingFxPresets, right: TypingFxPresets): boolean =>
   JSON.stringify(left) === JSON.stringify(right)
 
 /** Last drag-committed composer box size (null = that axis is not customized). */
@@ -102,9 +120,20 @@ export class ComposerSubmissionPolicy {
   readonly sessionCostPrices: SnapshotStore<SessionCostPrices> = createSnapshotStore(DEFAULT_SESSION_COST_PRICES)
   /** Reactive view-tablist source for the Settings row and ConversationSessionHeader. */
   readonly viewTabs: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_VIEW_TABS)
+  /** Reactive custom-instructions source for the General Settings row. */
+  readonly customInstructions: SnapshotStore<string> = createSnapshotStore(DEFAULT_CUSTOM_INSTRUCTIONS)
+  /** Reactive typing-effect source for the Appearance row and every InputBar. */
+  readonly typingFx: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_TYPING_FX)
+  /** Reactive typing-style source shared by the Settings modal and every InputBar. */
+  readonly typingFxStyle: SnapshotStore<TypingFxStyle> = createSnapshotStore(DEFAULT_TYPING_FX_STYLE)
+  /** Reactive user-preset source shared by the typing-fx Settings modal. */
+  readonly typingFxPresets: SnapshotStore<TypingFxPresets> = createSnapshotStore(DEFAULT_TYPING_FX_PRESETS)
   /** Host writability for the Interface Switch; true when no scope is bound. */
   readonly writable: SnapshotStore<boolean>
   private readonly host: SettingsScope<ConversationSettings> | undefined
+  /** Text queued for or crossing the wire; adoptions leave it alone so keystrokes are never reverted. */
+  private pendingCustomInstructions: string | undefined
+  private customInstructionsTimer: ReturnType<typeof setTimeout> | undefined
 
   /**
    * @param host - durable preference scope owned by the providing plugin;
@@ -174,6 +203,79 @@ export class ComposerSubmissionPolicy {
       || !sameBeamStyle(normalizeComposerBeamStyle(accepted.composerBeamStyle), nextStyle)
       || !sameBeamPresets(normalizeComposerBeamPresets(accepted.composerBeamPresets), nextPresets)) {
       throw new Error('composer-beam settings were rejected by the Host')
+    }
+  }
+
+  /**
+   * Edit the standing custom instructions; the live value publishes
+   * immediately while the durable write debounces the keystroke stream.
+   * @param text - the full replacement text.
+   */
+  setCustomInstructions(text: string): void {
+    if (this.customInstructions.getSnapshot() === text) return
+    this.customInstructions.set(text)
+    this.queueCustomInstructionsWrite(text)
+  }
+
+  private queueCustomInstructionsWrite(text: string): void {
+    this.pendingCustomInstructions = text
+    if (this.customInstructionsTimer !== undefined) clearTimeout(this.customInstructionsTimer)
+    const host = this.host
+    this.customInstructionsTimer = setTimeout(() => {
+      this.customInstructionsTimer = undefined
+      if (host === undefined) {
+        this.pendingCustomInstructions = undefined
+        return
+      }
+      const settle = (): void => {
+        if (this.pendingCustomInstructions === text) this.pendingCustomInstructions = undefined
+      }
+      void host.set(CUSTOM_INSTRUCTIONS_FIELD, text).then(settle, settle)
+    }, CUSTOM_INSTRUCTIONS_WRITE_DELAY)
+  }
+
+  /**
+   * Change whether the composer plays typing echoes and a custom caret; the
+   * live value publishes before the durable write starts.
+   * @param value - true activates the overlay; false removes it entirely.
+   */
+  setTypingFx(value: boolean): void {
+    if (this.typingFx.getSnapshot() === value) return
+    this.typingFx.set(value)
+    void this.host?.set(TYPING_FX_FIELD, value)
+  }
+
+  /** Persist visual tuning for the composer typing effect. */
+  setTypingFxStyle(value: TypingFxStyle): void {
+    const next = normalizeTypingFxStyle(value)
+    if (sameTypingFxStyle(this.typingFxStyle.getSnapshot(), next)) return
+    this.typingFxStyle.set(next)
+    void this.host?.set(TYPING_FX_STYLE_FIELD, next)
+  }
+
+  /** Persist the active typing-fx profile and its preset library as one namespace mutation. */
+  async setTypingFxConfiguration(value: TypingFxStyle, presets: TypingFxPresets): Promise<void> {
+    const nextStyle = normalizeTypingFxStyle(value)
+    const nextPresets = normalizeTypingFxPresets(presets)
+    const styleChanged = !sameTypingFxStyle(this.typingFxStyle.getSnapshot(), nextStyle)
+    const presetsChanged = !sameTypingFxPresets(this.typingFxPresets.getSnapshot(), nextPresets)
+    if (!styleChanged && !presetsChanged) return
+    if (this.host !== undefined && !this.host.getSnapshot().writable) {
+      throw new Error('typing-fx settings are not writable')
+    }
+    this.typingFxStyle.set(nextStyle)
+    this.typingFxPresets.set(nextPresets)
+    if (this.host === undefined) return
+    const ops: SettingsPathOpView[] = [
+      { op: 'set', path: [TYPING_FX_STYLE_FIELD], value: nextStyle as unknown as JsonValue },
+      { op: 'set', path: [TYPING_FX_PRESETS_FIELD], value: nextPresets as unknown as JsonValue },
+    ]
+    await this.host.mutate(ops, this.host.getSnapshot().revision)
+    const accepted = this.host.getSnapshot().value
+    if (accepted === undefined
+      || !sameTypingFxStyle(normalizeTypingFxStyle(accepted.typingFxStyle), nextStyle)
+      || !sameTypingFxPresets(normalizeTypingFxPresets(accepted.typingFxPresets), nextPresets)) {
+      throw new Error('typing-fx settings were rejected by the Host')
     }
   }
 
@@ -307,5 +409,23 @@ export class ComposerSubmissionPolicy {
     if (this.sessionCostPrices.getSnapshot() !== nextPrices) this.sessionCostPrices.set(nextPrices)
     const nextTabs = section.viewTabs !== false
     if (this.viewTabs.getSnapshot() !== nextTabs) this.viewTabs.set(nextTabs)
+    const nextTypingFx = section.typingFx === true
+    if (this.typingFx.getSnapshot() !== nextTypingFx) this.typingFx.set(nextTypingFx)
+    const nextTypingFxStyle = normalizeTypingFxStyle(section.typingFxStyle)
+    if (!sameTypingFxStyle(this.typingFxStyle.getSnapshot(), nextTypingFxStyle)) {
+      this.typingFxStyle.set(nextTypingFxStyle)
+    }
+    const nextTypingFxPresets = normalizeTypingFxPresets(section.typingFxPresets)
+    if (!sameTypingFxPresets(this.typingFxPresets.getSnapshot(), nextTypingFxPresets)) {
+      this.typingFxPresets.set(nextTypingFxPresets)
+    }
+    // A queued or in-flight write owns the editor text; adopting the last
+    // committed value here would revert keystrokes the user already typed.
+    const rawInstructions: unknown = section.customInstructions
+    const nextInstructions = typeof rawInstructions === 'string' ? rawInstructions : DEFAULT_CUSTOM_INSTRUCTIONS
+    if (this.pendingCustomInstructions === undefined
+      && this.customInstructions.getSnapshot() !== nextInstructions) {
+      this.customInstructions.set(nextInstructions)
+    }
   }
 }

@@ -1,3 +1,7 @@
+// Known flake (observed 2026-09-16): one failure under full-suite
+// concurrency, clean standalone and in a later full run. All listeners
+// bind port 0 — not a port collision; mechanism undetermined (suspect
+// resource contention with the real-daemon E2E in this file).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');

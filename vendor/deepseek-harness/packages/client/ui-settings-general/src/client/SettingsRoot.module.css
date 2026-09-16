@@ -38,6 +38,11 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.trigger:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: -2px;
+}
+
 /* Rail trigger: the same 36x36 circle box as the other rail controls. */
 .trigger.rail {
   flex: none;
@@ -155,7 +160,8 @@
 }
 
 .navCell.active {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--dsw-specific-sidebar-nav-item-active-accent);
+  font-weight: 500;
 }
 
 .navIcon {

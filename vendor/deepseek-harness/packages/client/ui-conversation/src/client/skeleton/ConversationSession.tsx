@@ -75,10 +75,11 @@ export function ConversationSessionHeader({
   const hideChrome = !presentationOwned
     && session.blank
     && conversationPhase(session, conversation) === 'blank'
+  const showTabStrip = !managed && showTabs && tabs.length > 1
 
   return (
     <header
-      className={clsx(css.header, hideChrome && css.headerBlank)}
+      className={clsx(css.header, hideChrome && css.headerBlank, !showTabStrip && css.headerNoTabs)}
       aria-hidden={hideChrome || undefined}
     >
       {hideChrome ? (
@@ -154,7 +155,7 @@ export function ConversationSessionHeader({
               {renderSlot('conversation.session.header.corner', {})}
             </div>
           </div>
-          {!managed && showTabs && tabs.length > 1 && (
+          {showTabStrip && (
             <div className={css.tabs} role="tablist">
               {tabs.map(viewTab => (
                 <button

@@ -96,7 +96,7 @@ Bot 的确定性形状头像沿用 Hermes Bots 的状态化动态脸：空闲时
 | 角色 | Token / 几何 |
 | --- | --- |
 | 画布 | `--dsw-alias-bg-base` |
-| 侧栏 | `--dsw-specific-sidebar-fill` |
+| 侧栏 | `--dsw-specific-sidebar-fill`；rail 铬面经间接 token `--dsh-sidebar-rail-fill` 解析，外观「隐藏侧栏遮罩」开启时写为 `transparent`：透出 `.frame` 画布底色与工作区完全对齐，只留右缘分割线 |
 | 抬起层 | `--dsw-alias-bg-layer-1`～`3` |
 | 主文字 / 次文字 / 说明 | `--dsw-alias-label-primary` / `secondary` / `tertiary` |
 | 用户气泡 | `--dsw-specific-bubble` |
@@ -114,6 +114,12 @@ Bot 的确定性形状头像沿用 Hermes Bots 的状态化动态脸：空闲时
 界面设置里的「发送消息时的思考炫光」保留即时开关，并在开关左侧提供 28px 齿轮图标按钮打开官方 `Modal`；Switch 的右边界必须与同组其他设置行共用同一条对齐线，不能因增加齿轮而左移。弹窗只配置这一条运行态 beam：第一批提供顺/逆时针/往返方向、0.8～60s 单圈周期、整体强度、bloom 强度、整体色相、呼吸与色相循环；第二批增加 lounge / aurora / reactive / custom 模式、8 个内置色板或 2～6 个自定义颜色、0.5～4px stroke 宽度、0～12px bloom blur、夜间时段与亮度、缓动、最多 5 个用户预设，以及 v1 JSON 剪贴板导入导出。弹窗内用同一套 beam 图层实时预览，保存时将 active style 与预设库作为一次 `ui-conversation` namespace mutation 写入，取消不改当前值，恢复默认回到现有 1.96s / 原方向 / 原强度 / 原色相的 legacy 视觉基线。模式只是视觉 / 运动 profile，不读取聚焦、输入、发送、完成、失败或其他业务状态，也不扩展为第二套状态灯。
 
 配置允许调整 stroke 的 track width 与 bloom 的 blur，但不得改变 1.5px bloom 光源、4px 裁切壳、22px 圆角、两层 ring mask、pointer-events 或强度窗口；legacy 默认值必须与改动前等价。减弱动效下预览与实际 beam 都隐藏，但设置值保留；移动端继续使用默认时间值，不继承桌面自定义。
+
+背景特效「流动渐变」是无背景图时的环境底：复用壁纸固定层，线性渐变底 + 1–5 个循环位移光斑，`mix-blend-mode: hard-light` 收进一层模糊容器。默认颜色只来自主题表新增的 `--dsw-specific-gradient-*`（`design-platform.css` 明暗两半各一份）。设置侧是 Appearance 收束行（标题 + 说明 + 齿轮 + Switch，与「输入特效」同款）；齿轮打开 `Modal`：实时预览 + 预设方案卡片（跟随主题 / 极光 / 晚霞 / 海洋 / 樱花，预设只写配色）+ 常显自定义控件（7 色槽留空回 token、速度 20–300% 作 keyframe 时长除数、光斑 1–5、光斑形态：光球 / 极光带 / 混沌 / 光束，经 `#dsh-gradient[data-variant]` 切换且仍只动 transform）+ 重置 / 取消 / 保存。光斑动画只动 transform（20–40s 基准，见 [动效规范](motion.md) 指示器家族），`prefers-reduced-motion` 全停。有背景图时特效暂停不绘制；特效不算壁纸，透明主题仍只认背景图。特效与壁纸共用 `--dsw-alias-bg-mask-1` 压暗与玻璃透明度表面混合，不开第二套遮罩；输入区遮罩带与聊天滚动条对特效同样放开（滚动条滑块默认隐藏、悬停才显示）。控件不进壁纸行、不在页内联展开。
+
+指针特效是指针划过处的装饰层：全屏固定叠加层（`#dsh-cursor-fx`，pointer-events 全穿透、画在整个 UI 之上）内二选一——「像素拖尾」按网格给指针轨迹盖章淡出（2D canvas，ReactBits `PixelTrail` 等价移植），「流体飞溅」把指针位移注入 WebGL Navier-Stokes 染料模拟（ReactBits `SplashCursor` 移植）。设置侧是同款收束行（标题 + 说明 + 齿轮 + Switch），齿轮开 `Modal`：特效类型卡片 + 画布实时预览 + 预设方案（跟随主题 / 彩虹 / 极光 / 晚霞 / 海洋 / 樱花，预设整包写配色 + 速度 + 大小）+ 常显自定义（6 色槽留空回主题 accent、速度 20–300%、大小 25–300%）+ 重置 / 取消 / 保存。开关只写 enabled 位，特效与滑块值保留；`prefers-reduced-motion` 不挂载，无 Canvas/WebGL 静默不挂、无 DOM 残留。rAF 循环带 4s 闲置停帧与 `document.hidden` 暂停；空配色回退 `--dsw-alias-brand-primary`，控件与卡片只走 `--dsw-alias-*` token，不写颜色字面量、不写明暗分支、不引动画库。
+
+按钮悬停金属漆（`metallic-paint.css`，源自 ayase motion 目录 MetallicPaint 的 CSS 移植）是全局唯一的附加 hover 层：主 Web UI 内非禁用原生 `button` 悬停时，在原有 hover 填充之上叠一层半透明 `linear-gradient` 色带（115deg、320% 尺寸、4.5s ease-in-out 往返扫过），即「原本效果 + 金属漆」叠加而非替换。扫光画在按钮自身 `background-image`：随控件 `border-radius`（含全局 corner-shape）自然裁切，不改 `position` / `overflow`，不占 `::before` / `::after`。色带只经 `color-mix` 取 label alias token 的透明度：亮带 `--dsw-alias-label-primary-foreground`（主按钮文字色，与填充天然对比、保护图标可读性），暗带 `--dsw-alias-label-primary`，过渡带 `--dsw-alias-label-secondary`——不写颜色字面量、不写明暗分支，随主题明暗自动反转并随自定义主题染色。覆盖范围止于原生 `button`：`role='button'` 行（DisclosureRow / ToolRow / 命令卡）、`<select>` / `<input>`、boot 页、启动器、壁纸图库窗与 mobile/web 不扫。`prefers-reduced-motion` 停扫光、保留静态光泽。
 
 ## 允许的例外
 
@@ -152,10 +158,18 @@ Android 保持稳定 asset origin 与同一 Web 源码，不平行实现聊天�
 
 - 宠物 BrowserView 只覆盖约 80–96px 的小矩形，避开顶部标题栏，并在窗口缩放、最大化和恢复后重新 clamp；禁止用全窗口透明 BrowserView，透明区域不得吞掉 Harness 点击。
 - 视觉资产可复用仓库已有品牌矢量资产；容器透明，颜色、字体、圆角和反馈只引用 `src/shared/dsh-webui-tokens.css` 与现有 motion token，不使用 `--boot-*`，不新增独立色板。
-- v1 只有点击反馈和拖拽定位。托盘提供「桌面宠物」checkbox；状态只持久化 `{ enabled, xRatio, yRatio, petId }`，位置用归一化坐标，异常值回退安全默认，瞬时表情不落盘。缺失或失效的 `petId` 自动回退到可用 Codex 宠物或内置占位资产。
+- 交互面保持点击反馈（挥手）、拖拽定位（行走）与右键菜单（选择已发现的 Codex 宠物或隐藏宠物）。托盘提供「桌面宠物」checkbox；状态只持久化 `{ enabled, xRatio, yRatio, petId }`，位置用归一化坐标，异常值回退安全默认，瞬时表情不落盘。缺失或失效的 `petId` 自动回退到可用 Codex 宠物或内置占位资产。
 - 宠物兼容 `${CODEX_HOME:-$HOME/.codex}/pets/<pet-id>/` 下的 `pet.json` 与相邻图集，双读 Codex v1 的 `1536x1872 / 8x9` 和 Desktop v2 的 `1536x2288 / 8x11`；v2 由 `spriteVersionNumber: 2` 或尺寸确认，禁止绝对路径和 `..` 穿越。
-- 宠物 preload 只暴露读取初始状态、提交归一化位置和主题订阅；主进程按精确 pet BrowserView sender 与 `pet.html` 主 frame 校验 IPC。不得复用 Harness 的 workspace、Git、文件、远程或插件权限。
-- `prefers-reduced-motion` 下反馈直接落位；正常模式只允许 opacity/transform 的短反馈，不增加持续 idle 动画或第二套桌面皮肤。
+- 宠物 preload 只暴露读取初始状态、状态订阅、提交归一化位置、右键菜单和主题订阅；主进程按精确 pet BrowserView sender 与 `pet.html` 主 frame 校验 IPC。不得复用 Harness 的 workspace、Git、文件、远程或插件权限。
+- `prefers-reduced-motion` 下反馈直接落位；Codex 图集行动画（idle 循环、一次性状态行、v2 悬停视线）是唯一的持续动画，占位资产仍只用 opacity/transform 短反馈，不新增第二套桌面皮肤。
+
+### Live2D 鲸鱼娘对话气泡
+
+Live2D 桌面宠物（`desktop-live2d-pet`）是独立的透明 `BrowserWindow` 覆盖层，与已停用的 Codex 宠物 `BrowserView`（`desktop-pet`）不是同一形态：前者整窗透明、自绘 Canvas，后者是挂在主窗内的小矩形视图。
+
+鲸鱼娘对话气泡随角色头部定位，与角色共用 Canvas；圆角主体与指向角色的小尾巴必须是一条连续闭合轮廓，一次填充、一次描边，不得用另一个无描边三角形覆盖框线。头顶空间不足时翻到角色下方，整个气泡（含尾巴、描边）限定在当前显示器内。采用共享主题 token 的 layer-1 / border-l2 / label-primary 与 `--dsw-font-family`，9px 圆角、12px 字号 / 16px 行高、9px 水平内边距、上下各约 6px（`bh = 行数×16 + 12`），文字以 `textBaseline: middle` 在气泡内垂直居中；不扩大宠物交互命中区。
+
+「看看」请求在途期间独占同一个加载气泡，普通台词丢弃，提醒暂存且可撤销，结果或错误原位替换后恢复仲裁；不按固定秒数提前消失。右键状态卡保留现有尺寸、字体、配色与图标，文字和图标以各自真实墨迹边界垂直居中；动作格两者独立绘制、间隔 4px、整体水平居中，不用拼接字符串的字体基线代替光学对齐。
 
 ## 桌面启动器
 

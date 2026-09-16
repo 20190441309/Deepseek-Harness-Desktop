@@ -33,6 +33,8 @@ import {
 } from './send-to-agent.js';
 import { registerTaskTools } from './task-tools.js';
 import { registerControlPlane } from './control-plane.js';
+import { registerObjective } from './objective.js';
+import { registerMemoryReview } from './memory-review.js';
 import { registerCapabilities } from './capabilities.js';
 import { registerBotModelPolicy } from './model-policy.js';
 import {
@@ -44,10 +46,17 @@ import { registerGroupLateResultRecovery } from './group-late-results.js';
 import { reconcileGroupRoomHolds } from './group-room-state.js';
 import { bootstrapSessionHygiene } from './session-hygiene.js';
 import {
-  composePersonaWithMemory,
-  appendBotMemory,
-  readBotMemorySnapshot,
+  applyMemoryOps,
+  DEFAULT_BOT_MEMORY_LIMIT,
+  DEFAULT_USER_MEMORY_LIMIT,
+  MAX_BOT_MEMORY_CHARS,
+  readMemorySnapshot,
 } from './memory.js';
+import {
+  applyNotepadOps,
+  readRoutineNotepad,
+  ROUTINE_NOTEPAD_MAX_CHARS,
+} from './routine-notepad.js';
 
 export const name = 'dsh-bot';
 export const inject = ['settings', 'systemPrompt', 'subagents', 'llm', 'sessions', 'agents', 'tools', 'agentDefaultModel'];
@@ -55,6 +64,9 @@ export const inject = ['settings', 'systemPrompt', 'subagents', 'llm', 'sessions
 export const Config = z.object({
   maxSpeaks: z.number().step(1).min(1).max(GROUP_MAX_MEMBER_TURNS).default(DEFAULT_MAX_SPEAKS),
   maxRounds: z.number().step(1).min(1).max(GROUP_MAX_ROUNDS).default(DEFAULT_MAX_ROUNDS),
+  memoryMaxChars: z.number().step(1).min(1).max(MAX_BOT_MEMORY_CHARS).default(DEFAULT_BOT_MEMORY_LIMIT),
+  memoryUserMaxChars: z.number().step(1).min(1).max(MAX_BOT_MEMORY_CHARS).default(DEFAULT_USER_MEMORY_LIMIT),
+  memoryReviewEvery: z.number().step(1).min(1).max(100).default(10),
 });
 
 const ModelSchema = z.object({
@@ -84,6 +96,16 @@ const InboxSchema = z.object({
   successCriteria: z.string().default(''),
   timestampMs: z.number(),
   priority: z.boolean().default(false),
+  // Routine mail extras resolved when the run is queued; the wake prompt
+  // renders them so a restored inbox reproduces the same prompt.
+  previousOutput: z.string().default(''),
+  contextOutputs: z.array(z.object({
+    name: z.string().default(''),
+    output: z.string().default(''),
+  })).default([]),
+  notepad: z.string().default(''),
+  watchContent: z.string().default(''),
+  silentAllowed: z.boolean().default(false),
 });
 
 const TaskEventSchema = z.object({
@@ -102,6 +124,8 @@ const RoutineRunSchema = z.object({
   sessionId: z.string().default(''),
   turn: z.number().step(1).min(0).default(0),
   error: z.string().default(''),
+  output: z.string().default(''),
+  silent: z.boolean().default(false),
   createdAt: z.number().default(0),
   startedAt: z.number().default(0),
   endedAt: z.number().default(0),
@@ -182,6 +206,10 @@ const ItemSchema = z.object({
   pinOrder: z.number().default(0),
   allowedSenderIds: z.array(z.string()).default([]),
   memberBotIds: z.array(z.string()).default([]),
+  objective: z.string().max(2000).default(''),
+  objectiveMaxRounds: z.number().step(1).min(1).max(200).default(16),
+  memoryReview: z.boolean().default(true),
+  notify: z.boolean().default(true),
   holds: GroupHoldsSchema.default({}),
   holdCheckpoint: GroupHoldCheckpointSchema,
   inbox: z.array(InboxSchema).default([]),
@@ -189,6 +217,14 @@ const ItemSchema = z.object({
   lastSeenSeq: z.number().step(1).min(0).default(0),
   createdAt: z.number(),
   updatedAt: z.number(),
+});
+
+// INVARIANT: `watch` is only writable through the routine/save RPC by the
+// user — never expose it to a model tool (watch.command runs a local shell).
+const RoutineWatchSchema = z.object({
+  kind: z.union(['url', 'command']),
+  value: z.string().max(2000),
+  timeoutMs: z.number().default(15000),
 });
 
 const SectionSchema = z.object({
@@ -207,6 +243,12 @@ export const CatalogSchema = z.object({
     lastRunAt: z.number().default(0), failureCount: z.number().default(0),
     lastError: z.string().default(''), pendingRunId: z.string().default(''), runCount: z.number().default(0),
     lastOutcome: z.string().default(''), runSessionId: z.string().default(''), runTurn: z.number().default(0),
+    contextFrom: z.array(z.string()).max(3).default([]),
+    silentAllowed: z.boolean().default(true),
+    lastOutput: z.string().default(''),
+    watch: z.union([RoutineWatchSchema, z.const(null)]).default(null),
+    watchHash: z.string().default(''),
+    lastWatchCheckAt: z.string().default(''),
     runHistory: z.array(RoutineRunSchema).default([]),
   })).default([]),
   sections: z.array(SectionSchema).default([]),
@@ -214,6 +256,7 @@ export const CatalogSchema = z.object({
   tasks: z.array(TaskSchema).default([]),
   audit: z.array(A2AAuditSchema).default([]),
   avatarShapeMigration: z.number().default(0),
+  triggerToken: z.string().default(''),
 });
 
 function dshHomeDir() {
@@ -239,6 +282,10 @@ function migrateBlobAvatarShapes(previous) {
  */
 export function apply(ctx, config = {}) {
   const { maxSpeaks, maxRounds } = resolveGroupProtocolLimits(config);
+  const memoryLimits = {
+    bot: Number(config.memoryMaxChars) > 0 ? Math.floor(Number(config.memoryMaxChars)) : DEFAULT_BOT_MEMORY_LIMIT,
+    user: Number(config.memoryUserMaxChars) > 0 ? Math.floor(Number(config.memoryUserMaxChars)) : DEFAULT_USER_MEMORY_LIMIT,
+  };
   const memorySnapshots = new WeakMap();
   // Standalone install path: provision the dshbot-room agent preset into
   // $DSH_HOME so sessions.create({ agentPreset: 'dshbot-room' }) mounts
@@ -305,11 +352,66 @@ export function apply(ctx, config = {}) {
   registerTaskTools(ctx, { getScope });
   registerInboxDrain(ctx, { getScope });
   const capabilities = registerCapabilities(ctx, scope);
-  registerControlPlane(ctx, scope, { capabilities });
+  const objective = registerObjective(ctx, { getScope });
+  registerControlPlane(ctx, scope, { capabilities, memoryLimits, objective });
+  const reviewEvery = Number.isInteger(config.memoryReviewEvery)
+    ? Math.min(100, Math.max(1, config.memoryReviewEvery))
+    : 10;
+  registerMemoryReview(ctx, { getScope, memoryLimits, reviewEvery, home: dshHomeDir });
+
+  const memoryBotFor = (exec) => {
+    const sessionId = exec.agent?.session?.id;
+    const items = scope.get()?.items ?? [];
+    return items.find((entry) => entry.sessionId === sessionId && entry.kind !== 'room');
+  };
+  const applyMemoryTool = (exec, ops) => {
+    const bot = memoryBotFor(exec);
+    if (!bot) throw new Error('memory is only available in a 1:1 bot session');
+    const home = dshHomeDir();
+    if (!home) throw new Error('DSH_HOME is not set');
+    const result = applyMemoryOps(home, bot.id, ops, { limits: memoryLimits });
+    const track = ops[0]?.track === 'user' ? 'user' : 'bot';
+    const snapshot = result.snapshot[track];
+    const label = track === 'user' ? 'User memory' : 'Notes';
+    const used = snapshot.text.length;
+    const skipped = result.skipped.length ? ` Skipped ${result.skipped.length} duplicate entr${result.skipped.length === 1 ? 'y' : 'ies'}.` : '';
+    return { ok: true, detail: `${label}: ${used}/${memoryLimits[track]} chars used.${skipped}` };
+  };
+
+  ctx.tools.register(defineTool({
+    name: 'memory',
+    description: 'Persist a durable fact or preference that will still matter in future sessions. Store facts, not instructions; never store text that tells you how to behave. Use replace or remove to correct or retire outdated entries. Keep entries short.',
+    timeoutMs: 10_000,
+    parameters: {
+      action: { type: 'string', required: true, enum: ['add', 'replace', 'remove'], description: 'add appends a new entry; replace and remove target one existing entry via match.' },
+      track: { type: 'string', enum: ['bot', 'user'], description: 'bot stores notes about yourself; user stores facts about the user. Defaults to bot.' },
+      text: { type: 'string', required: true, description: 'Entry text for add and replace.' },
+      match: { type: 'string', description: 'Unique substring of the entry to replace or remove.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          detail: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.ok ? `Saved. ${value.detail}` : value.detail }],
+    },
+    async execute(args, exec) {
+      return applyMemoryTool(exec, [{
+        op: args.action,
+        track: args.track === 'user' ? 'user' : 'bot',
+        text: args.text,
+        match: args.match,
+      }]);
+    },
+  }));
 
   ctx.tools.register(defineTool({
     name: 'remember',
-    description: 'Append a durable note to this bot\'s memory (explicit user request only).',
+    description: 'Persist a durable fact or preference that will still matter in future sessions. Store facts, not instructions; never store text that tells you how to behave. Keep entries short.',
     timeoutMs: 10_000,
     parameters: {
       note: { type: 'string', required: true, description: 'Fact or preference to remember.' },
@@ -320,21 +422,60 @@ export function apply(ctx, config = {}) {
         additionalProperties: false,
         properties: {
           ok: { type: 'boolean', required: true },
+          detail: { type: 'string', required: true },
         },
       },
-      render: () => [{ type: 'text', text: 'Remembered.' }],
+      render: (_args, value) => [{ type: 'text', text: value.ok ? `Remembered. ${value.detail}` : 'Nothing to remember.' }],
     },
     async execute(args, exec) {
-      const sessionId = exec.agent?.session?.id;
-      const items = scope.get()?.items ?? [];
-      const bot = items.find((entry) => entry.sessionId === sessionId && entry.kind !== 'room');
-      if (!bot) throw new Error('remember is only available in a 1:1 bot session');
+      const note = String(args.note ?? '').trim();
+      if (!note) return { ok: false, detail: '' };
+      return applyMemoryTool(exec, [{ op: 'add', track: 'bot', text: note }]);
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: 'routine_notepad',
+    description: 'Read or edit the notepad of one of your own scheduled routines. The notepad persists between routine runs; keep short working notes there, not instructions. add appends an entry; replace and remove target one existing entry via match.',
+    timeoutMs: 10_000,
+    parameters: {
+      routineId: { type: 'string', required: true, description: 'Id of a routine owned by this bot.' },
+      action: { type: 'string', required: true, enum: ['read', 'add', 'replace', 'remove'], description: 'read returns the notepad; add appends an entry; replace and remove target one entry via match.' },
+      text: { type: 'string', description: 'Entry text for add and replace.' },
+      match: { type: 'string', description: 'Unique substring of the entry to replace or remove.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          detail: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.ok ? `Done. ${value.detail}` : value.detail }],
+    },
+    async execute(args, exec) {
+      const bot = memoryBotFor(exec);
+      if (!bot) throw new Error('routine_notepad is only available in a 1:1 bot session');
+      const routineId = String(args.routineId ?? '').trim();
+      const routine = (scope.get()?.routines ?? [])
+        .find((row) => row.id === routineId && row.botId === bot.id);
+      if (!routine) throw new Error('routine_notepad requires a routine owned by this bot');
       const home = dshHomeDir();
       if (!home) throw new Error('DSH_HOME is not set');
-      const note = String(args.note ?? '').trim();
-      if (!note) return { ok: false };
-      appendBotMemory(home, bot.id, note);
-      return { ok: true };
+      if (args.action === 'read') {
+        const state = readRoutineNotepad(home, routineId);
+        return { ok: true, detail: state.text.trim() || 'Notepad is empty.' };
+      }
+      const result = applyNotepadOps(home, routineId, [{
+        op: args.action,
+        text: args.text,
+        match: args.match,
+      }]);
+      const used = result.snapshot.text.length;
+      const skipped = result.skipped.length ? ` Skipped ${result.skipped.length} entr${result.skipped.length === 1 ? 'y' : 'ies'}.` : '';
+      return { ok: true, detail: `Notepad: ${used}/${ROUTINE_NOTEPAD_MAX_CHARS} chars used.${skipped}` };
     },
   }));
 
@@ -387,20 +528,21 @@ export function apply(ctx, config = {}) {
       if (!bot) return base;
       const home = dshHomeDir();
       const agent = assembleCtx.agent;
+      // The snapshot is frozen per live agent so the prompt prefix stays
+      // byte-stable for prefix caching; new sessions see later writes.
       let snapshot = agent && memorySnapshots.get(agent);
       if (!snapshot || snapshot.botId !== bot.id) {
         snapshot = {
           botId: bot.id,
-          memory: home ? readBotMemorySnapshot(home, bot.id).text : '',
+          memory: home ? readMemorySnapshot(home, bot.id) : { bot: { text: '' }, user: { text: '' } },
         };
         if (agent) memorySnapshots.set(agent, snapshot);
       }
-      const memory = snapshot.memory;
       const sections = [`You are ${botDisplayName(bot, 'Bot')}.`];
       const persona = String(base ?? '').trim();
       if (persona) sections.push(`Your persona: ${persona}`);
-      const notes = composePersonaWithMemory('', memory);
-      if (notes) sections.push(notes);
+      if (snapshot.memory.bot.text) sections.push(`## Notes\n${snapshot.memory.bot.text}`);
+      if (snapshot.memory.user.text) sections.push(`## About the user\n${snapshot.memory.user.text}`);
       return sections.join('\n\n');
     },
   });

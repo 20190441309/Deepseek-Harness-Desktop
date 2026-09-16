@@ -129,14 +129,37 @@ function buildTaskWakePrompt(message) {
  */
 export function buildAgentInboundWakePrompt(message) {
   if (message?.kind === 'routine') {
-    return [
+    const lines = [
       `[Scheduled user instruction: ${String(message.fromName || 'Routine')}]`,
       'Execute this pending scheduled instruction from the user in this bot conversation. It is not a delegated A2A task or a message from another bot.',
       '',
       clampAgentMessage(message.text),
+    ];
+    const previousOutput = clampAgentMessage(message.previousOutput, 8_000);
+    if (previousOutput) {
+      lines.push(
+        '',
+        '## Previous result',
+        `Last run output:\n${previousOutput}\nContinue from where it stopped; do not repeat already-reported work.`,
+      );
+    }
+    for (const entry of (Array.isArray(message.contextOutputs) ? message.contextOutputs : []).slice(0, 3)) {
+      const name = String(entry?.name ?? '').trim() || 'Routine';
+      const output = clampAgentMessage(entry?.output, 8_000);
+      if (output) lines.push('', `## From routine "${name}"`, output);
+    }
+    const notepad = clampAgentMessage(message.notepad, 4_000);
+    if (notepad) lines.push('', '## Notepad', notepad);
+    const watchContent = clampAgentMessage(message.watchContent, 8_000);
+    if (watchContent) lines.push('', '## Watched change', watchContent);
+    lines.push(
       '',
       'Report the requested result here. Do not replace this instruction with an inbox status report or send_to_agent to the user.',
-    ].join('\n');
+    );
+    if (message.silentAllowed === true) {
+      lines.push('If there is nothing new to report, reply exactly [SILENT].');
+    }
+    return lines.join('\n');
   }
   if (message?.kind === 'task' || (message?.taskId && message?.task)) return buildTaskWakePrompt(message);
   const fromName = String(

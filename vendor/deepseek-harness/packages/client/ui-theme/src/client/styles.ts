@@ -6,6 +6,7 @@ import designPlatform from '../styles/design-platform.css?inline'
 import wallpaper from '../styles/wallpaper.css?inline'
 import scrollbar from '../styles/scrollbar.css?inline'
 import gradientShadowText from '../styles/gradient-shadow-text.css?inline'
+import metallicPaint from '../styles/metallic-paint.css?inline'
 import shiki from '../styles/shiki.css?inline'
 
 const PLUGIN_ID = '@deepseek-ai/dsh-client-ui-theme'
@@ -21,6 +22,7 @@ const STYLES = [
   ['wallpaper.css', wallpaper],
   ['scrollbar.css', scrollbar],
   ['gradient-shadow-text.css', gradientShadowText],
+  ['metallic-paint.css', metallicPaint],
   ['shiki.css', shiki],
 ] as const
 

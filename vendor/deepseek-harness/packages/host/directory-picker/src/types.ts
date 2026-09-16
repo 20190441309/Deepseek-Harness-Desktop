@@ -24,8 +24,11 @@ export interface DirectoryListing {
   /** The host account's home directory (breadcrumb "Home" rooting). */
   home: string
   /**
-   * Ancestor chain from the filesystem root to the listed directory
-   * inclusive; every crumb is a jump target (crumb `hidden` is always false).
+   * Ancestor chain from the display root to the listed directory inclusive;
+   * every crumb is a jump target (crumb `hidden` is always false). The
+   * display root is the filesystem root on POSIX and the volume picker
+   * (`WINDOWS_VOLUME_ROOT`, itself the sole crumb of its own listing) on
+   * Windows.
    */
   crumbs: DirectoryEntry[]
   /** Direct child directories, name-sorted; symlinks to directories included. */

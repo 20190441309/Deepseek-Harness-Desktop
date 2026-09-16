@@ -9,6 +9,8 @@ import { apply, inject } from '@deepseek-ai/dsh-client-ui-settings-general/clien
 import { CloseBehaviorRow } from '../src/client/CloseBehaviorRow.tsx'
 import { AutoStartDesktopRow } from '../src/client/AutoStartDesktopRow.tsx'
 import { DshbotRow } from '../src/client/DshbotRow.tsx'
+import { PetSection } from '../src/client/PetSection.tsx'
+import type { PetSectionInjected } from '../src/client/PetSection.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -25,7 +27,10 @@ async function bench() {
     api: { settings: { describe: async () => ({ result: { ok: false } }) } },
     isLoopback: false,
   } as never)
-  const remote = new TestRemote(ctx, { settings: { describe: async () => ({ ok: false }) } })
+  const remote = new TestRemote(ctx, {
+    settings: { describe: async () => ({ ok: false }) },
+    session: { modelCatalog: async () => ({ ok: true, value: { groups: [] } }) },
+  })
   remote.$host = { home: undefined, isLoopback: false }
   // apply() injects `settingsScope` (the ui-settings domain service); the
   // stub stands in for the binder the real settings plugin would provide.
@@ -84,5 +89,43 @@ describe('ui-settings-general desktop close-behavior row', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     expect(b.slots.entries('settings.general.item')).toEqual([])
     expect(b.slots.entries('settings.interface.item')).toEqual([])
+  })
+})
+
+describe('ui-settings-general desktop pet section', () => {
+  it('registers the pet section when the shell can write pet settings', async () => {
+    ;(window as Window & { shell?: unknown }).shell = {
+      getConfig: async () => ({}),
+      saveConfig: async () => ({}),
+      saveLive2dPetSettings: async () => ({ ok: true }),
+    }
+    const b = await bench()
+    declare(b.slots)
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const pet = b.slots.entries('settings.section').find(e => e.options.id === 'pet')!
+    expect(pet.component).toBe(PetSection)
+    expect(pet.options).toMatchObject({ id: 'pet', order: 40 })
+    expect(pet.locale).toBe('settings')
+    // The assistant's own fields mount through the section's child seat.
+    expect(b.slots.spec('settings.pet.item')).toEqual({ kind: 'list', scope: 'root' })
+    // The look picker's catalog read rides the injected session remote.
+    const injected = (pet.inject as unknown as () => PetSectionInjected)()
+    await expect(injected.modelCatalog()).resolves.toMatchObject({ ok: true })
+    await fiber.dispose()
+    expect(b.slots.entries('settings.section').find(e => e.options.id === 'pet')).toBeUndefined()
+    expect(b.slots.spec('settings.pet.item')).toBeUndefined()
+  })
+
+  it('withholds the pet section without the pet write channel', async () => {
+    ;(window as Window & { shell?: unknown }).shell = {
+      getConfig: async () => ({}),
+      saveConfig: async () => ({}),
+    }
+    const b = await bench()
+    declare(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    expect(b.slots.entries('settings.section').find(e => e.options.id === 'pet')).toBeUndefined()
+    expect(b.slots.spec('settings.pet.item')).toBeUndefined()
   })
 })

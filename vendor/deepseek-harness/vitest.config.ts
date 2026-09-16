@@ -219,6 +219,11 @@ export default defineConfig({
         // harness the jsdom lane doesn't cover yet. TODO(gui): cover and
         // remove as the client test lane matures.
         'packages/client/ui-trajectory/src/*',
+        // WebGL fluid simulation: jsdom exposes no WebGL context at all, so
+        // the jsdom lane can only prove the fail-closed mount path (done in
+        // cursor-fx.client.spec.ts). TODO(gui): cover with a browser-grade
+        // lane and remove.
+        'packages/client/ui-theme/src/cursor-fluid.ts',
         // Trajectory's compact Markdown projection retains deferred branch coverage.
         'packages/client/ui-primitives/src/markdown/plain-text.ts',
         'packages/client/ui-user-questions/src/client/QuestionComposer.tsx',

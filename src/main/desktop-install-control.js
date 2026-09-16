@@ -52,7 +52,18 @@ function sendJson(res, status, body) {
 }
 
 function unauthorized(res) {
-  sendJson(res, 401, { ok: false, error: 'unauthorized', needsAllowBuilds: false, allowBuilds: [], spec: '', log: '' });
+  sendJson(res, 401, { ok: false, error: 'unauthorized' });
+}
+
+function badRequest(res, error) {
+  sendJson(res, 400, { ok: false, error });
+}
+
+function serverError(res, error) {
+  sendJson(res, 500, {
+    ok: false,
+    error: error instanceof Error ? error.message : String(error || 'internal error'),
+  });
 }
 
 function scheduleRestart(startHarness, delayMs) {
@@ -76,10 +87,131 @@ function scheduleRestart(startHarness, delayMs) {
   }, delayMs);
 }
 
-function createHandler({ installPlugin, startHarness, restartDelayMs }) {
+function normalizeInstallResult(result, fallbackSpec) {
+  return {
+    ok: Boolean(result?.ok),
+    needsAllowBuilds: Boolean(result?.needsAllowBuilds),
+    allowBuilds: Array.isArray(result?.allowBuilds) ? result.allowBuilds : [],
+    spec: String(result?.spec || fallbackSpec || ''),
+    error: String(result?.error || ''),
+    log: String(result?.log || ''),
+  };
+}
+
+async function handleInstall(req, res, { installPlugin, startHarness, restartDelayMs }) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req) || '{}');
+  } catch {
+    badRequest(res, 'invalid json');
+    return;
+  }
+  const spec = String(payload.spec || '').trim();
+  const allowBuilds = normalizeAllowBuilds(payload.allowBuilds);
+  if (!isValidGithubSpec(spec)) {
+    badRequest(res, '仅支持 github:owner/repo[#ref] 安装规格');
+    return;
+  }
+  if (!allowBuilds) {
+    badRequest(res, 'allowBuilds 包含非法包名');
+    return;
+  }
+  try {
+    const body = normalizeInstallResult(await installPlugin(spec, { allowBuilds }), spec);
+    sendJson(res, 200, body);
+    if (body.ok && !body.needsAllowBuilds) {
+      scheduleRestart(startHarness, restartDelayMs);
+    }
+  } catch (error) {
+    sendJson(res, 500, {
+      ok: false,
+      needsAllowBuilds: false,
+      allowBuilds: [],
+      spec,
+      error: error instanceof Error ? error.message : String(error || 'install failed'),
+      log: '',
+    });
+  }
+}
+
+/**
+ * `/desktop/plugin` actions for the whale assistant's desktop management
+ * tools. Guards live in the desktop callbacks (plugin-ops / marketplace
+ * validation), so this layer only normalizes the envelope.
+ */
+async function handleDesktopPlugin(req, res, desktop, { installPlugin, startHarness, restartDelayMs }) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req) || '{}');
+  } catch {
+    badRequest(res, 'invalid json');
+    return;
+  }
+  const action = String(payload.action || '').trim();
+  const allowBuilds = normalizeAllowBuilds(payload.allowBuilds);
+  if (allowBuilds === null) {
+    badRequest(res, 'allowBuilds 包含非法包名');
+    return;
+  }
+  switch (action) {
+    case 'install': {
+      const id = String(payload.id || '').trim();
+      const spec = String(payload.spec || '').trim();
+      if (!id && !spec) {
+        badRequest(res, '缺少插件 id 或安装规格');
+        return;
+      }
+      if (spec && !isValidGithubSpec(spec)) {
+        badRequest(res, '仅支持 github:owner/repo[#ref] 安装规格');
+        return;
+      }
+      const result = id
+        ? await desktop.installCatalog(id, { allowBuilds })
+        : await installPlugin(spec, { allowBuilds });
+      const body = { ...normalizeInstallResult(result, spec || id), restarting: false };
+      if (body.ok && !body.needsAllowBuilds) {
+        body.restarting = true;
+        scheduleRestart(startHarness, restartDelayMs);
+      }
+      sendJson(res, 200, body);
+      return;
+    }
+    case 'remove': {
+      const name = String(payload.name || '').trim();
+      if (!name) {
+        badRequest(res, '缺少包名');
+        return;
+      }
+      const result = await desktop.removePlugin(name);
+      const ok = result?.ok === true;
+      if (ok) {
+        scheduleRestart(startHarness, restartDelayMs);
+      }
+      sendJson(res, 200, { ...result, ok, restarting: ok });
+      return;
+    }
+    case 'disable':
+    case 'enable': {
+      const names = Array.isArray(payload.names)
+        ? payload.names
+        : [payload.name];
+      const result = action === 'disable'
+        ? await desktop.disablePlugins(names)
+        : await desktop.enablePlugin(names[0]);
+      sendJson(res, 200, result);
+      return;
+    }
+    default:
+      badRequest(res, `unknown action: ${action || '(empty)'}`);
+  }
+}
+
+function createHandler({ installPlugin, startHarness, desktop, restartDelayMs }) {
   const delay = Number.isFinite(restartDelayMs) ? restartDelayMs : RESTART_DELAY_MS;
+  const ops = { installPlugin, startHarness, restartDelayMs: delay };
   return async (req, res) => {
-    if (req.method !== 'POST' || req.url !== '/install') {
+    const pathname = new URL(req.url ?? '/', 'http://dshd.internal').pathname;
+    if (pathname !== '/install' && !pathname.startsWith('/desktop/')) {
       sendJson(res, 404, { ok: false, error: 'not found' });
       return;
     }
@@ -88,46 +220,45 @@ function createHandler({ installPlugin, startHarness, restartDelayMs }) {
       unauthorized(res);
       return;
     }
-    let payload;
-    try {
-      payload = JSON.parse(await readBody(req) || '{}');
-    } catch {
-      sendJson(res, 400, { ok: false, error: 'invalid json', needsAllowBuilds: false, allowBuilds: [], spec: '', log: '' });
+    if (req.method === 'POST' && pathname === '/install') {
+      await handleInstall(req, res, ops);
       return;
     }
-    const spec = String(payload.spec || '').trim();
-    const allowBuilds = normalizeAllowBuilds(payload.allowBuilds);
-    if (!isValidGithubSpec(spec)) {
-      sendJson(res, 400, { ok: false, error: '仅支持 github:owner/repo[#ref] 安装规格', needsAllowBuilds: false, allowBuilds: [], spec, log: '' });
-      return;
-    }
-    if (!allowBuilds) {
-      sendJson(res, 400, { ok: false, error: 'allowBuilds 包含非法包名', needsAllowBuilds: false, allowBuilds: [], spec, log: '' });
+    if (!desktop) {
+      sendJson(res, 404, { ok: false, error: 'not found' });
       return;
     }
     try {
-      const result = await installPlugin(spec, { allowBuilds });
-      const body = {
-        ok: Boolean(result?.ok),
-        needsAllowBuilds: Boolean(result?.needsAllowBuilds),
-        allowBuilds: Array.isArray(result?.allowBuilds) ? result.allowBuilds : [],
-        spec: String(result?.spec || spec),
-        error: String(result?.error || ''),
-        log: String(result?.log || ''),
-      };
-      sendJson(res, 200, body);
-      if (body.ok && !body.needsAllowBuilds) {
-        scheduleRestart(startHarness, delay);
+      if (req.method === 'GET' && pathname === '/desktop/state') {
+        sendJson(res, 200, await desktop.state());
+        return;
       }
+      if (req.method === 'GET' && pathname === '/desktop/marketplace') {
+        const { searchParams } = new URL(req.url ?? '/', 'http://dshd.internal');
+        sendJson(res, 200, await desktop.listMarketplace({
+          q: searchParams.get('q') || '',
+          refresh: searchParams.get('refresh') === '1',
+        }));
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/desktop/config') {
+        let payload;
+        try {
+          payload = JSON.parse(await readBody(req) || '{}');
+        } catch {
+          badRequest(res, 'invalid json');
+          return;
+        }
+        sendJson(res, 200, await desktop.applyConfig(payload.patch));
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/desktop/plugin') {
+        await handleDesktopPlugin(req, res, desktop, ops);
+        return;
+      }
+      sendJson(res, 404, { ok: false, error: 'not found' });
     } catch (error) {
-      sendJson(res, 500, {
-        ok: false,
-        needsAllowBuilds: false,
-        allowBuilds: [],
-        spec,
-        error: error instanceof Error ? error.message : String(error || 'install failed'),
-        log: '',
-      });
+      serverError(res, error);
     }
   };
 }

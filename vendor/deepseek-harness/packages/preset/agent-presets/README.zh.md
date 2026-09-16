@@ -33,7 +33,7 @@ kind: "package-reference"
 
 从 preset 组装的会话会运行该 preset `agent.cordis.yml` 所列插件：它的工具、提示词段落与 skill。加入同一 preset 的会话共享一份已安装的组装，且各会话的状态彼此隔离。子 agent（subagent）会加入其父方的组装，因此它看到的工具与提示词段落和创建它的 agent 相同。
 
-可选的 preset 来自两处：本包 `presets/` 下随包交付的 preset，以及你自己放在 `<dshHome>/.agent-presets` 下的 preset。选择器会展示每个 preset 的显示名与描述；组装无法加载的 preset 会连同原因一起列出而不是被隐藏，因此你能看到该修什么或删什么。
+可选的 preset 来自两处：本包 `presets/` 下随包交付的 preset，以及你自己放在 `<dshHome>/.agent-presets` 下的 preset。选择器会展示每个 preset 的显示名与描述；组装无法加载的 preset 会连同原因一起列出而不是被略去，因此你能看到该修什么或删什么。preset 还可以在 `preset.yml` 里声明 `hidden: true`，从每个客户端读取的名单上完全隐去——供插件为自己的会话播种、不供人选择的 preset 使用；按 id 解析与挂载不受影响，而无法加载的 hidden preset 仍会连同原因列出，以便删除其目录。
 
 ### 最小配置
 
@@ -130,7 +130,7 @@ agent-presets:
 
 ### 创作机制
 
-复制会解引用符号链接以保证自包含，把目录树收紧为仅属主可用（文件 `0o600` 并保留属主执行位，目录 `0o700`），并在首次复制时创建根目录。复制出的 `preset.yml` 会被重写：保留来源的描述供作者编辑，丢弃其名称与 roster `order`，从而让名单始终能区分副本与来源。删除拒绝随部署提供的 preset，并清除指向刚删除 preset 的用户默认值。
+复制会解引用符号链接以保证自包含，把目录树收紧为仅属主可用（文件 `0o600` 并保留属主执行位，目录 `0o700`），并在首次复制时创建根目录。复制出的 `preset.yml` 会被重写：保留来源的描述供作者编辑，丢弃其名称、roster `order` 与 `hidden` 标记，从而让副本以自身身份呈现，并留在它被创建出来供人选择的名单上。删除拒绝随部署提供的 preset，并清除指向刚删除 preset 的用户默认值。
 
 ### 会话记录
 

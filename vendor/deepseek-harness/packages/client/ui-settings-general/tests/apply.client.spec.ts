@@ -48,6 +48,7 @@ async function bench(isLoopback = true) {
   }))
   const remote = new TestRemote(ctx, {
     settings: { describe: settingsDescribe, openSettingsDocument: settingsOpenDocument },
+    session: { modelCatalog: vi.fn(() => Promise.resolve({ ok: true, value: { groups: [] } })) },
   })
   // The fixed Host facts the shell reads its loopback-only action from.
   remote.$host = { home: undefined, isLoopback }
@@ -87,7 +88,10 @@ function generalEntry(slots: SlotRegistry) {
 
 describe('ui-settings-general apply', () => {
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope'])
+    expect(inject).toEqual([
+      'slots', 'locale', 'connection', 'remote', 'remote.settings', 'remote.session',
+      'settingsScope',
+    ])
   })
 
   it('fills all five seats for declarations before or after apply', async () => {

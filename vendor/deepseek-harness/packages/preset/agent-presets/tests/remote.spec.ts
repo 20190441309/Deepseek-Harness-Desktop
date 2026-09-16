@@ -145,6 +145,48 @@ describe('the roster a client reads', () => {
     expect(roster.presets.find(row => row.id === 'damaged')?.broken).toEqual(expect.any(String))
   })
 
+  it('keeps a hidden preset off the roster while it can still compose', async () => {
+    const userRoot = await mkdtemp(join(tmpdir(), 'dsh-preset-remote-'))
+    roots.push(userRoot)
+    await mkdir(join(userRoot, 'internal'), { recursive: true })
+    await writeFile(join(userRoot, 'internal', COMPOSITION_FILE), VALID)
+    await writeFile(join(userRoot, 'internal', METADATA_FILE), 'hidden: true\n')
+    const ctx = await harness({
+      default: 'standard',
+      roots: [{ path: join(FIXTURES, 'system'), trust: 'system' }, { path: userRoot, trust: 'user' }],
+      includeShippedRoot: false,
+      includeUserRoot: false,
+    })
+
+    const roster = await ctx.agentPresets.remoteExportList()
+
+    expect(roster.presets.map(row => row.id)).toEqual(['minimal', 'standard'])
+    // Hidden is presentation, never capability: the Host still lists and
+    // resolves the preset for sessions a plugin creates by id.
+    expect((await ctx.agentPresets.list()).map(preset => preset.id))
+      .toEqual(expect.arrayContaining(['internal', 'minimal', 'standard']))
+    expect((await ctx.agentPresets.resolve('internal')).hidden).toBe(true)
+  })
+
+  it('keeps a hidden preset on the roster once it cannot load', async () => {
+    const userRoot = await mkdtemp(join(tmpdir(), 'dsh-preset-remote-'))
+    roots.push(userRoot)
+    await mkdir(join(userRoot, 'internal'), { recursive: true })
+    // Hidden but unloadable: the directory still occupies the id, and this
+    // roster is where a client would delete it.
+    await writeFile(join(userRoot, 'internal', METADATA_FILE), 'hidden: true\n')
+    const ctx = await harness({
+      default: 'standard',
+      roots: [{ path: join(FIXTURES, 'system'), trust: 'system' }, { path: userRoot, trust: 'user' }],
+      includeShippedRoot: false,
+      includeUserRoot: false,
+    })
+
+    const roster = await ctx.agentPresets.remoteExportList()
+
+    expect(roster.presets.find(row => row.id === 'internal')?.broken).toEqual(expect.any(String))
+  })
+
   it('answers an empty roster with nothing authorable', async () => {
     const ctx = await harness({ default: 'standard', roots: [], includeShippedRoot: false, includeUserRoot: false })
 

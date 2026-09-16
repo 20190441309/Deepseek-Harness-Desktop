@@ -111,7 +111,7 @@ function renderReleases(payload) {
   const list = $('release-list');
   const rows = payload && Array.isArray(payload.releases) ? payload.releases : [];
   if (!rows.length) {
-    list.innerHTML = `<li><span class="row-meta">${payload?.message || '暂无可列出的正式版。'}</span></li>`;
+    list.innerHTML = `<li><span class="row-meta">${escapeHtml(payload?.message || '暂无可列出的正式版。')}</span></li>`;
     return;
   }
   list.innerHTML = rows.map((row) => {

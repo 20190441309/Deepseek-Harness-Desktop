@@ -133,6 +133,38 @@ const FORK_FILE_MARKERS = [
   // Session log download lives in the desktop titlebar capsule, never in the conversation header.
   { file: 'apps/web/tests/snapshots/agent-preset-selection/header.expected.md', excludes: ['button "Session log"'] },
   { file: 'package.json', includes: ['copy-ghostty-assets.mjs'] },
+  // Composer typing effects (docs/features/composer-typing-fx.md): an
+  // Appearance row slot on the upstream settings contract, a transient
+  // echo/caret overlay on the Lexical composer (never its text DOM), and the
+  // typing-fx preference fields inside the ui-conversation namespace.
+  { file: 'packages/client/ui-settings/src/client/contract/slots.ts', includes: ["'settings.appearance.item'", 'SettingsAppearanceItemOwnerProps'] },
+  { file: 'packages/client/ui-theme/src/client/index.ts', includes: ["'settings.appearance.item'"] },
+  { file: 'packages/client/ui-theme/src/client/AppearanceSection.tsx', includes: ["renderSlot('settings.appearance.item'"] },
+  { file: 'packages/client/ui-conversation/src/submission-settings.ts', includes: ['TYPING_FX_FIELD', 'TYPING_FX_EFFECTS', 'TYPING_FX_COLOR_SCHEMES', 'normalizeTypingFxStyle'] },
+  { file: 'packages/client/ui-conversation/src/index.ts', includes: ['TYPING_FX_FIELD', 'DEFAULT_TYPING_FX_STYLE'] },
+  { file: 'packages/client/ui-conversation/src/client/input/submission-policy.ts', includes: ['typingFxStyle', 'setTypingFxConfiguration'] },
+  { file: 'packages/client/ui-conversation/src/client/input/editor/typing-fx.ts', includes: ['typingFxInsertedText', 'MAX_TYPING_FX_ECHOES'] },
+  { file: 'packages/client/ui-conversation/src/client/TypingFxLayer.tsx', includes: ['data-typing-fx-echo', 'registerUpdateListener'] },
+  { file: 'packages/client/ui-conversation/src/client/TypingFxLayer.module.css', includes: ['dsh-typing-fx-drop', 'prefers-reduced-motion'] },
+  { file: 'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx', includes: ['TypingFxLayer', 'data-typing-fx-caret'] },
+  { file: 'packages/client/ui-conversation/src/client/skeleton/InputBar.module.css', includes: ['caret-color: transparent'] },
+  { file: 'packages/client/ui-conversation/src/client/settings/TypingFxRow.tsx', includes: ["'settings.appearance.item'", 'TypingFxModal'] },
+  { file: 'packages/client/ui-conversation/src/client/settings/TypingFxModal.tsx', includes: ["'dsh-typing-fx'", 'data-typing-fx-root'] },
+  { file: 'packages/client/ui-conversation/src/client/settings/TypingFxModal.module.css', includes: [] },
+  { file: 'packages/client/ui-conversation/src/client/apply.ts', includes: ['TypingFxRow', "'settings.appearance.item'", 'typingFx: submissionPolicy.typingFx'] },
+  { file: 'packages/client/ui-conversation/src/client/locales.ts', includes: ["'settings.typingFx.title'"] },
+  { file: 'packages/client/ui-conversation/tests/typing-fx.client.spec.ts', includes: ['diffInsertedText'] },
+  { file: 'packages/client/ui-conversation/tests/typing-fx-layer.client.spec.tsx', includes: ['TypingFxLayer', 'data-typing-fx-echo'] },
+  { file: 'packages/client/ui-conversation/tests/typing-fx-row.client.spec.tsx', includes: ['TypingFxRow'] },
+  // Win32 drive selection in the in-app directory browser: the seam exports
+  // the volume-picker sentinel and the browse backend answers it with the
+  // enterable drive roots, prepending the crumb to every Win32 ancestry.
+  // Upstream defers drive-root enumeration; the client half of this fork
+  // (WINDOWS_VOLUME_ROOT in DirectoryBrowser.tsx) already renders it, so a
+  // sync resolved towards upstream must not drop the host half silently.
+  { file: 'packages/host/directory-picker/src/index.ts', includes: ['WINDOWS_VOLUME_ROOT'] },
+  { file: 'packages/host/directory-picker-browse/src/index.ts', includes: ['WINDOWS_VOLUME_ROOT', 'volumeListing'] },
+  { file: 'packages/host/directory-picker-browse/tests/service.spec.ts', includes: ['WINDOWS_VOLUME_ROOT'] },
 ];
 
 function readRel(vendorRoot, rel) {

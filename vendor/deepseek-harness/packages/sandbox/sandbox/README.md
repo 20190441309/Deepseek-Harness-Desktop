@@ -63,7 +63,7 @@ Enforcement is reported per call: `full` means the backend governs every promise
 
 ### Denied calls and escalation
 
-When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the user sees one approval prompt and can allow once, reject, or cancel. The escalation must be strictly wider than the call's effective mode, and it applies to that one call only.
+When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the user sees one approval prompt and can allow once, reject, or cancel. The grant applies to that one call only. A request naming a real target that is not strictly wider than the call's effective mode is not an escalation — nothing widens, so the call runs under the mode it already has and no approval is asked.
 
 ### Fail-closed behavior
 
@@ -97,7 +97,7 @@ This section explains the design decisions behind the contract and points at the
 
 ### Escalation choreography
 
-The ladder is a closed table — `read-only` may escalate to `workspace-write` or `danger-full-access`, `workspace-write` only to `danger-full-access` — checked at execution, never baked into a tool schema, whose enum stays the closed target vocabulary. [`approveEscalation`](src/escalation.ts) validates the `sandbox_permissions`/`justification` pairing, rejects non-widening requests without prompting a human, and maps every approval outcome to its own error before anything executes.
+The ladder is a closed table — `read-only` may escalate to `workspace-write` or `danger-full-access`, `workspace-write` only to `danger-full-access` — checked at execution, never baked into a tool schema, whose enum stays the closed target vocabulary. [`approveEscalation`](src/escalation.ts) validates the `sandbox_permissions`/`justification` pairing, resolves a non-widening real-target request to the call's effective mode without prompting a human, still fails closed on a target outside the vocabulary or an unrecognized effective mode, and maps every approval outcome to its own error before anything executes.
 
 ### Writable roots
 

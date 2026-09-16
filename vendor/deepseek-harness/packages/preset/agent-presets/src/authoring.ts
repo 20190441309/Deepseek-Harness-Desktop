@@ -111,10 +111,11 @@ async function tightenModes(dir: string): Promise<void> {
  * rather than a set of links back into the install it was copied from.
  *
  * The copied metadata is then rewritten: the source's description is kept
- * (the file is the author's to edit afterwards), but its name and roster
- * `order` are not — a copy presenting itself identically to its source, or
- * sorted into the shipped set's declared order, would make the roster stop
- * distinguishing them. With no name given and no description to keep, the
+ * (the file is the author's to edit afterwards), but its name, roster
+ * `order`, and `hidden` flag are not — a copy presenting itself identically
+ * to its source, sorted into the shipped set's declared order, or absent
+ * from the pickers it was authored for would make the roster stop
+ * distinguishing it. With no name given and no description to keep, the
  * file is removed so the copy publishes nothing rather than a blank.
  * @param roots - the configured roots; the first `user` one receives the copy.
  * @param source - the resolved preset the copy starts from.

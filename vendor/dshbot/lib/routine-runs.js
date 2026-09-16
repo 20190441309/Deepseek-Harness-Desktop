@@ -44,6 +44,8 @@ function normalizeRun(input, fallback = {}) {
     sessionId: String(input?.sessionId ?? fallback.sessionId ?? ''),
     turn: turn(input?.turn ?? fallback.turn),
     error: String(input?.error ?? fallback.error ?? ''),
+    output: String(input?.output ?? fallback.output ?? ''),
+    silent: input?.silent === true || fallback.silent === true,
     createdAt: timestamp(input?.createdAt, timestamp(fallback.createdAt)),
     startedAt: timestamp(input?.startedAt, timestamp(fallback.startedAt)),
     endedAt: timestamp(input?.endedAt, timestamp(fallback.endedAt)),
@@ -58,6 +60,18 @@ function trimHistory(history) {
   const terminal = terminalLimit === 0 ? [] : terminalRows.slice(-terminalLimit);
   const keep = new Set([...active, ...terminal].map((run) => run.runId));
   return history.filter((run) => keep.has(run.runId));
+}
+
+/**
+ * Hermes three-way silent sentinel: the whole trimmed reply, its first line,
+ * or its last line being exactly `[SILENT]` marks the run silent.
+ */
+export function isSilentResponse(text) {
+  const value = String(text ?? '').trim();
+  if (!value) return false;
+  if (value === '[SILENT]') return true;
+  const lines = value.split(/\r?\n/);
+  return lines[0].trim() === '[SILENT]' || lines.at(-1).trim() === '[SILENT]';
 }
 
 export function routineRunHistory(routine) {

@@ -30,10 +30,12 @@ import type {} from '@deepseek-ai/dsh-goal/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ComposerBarProps } from '../contract/slots.ts'
 import { ComposerBeam } from '../ComposerBeam.tsx'
+import { TypingFxLayer } from '../TypingFxLayer.tsx'
 import { ComposerContentEditable } from '../input/editor/ComposerContentEditable.tsx'
 import { DecoratorPortals } from '../input/editor/DecoratorPortals.tsx'
 import { registerComposerKeymap } from '../input/editor/keymap.ts'
 import { resolveSubmitMode } from '../input/submission-policy.ts'
+import { resolveTypingFxColors } from '../../submission-settings.ts'
 import { attachmentErrorText, imageSizeText } from '../image-labels.ts'
 import { ContextMeter } from './ContextMeter.tsx'
 import { PermissionSelect } from './PermissionSelect.tsx'
@@ -51,6 +53,7 @@ export const InputBar = memo(function InputBar({
   toggleCommandMenu, stop, command, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher,
   useComposerBeam, useComposerBeamStyle, useComposerResize, useComposerResizeHeight, useComposerResizeWidth,
+  useTypingFx, useTypingFxStyle,
   setComposerResizeSize,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
@@ -66,6 +69,11 @@ export const InputBar = memo(function InputBar({
   const composerResize = useComposerResize(value => value)
   const composerResizeHeight = useComposerResizeHeight(value => value)
   const composerResizeWidth = useComposerResizeWidth(value => value)
+  const typingFx = useTypingFx(value => value)
+  const typingFxStyle = useTypingFxStyle(value => value)
+  // Scheme text stop recolors the whole composer input through a CSS var;
+  // theme (null) leaves the token fallback untouched.
+  const typingFxTextColor = typingFx ? resolveTypingFxColors(typingFxStyle.colors).text : null
   const sessionRow = useSessions(s => (sessionId === undefined ? undefined : s.byId[sessionId])) as
     { presentation?: { composer?: 'managed' } } | undefined
   const managed = sessionRow?.presentation?.composer === 'managed'
@@ -94,6 +102,9 @@ export const InputBar = memo(function InputBar({
   // the gate (a failed upload is retried or removed, never silently dropped).
   const uploadsPending = attachments.some(
     attachment => attachment.kind === 'file' && uploads[attachment.id]?.status !== 'ready',
+  )
+  const uploadsFailed = attachments.some(
+    attachment => attachment.kind === 'file' && uploads[attachment.id]?.status === 'error',
   )
   // Transient error banner (machine notices, image-intake rejections, and
   // prompt failures): the seq keys the Toast so an identical repeated message
@@ -255,28 +266,40 @@ export const InputBar = memo(function InputBar({
   // client-side size or count limit and upload as soon as they are picked.
   // The host enforces the same image limits at submit for callers that bypass
   // this composer.
-  const intakeFiles = useCallback((files: readonly File[]): void => {
-    if (subagent !== null || addFiles === undefined || files.length === 0) return
-    const rejected = ((): string | null => {
-      if (imageLimits !== undefined) {
-        const mediaTypes = imageLimits.mediaTypes as readonly string[]
-        const images = files.filter(file => mediaTypes.includes(file.type))
-        const imageAttachments = attachments.filter(attachment => attachment.kind === 'image')
-        if (imageAttachments.length + images.length > imageLimits.maxImagesPerMessage) {
-          return t('image.tooMany', { count: imageLimits.maxImagesPerMessage })
+  const intakeFiles = useCallback((files: readonly File[], rejected: readonly File[] = []): void => {
+    if (subagent !== null || addFiles === undefined) return
+    // One toast slot: collect every refusal from this batch into a single
+    // announcement so a mixed folder + refused-file drop loses neither.
+    const notices: string[] = []
+    if (rejected.length > 0) {
+      const first = rejected[0]
+      notices.push(rejected.length === 1 && first !== undefined
+        ? t('file.directoryRejected', { name: first.name || t('file.label') })
+        : t('file.directoriesRejected', { count: rejected.length }))
+    }
+    if (files.length > 0) {
+      const refused = ((): string | null => {
+        if (imageLimits !== undefined) {
+          const mediaTypes = imageLimits.mediaTypes as readonly string[]
+          const images = files.filter(file => mediaTypes.includes(file.type))
+          const imageAttachments = attachments.filter(attachment => attachment.kind === 'image')
+          if (imageAttachments.length + images.length > imageLimits.maxImagesPerMessage) {
+            return t('image.tooMany', { count: imageLimits.maxImagesPerMessage })
+          }
+          if (images.some(file => file.size > imageLimits.maxImageBytes)) {
+            return t('image.fileTooLarge', { size: imageSizeText(imageLimits.maxImageBytes) })
+          }
+          const total = imageAttachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
+            + images.reduce((sum, file) => sum + file.size, 0)
+          if (total > imageLimits.maxMessageImageBytes) {
+            return t('image.totalTooLarge', { size: imageSizeText(imageLimits.maxMessageImageBytes) })
+          }
         }
-        if (images.some(file => file.size > imageLimits.maxImageBytes)) {
-          return t('image.fileTooLarge', { size: imageSizeText(imageLimits.maxImageBytes) })
-        }
-        const total = imageAttachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
-          + images.reduce((sum, file) => sum + file.size, 0)
-        if (total > imageLimits.maxMessageImageBytes) {
-          return t('image.totalTooLarge', { size: imageSizeText(imageLimits.maxMessageImageBytes) })
-        }
-      }
-      return addFiles(files)
-    })()
-    if (rejected !== null) showToast(rejected)
+        return addFiles(files)
+      })()
+      if (refused !== null) notices.push(refused)
+    }
+    if (notices.length > 0) showToast(notices.join('\n'))
   }, [subagent, addFiles, attachments, imageLimits, showToast, t])
 
   const canAcceptDrop = subagent === null && !locked && !machineBusy && addFiles !== undefined
@@ -319,11 +342,11 @@ export const InputBar = memo(function InputBar({
   // registration survives re-renders without re-arming per keystroke.
   const gate = useRef({
     locked, machineBusy, canSteerQueue, running, steeringAvailable, busyEnter,
-    intakeFiles, uploadsPending, showToast, t,
+    intakeFiles, uploadsPending, uploadsFailed, showToast, t,
   })
   gate.current = {
     locked, machineBusy, canSteerQueue, running, steeringAvailable, busyEnter,
-    intakeFiles, uploadsPending, showToast, t,
+    intakeFiles, uploadsPending, uploadsFailed, showToast, t,
   }
 
   useEffect(() => {
@@ -346,7 +369,7 @@ export const InputBar = memo(function InputBar({
           return
         }
         if (g.uploadsPending) {
-          g.showToast(g.t('file.stillUploading'))
+          g.showToast(g.t(g.uploadsFailed ? 'file.uploadFailed' : 'file.stillUploading'))
           return
         }
         keyboard.submit(resolveSubmitMode(
@@ -356,7 +379,7 @@ export const InputBar = memo(function InputBar({
           g.steeringAvailable,
         ))
       },
-      intakeFiles: (files) => { gate.current.intakeFiles(files) },
+      intakeFiles: (files, rejected) => { gate.current.intakeFiles(files, rejected) },
       pasteText: (text) => {
         if (gate.current.machineBusy || gate.current.locked) return
         keyboard.paste(text)
@@ -459,9 +482,14 @@ export const InputBar = memo(function InputBar({
       // The steer hint deliberately outranks the plan placeholder:
       // while it shows, the whole-queue gesture is genuinely available
       // (the gate never consults plan mode), so the actionable hint wins.
-      : canSteerQueue
-        ? t('placeholder.steerQueue')
-        : planActive ? t('placeholder.plan') : t('placeholder.default'))
+        : canSteerQueue
+          ? t('placeholder.steerQueue')
+          : planActive ? t('placeholder.plan') : t('placeholder.default'))
+
+  const inputVars: Record<string, string> = {}
+  if (hint !== null) inputVars['--dsh-composer-hint'] = JSON.stringify(hint)
+  if (typingFxTextColor !== null) inputVars['--dsh-typing-fx-text-color'] = typingFxTextColor
+  const inputStyle = Object.keys(inputVars).length === 0 ? undefined : inputVars as CSSProperties
 
   return (
     <div className={clsx(css.root, variant === 'hero' && css.hero)}>
@@ -509,169 +537,177 @@ export const InputBar = memo(function InputBar({
             send/think beam is live. */}
         <ComposerBeam active={showBeam} appearance={composerBeamStyle} />
         <div className={css.cardBody}>
-        {sessionId !== undefined && (
-          <div className={css.overlayAnchor}>{renderSlot('conversation.input.overlay', {})}</div>
-        )}
-        {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
-        {edit !== null && (
-          <div className={css.editRow} role="status" data-edit-session>
-            <span className={css.editLabel}>{edit.label}</span>
-            <Tooltip label={t('input.editCancel')} side="top" delayMs={500}>
-              <button
-                type="button"
-                className={css.editCancel}
-                aria-label={t('input.editCancel')}
-                aria-keyshortcuts="Escape"
-                disabled={machineBusy}
-                onMouseDown={keepFocus}
-                onClick={() => keyboard?.cancelEdit()}
-              >
-                <IconCloseOutline16 size={14} />
-              </button>
-            </Tooltip>
-          </div>
-        )}
-        {renderSlot('conversation.input.attachments', {
-          attachments,
-          canAcceptDrop,
-          onAddFiles: intakeFiles,
-          onRemoveAttachment: (id) => { removeAttachment?.(id) },
-          uploads,
-          onRetryFile: (id) => { retryFileUpload?.(id) },
-          dropLimits: imageLimits === undefined ? undefined : {
-            count: imageLimits.maxImagesPerMessage,
-            size: imageSizeText(imageLimits.maxImageBytes),
-          },
-        })}
-        {/* One scrollport, one text surface: the contenteditable grows with
+          {sessionId !== undefined && (
+            <div className={css.overlayAnchor}>{renderSlot('conversation.input.overlay', {})}</div>
+          )}
+          {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
+          {edit !== null && (
+            <div className={css.editRow} role="status" data-edit-session>
+              <span className={css.editLabel}>{edit.label}</span>
+              <Tooltip label={t('input.editCancel')} side="top" delayMs={500}>
+                <button
+                  type="button"
+                  className={css.editCancel}
+                  aria-label={t('input.editCancel')}
+                  aria-keyshortcuts="Escape"
+                  disabled={machineBusy}
+                  onMouseDown={keepFocus}
+                  onClick={() => keyboard?.cancelEdit()}
+                >
+                  <IconCloseOutline16 size={14} />
+                </button>
+              </Tooltip>
+            </div>
+          )}
+          {renderSlot('conversation.input.attachments', {
+            attachments,
+            canAcceptDrop,
+            onAddFiles: intakeFiles,
+            onRemoveAttachment: (id) => { removeAttachment?.(id) },
+            uploads,
+            onRetryFile: (id) => { retryFileUpload?.(id) },
+            dropLimits: imageLimits === undefined ? undefined : {
+              count: imageLimits.maxImagesPerMessage,
+              size: imageSizeText(imageLimits.maxImageBytes),
+            },
+          })}
+          {/* One scrollport, one text surface: the contenteditable grows with
             its content and .scroll — capped at 14 lines in CSS — is the only
             thing that scrolls. Chips are decorator portals inside the same
             surface, so wrapping, caret geometry, and scrolling are the
             browser's own. */}
-        <div ref={scrollRef} className={css.scroll} data-input-scroll>
-          <div className={css.grow}>
-            <ComposerContentEditable
-              editor={workspaceTrigger ? null : editor}
-              editable={editable}
-              className={clsx(css.input, editorDisabled && css.inputDisabled)}
-              data-phase={input?.phase ?? 'inert'}
-              aria-disabled={editorDisabled || undefined}
-              data-placeholder={placeholderText}
-              // The placeholder was the textarea's accessible name; a div's
-              // data attribute is not, so the label restores it.
-              aria-label={workspaceTrigger ? t('hero.chooseWorkspace') : placeholderText}
-              aria-haspopup={workspaceTrigger ? 'menu' : undefined}
-              aria-expanded={workspaceTrigger ? workspacePickerOpen : undefined}
-              tabIndex={workspaceTrigger ? 0 : undefined}
-              onKeyDown={workspaceTrigger ? onWorkspaceKeyDown : undefined}
-              style={hint === null ? undefined : { '--dsh-composer-hint': JSON.stringify(hint) } as CSSProperties}
-            />
-            {draft === '' && attachments.length === 0 && !claimActive && (
-              <div aria-hidden className={css.placeholder} data-composer-placeholder>
-                {placeholderText}
-              </div>
-            )}
-            <DecoratorPortals editor={workspaceTrigger ? null : editor} />
-          </div>
-        </div>
-        <div className={css.row}>
-          <div className={css.tools}>
-            <Tooltip label={t('input.commands')} side="top" delayMs={500}>
-              <button
-                type="button"
-                className={css.add}
-                aria-label={t('input.commands')}
-                aria-haspopup="listbox"
-                aria-expanded={commandMenuOpen}
-                disabled={locked || toggleCommandMenu === undefined}
-                onMouseDown={keepFocus}
-                onClick={onToggleCommandMenu}
-              >
-                <IconPlusOutline16 size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip label={t('file.attach')} side="top" delayMs={500}>
-              <button
-                type="button"
-                className={css.add}
-                aria-label={t('file.attach')}
-                disabled={subagent !== null || locked || machineBusy || addFiles === undefined}
-                onMouseDown={keepFocus}
-                onClick={() => { fileInputRef.current?.click() }}
-              >
-                <IconPaperclipOutline16 size={14} />
-              </button>
-            </Tooltip>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              disabled={subagent !== null}
-              hidden
-              onChange={onPickFiles}
-            />
-            <div className={css.modes}>
-              {accessSelect}
-              {!managed && (sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked }))}
+          <div ref={scrollRef} className={css.scroll} data-input-scroll>
+            <div className={css.grow}>
+              <ComposerContentEditable
+                editor={workspaceTrigger ? null : editor}
+                editable={editable}
+                className={clsx(css.input, editorDisabled && css.inputDisabled)}
+                data-phase={input?.phase ?? 'inert'}
+                aria-disabled={editorDisabled || undefined}
+                data-placeholder={placeholderText}
+                // The placeholder was the textarea's accessible name; a div's
+                // data attribute is not, so the label restores it.
+                aria-label={workspaceTrigger ? t('hero.chooseWorkspace') : placeholderText}
+                aria-haspopup={workspaceTrigger ? 'menu' : undefined}
+                aria-expanded={workspaceTrigger ? workspacePickerOpen : undefined}
+                tabIndex={workspaceTrigger ? 0 : undefined}
+                onKeyDown={workspaceTrigger ? onWorkspaceKeyDown : undefined}
+                // A custom typing-fx caret replaces the native one; hiding the
+                // real caret is the editor's own attribute, not the overlay's.
+                data-typing-fx-caret={typingFx && typingFxStyle.cursor !== 'native' ? typingFxStyle.cursor : undefined}
+                style={inputStyle}
+              />
+              {draft === '' && attachments.length === 0 && !claimActive && (
+                <div aria-hidden className={css.placeholder} data-composer-placeholder>
+                  {placeholderText}
+                </div>
+              )}
+              <DecoratorPortals editor={workspaceTrigger ? null : editor} />
+              <TypingFxLayer
+                editor={workspaceTrigger ? null : editor}
+                enabled={typingFx}
+                style={typingFxStyle}
+              />
             </div>
-            {input === undefined || sessionId === undefined
-              ? null
-              : renderSlot('conversation.input.left', {})}
           </div>
-          <div className={css.trailing}>
-            {input === undefined || sessionId === undefined
-              ? null
-              : renderSlot('conversation.input.right', {})}
-            {managed
-              ? (sessionId === undefined ? null : renderSlot('conversation.input.managed', { locked: modelSeatLocked }))
-              : (sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked }))}
-            {!managed && <ContextMeter useProjection={useProjection} t={t} />}
-            {interruptible && (
-              <Tooltip label={t('input.stop')} side="top" delayMs={500} disabled={stop === undefined}>
+          <div className={css.row}>
+            <div className={css.tools}>
+              <Tooltip label={t('input.commands')} side="top" delayMs={500}>
+                <button
+                  type="button"
+                  className={css.add}
+                  aria-label={t('input.commands')}
+                  aria-haspopup="listbox"
+                  aria-expanded={commandMenuOpen}
+                  disabled={locked || toggleCommandMenu === undefined}
+                  onMouseDown={keepFocus}
+                  onClick={onToggleCommandMenu}
+                >
+                  <IconPlusOutline16 size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip label={t('file.attach')} side="top" delayMs={500}>
+                <button
+                  type="button"
+                  className={css.add}
+                  aria-label={t('file.attach')}
+                  disabled={subagent !== null || locked || machineBusy || addFiles === undefined}
+                  onMouseDown={keepFocus}
+                  onClick={() => { fileInputRef.current?.click() }}
+                >
+                  <IconPaperclipOutline16 size={14} />
+                </button>
+              </Tooltip>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                disabled={subagent !== null}
+                hidden
+                onChange={onPickFiles}
+              />
+              <div className={css.modes}>
+                {accessSelect}
+                {!managed && (sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked }))}
+              </div>
+              {input === undefined || sessionId === undefined
+                ? null
+                : renderSlot('conversation.input.left', {})}
+            </div>
+            <div className={css.trailing}>
+              {input === undefined || sessionId === undefined
+                ? null
+                : renderSlot('conversation.input.right', {})}
+              {managed
+                ? (sessionId === undefined ? null : renderSlot('conversation.input.managed', { locked: modelSeatLocked }))
+                : (sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked }))}
+              {!managed && <ContextMeter useProjection={useProjection} t={t} />}
+              {interruptible && (
+                <Tooltip label={t('input.stop')} side="top" delayMs={500} disabled={stop === undefined}>
+                  <button
+                    type="button"
+                    className={css.primary}
+                    aria-label={t('input.stop')}
+                    disabled={stop === undefined}
+                    onMouseDown={keepFocus}
+                    onClick={stop}
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                      <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip label={primaryLabel} side="top" delayMs={500} disabled={primaryDisabled}>
                 <button
                   type="button"
                   className={css.primary}
-                  aria-label={t('input.stop')}
-                  disabled={stop === undefined}
+                  aria-label={primaryLabel}
+                  disabled={primaryDisabled}
                   onMouseDown={keepFocus}
-                  onClick={stop}
+                  onClick={onPrimary}
                 >
-                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
-                    <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
-                  </svg>
+                  {primaryStops ? (
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                      <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                      <path d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z" fill="currentColor" />
+                    </svg>
+                  )}
                 </button>
               </Tooltip>
-            )}
-            <Tooltip label={primaryLabel} side="top" delayMs={500} disabled={primaryDisabled}>
-              <button
-                type="button"
-                className={css.primary}
-                aria-label={primaryLabel}
-                disabled={primaryDisabled}
-                onMouseDown={keepFocus}
-                onClick={onPrimary}
-              >
-                {primaryStops ? (
-                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
-                    <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
-                    <path d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z" fill="currentColor" />
-                  </svg>
-                )}
-              </button>
-            </Tooltip>
+            </div>
           </div>
-        </div>
         </div>
       </div>
       {variant === 'composer' && input !== undefined && sessionId !== undefined
         ? (
-            <div className={css.footer} data-composer-footer="">
-              {managed ? null : renderSlot('conversation.composer.dock', {})}
-            </div>
-          )
+          <div className={css.footer} data-composer-footer="">
+            {managed ? null : renderSlot('conversation.composer.dock', {})}
+          </div>
+        )
         : null}
     </div>
   )

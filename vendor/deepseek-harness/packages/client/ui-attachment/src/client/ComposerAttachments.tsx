@@ -63,7 +63,25 @@ export function ComposerAttachments({
       if (dataTransfer === null) return
       event.preventDefault()
       reset()
-      if (canAcceptDrop) onAddFiles([...dataTransfer.files])
+      if (!canAcceptDrop) return
+      // A dropped folder arrives as a File stub whose bytes the transport
+      // cannot read; the item's FileSystem entry is the only in-band
+      // classifier, so entries without one pass through as files.
+      const files: File[] = []
+      const rejected: File[] = []
+      const classified = new Set<File>()
+      for (const item of dataTransfer.items) {
+        if (item.kind !== 'file') continue
+        const file = item.getAsFile()
+        if (file === null) continue
+        classified.add(file)
+        if (item.webkitGetAsEntry()?.isDirectory === true) rejected.push(file)
+        else files.push(file)
+      }
+      for (const file of dataTransfer.files) {
+        if (!classified.has(file)) files.push(file)
+      }
+      onAddFiles(files, rejected)
     }
     document.addEventListener('dragenter', onDragEnter)
     document.addEventListener('dragover', onDragOver)
@@ -108,6 +126,7 @@ export function ComposerAttachments({
                     state={upload === undefined || upload.status === 'uploading'
                       ? 'uploading'
                       : upload.status === 'ready' ? 'ready' : 'error'}
+                    {...upload?.status === 'error' ? { reason: upload.message } : {}}
                     {...upload?.status === 'uploading' && upload.total !== undefined && upload.total > 0
                       ? { progress: upload.loaded / upload.total }
                       : {}}

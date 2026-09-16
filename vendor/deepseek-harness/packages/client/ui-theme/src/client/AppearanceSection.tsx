@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Button, Input, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ThemeFamily } from '../theme-family.ts'
 import {
@@ -24,6 +24,8 @@ import { TRANSPARENT_MIN_BLUR } from '../wallpaper.ts'
 import type { createAppearanceRowStore } from './settings-store.ts'
 import { ColorSchemeTiles } from './ColorSchemeTiles.tsx'
 import { ThemeLibrary } from './ThemeLibrary.tsx'
+import { BackgroundEffectRow } from './BackgroundEffectRow.tsx'
+import { CursorEffectRow } from './CursorEffectRow.tsx'
 import { WallpaperRow } from './WallpaperRow.tsx'
 import { sliderFillStyle } from './slider.ts'
 import css from './AppearanceSection.module.css'
@@ -62,9 +64,22 @@ export interface AppearanceSectionInjected {
   setGlassOpacity: (value: number) => void
   /** Persist the transparent-theme flag (透明主题). */
   setTransparentTheme: (value: boolean) => void
-  /** Persist wallpaper image and/or the two effect sliders. */
+  /** Persist the sidebar-mask flag (隐藏侧栏遮罩). */
+  setSidebarMask: (value: boolean) => void
+  /** Persist wallpaper image, the two effect sliders, and/or the backdrop effect and its tunables. */
   setWallpaper: (
-    patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>,
+    patch: Partial<Pick<ThemeSettings,
+      'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate' | 'backgroundEffect'
+      | 'backgroundEffectColors' | 'backgroundEffectSpeed' | 'backgroundEffectCount'
+      | 'backgroundEffectPreset' | 'backgroundEffectVariant'
+    >>,
+  ) => void
+  /** Persist the pointer decoration: enabled flag, chosen effect, and tunables. */
+  setCursorFx: (
+    patch: Partial<Pick<ThemeSettings,
+      'cursorEffectEnabled' | 'cursorEffect' | 'cursorEffectColors'
+      | 'cursorEffectSpeed' | 'cursorEffectSize' | 'cursorEffectPreset'
+    >>,
   ) => void
   /** Persist desktop wallpaper source preferences. */
   setWallpaperSources?: (
@@ -80,9 +95,10 @@ export interface AppearanceSectionInjected {
   ) => void
 }
 
-/** Full component props: runtime share + store share + locale seat + injected face. */
+/** Full component props: runtime share + item render share + store share + locale seat + injected face. */
 export type AppearanceSectionComponentProps =
-  PropsRuntime<'settings.section'> & PropsStore<ReturnType<typeof createAppearanceRowStore>>
+  PropsRuntime<'settings.section'> & PropsRenderSlots<'settings.appearance.item'>
+  & PropsStore<ReturnType<typeof createAppearanceRowStore>>
   & PropsLocale<'settings.theme'> & AppearanceSectionInjected
 
 /**
@@ -92,6 +108,7 @@ export type AppearanceSectionComponentProps =
  */
 export function AppearanceSection({
   t,
+  renderSlot,
   useStore,
   setTheme,
   setThemeHalf,
@@ -99,7 +116,9 @@ export function AppearanceSection({
   previewTheme,
   setGlassOpacity,
   setTransparentTheme,
+  setSidebarMask,
   setWallpaper,
+  setCursorFx,
   setWallpaperSources,
   setWallpaperFavorites,
   setTypography,
@@ -112,11 +131,24 @@ export function AppearanceSection({
   const activeDarkThemeId = useStore(s => s.activeDarkThemeId)
   const glassOpacity = useStore(s => s.glassOpacity)
   const transparentTheme = useStore(s => s.transparentTheme)
+  const sidebarMaskHidden = useStore(s => s.sidebarMaskHidden)
   const wallpaperImage = useStore(s => s.wallpaperImage)
   const wallpaperBlur = useStore(s => s.wallpaperBlur)
   const wallpaperPixelate = useStore(s => s.wallpaperPixelate)
   const wallpaperSources = useStore(s => s.wallpaperSources)
   const wallpaperFavorites = useStore(s => s.wallpaperFavorites)
+  const backgroundEffect = useStore(s => s.backgroundEffect)
+  const backgroundEffectColors = useStore(s => s.backgroundEffectColors)
+  const backgroundEffectSpeed = useStore(s => s.backgroundEffectSpeed)
+  const backgroundEffectCount = useStore(s => s.backgroundEffectCount)
+  const backgroundEffectPreset = useStore(s => s.backgroundEffectPreset)
+  const backgroundEffectVariant = useStore(s => s.backgroundEffectVariant)
+  const cursorEffectEnabled = useStore(s => s.cursorEffectEnabled)
+  const cursorEffect = useStore(s => s.cursorEffect)
+  const cursorEffectColors = useStore(s => s.cursorEffectColors)
+  const cursorEffectSpeed = useStore(s => s.cursorEffectSpeed)
+  const cursorEffectSize = useStore(s => s.cursorEffectSize)
+  const cursorEffectPreset = useStore(s => s.cursorEffectPreset)
   const fontFamilySans = useStore(s => s.fontFamilySans)
   const fontFamilyCode = useStore(s => s.fontFamilyCode)
   const fontSizeInterface = useStore(s => s.fontSizeInterface)
@@ -164,6 +196,29 @@ export function AppearanceSection({
         {...(setWallpaperFavorites === undefined ? {} : { setWallpaperFavorites })}
       />
 
+      <BackgroundEffectRow
+        backgroundEffect={backgroundEffect}
+        backgroundEffectColors={backgroundEffectColors}
+        backgroundEffectSpeed={backgroundEffectSpeed}
+        backgroundEffectCount={backgroundEffectCount}
+        backgroundEffectPreset={backgroundEffectPreset}
+        backgroundEffectVariant={backgroundEffectVariant}
+        wallpaperSet={wallpaperImage.length > 0}
+        t={t}
+        setWallpaper={setWallpaper}
+      />
+
+      <CursorEffectRow
+        cursorEffectEnabled={cursorEffectEnabled}
+        cursorEffect={cursorEffect}
+        cursorEffectColors={cursorEffectColors}
+        cursorEffectSpeed={cursorEffectSpeed}
+        cursorEffectSize={cursorEffectSize}
+        cursorEffectPreset={cursorEffectPreset}
+        t={t}
+        setCursorFx={setCursorFx}
+      />
+
       <section className={css.block} aria-labelledby="appearance-glass-heading">
         <div className={css.rowHead}>
           <h2 id="appearance-glass-heading" className={css.heading}>{t('glass.title')}</h2>
@@ -203,6 +258,15 @@ export function AppearanceSection({
               ? t('glass.transparentBlurHint')
               : t('glass.transparentHint')}
         </p>
+        <label className={css.switchRow}>
+          <Switch
+            checked={sidebarMaskHidden}
+            aria-label={t('glass.sidebarMask')}
+            onChange={(event) => { setSidebarMask(event.currentTarget.checked) }}
+          />
+          <span>{t('glass.sidebarMask')}</span>
+        </label>
+        <p className={css.hint}>{t('glass.sidebarMaskHint')}</p>
       </section>
 
       <section className={css.block} aria-labelledby="appearance-type-heading">
@@ -306,6 +370,10 @@ export function AppearanceSection({
           </div>
         ) : null}
       </section>
+
+      {/* Feature-owned appearance rows (typing effects, …) stack last; each
+          row draws its own title/description, so no block heading here. */}
+      {renderSlot('settings.appearance.item', {})}
     </div>
   )
 }

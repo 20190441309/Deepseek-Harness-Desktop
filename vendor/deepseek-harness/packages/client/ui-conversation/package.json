@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-conversation",
   "description": "Target-neutral Conversation assembly, shell, composer, queue, and view navigation",
-  "version": "0.1.5-rc.1",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -88,6 +88,7 @@
     "@types/react-dom": "~18.3.0",
     "zod": "^4.4.3",
     "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "lexical": "^0.49.0",
     "clsx": "^2.0.0",
     "@lexical/utils": "^0.49.0",

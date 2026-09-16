@@ -54,8 +54,13 @@
   min-width: 0;
   padding: 12px 28px 0 20px;
   /* Trailing cluster (Session log / Git / panel toggles) shares this row when
-     details is closed; AppFrame writes the overlap as --dshd-titlebar-conversation-reserve. */
-  padding-right: max(28px, calc(var(--dshd-titlebar-conversation-reserve, 0px) + 8px));
+     details is closed; AppFrame writes the overlap as --dshd-titlebar-conversation-reserve.
+     The +16px absorbs .headerCorner's -16px reach: while the reserve pads this
+     row the reach would extend past the content edge and land the corner
+     control (or, when its occupant is hidden, the utilities it trails) under
+     the cluster's left edge. At reserve 0 the term stays inside the 28px
+     baseline, so the reach keeps its designed padding only there. */
+  padding-right: max(28px, calc(var(--dshd-titlebar-conversation-reserve, 0px) + 8px + 16px));
   border-bottom: 1px solid transparent;
 }
 
@@ -68,13 +73,15 @@
    same reserve by the controls inset — `max(8px, …)` keeps the plain-browser
    math identical to the pinned baseline above — and only while surfaces is
    closed, because an open surfaces column pins the cluster's right edge back
-   to a fixed 8px inset over the details column. */
+   to a fixed 8px inset over the details column. The trailing +16px is the
+   corner-seat reach the baseline calc above also absorbs. */
 :global([data-surfaces-collapsed]) .header {
   padding-right: max(
     28px,
     calc(
       var(--dshd-titlebar-conversation-reserve, 0px)
       + max(8px, var(--dshd-wco-controls, 8px))
+      + 16px
     )
   );
 }
@@ -117,6 +124,12 @@
 /* Blank/draft keeps row 1 so the titlebar band stays tall. AppFrame owns the
    caption drag rectangle; this header is not a second drag region. */
 .headerBlank::after {
+  display: none;
+}
+
+/* The bottom hairline is the tab strip's underline; with no strip rendered
+   (view-tabs off, a single view, or a managed session) it is a stray rule. */
+.headerNoTabs::after {
   display: none;
 }
 
@@ -386,10 +399,16 @@
   gap: var(--dsh-composer-stack-gap);
 }
 
-/* Relative top preserves viewport positioning for fixed menus and dialogs. */
+/* Relative top preserves viewport positioning for fixed menus and dialogs.
+   The animation starts paused: the first-send commit mounts the transcript,
+   running chrome, and dock projections on the same frames a layout-driven
+   `top` would lose to that work. ConversationRoot releases the glide once the
+   burst is quiet, so the slide always runs on frames that can actually paint. */
 .composerStack[data-composer-entering] {
   position: relative;
   animation: composer-enter var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  animation-fill-mode: backwards;
+  animation-play-state: paused;
 }
 
 @keyframes composer-enter {
@@ -450,12 +469,24 @@
      gutter moves the input card sideways by the bar's width whenever the two
      differ ([decision](../../../../../../.agents/notes/archived/bug-fix/2026-08-04-composer-tab-gutter-reservation.md)). */
   scrollbar-gutter: stable;
+  /* Quiet bar: rebinding ui-theme's indirection pair to `transparent` takes
+     the thumb out of paint (same mechanism as ui-sidebar's quietBars) while
+     the reserved gutter keeps layout stable; the WebKit pseudo below puts
+     the hover color back when the pointer lands on the thumb or a drag is
+     in progress. */
+  --dsh-scrollbar-thumb: transparent;
+  --dsh-scrollbar-thumb-hover: transparent;
 }
 
 /* The bar also stops 2px short of the scroller's ends, matching its 2px edge
    offset. WebKit-only: the Firefox path has no track to inset. */
 .scrollBody::-webkit-scrollbar-track {
   margin: 2px;
+}
+
+.scrollBody::-webkit-scrollbar-thumb:hover,
+.scrollBody::-webkit-scrollbar-thumb:active {
+  background: var(--dsw-alias-scrollbar-hover-l1);
 }
 
 .root[data-phase='active'] .viewArea {
@@ -482,13 +513,16 @@
   );
 }
 
-/* Wallpaper mode paints NO seat fill: any banded fill under the composer read
-   as a cast shadow behind the input box. The card's own surface token plus
-   its resting rim light carry the separation; the transcript scrolls under
-   the transparent seat like it does elsewhere in the glass chrome. Transparent
-   theme stays the same 0% (every chrome fill is 0% there). */
+/* Wallpaper and ambient-gradient modes paint NO seat fill: any banded fill
+   under the composer read as a cast shadow behind the input box. The card's
+   own surface token plus its resting rim light carry the separation; the
+   transcript scrolls under the transparent seat like it does elsewhere in the
+   glass chrome. Transparent theme stays the same 0% (every chrome fill is 0%
+   there). */
 :global(html[data-dsh-wallpaper]:not([data-dsh-transparent])) .root[data-phase='active'] .composerSeat,
-:global(html[data-dsh-wallpaper]:not([data-dsh-transparent]) body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat {
+:global(html[data-dsh-wallpaper]:not([data-dsh-transparent]) body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat,
+:global(html[data-dsh-gradient]) .root[data-phase='active'] .composerSeat,
+:global(html[data-dsh-gradient] body[data-ds-dark-theme]) .root[data-phase='active'] .composerSeat {
   background: transparent;
 }
 

@@ -27,6 +27,7 @@ describe('ui-theme client styles', () => {
       `${PLUGIN_ID}/wallpaper.css`,
       `${PLUGIN_ID}/scrollbar.css`,
       `${PLUGIN_ID}/gradient-shadow-text.css`,
+      `${PLUGIN_ID}/metallic-paint.css`,
       `${PLUGIN_ID}/shiki.css`,
     ])
     await fiber.dispose()

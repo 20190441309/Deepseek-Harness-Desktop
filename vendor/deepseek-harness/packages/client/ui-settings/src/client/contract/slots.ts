@@ -111,6 +111,36 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `ctx.settingsScope`.
      */
     'settings.interface.item': { kind: 'list'; scope: 'root'; owner: SettingsInterfaceItemOwnerProps }
+    /**
+     * One preference row inside the Appearance section — the additive seat for
+     * a visual treatment that belongs to the appearance page but is owned by
+     * the feature that paints it (ui-conversation → composer typing effects).
+     * Options: `id` (row key), `order` (row position). The Appearance page is
+     * otherwise a fixed document owned by ui-theme; item rows draw their own
+     * internals, including their label: nothing projects a `label` here and
+     * the owner passes no props at all — copy, current value, and the write
+     * path are all yours, through your own inject face and `host.call`.
+     * Declared at runtime by ui-theme's Appearance entry; the type lives here
+     * with every other settings slot type, because this package is the
+     * settings domain's base layer and every registrant already depends on it
+     * for `ctx.settingsScope`.
+     */
+    'settings.appearance.item': { kind: 'list'; scope: 'root'; owner: SettingsAppearanceItemOwnerProps }
+    /**
+     * One feature block inside the desktop Pet section — the additive seat
+     * for pet-adjacent fields owned by the feature plugin that serves them
+     * (dsh-whale → assistant persona/model/memory). Options: `id` (block
+     * key), `order` (block position). The section column only stacks rows,
+     * so a block draws its own internals, including any label: nothing
+     * projects a `label` here and the owner passes no props at all — copy,
+     * current value, and the write path are all yours, through your own
+     * inject face and `host.call`. Declared at runtime by
+     * ui-settings-general's Pet entry; the type lives here with every other
+     * settings slot type, because this package is the settings domain's base
+     * layer and every registrant already depends on it for
+     * `ctx.settingsScope`.
+     */
+    'settings.pet.item': { kind: 'list'; scope: 'root'; owner: SettingsPetItemOwnerProps }
   }
 }
 /** Owner share of a General preference row (the section supplies nothing). */
@@ -121,6 +151,18 @@ export interface SettingsGeneralItemOwnerProps {
 
 /** Owner share of an Interface preference row (the section supplies nothing). */
 export interface SettingsInterfaceItemOwnerProps {
+  /** Marker field: item owner props are intentionally empty. */
+  children?: never
+}
+
+/** Owner share of an Appearance preference row (the section supplies nothing). */
+export interface SettingsAppearanceItemOwnerProps {
+  /** Marker field: item owner props are intentionally empty. */
+  children?: never
+}
+
+/** Owner share of a Pet section feature block (the section supplies nothing). */
+export interface SettingsPetItemOwnerProps {
   /** Marker field: item owner props are intentionally empty. */
   children?: never
 }

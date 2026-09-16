@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `data-import` |
 | **status** | `active` |
-| **last verified** | 2026-09-05 — 历史会话恢复与插件归因定向检查：Harness 工作区/API/旧缓存 121 项、桌面导入/恢复/打包单测 171 项通过；重新登记已有目录接纳导入历史，缓存格式错误不归咎用户插件。未执行候选安装包升级实测。此前：2026-08-25 — 新增设置白名单节 / 引用凭据 / `.agent-presets` / home `AGENTS.md` 导入；冷启动闸门改 shallow probe；导入页展示「将迁移/不迁移」说明 |
+| **last verified** | 2026-09-15 — 导入改异步可取消（`966bd84`）：拷贝阶段让出事件循环、逐项间响应 `shell:cancel-import`；启动器按阶段显示进度并给可续跑提示。`node --test data-import.test.js ipc.test.js` 81/81 通过。此前 2026-09-05 — 历史会话恢复与插件归因定向检查：Harness 工作区/API/旧缓存 121 项、桌面导入/恢复/打包单测 171 项通过；重新登记已有目录接纳导入历史，缓存格式错误不归咎用户插件。未执行候选安装包升级实测。此前：2026-08-25 — 新增设置白名单节 / 引用凭据 / `.agent-presets` / home `AGENTS.md` 导入；冷启动闸门改 shallow probe；导入页展示「将迁移/不迁移」说明 |
 
 ## User paths
 
@@ -15,7 +15,7 @@
 5. MCP 按 id merge 进桌面 `mcp-servers.yaml`（含 header/token）；UI 与日志不展示密钥，列表标启用/停用。附件整树拷 `attachments/`。
 6. 设置页签列出官方 `settings.yaml` 中存在的**白名单节**（`llm-deepseek` 模型与提供方、`llm-pi-ai` 自定义提供方、`agent-default-model` 默认模型、`vision-fallback` 视觉回退、`ui-theme` 主题）以及 home 级 `AGENTS.md`（全局指令）。整节**文本级**搬运进桌面 `settings.yaml`：目标已有同名节默认跳过，勾选覆盖才替换；不做字段级 merge。勾选含 `llm-deepseek` / `llm-pi-ai` 的节时，自动同步这些节**引用到**的 `.credentials.yaml` `refs` 凭据条目（`apiKeyEnv`，`llm-deepseek` 隐式默认 `DEEPSEEK_API_KEY`）；密钥只落盘（0600），UI / 日志 / journal 只出现引用名。
 7. 预设页签列出官方 `.agent-presets/<id>/`（含 `agent.cordis.yml` 的目录，id 须匹配官方 `[a-z0-9][a-z0-9-]*`），按目录拷贝到桌面 `.agent-presets/`，冲突默认 skip，路径安全同 skills。
-8. 导入时若桌面端在跑：先停内核。导入本身幂等（conflict 默认 skip）。崩溃续跑：冷启动闸门消费 `phase:'copying'` 的 journal——清理桌面 home 下残留 `.import-tmp` staging 目录、journal 改写为 `recovered`、启动器停在导入页并提示可安全重跑。
+8. 导入时若桌面端在跑：先停内核。导入本身幂等（conflict 默认 skip）。导入异步执行、逐项间可取消（`shell:cancel-import`），启动器按阶段显示进度与可安全重跑提示。崩溃续跑：冷启动闸门消费 `phase:'copying'` 的 journal——清理桌面 home 下残留 `.import-tmp` staging 目录、journal 改写为 `recovered`、启动器停在导入页并提示可安全重跑。
 
 ## Invariants
 

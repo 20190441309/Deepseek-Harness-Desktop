@@ -164,6 +164,8 @@ composer 上四个浮层共用此时长：加号斜杠菜单、权限 `Menu`、�
 | Spinner | `TodoPanel` 1s、`GitProgressToast` 0.7s、`AppearanceSection` 图库 0.7s、`TrajectoryTable` 历史加载 700ms、`TurnNavigator` busy 1s、`ChatView` 回合状态 1.8s、`MessageItem` 重试 1.6s、`InputBar` 待发 1s |
 | 指示灯 | `StateDot` 追逐 1s（行内 `-125ms` 错相）、`ConnectionIndicator` 点阵 1.5s step-end |
 | 手机 flow | `mobile/web`：`flow-dot-spin` 0.9s、`flow-sweep` 2.6s、`flow-caret` 1s steps(2) |
+| 背景特效光斑 | Appearance「背景特效 · 流动渐变」：1–5 光斑 transform 循环，基准 ÷ 用户速度系数（20–300%）；形态变体 orbs 光球（20s/30s/40s）/ aurora 飘带（30–48s 横向 drift）/ chaos（11–18s 多轴乱序 + scale 脉动）/ rays（24–40s conic 楔形旋转）；reduced-motion 全部停（`wallpaper.css`） |
+| 按钮悬停金属漆 | `metallic-paint.css`：原生 `button:hover` 叠半透明银灰渐变，`background-position` 4.5s ease-in-out 往返扫（绘制属性而非 transform，仅作用自身背景层、不引发布局，按本条登记）；reduced-motion 停动画、保留静态光泽 |
 
 ### 独立例外
 
@@ -177,6 +179,8 @@ composer 上四个浮层共用此时长：加号斜杠菜单、权限 `Menu`、�
 | dshbot 机器人头像 | 思考时用同命令数路径连续压扁/鼓边/拉长/侧倾（软泥）；眼白眨眼与瞳孔只动 `transform`；上传图 `scale` 脉冲。缓动走 `--ds-ease-in-out`，减弱动效全停 | [`vendor/dshbot/client/client.js`](../vendor/dshbot/client/client.js)。不得扩散到官方 Web UI 弹层 |
 | Agent 预设席位入场 | 图标 150ms / 文案 400ms，`cubic-bezier(0.16, 1, 0.3, 1)` 一次性入场；减弱动效停 | `AgentPresetSeat.module.css` |
 | 用量统计图表入场 | 热力格 0.45s、柱 / 环 0.9s，同曲线一次性生长；减弱动效停 | `dsh-usage-panel` `styles.ts` |
+| 输入特效 | `TypingFxLayer`：每个键入字符在其字形位置播一次性 echo（`dsh-typing-fx-drop` / `rise` / `flash`，仅 opacity/transform，时长 `--ds-motion-duration-flip` × 100/速度档，速度档 40–240%），活跃 echo 上限 24；`block` / `underline` 自定义光标闪烁 `--ds-motion-duration-flip` × 2.5 step-end。回显画在叠加层，从不包装或改写 Lexical 文本 DOM；粘贴 / 撤销 / 种子不触发；IME 组合进行中不播，提交时整段文本播一次 echo。回显/光标/文本颜色在弹窗配色分区切换：跟随主题（`--dsw-alias-*` token）、6 个内置配色、自定义三色，经 `--dsh-typing-fx-echo-color`/`--dsh-typing-fx-caret-color`/`--dsh-typing-fx-text-color` 变量下发（text 染 `.input` 整体 color）。JS `matchMedia` 生成闸 + CSS 归零双闸，减弱动效全停 | `TypingFxLayer.tsx` / `TypingFxLayer.module.css`（ui-conversation）；外观分区「输入特效」行开关与齿轮弹窗配置 |
+| 指针特效 | `applyCursorFxLayer`：全屏叠加层 canvas，指针驱动而非循环——像素拖尾格子 700ms ÷ 速度系数（20–300%）淡出，流体飞溅 Navier-Stokes 染料按速度系数消散；rAF 循环 4s 闲置停帧 + `document.hidden` 暂停；减弱动效整层不挂 | `cursor-fx.ts` / `cursor-fluid.ts`（ui-theme）；外观分区「指针特效」行开关与齿轮弹窗配置 |
 
 ## 如何新增
 

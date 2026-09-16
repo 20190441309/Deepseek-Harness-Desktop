@@ -41,7 +41,11 @@ Gate: <卡上 gates>
 | [vision-fallback](vision-fallback.md) | 识图路由的图片准入、描述与主请求重写 | llm-vision-fallback / agent-loop | 无密钥组合与图片准入 |
 | [core-regression-gates](core-regression-gates.md) | 核心会话、模型和工具回归阻断 CI | test.yml | 核心集合与 CI 契约 |
 | [wallpaper-gallery](wallpaper-gallery.md) | Appearance 行 + 图库窗；图源只在窗内 | `WallpaperRow` / `WallpaperGalleryModal` | TC-APP-002…010 |
+| [background-gradient](background-gradient.md) | 无背景图时的流动渐变特效底（独立 block） | `BackgroundEffectRow` / `applyWallpaperLayer` | TC-APP-015 |
+| [cursor-effects](cursor-effects.md) | 指针划过处的装饰特效：像素拖尾 / 流体飞溅二选一，预设 + 自定义 | `CursorEffectRow` / `applyCursorFxLayer` | ui-theme client specs |
+| [metallic-paint](metallic-paint.md) | 原生 button hover 叠加半透明银灰扫光（附加层，不替换原 hover） | `metallic-paint.css` / `installThemeStyles` | ui-theme client-styles spec |
 | [transparent-theme](transparent-theme.md) | 外观「透明主题」开关：有壁纸时全表面 0% 填充、压暗 mask 移除 | `ThemeRuntime.setTransparentTheme` / `TRANSPARENT_ATTR` | vendor ui-theme client specs |
+| [sidebar-mask](sidebar-mask.md) | 外观「隐藏侧栏遮罩」开关：侧栏与工作区同底，只留分割线 | `ThemeRuntime.setSidebarMask` / `SIDEBAR_UNMASKED_FILL` | vendor ui-theme client specs |
 | [marketplace-settings](marketplace-settings.md) | 设置内市场（桌面自有代码）；无独立窗 | `marketplace-install` / `ui-settings-market` | TC-EXT-001…005 |
 | [surfaces-work-loops](surfaces-work-loops.md) | 右栏工作环，非空态卡片 | preview / ui-files | TC-SURF-001…007 |
 | [boot-page](boot-page.md) | 仪器启动画布 + 插件进度/恢复 | `boot.*` / harness-controller | TC-INST-003…007、012、013 |
@@ -59,10 +63,14 @@ Gate: <卡上 gates>
 | [git-titlebar](git-titlebar.md) | 标题栏分支/提交/推拉；登记工作区即授权 | `git.js` / workspace-authority | TC-WS-006、TC-GIT-001…007 |
 | [usage-stats](usage-stats.md) | 设置内跨会话 Token 用量；预置改版 dsh-usage-panel | `usage-panel-preset` / vendor 插件 | TC-EXT-008 |
 | [composer-beam](composer-beam.md) | 运行态输入卡四角连续边光，4px 裁切壳不覆盖 dock | vendor ui-conversation InputBar | vendor focused CSS + Chromium 像素复现 |
+| [composer-typing-fx](composer-typing-fx.md) | 外观分区可配置键入特效：叠加层 echo + 自定义光标，不碰 Lexical 文本 DOM | vendor ui-conversation `TypingFxLayer` / `TypingFxRow` | vendor focused specs + tsc + 桌面 marker 单测 |
 | [composer-family-width](composer-family-width.md) | 输入卡改宽时统计行、Dock 卡与空会话 Hero 控件联动跟随 | vendor ui-chat / ui-conversation / ui-goal CSS | vendor vitest + 桌面 marker 单测 + 实机坐标 |
 | [composer-stats-peak-valley](composer-stats-peak-valley.md) | 会话统计/峰谷行与输入卡宽度对齐；官方峰谷时状态条与开关 | vendor `ui-conversation` / `ui-model-selection` | vendor client specs（peak-valley / chat-apply / host） |
 | [message-edit](message-edit.md) | 最新用户消息编辑后始终在当前会话重发 | vendor `ui-message-edit` | vendor client/host specs + test:gui + keyless edit e2e |
 | [composer-draft-transition](composer-draft-transition.md) | 草稿首次发送时输入框连续落位、不贴底回弹 | vendor `ui-conversation` | 组件回归 + keyless 逐帧几何 |
 | [windows-installer](windows-installer.md) | NSIS 品牌化安装器；`/S` 静默与 artifact 名不变 | `build.nsis` / `build/installer.nsh` | installer-branding 单测；TC-INST-001、009、010 |
 | [dsh-tools](dsh-tools.md) | 工具调用名/ID 校验、失败重试与旧会话投影修复 | vendor llm / agent-loop / session / tools | focused Harness specs |
-| [desktop-pet](desktop-pet.md) | Desktop shell 内受限宠物浮层：点击、拖拽、托盘开关与位置持久化 | `desktop-pet` / `window` / `tray` | TC-DESK-010；focused tests |
+| [desktop-pet](desktop-pet.md) | Desktop shell 内受限宠物浮层：Codex 皮肤、点击/拖拽动画、右键换肤、托盘开关与位置持久化 | `desktop-pet` / `desktop-pets` / `window` / `tray` | TC-DESK-010；focused tests |
+| [desktop-live2d-pet](desktop-live2d-pet.md) | 整屏透明 BrowserWindow 的 Live2D 鲸鱼娘伙伴：点击穿透、拖拽/抛掷物理、对话气泡、token 投喂成长与养成状态卡 | `desktop-live2d` / `pet-growth` / `pet-stats` / `pet-live2d.*` | `node --test` focused（101）；TC-DESK-011 |
+| [whale-assistant](whale-assistant.md) | 第一方 `dsh-whale` 插件：常驻 whale-girl 助理会话 + 设置分区 + 侧栏入口 + preset 统筹工具 + pet-outbox 桌宠桥 | `dsh-whale-desktop` / `vendor/dsh-whale` / `pet-dsh-watch` | `dsh-whale-desktop.test.js` + skip-compose 契约 |
+| [directory-picker-drives](directory-picker-drives.md) | 目录选择器 Win32 卷选择层：「此电脑」列出全部盘符，可跨盘选工作区 | vendor `directory-picker` / `directory-picker-browse` | vendor spec + marker 单测 |

@@ -6,6 +6,7 @@
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  border-radius: 16px;
   background: var(--dsw-alias-bg-base);
   /* Collapse/expand animates the tracks on the deepsuite sider curve
      (--ds-ease-in-out / --ds-transition-duration-slow, ui-theme base.css). */
@@ -39,7 +40,9 @@
   grid-row: 1 / -1;
   min-width: 0;
   overflow: hidden;
-  background: var(--dsw-specific-sidebar-fill);
+  /* Indirection: ui-theme rebinds --dsh-sidebar-rail-fill to transparent while
+     the sidebar mask is hidden, so the frame canvas shows through. */
+  background: var(--dsh-sidebar-rail-fill, var(--dsw-specific-sidebar-fill));
   border-right: 0.5px solid var(--dsw-alias-border-l3);
 }
 
@@ -308,8 +311,8 @@
      drawer, not with the dimmed conversation showing through. */
   background-color: var(--dsw-alias-bg-base);
   background-image: linear-gradient(
-    var(--dsw-specific-sidebar-fill),
-    var(--dsw-specific-sidebar-fill)
+    var(--dsh-sidebar-rail-fill, var(--dsw-specific-sidebar-fill)),
+    var(--dsh-sidebar-rail-fill, var(--dsw-specific-sidebar-fill))
   );
 }
 

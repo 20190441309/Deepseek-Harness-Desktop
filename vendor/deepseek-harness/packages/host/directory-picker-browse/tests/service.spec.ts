@@ -5,7 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { DirectoryPickerError } from '@deepseek-ai/dsh-host-directory-picker'
+import { DirectoryPickerError, WINDOWS_VOLUME_ROOT } from '@deepseek-ai/dsh-host-directory-picker'
 import type { DirectoryPickerBrowseCapability } from '@deepseek-ai/dsh-host-directory-picker'
 import BrowseDirectoryPicker, { boundedInsert, fullyQualified, raceAbort } from '../src/index.ts'
 import type { ListingCandidate } from '../src/index.ts'
@@ -157,8 +157,24 @@ describe('BrowseDirectoryPicker', () => {
     expect(tail).toMatchObject({ name: 'projects', path: join(root, 'projects'), hidden: false })
     expect(listing.crumbs.at(-2)!.path).toBe(root)
     expect(listing.crumbs.at(-2)!.name).toBe(basename(root))
-    // The chain starts at the filesystem root, whose crumb is labeled by its full path.
+    // The chain starts at the display root — the filesystem root on POSIX,
+    // the Win32 volume picker on Windows — labeled by its own path either way.
     expect(listing.crumbs[0]!.name).toBe(listing.crumbs[0]!.path)
+    if (process.platform === 'win32') {
+      expect(listing.crumbs[0]!.path).toBe(WINDOWS_VOLUME_ROOT)
+    }
+  })
+
+  it.skipIf(process.platform !== 'win32')('answers the Win32 volume picker with the enterable drive roots', async () => {
+    const listing = await capability.list(WINDOWS_VOLUME_ROOT)
+    expect(listing.path).toBe(WINDOWS_VOLUME_ROOT)
+    // The synthetic level is its own sole crumb.
+    expect(listing.crumbs).toEqual([{ name: WINDOWS_VOLUME_ROOT, path: WINDOWS_VOLUME_ROOT, hidden: false }])
+    expect(listing.truncated).toBe(false)
+    // Every row is a drive root: a `D:`-style name over its `D:\` path.
+    expect(listing.entries.every(entry => /^[A-Z]:$/.test(entry.name) && entry.path === `${entry.name}\\`)).toBe(true)
+    // The system drive always answers; a box without C: cannot have booted.
+    expect(listing.entries.map(entry => entry.name)).toContain('C:')
   })
 
   it('lists the home directory when no path is given', async () => {
@@ -190,6 +206,9 @@ describe('BrowseDirectoryPicker', () => {
     expect(fullyQualified('\\\\', 'win32')).toBe(false)
     expect(fullyQualified('\\\\server', 'win32')).toBe(false)
     expect(fullyQualified('\\\\server\\', 'win32')).toBe(false)
+    // The volume-picker sentinel parses as UNC on Windows; POSIX refuses it.
+    expect(fullyQualified('\\\\.\\dsh-computer', 'win32')).toBe(true)
+    expect(fullyQualified('\\\\.\\dsh-computer', 'linux')).toBe(false)
   })
 
   it('rejects non-absolute paths instead of rebasing them under the process cwd', async () => {
@@ -227,5 +246,12 @@ describe('BrowseDirectoryPicker', () => {
     // Missing parent is a real failure, not a level to invent.
     const missingParent = await capability.createDirectory(join(root, 'no-such-dir'), 'child').catch((error: unknown) => error)
     expect((missingParent as DirectoryPickerError).code).toBe('directory-create-failed')
+  })
+
+  it('refuses to create under the volume-picker sentinel on every platform', async () => {
+    const failure = await capability.createDirectory(WINDOWS_VOLUME_ROOT, 'child').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(DirectoryPickerError)
+    expect((failure as DirectoryPickerError).code).toBe('directory-create-failed')
+    expect((failure as DirectoryPickerError).path).toBe(WINDOWS_VOLUME_ROOT)
   })
 })

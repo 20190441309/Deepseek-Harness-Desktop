@@ -26,18 +26,34 @@ import { en, zh, type ThemeKey } from './locales.ts'
 import { wallpaperShell } from './wallpaper-shell.ts'
 import { deriveThemeTokens } from '../derive.ts'
 import {
-  DEFAULT_FAMILY_ID, type ThemeFamily, type ThemeTokens as FamilyTokens,
+  DEFAULT_FAMILY_ID, SIDEBAR_RAIL_FILL_TOKEN, SIDEBAR_UNMASKED_FILL,
+  type ThemeFamily, type ThemeTokens as FamilyTokens,
 } from '../theme-family.ts'
 import { listThemeFamilies, resolveThemeFamily } from '../builtin-families.ts'
 import {
-  TRANSPARENT_GLASS_SOLIDITY, TRANSPARENT_MIN_BLUR, clampWallpaperEffect, isWallpaperDataUrl,
-  mixWallpaperSurfaces,
+  BACKGROUND_EFFECT_VARIANTS, DEFAULT_BACKGROUND_EFFECT_VARIANT,
+  TRANSPARENT_GLASS_SOLIDITY, TRANSPARENT_MIN_BLUR, clampBackgroundEffectCount,
+  clampBackgroundEffectSpeed, clampWallpaperEffect, isWallpaperDataUrl,
+  mixWallpaperSurfaces, sanitizeBackgroundEffectColors,
 } from '../wallpaper.ts'
 import {
+  CURSOR_EFFECTS, CURSOR_EFFECT_PRESETS, DEFAULT_CURSOR_EFFECT,
+  clampCursorEffectSize, clampCursorEffectSpeed, sanitizeCursorEffectColors,
+} from '../cursor-fx.ts'
+import {
+  BACKGROUND_EFFECT_PRESETS, BACKGROUND_EFFECTS,
   DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, FONT_SIZE_FIELD, FONT_SIZE_MAX,
   FONT_SIZE_MIN, isThemePreference,
+  THEME_BACKGROUND_EFFECT_COLORS_FIELD, THEME_BACKGROUND_EFFECT_COUNT_FIELD,
+  THEME_BACKGROUND_EFFECT_FIELD,
+  THEME_BACKGROUND_EFFECT_PRESET_FIELD, THEME_BACKGROUND_EFFECT_SPEED_FIELD,
+  THEME_BACKGROUND_EFFECT_VARIANT_FIELD,
+  THEME_CURSOR_EFFECT_COLORS_FIELD, THEME_CURSOR_EFFECT_ENABLED_FIELD,
+  THEME_CURSOR_EFFECT_FIELD, THEME_CURSOR_EFFECT_PRESET_FIELD,
+  THEME_CURSOR_EFFECT_SIZE_FIELD, THEME_CURSOR_EFFECT_SPEED_FIELD,
   THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
-  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, THEME_TRANSPARENT_FIELD,
+  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, THEME_SIDEBAR_MASK_FIELD,
+  THEME_TRANSPARENT_FIELD,
   THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_BING_FIELD, THEME_WALLPAPER_CATALOGS_FIELD,
   THEME_WALLPAPER_FAVORITES_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
   THEME_WALLPAPER_SOURCES_FIELD,
@@ -45,6 +61,7 @@ import {
   sanitizeWallpaperCatalogUrls,
   sanitizeWallpaperFavorites,
   sanitizeWallpaperSources,
+  type BackgroundEffect,
   type ThemePreference, type ThemeSettings, type WallpaperFavorite, type WallpaperSource,
 } from '../theme-settings.ts'
 
@@ -121,6 +138,8 @@ export interface ThemeSnapshot {
   glassOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
+  /** Sidebar mask flag; the rail paints the canvas fill while on. */
+  sidebarMaskHidden: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -135,6 +154,30 @@ export interface ThemeSnapshot {
   wallpaperSources: readonly WallpaperSource[]
   /** Starred gallery items. */
   wallpaperFavorites: readonly WallpaperFavorite[]
+  /** Ambient backdrop effect painted while no wallpaper is set. */
+  backgroundEffect: BackgroundEffect
+  /** Ambient backdrop color overrides (theme tokens paint empty slots). */
+  backgroundEffectColors: readonly string[]
+  /** Ambient backdrop speed percent. */
+  backgroundEffectSpeed: number
+  /** Ambient backdrop bloom count. */
+  backgroundEffectCount: number
+  /** Selected backdrop scheme: a preset id or `custom`. */
+  backgroundEffectPreset: ThemeSettings['backgroundEffectPreset']
+  /** Bloom shape variant the gradient paints. */
+  backgroundEffectVariant: ThemeSettings['backgroundEffectVariant']
+  /** Pointer decoration layer switch (指针特效). */
+  cursorEffectEnabled: boolean
+  /** Pointer decoration: `trail` or `splash`. */
+  cursorEffect: ThemeSettings['cursorEffect']
+  /** Pointer palette overrides; empty follows the theme accent. */
+  cursorEffectColors: readonly string[]
+  /** Pointer decoration speed percent. */
+  cursorEffectSpeed: number
+  /** Pointer decoration size percent. */
+  cursorEffectSize: number
+  /** Selected pointer scheme: a preset id or `custom`. */
+  cursorEffectPreset: ThemeSettings['cursorEffectPreset']
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -429,6 +472,19 @@ export class ThemeRuntime {
   }
 
   /**
+   * Persist the sidebar-mask flag (隐藏侧栏遮罩). While on, the sidebar rail
+   * paints the same canvas fill the workspace sits on, leaving only the
+   * divider between them; the flag applies with or without a backdrop.
+   * @param sidebarMaskHidden - next flag value.
+   */
+  setSidebarMask(sidebarMaskHidden: boolean): void {
+    if (this.settings.sidebarMaskHidden === sidebarMaskHidden) return
+    this.settings = { ...this.settings, sidebarMaskHidden }
+    this.queueWrite(THEME_SIDEBAR_MASK_FIELD, sidebarMaskHidden)
+    this.publish()
+  }
+
+  /**
    * One-shot readability nudge when the transparent theme becomes effective:
    * with 0% surfaces and no dim mask, text sits directly on the wallpaper,
    * so a blur below {@link TRANSPARENT_MIN_BLUR} is raised to that floor and
@@ -442,14 +498,29 @@ export class ThemeRuntime {
   }
 
   /**
-   * Persist wallpaper image and/or the two effect sliders.
-   * @param patch - one or more wallpaper fields.
+   * Persist wallpaper image, the two effect sliders, and/or the ambient
+   * backdrop effect painted while no image is set.
+   * @param patch - one or more backdrop fields.
    */
-  setWallpaper(patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>): void {
-    const next: Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'> = {
+  setWallpaper(patch: Partial<Pick<ThemeSettings,
+    'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate' | 'backgroundEffect'
+    | 'backgroundEffectColors' | 'backgroundEffectSpeed' | 'backgroundEffectCount'
+    | 'backgroundEffectPreset' | 'backgroundEffectVariant'
+  >>): void {
+    const next: Pick<ThemeSettings,
+      'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate' | 'backgroundEffect'
+      | 'backgroundEffectColors' | 'backgroundEffectSpeed' | 'backgroundEffectCount'
+      | 'backgroundEffectPreset' | 'backgroundEffectVariant'
+    > = {
       wallpaperImage: this.settings.wallpaperImage,
       wallpaperBlur: this.settings.wallpaperBlur,
       wallpaperPixelate: this.settings.wallpaperPixelate,
+      backgroundEffect: this.settings.backgroundEffect,
+      backgroundEffectColors: this.settings.backgroundEffectColors,
+      backgroundEffectSpeed: this.settings.backgroundEffectSpeed,
+      backgroundEffectCount: this.settings.backgroundEffectCount,
+      backgroundEffectPreset: this.settings.backgroundEffectPreset,
+      backgroundEffectVariant: this.settings.backgroundEffectVariant,
     }
     if (patch.wallpaperImage !== undefined) {
       next.wallpaperImage = patch.wallpaperImage === '' || isWallpaperDataUrl(patch.wallpaperImage)
@@ -458,9 +529,39 @@ export class ThemeRuntime {
     }
     if (patch.wallpaperBlur !== undefined) next.wallpaperBlur = clampWallpaperEffect(patch.wallpaperBlur)
     if (patch.wallpaperPixelate !== undefined) next.wallpaperPixelate = clampWallpaperEffect(patch.wallpaperPixelate)
+    if (patch.backgroundEffect !== undefined) {
+      next.backgroundEffect = (BACKGROUND_EFFECTS as readonly string[]).includes(patch.backgroundEffect)
+        ? patch.backgroundEffect
+        : 'none'
+    }
+    if (patch.backgroundEffectColors !== undefined) {
+      next.backgroundEffectColors = sanitizeBackgroundEffectColors(patch.backgroundEffectColors)
+    }
+    if (patch.backgroundEffectSpeed !== undefined) {
+      next.backgroundEffectSpeed = clampBackgroundEffectSpeed(patch.backgroundEffectSpeed)
+    }
+    if (patch.backgroundEffectCount !== undefined) {
+      next.backgroundEffectCount = clampBackgroundEffectCount(patch.backgroundEffectCount)
+    }
+    if (patch.backgroundEffectPreset !== undefined) {
+      next.backgroundEffectPreset = (BACKGROUND_EFFECT_PRESETS as readonly string[]).includes(patch.backgroundEffectPreset)
+        ? patch.backgroundEffectPreset
+        : 'custom'
+    }
+    if (patch.backgroundEffectVariant !== undefined) {
+      next.backgroundEffectVariant = (BACKGROUND_EFFECT_VARIANTS as readonly string[]).includes(patch.backgroundEffectVariant)
+        ? patch.backgroundEffectVariant
+        : DEFAULT_BACKGROUND_EFFECT_VARIANT
+    }
     if (next.wallpaperImage === this.settings.wallpaperImage
       && next.wallpaperBlur === this.settings.wallpaperBlur
-      && next.wallpaperPixelate === this.settings.wallpaperPixelate) {
+      && next.wallpaperPixelate === this.settings.wallpaperPixelate
+      && next.backgroundEffect === this.settings.backgroundEffect
+      && JSON.stringify(next.backgroundEffectColors) === JSON.stringify(this.settings.backgroundEffectColors)
+      && next.backgroundEffectSpeed === this.settings.backgroundEffectSpeed
+      && next.backgroundEffectCount === this.settings.backgroundEffectCount
+      && next.backgroundEffectPreset === this.settings.backgroundEffectPreset
+      && next.backgroundEffectVariant === this.settings.backgroundEffectVariant) {
       return
     }
     const becameEffective = this.settings.transparentTheme
@@ -470,7 +571,92 @@ export class ThemeRuntime {
     if (patch.wallpaperImage !== undefined) this.queueWrite(THEME_WALLPAPER_IMAGE_FIELD, next.wallpaperImage)
     if (patch.wallpaperBlur !== undefined) this.queueWrite(THEME_WALLPAPER_BLUR_FIELD, next.wallpaperBlur)
     if (patch.wallpaperPixelate !== undefined) this.queueWrite(THEME_WALLPAPER_PIXELATE_FIELD, next.wallpaperPixelate)
+    if (patch.backgroundEffect !== undefined) this.queueWrite(THEME_BACKGROUND_EFFECT_FIELD, next.backgroundEffect)
+    if (patch.backgroundEffectColors !== undefined) {
+      this.queueWrite(THEME_BACKGROUND_EFFECT_COLORS_FIELD, next.backgroundEffectColors)
+    }
+    if (patch.backgroundEffectSpeed !== undefined) {
+      this.queueWrite(THEME_BACKGROUND_EFFECT_SPEED_FIELD, next.backgroundEffectSpeed)
+    }
+    if (patch.backgroundEffectCount !== undefined) {
+      this.queueWrite(THEME_BACKGROUND_EFFECT_COUNT_FIELD, next.backgroundEffectCount)
+    }
+    if (patch.backgroundEffectPreset !== undefined) {
+      this.queueWrite(THEME_BACKGROUND_EFFECT_PRESET_FIELD, next.backgroundEffectPreset)
+    }
+    if (patch.backgroundEffectVariant !== undefined) {
+      this.queueWrite(THEME_BACKGROUND_EFFECT_VARIANT_FIELD, next.backgroundEffectVariant)
+    }
     if (becameEffective) this.nudgeTransparentBlur()
+    this.publish()
+  }
+
+  /**
+   * Persist the pointer decoration (指针特效): the enabled flag, the chosen
+   * effect, and its tunables. The toggle only writes `cursorEffectEnabled`,
+   * so the last effect, palette, and sliders survive while the layer is off.
+   * @param patch - one or more pointer-effect fields.
+   */
+  setCursorFx(patch: Partial<Pick<ThemeSettings,
+    'cursorEffectEnabled' | 'cursorEffect' | 'cursorEffectColors'
+    | 'cursorEffectSpeed' | 'cursorEffectSize' | 'cursorEffectPreset'
+  >>): void {
+    const next: Pick<ThemeSettings,
+      'cursorEffectEnabled' | 'cursorEffect' | 'cursorEffectColors'
+      | 'cursorEffectSpeed' | 'cursorEffectSize' | 'cursorEffectPreset'
+    > = {
+      cursorEffectEnabled: this.settings.cursorEffectEnabled,
+      cursorEffect: this.settings.cursorEffect,
+      cursorEffectColors: this.settings.cursorEffectColors,
+      cursorEffectSpeed: this.settings.cursorEffectSpeed,
+      cursorEffectSize: this.settings.cursorEffectSize,
+      cursorEffectPreset: this.settings.cursorEffectPreset,
+    }
+    if (patch.cursorEffectEnabled !== undefined) next.cursorEffectEnabled = patch.cursorEffectEnabled
+    if (patch.cursorEffect !== undefined) {
+      next.cursorEffect = (CURSOR_EFFECTS as readonly string[]).includes(patch.cursorEffect)
+        ? patch.cursorEffect
+        : DEFAULT_CURSOR_EFFECT
+    }
+    if (patch.cursorEffectColors !== undefined) {
+      next.cursorEffectColors = sanitizeCursorEffectColors(patch.cursorEffectColors)
+    }
+    if (patch.cursorEffectSpeed !== undefined) {
+      next.cursorEffectSpeed = clampCursorEffectSpeed(patch.cursorEffectSpeed)
+    }
+    if (patch.cursorEffectSize !== undefined) {
+      next.cursorEffectSize = clampCursorEffectSize(patch.cursorEffectSize)
+    }
+    if (patch.cursorEffectPreset !== undefined) {
+      next.cursorEffectPreset = (CURSOR_EFFECT_PRESETS as readonly string[]).includes(patch.cursorEffectPreset)
+        ? patch.cursorEffectPreset
+        : 'custom'
+    }
+    if (next.cursorEffectEnabled === this.settings.cursorEffectEnabled
+      && next.cursorEffect === this.settings.cursorEffect
+      && JSON.stringify(next.cursorEffectColors) === JSON.stringify(this.settings.cursorEffectColors)
+      && next.cursorEffectSpeed === this.settings.cursorEffectSpeed
+      && next.cursorEffectSize === this.settings.cursorEffectSize
+      && next.cursorEffectPreset === this.settings.cursorEffectPreset) {
+      return
+    }
+    this.settings = { ...this.settings, ...next }
+    if (patch.cursorEffectEnabled !== undefined) {
+      this.queueWrite(THEME_CURSOR_EFFECT_ENABLED_FIELD, next.cursorEffectEnabled)
+    }
+    if (patch.cursorEffect !== undefined) this.queueWrite(THEME_CURSOR_EFFECT_FIELD, next.cursorEffect)
+    if (patch.cursorEffectColors !== undefined) {
+      this.queueWrite(THEME_CURSOR_EFFECT_COLORS_FIELD, next.cursorEffectColors)
+    }
+    if (patch.cursorEffectSpeed !== undefined) {
+      this.queueWrite(THEME_CURSOR_EFFECT_SPEED_FIELD, next.cursorEffectSpeed)
+    }
+    if (patch.cursorEffectSize !== undefined) {
+      this.queueWrite(THEME_CURSOR_EFFECT_SIZE_FIELD, next.cursorEffectSize)
+    }
+    if (patch.cursorEffectPreset !== undefined) {
+      this.queueWrite(THEME_CURSOR_EFFECT_PRESET_FIELD, next.cursorEffectPreset)
+    }
     this.publish()
   }
 
@@ -617,6 +803,7 @@ export class ThemeRuntime {
       customThemes: Object.freeze([...this.settings.customThemes]),
       glassOpacity: this.settings.glassOpacity,
       transparentTheme: this.settings.transparentTheme,
+      sidebarMaskHidden: this.settings.sidebarMaskHidden,
       wallpaperImage: this.settings.wallpaperImage,
       wallpaperBlur: this.settings.wallpaperBlur,
       wallpaperPixelate: this.settings.wallpaperPixelate,
@@ -624,6 +811,18 @@ export class ThemeRuntime {
       wallpaperCatalogUrls: Object.freeze([...this.settings.wallpaperCatalogUrls]),
       wallpaperSources: Object.freeze([...this.settings.wallpaperSources]),
       wallpaperFavorites: Object.freeze([...this.settings.wallpaperFavorites]),
+      backgroundEffect: this.settings.backgroundEffect,
+      backgroundEffectColors: Object.freeze([...this.settings.backgroundEffectColors]),
+      backgroundEffectSpeed: this.settings.backgroundEffectSpeed,
+      backgroundEffectCount: this.settings.backgroundEffectCount,
+      backgroundEffectPreset: this.settings.backgroundEffectPreset,
+      backgroundEffectVariant: this.settings.backgroundEffectVariant,
+      cursorEffectEnabled: this.settings.cursorEffectEnabled,
+      cursorEffect: this.settings.cursorEffect,
+      cursorEffectColors: Object.freeze([...this.settings.cursorEffectColors]),
+      cursorEffectSpeed: this.settings.cursorEffectSpeed,
+      cursorEffectSize: this.settings.cursorEffectSize,
+      cursorEffectPreset: this.settings.cursorEffectPreset,
       fontFamilySans: this.settings.fontFamilySans,
       fontFamilyCode: this.settings.fontFamilyCode,
       fontSizeInterface: this.settings.fontSizeInterface,
@@ -641,6 +840,10 @@ export class ThemeRuntime {
   private composeActive(active: ThemeDefinition, mode: 'light' | 'dark'): ThemeDefinition {
     const tokens: ThemeTokens = { ...active.tokens }
     const wallpapered = isWallpaperDataUrl(this.settings.wallpaperImage)
+    // The ambient gradient is a backdrop too: while it is live (and no image
+    // covers it) chrome surfaces mix to the same glass solidity so the blooms
+    // show through like a wallpaper does.
+    const backdropLive = wallpapered || this.settings.backgroundEffect === 'gradient'
     // 透明主题 needs the wallpaper: fully transparent chrome over an opaque
     // canvas would leave menus and dialogs invisible, so the flag is inert
     // until an image is set.
@@ -648,13 +851,19 @@ export class ThemeRuntime {
       ? TRANSPARENT_GLASS_SOLIDITY
       : this.settings.glassOpacity
     tokens['--dsw-alias-glass-opacity'] = `${solidity}%`
-    if (wallpapered) {
+    if (backdropLive) {
       Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, solidity))
     }
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
         tokens[name] = modes[mode]
       }
+    }
+    // 隐藏侧栏遮罩 wins over family, mix, and override layers: the rail
+    // chrome goes transparent so the frame's canvas fill shows through,
+    // leaving only the divider between rail and workspace.
+    if (this.settings.sidebarMaskHidden) {
+      tokens[SIDEBAR_RAIL_FILL_TOKEN] = SIDEBAR_UNMASKED_FILL
     }
     return Object.freeze({ ...active, colorScheme: mode, tokens: Object.freeze(tokens) })
   }
@@ -673,6 +882,7 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.activeDarkThemeId === right.activeDarkThemeId
     && left.glassOpacity === right.glassOpacity
     && left.transparentTheme === right.transparentTheme
+    && left.sidebarMaskHidden === right.sidebarMaskHidden
     && left.wallpaperImage === right.wallpaperImage
     && left.wallpaperBlur === right.wallpaperBlur
     && left.wallpaperPixelate === right.wallpaperPixelate
@@ -680,6 +890,18 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && JSON.stringify(left.wallpaperCatalogUrls) === JSON.stringify(right.wallpaperCatalogUrls)
     && JSON.stringify(left.wallpaperSources) === JSON.stringify(right.wallpaperSources)
     && JSON.stringify(left.wallpaperFavorites) === JSON.stringify(right.wallpaperFavorites)
+    && left.backgroundEffect === right.backgroundEffect
+    && JSON.stringify(left.backgroundEffectColors) === JSON.stringify(right.backgroundEffectColors)
+    && left.backgroundEffectSpeed === right.backgroundEffectSpeed
+    && left.backgroundEffectCount === right.backgroundEffectCount
+    && left.backgroundEffectPreset === right.backgroundEffectPreset
+    && left.backgroundEffectVariant === right.backgroundEffectVariant
+    && left.cursorEffectEnabled === right.cursorEffectEnabled
+    && left.cursorEffect === right.cursorEffect
+    && JSON.stringify(left.cursorEffectColors) === JSON.stringify(right.cursorEffectColors)
+    && left.cursorEffectSpeed === right.cursorEffectSpeed
+    && left.cursorEffectSize === right.cursorEffectSize
+    && left.cursorEffectPreset === right.cursorEffectPreset
     && left.fontFamilySans === right.fontFamilySans
     && left.fontFamilyCode === right.fontFamilyCode
     && left.fontSizeInterface === right.fontSizeInterface
@@ -769,6 +991,16 @@ export function apply(ctx: ClientContext): void {
       wallpaperImage: snapshot.wallpaperImage,
       wallpaperBlur: snapshot.wallpaperBlur,
       wallpaperPixelate: snapshot.wallpaperPixelate,
+      backgroundEffect: snapshot.backgroundEffect,
+      backgroundEffectColors: snapshot.backgroundEffectColors,
+      backgroundEffectSpeed: snapshot.backgroundEffectSpeed,
+      backgroundEffectCount: snapshot.backgroundEffectCount,
+      backgroundEffectVariant: snapshot.backgroundEffectVariant,
+      cursorEffectEnabled: snapshot.cursorEffectEnabled,
+      cursorEffect: snapshot.cursorEffect,
+      cursorEffectColors: snapshot.cursorEffectColors,
+      cursorEffectSpeed: snapshot.cursorEffectSpeed,
+      cursorEffectSize: snapshot.cursorEffectSize,
       transparentTheme: snapshot.transparentTheme,
     })
   }
@@ -796,7 +1028,9 @@ export function apply(ctx: ClientContext): void {
       previewTheme: (family) => { theme.setPreviewFamily(family) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
       setTransparentTheme: (value) => { theme.setTransparentTheme(value) },
+      setSidebarMask: (value) => { theme.setSidebarMask(value) },
       setWallpaper: (patch) => { theme.setWallpaper(patch) },
+      setCursorFx: (patch) => { theme.setCursorFx(patch) },
       ...(desktopWallpaper ? {
         setWallpaperSources: (patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>) => {
           theme.setWallpaperSources(patch)
@@ -813,6 +1047,7 @@ export function apply(ctx: ClientContext): void {
     id: 'appearance',
     order: 5,
     label: () => t('nav'),
+    children: { 'settings.appearance.item': { kind: 'list', scope: 'root' } },
     store,
     locale: SETTINGS_NS,
     inject: injected,

@@ -89,15 +89,17 @@ test('marketplace preload role is not exposed', () => {
   assert.equal(exposed, null);
 });
 
-test('pet preload exposes only state, drag, and theme controls', () => {
+test('pet preload exposes only state, drag, menu, and theme controls', () => {
   const api = buildShellApi('pet', fakeRenderer());
   assert.equal(typeof api.getState, 'function');
   assert.equal(typeof api.commitDrag, 'function');
+  assert.equal(typeof api.openMenu, 'function');
+  assert.equal(typeof api.onState, 'function');
   assert.equal(typeof api.onTheme, 'function');
   assert.equal(api.writeFile, undefined);
   assert.equal(api.saveConfig, undefined);
   assert.equal(api.openLauncher, undefined);
-  assert.equal(Object.keys(api).sort().join(','), 'commitDrag,getState,onTheme');
+  assert.equal(Object.keys(api).sort().join(','), 'commitDrag,getState,onState,onTheme,openMenu');
 });
 
 test('harness preload keeps work loops and remote controls', () => {

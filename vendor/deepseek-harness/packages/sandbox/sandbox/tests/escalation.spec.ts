@@ -75,18 +75,36 @@ describe('approveEscalation', () => {
   })
 
   it('grants: returns the requested mode, asking through the approver with the audit reason', async () => {
-    const seen: { reason?: string }[] = []
-    const granted = await approveEscalation(req(), ingredients({ approver: approver('allowed-once', r => seen.push(r as { reason?: string })) }))
+    const seen: { reason?: string; signal?: AbortSignal }[] = []
+    const signal = new AbortController().signal
+    const granted = await approveEscalation(req(), ingredients({
+      approver: approver('allowed-once', r => seen.push(r as { reason?: string; signal?: AbortSignal })),
+      signal,
+    }))
     expect(granted).toBe('workspace-write')
     expect(seen[0]?.reason).toBe('escalate sandbox to workspace-write: the user asked to write in the workspace')
+    expect(seen[0]?.signal).toBe(signal)
   })
 
-  it('a non-widening request fails closed with its own text and never asks', async () => {
+  it('a non-widening request resolves to the effective mode and never asks', async () => {
     const seen: unknown[] = []
     const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
+    // Same-mode and narrower requests keep the mode the call already runs
+    // under; the ceiling session accepts every real target as a no-op.
+    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'workspace-write' }), spy)).resolves.toBe('workspace-write')
+    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' }), spy)).resolves.toBe('danger-full-access')
+    await expect(approveEscalation(req({ requestedMode: 'danger-full-access', effectiveMode: 'danger-full-access' }), spy)).resolves.toBe('danger-full-access')
+    expect(seen).toEqual([])
+  })
+
+  it('a request outside the closed vocabulary still fails closed and never asks', async () => {
+    const seen: unknown[] = []
+    const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
+    // 'read-only' is never a legal escalation target.
     await expect(approveEscalation(req({ requestedMode: 'read-only' }), spy))
       .rejects.toThrow(/not strictly wider than this call's current "read-only" mode/)
-    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy))
+    // An effective mode outside the vocabulary is corrupted session state.
+    await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'unknown-mode' as never }), spy))
       .rejects.toThrow(/not strictly wider/)
     expect(seen).toEqual([])
   })

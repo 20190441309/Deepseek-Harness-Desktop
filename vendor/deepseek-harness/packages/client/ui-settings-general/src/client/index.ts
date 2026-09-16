@@ -32,6 +32,8 @@ import { InterfaceSection } from './InterfaceSection.tsx'
 import { CloseBehaviorRow } from './CloseBehaviorRow.tsx'
 import { AutoStartDesktopRow } from './AutoStartDesktopRow.tsx'
 import { DshbotRow } from './DshbotRow.tsx'
+import { PetSection } from './PetSection.tsx'
+import type { PetSectionInjected } from './PetSection.tsx'
 import { AboutSection } from './AboutSection.tsx'
 import { HarnessRestartRow } from './HarnessRestartRow.tsx'
 import { canPersistCloseBehavior, desktopShell } from './desktop-shell.ts'
@@ -51,6 +53,7 @@ export type {
 } from './InterfaceSection.tsx'
 export type { HarnessRestartRowProps } from './HarnessRestartRow.tsx'
 export type { AboutSectionProps } from './AboutSection.tsx'
+export type { PetSectionProps } from './PetSection.tsx'
 export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
 export type { SettingsDocumentState } from './settings-document-store.ts'
 export { SettingsDocumentStore } from './settings-document-store.ts'
@@ -79,7 +82,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'remote.session', 'settingsScope']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -245,6 +248,28 @@ export function apply(ctx: ClientContext): void {
       order: 100,
       locale: NS,
     }, HarnessRestartRow))
+  }
+  // The desktop pet's own section: registered only when the bridge can
+  // route settings writes through the pet manager (plain browsers have no
+  // pet overlay). Always reachable — the whale-assistant toggle lives here
+  // because the whale plugin's own section disappears while it is disabled.
+  if (shell?.getConfig && shell.saveConfig && shell.saveLive2dPetSettings) {
+    const petInjected = (): PetSectionInjected => ({
+      // The look picker rides the session model catalog (image-capable
+      // routes), the same source the Models vision picker uses.
+      modelCatalog: () => ctx.remote.session.modelCatalog(),
+    })
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section',
+      id: 'pet',
+      order: 40,
+      label: () => t('pet.nav'),
+      locale: NS,
+      // Pet-adjacent feature blocks (the whale assistant's own fields live in
+      // her plugin) mount under the 助理 group through this child seat.
+      children: { 'settings.pet.item': { kind: 'list', scope: 'root' } },
+      inject: petInjected,
+    }, PetSection))
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

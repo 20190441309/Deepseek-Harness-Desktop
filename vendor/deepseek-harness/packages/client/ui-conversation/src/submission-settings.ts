@@ -17,6 +17,15 @@ export const COMPOSER_BEAM_STYLE_FIELD = 'composerBeamStyle'
 /** Field carrying the user's saved composer-beam visual presets. */
 export const COMPOSER_BEAM_PRESETS_FIELD = 'composerBeamPresets'
 
+/** Field carrying whether the composer plays typing echoes and a custom caret. */
+export const TYPING_FX_FIELD = 'typingFx'
+
+/** Field carrying the configurable visual treatment for the typing effect. */
+export const TYPING_FX_STYLE_FIELD = 'typingFxStyle'
+
+/** Field carrying the user's saved typing-effect visual presets. */
+export const TYPING_FX_PRESETS_FIELD = 'typingFxPresets'
+
 /** Field carrying whether the composer text box can be drag-resized. */
 export const COMPOSER_RESIZE_FIELD = 'composerResize'
 
@@ -40,6 +49,15 @@ export const SESSION_COST_PRICES_FIELD = 'sessionCostPrices'
 
 /** Field carrying whether the session header paints Chat/Trajectory tabs. */
 export const VIEW_TABS_FIELD = 'viewTabs'
+
+/** Field carrying the user's standing custom instructions sent with every request. */
+export const CUSTOM_INSTRUCTIONS_FIELD = 'customInstructions'
+
+/** Character cap on the custom-instructions text. */
+export const CUSTOM_INSTRUCTIONS_MAX_LENGTH = 1500
+
+/** Default is no standing instructions. */
+export const DEFAULT_CUSTOM_INSTRUCTIONS = ''
 
 /** Busy-Enter behaviors accepted at settings and input boundaries. */
 export const BUSY_ENTER_BEHAVIORS = ['queue', 'steer'] as const
@@ -350,6 +368,146 @@ export function normalizeComposerBeamPresets(value: unknown): ComposerBeamPreset
   return result
 }
 
+/** Named echo animations; each paints the inserted glyph's ghost, not the real text node. */
+export const TYPING_FX_EFFECTS = ['drop', 'rise', 'flash'] as const
+
+/** Echo animation applied to a freshly typed character. */
+export type TypingFxEffect = typeof TYPING_FX_EFFECTS[number]
+
+/** Caret treatments; `native` leaves the contenteditable caret untouched. */
+export const TYPING_FX_CURSORS = ['native', 'block', 'underline'] as const
+
+/** Caret treatment rendered by the typing-fx overlay. */
+export type TypingFxCursor = typeof TYPING_FX_CURSORS[number]
+
+/** Built-in echo/caret color-scheme identifiers exposed by the settings panel. */
+export const TYPING_FX_COLOR_SCHEMES = ['ocean', 'sunset', 'candy', 'forest', 'violet', 'ember'] as const
+
+/** Built-in color-scheme identifier. */
+export type TypingFxColorSchemeId = typeof TYPING_FX_COLOR_SCHEMES[number]
+
+/** Echo/caret/text triplet of one built-in scheme: the lighter stop ghosts, the accent drives the caret, the deep stop paints composer text. */
+export const TYPING_FX_COLOR_SCHEME_COLORS: Readonly<Record<TypingFxColorSchemeId, { echo: string; caret: string; text: string }>> = {
+  ocean: { echo: '#7dd3fc', caret: '#38bdf8', text: '#0284c7' },
+  sunset: { echo: '#fdba74', caret: '#fb923c', text: '#ea580c' },
+  candy: { echo: '#f9a8d4', caret: '#ec4899', text: '#db2777' },
+  forest: { echo: '#86efac', caret: '#34d399', text: '#059669' },
+  violet: { echo: '#c4b5fd', caret: '#8b5cf6', text: '#7c3aed' },
+  ember: { echo: '#fcd34d', caret: '#f59e0b', text: '#d97706' },
+}
+
+/** Echo/caret/text color source: theme tokens, a named scheme, or an explicit triplet. */
+export type TypingFxColors =
+  | { kind: 'theme' }
+  | { kind: 'preset'; id: TypingFxColorSchemeId }
+  | { kind: 'custom'; echo: string; caret: string; text: string }
+
+/** Concrete paint values; null means the CSS token fallback applies. */
+export interface TypingFxResolvedColors {
+  readonly echo: string | null
+  readonly caret: string | null
+  readonly text: string | null
+}
+
+/** Resolve the active color source to hex stops (or null = theme token). */
+export function resolveTypingFxColors(colors: TypingFxColors): TypingFxResolvedColors {
+  if (colors.kind === 'theme') return { echo: null, caret: null, text: null }
+  if (colors.kind === 'preset') return TYPING_FX_COLOR_SCHEME_COLORS[colors.id]
+  return { echo: colors.echo, caret: colors.caret, text: colors.text }
+}
+
+/** User-tunable typing-effect values; geometry stays fixed in CSS. */
+export interface TypingFxStyle {
+  /** Echo animation played on each inserted character. */
+  effect: TypingFxEffect
+  /** Caret replacement drawn over the editor. */
+  cursor: TypingFxCursor
+  /** Whether a custom caret blinks; `native` ignores this. */
+  cursorBlink: boolean
+  /** Percent speed scale applied to the echo lifetime (higher = shorter). */
+  speed: number
+  /** Echo/caret color source. */
+  colors: TypingFxColors
+}
+
+export const MIN_TYPING_FX_SPEED = 40
+export const MAX_TYPING_FX_SPEED = 240
+export const MAX_TYPING_FX_PRESETS = 5
+export const MAX_TYPING_FX_PRESET_NAME_LENGTH = 32
+export const MAX_TYPING_FX_JSON_BYTES = 32 * 1024
+
+/** Default keeps the feature opt-in: a new document carries no typing effect. */
+export const DEFAULT_TYPING_FX = false
+
+/** Defaults give the mildest treatment so opting in never surprises. */
+export const DEFAULT_TYPING_FX_STYLE: TypingFxStyle = Object.freeze({
+  effect: 'drop',
+  cursor: 'native',
+  cursorBlink: true,
+  speed: 100,
+  colors: Object.freeze({ kind: 'theme' as const }),
+})
+
+/** User presets are a bounded plain record of normalized styles. */
+export type TypingFxPresets = Record<string, TypingFxStyle>
+
+/** Empty by default so adding the feature does not materialize a new user entry. */
+export const DEFAULT_TYPING_FX_PRESETS: TypingFxPresets = Object.freeze({})
+
+const isTypingFxEffect = (value: unknown): value is TypingFxEffect =>
+  typeof value === 'string' && TYPING_FX_EFFECTS.includes(value as TypingFxEffect)
+
+const isTypingFxCursor = (value: unknown): value is TypingFxCursor =>
+  typeof value === 'string' && TYPING_FX_CURSORS.includes(value as TypingFxCursor)
+
+const isTypingFxColorScheme = (value: unknown): value is TypingFxColorSchemeId =>
+  typeof value === 'string' && TYPING_FX_COLOR_SCHEMES.includes(value as TypingFxColorSchemeId)
+
+/** Normalize the color source; anything unrecognized follows the theme tokens. */
+export function normalizeTypingFxColors(value: unknown): TypingFxColors {
+  if (!isRecord(value)) return { kind: 'theme' }
+  if (value.kind === 'preset' && isTypingFxColorScheme(value.id)) return { kind: 'preset', id: value.id }
+  if (value.kind === 'custom' && isHexColor(value.echo) && isHexColor(value.caret) && isHexColor(value.text)) {
+    return {
+      kind: 'custom',
+      echo: value.echo.toLowerCase(),
+      caret: value.caret.toLowerCase(),
+      text: value.text.toLowerCase(),
+    }
+  }
+  return { kind: 'theme' }
+}
+
+/** Normalize an active style at browser, preset, and settings adoption boundaries. */
+export function normalizeTypingFxStyle(value: unknown): TypingFxStyle {
+  const raw = isRecord(value) ? value : {}
+  return {
+    effect: isTypingFxEffect(raw.effect) ? raw.effect : DEFAULT_TYPING_FX_STYLE.effect,
+    cursor: isTypingFxCursor(raw.cursor) ? raw.cursor : DEFAULT_TYPING_FX_STYLE.cursor,
+    cursorBlink: typeof raw.cursorBlink === 'boolean' ? raw.cursorBlink : DEFAULT_TYPING_FX_STYLE.cursorBlink,
+    speed: clampNumber(raw.speed, DEFAULT_TYPING_FX_STYLE.speed, MIN_TYPING_FX_SPEED, MAX_TYPING_FX_SPEED),
+    colors: normalizeTypingFxColors(raw.colors),
+  }
+}
+
+/** Normalize preset names and cap the durable library at five entries. */
+export function normalizeTypingFxPresets(value: unknown): TypingFxPresets {
+  if (!isRecord(value)) return {}
+  const result: TypingFxPresets = {}
+  for (const [rawName, rawStyle] of Object.entries(value)) {
+    if (Object.keys(result).length >= MAX_TYPING_FX_PRESETS) break
+    const name = rawName.trim().slice(0, MAX_TYPING_FX_PRESET_NAME_LENGTH)
+    if (name === '' || name === '__proto__' || name === 'constructor' || name === 'prototype') continue
+    Object.defineProperty(result, name, {
+      configurable: true,
+      enumerable: true,
+      value: normalizeTypingFxStyle(rawStyle),
+      writable: true,
+    })
+  }
+  return result
+}
+
 /** Default keeps auto-grow only; drag-resize is an explicit opt-in. */
 export const DEFAULT_COMPOSER_RESIZE = false
 
@@ -439,6 +597,14 @@ export interface ConversationSettings {
   sessionCostPrices?: SessionCostPrices
   /** Whether ConversationSessionHeader paints the Chat/Trajectory tablist. */
   viewTabs: boolean
+  /** Whether the composer paints typing echoes and a custom caret; absent/undefined reads as off. */
+  typingFx?: boolean
+  /** Optional visual tuning for the typing effect. */
+  typingFxStyle?: TypingFxStyle
+  /** Optional user-named visual presets for the typing effect. */
+  typingFxPresets?: TypingFxPresets
+  /** Standing user instructions appended to the system prompt of every request. */
+  customInstructions: string
 }
 
 const ComposerBeamPaletteSchema = z.union([
@@ -508,6 +674,28 @@ const ComposerBeamStyleSchema: z<ComposerBeamStyle> = z.object({
   easing: z.union([...COMPOSER_BEAM_EASINGS]).default(DEFAULT_COMPOSER_BEAM_STYLE.easing),
 })
 
+const TypingFxColorsSchema = z.union([
+  z.object({ kind: z.union(['theme'] as const) }),
+  z.object({
+    kind: z.union(['preset'] as const),
+    id: z.union([...TYPING_FX_COLOR_SCHEMES]),
+  }),
+  z.object({
+    kind: z.union(['custom'] as const),
+    echo: z.string().pattern(/^#[0-9a-f]{6}$/i),
+    caret: z.string().pattern(/^#[0-9a-f]{6}$/i),
+    text: z.string().pattern(/^#[0-9a-f]{6}$/i),
+  }),
+])
+
+const TypingFxStyleSchema: z<TypingFxStyle> = z.object({
+  effect: z.union([...TYPING_FX_EFFECTS]).default(DEFAULT_TYPING_FX_STYLE.effect),
+  cursor: z.union([...TYPING_FX_CURSORS]).default(DEFAULT_TYPING_FX_STYLE.cursor),
+  cursorBlink: z.boolean().default(DEFAULT_TYPING_FX_STYLE.cursorBlink),
+  speed: z.number().min(MIN_TYPING_FX_SPEED).max(MAX_TYPING_FX_SPEED).default(DEFAULT_TYPING_FX_STYLE.speed),
+  colors: TypingFxColorsSchema.default(DEFAULT_TYPING_FX_STYLE.colors),
+})
+
 /** Durable conversation schema; also the wire envelope the browser scope validates against. */
 export const ConversationSettingsSchema: z<ConversationSettings> = z.object({
   [BUSY_ENTER_FIELD]: z.union([...BUSY_ENTER_BEHAVIORS]).default(DEFAULT_BUSY_ENTER_BEHAVIOR),
@@ -530,4 +718,16 @@ export const ConversationSettingsSchema: z<ConversationSettings> = z.object({
   // sanitizes the shape before use.
   [SESSION_COST_PRICES_FIELD]: z.any().required(false),
   [VIEW_TABS_FIELD]: z.boolean().default(DEFAULT_VIEW_TABS),
+  // Optional without a materialized default: an absent field reads as off at
+  // adoption, so opting the feature in never rewrites a document that lacks it.
+  [TYPING_FX_FIELD]: z.boolean().required(false),
+  [TYPING_FX_STYLE_FIELD]: TypingFxStyleSchema.required(false),
+  // The browser policy enforces the five-entry and name-length caps before
+  // writes; schemastery validates each preset value here.
+  [TYPING_FX_PRESETS_FIELD]: z.dict(TypingFxStyleSchema).required(false),
+  // The textarea caps input at the same length before writes; schemastery
+  // remains the durable boundary for direct document edits.
+  [CUSTOM_INSTRUCTIONS_FIELD]: z.string()
+    .max(CUSTOM_INSTRUCTIONS_MAX_LENGTH)
+    .default(DEFAULT_CUSTOM_INSTRUCTIONS),
 })

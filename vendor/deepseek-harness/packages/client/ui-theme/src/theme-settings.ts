@@ -16,8 +16,20 @@ import {
   type ThemeFamily,
 } from './theme-family.ts'
 import {
-  DEFAULT_WALLPAPER_EFFECT, MAX_WALLPAPER_EFFECT, MIN_WALLPAPER_EFFECT,
+  BACKGROUND_EFFECT_VARIANTS, DEFAULT_BACKGROUND_EFFECT_COUNT,
+  DEFAULT_BACKGROUND_EFFECT_SPEED, DEFAULT_BACKGROUND_EFFECT_VARIANT,
+  DEFAULT_WALLPAPER_EFFECT, MAX_BACKGROUND_EFFECT_COUNT, MAX_BACKGROUND_EFFECT_SPEED,
+  MAX_WALLPAPER_EFFECT, MIN_BACKGROUND_EFFECT_COUNT, MIN_BACKGROUND_EFFECT_SPEED,
+  MIN_WALLPAPER_EFFECT, sanitizeBackgroundEffectColors,
 } from './wallpaper.ts'
+import {
+  CURSOR_EFFECTS, CURSOR_EFFECT_PRESETS, DEFAULT_CURSOR_EFFECT,
+  DEFAULT_CURSOR_EFFECT_SIZE, DEFAULT_CURSOR_EFFECT_SPEED,
+  MAX_CURSOR_EFFECT_SIZE, MAX_CURSOR_EFFECT_SPEED,
+  MIN_CURSOR_EFFECT_SIZE, MIN_CURSOR_EFFECT_SPEED,
+  normalizeCursorEffect, sanitizeCursorEffectColors,
+  type CursorEffect, type CursorEffectPreset,
+} from './cursor-fx.ts'
 
 /** Built-in preferences accepted at the registry and settings boundaries. */
 export const THEME_PREFERENCES = ['light', 'dark', 'system'] as const
@@ -46,6 +58,9 @@ export const THEME_GLASS_OPACITY_FIELD = 'glassOpacity'
 /** Field toggling the fully transparent chrome (透明主题). */
 export const THEME_TRANSPARENT_FIELD = 'transparentTheme'
 
+/** Field toggling the sidebar mask so the rail shares the canvas fill (隐藏侧栏遮罩). */
+export const THEME_SIDEBAR_MASK_FIELD = 'sidebarMaskHidden'
+
 /** Field carrying the wallpaper data URL. */
 export const THEME_WALLPAPER_IMAGE_FIELD = 'wallpaperImage'
 
@@ -66,6 +81,42 @@ export const THEME_WALLPAPER_SOURCES_FIELD = 'wallpaperSources'
 
 /** Field carrying starred gallery items. */
 export const THEME_WALLPAPER_FAVORITES_FIELD = 'wallpaperFavorites'
+
+/** Field carrying the no-wallpaper ambient backdrop effect. */
+export const THEME_BACKGROUND_EFFECT_FIELD = 'backgroundEffect'
+
+/** Field carrying user color overrides for the ambient backdrop. */
+export const THEME_BACKGROUND_EFFECT_COLORS_FIELD = 'backgroundEffectColors'
+
+/** Field carrying the ambient backdrop speed percent. */
+export const THEME_BACKGROUND_EFFECT_SPEED_FIELD = 'backgroundEffectSpeed'
+
+/** Field carrying the ambient backdrop bloom count. */
+export const THEME_BACKGROUND_EFFECT_COUNT_FIELD = 'backgroundEffectCount'
+
+/** Field naming the selected backdrop scheme (a preset id or `custom`). */
+export const THEME_BACKGROUND_EFFECT_PRESET_FIELD = 'backgroundEffectPreset'
+
+/** Field naming the bloom shape variant the gradient paints. */
+export const THEME_BACKGROUND_EFFECT_VARIANT_FIELD = 'backgroundEffectVariant'
+
+/** Field toggling the pointer decoration layer (指针特效). */
+export const THEME_CURSOR_EFFECT_ENABLED_FIELD = 'cursorEffectEnabled'
+
+/** Field naming the pointer decoration (`trail` or `splash`). */
+export const THEME_CURSOR_EFFECT_FIELD = 'cursorEffect'
+
+/** Field carrying user color overrides for the pointer decoration. */
+export const THEME_CURSOR_EFFECT_COLORS_FIELD = 'cursorEffectColors'
+
+/** Field carrying the pointer decoration speed percent. */
+export const THEME_CURSOR_EFFECT_SPEED_FIELD = 'cursorEffectSpeed'
+
+/** Field carrying the pointer decoration size percent. */
+export const THEME_CURSOR_EFFECT_SIZE_FIELD = 'cursorEffectSize'
+
+/** Field naming the selected pointer scheme (a preset id or `custom`). */
+export const THEME_CURSOR_EFFECT_PRESET_FIELD = 'cursorEffectPreset'
 
 /** Built-in and user catalog kinds accepted in the gallery source list. */
 export type WallpaperSourceKind = 'bing' | 'wallhaven' | 'catalog'
@@ -115,6 +166,37 @@ const MAX_WALLPAPER_SOURCE_NAME_LENGTH = 40
 const MAX_WALLPAPER_CATALOG_URL_LENGTH = 500
 const CATALOG_ID_PATTERN = /^catalog-[0-9a-z]+$/i
 
+/** Backdrop effects accepted while no wallpaper image is set. */
+export const BACKGROUND_EFFECTS = ['none', 'gradient'] as const
+
+/** Ambient backdrop painted when no wallpaper image is set. */
+export type BackgroundEffect = typeof BACKGROUND_EFFECTS[number]
+
+/**
+ * Named backdrop schemes the Appearance dialog offers. `custom` is the
+ * state the stored tunables fall into whenever they no longer match a
+ * preset; the preset id list doubles as the schema's accepted values.
+ */
+export const BACKGROUND_EFFECT_PRESETS = [
+  'default', 'aurora', 'sunset', 'ocean', 'sakura', 'custom',
+] as const
+
+/** Selected backdrop scheme persisted next to the tunables. */
+export type BackgroundEffectPreset = typeof BACKGROUND_EFFECT_PRESETS[number]
+
+/**
+ * Install-default backdrop palette: the `aurora` scheme's bloom colors, so a
+ * fresh Host paints the named scheme rather than the theme-token baseline.
+ * Kept equal to the aurora row in `client/effect-presets.ts` (spec-pinned).
+ */
+export const DEFAULT_BACKGROUND_EFFECT_COLORS = ['', '', '#34d399', '#22d3ee', '#a78bfa', '#4ade80', '#38bdf8']
+
+/** Install-default backdrop scheme id, matching {@link DEFAULT_BACKGROUND_EFFECT_COLORS}. */
+export const DEFAULT_BACKGROUND_EFFECT_PRESET: BackgroundEffectPreset = 'aurora'
+
+/** Bloom shape the ambient gradient paints. */
+export type BackgroundEffectVariant = typeof BACKGROUND_EFFECT_VARIANTS[number]
+
 /** Theme preference persisted by the product Appearance page. */
 export type ThemePreference = typeof THEME_PREFERENCES[number]
 
@@ -150,6 +232,11 @@ export interface ThemeSettings {
    * slider while active; without a wallpaper the flag is stored but inert.
    */
   transparentTheme: boolean
+  /**
+   * Sidebar mask (隐藏侧栏遮罩): the rail paints the main canvas fill instead
+   * of its own mask, so only the divider separates it from the workspace.
+   */
+  sidebarMaskHidden: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -164,6 +251,44 @@ export interface ThemeSettings {
   wallpaperSources: WallpaperSource[]
   /** Starred gallery items, capped at {@link MAX_WALLPAPER_FAVORITES}. */
   wallpaperFavorites: WallpaperFavorite[]
+  /**
+   * Ambient backdrop effect painted while `wallpaperImage` is empty. The
+   * stored value survives a wallpaper being set — the image always wins and
+   * the effect resumes when the image is cleared.
+   */
+  backgroundEffect: BackgroundEffect
+  /**
+   * Ambient backdrop color overrides: up to seven `#rrggbb` slots — base
+   * start, base end, blooms 1–5. An empty or missing slot keeps the
+   * theme token.
+   */
+  backgroundEffectColors: string[]
+  /** Ambient backdrop speed percent; 100 keeps the authored durations. */
+  backgroundEffectSpeed: number
+  /** Ambient backdrop bloom count, 1–5. */
+  backgroundEffectCount: number
+  /** Selected backdrop scheme: a preset id, or `custom` once the user edits. */
+  backgroundEffectPreset: BackgroundEffectPreset
+  /** Bloom shape variant: orbs, aurora ribbons, chaos, or rays. */
+  backgroundEffectVariant: BackgroundEffectVariant
+  /**
+   * Pointer decoration layer switch. The chosen effect and tunables survive
+   * while the layer is off, so the switch restores the last look.
+   */
+  cursorEffectEnabled: boolean
+  /** Pointer decoration: fading pixel trail or WebGL fluid splash. */
+  cursorEffect: CursorEffect
+  /**
+   * Pointer palette overrides: up to six `#rrggbb` slots shared by both
+   * effects. An empty list falls back to the theme accent at paint time.
+   */
+  cursorEffectColors: string[]
+  /** Pointer decoration speed percent; 100 keeps the authored look. */
+  cursorEffectSpeed: number
+  /** Pointer decoration size percent; scales splat radius / grid cell. */
+  cursorEffectSize: number
+  /** Selected pointer scheme: a preset id, or `custom` once the user edits. */
+  cursorEffectPreset: CursorEffectPreset
   /** Optional interface font-family override; empty keeps the sheet stack. */
   fontFamilySans: string
   /** Optional monospace font-family override; empty keeps the sheet stack. */
@@ -187,6 +312,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   customThemes: [],
   glassOpacity: DEFAULT_GLASS_OPACITY,
   transparentTheme: false,
+  sidebarMaskHidden: true,
   wallpaperImage: '',
   wallpaperBlur: DEFAULT_WALLPAPER_EFFECT,
   wallpaperPixelate: DEFAULT_WALLPAPER_EFFECT,
@@ -194,6 +320,18 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   wallpaperCatalogUrls: [],
   wallpaperSources: DEFAULT_WALLPAPER_SOURCES,
   wallpaperFavorites: [],
+  backgroundEffect: 'gradient',
+  backgroundEffectColors: [...DEFAULT_BACKGROUND_EFFECT_COLORS],
+  backgroundEffectSpeed: DEFAULT_BACKGROUND_EFFECT_SPEED,
+  backgroundEffectCount: DEFAULT_BACKGROUND_EFFECT_COUNT,
+  backgroundEffectPreset: DEFAULT_BACKGROUND_EFFECT_PRESET,
+  backgroundEffectVariant: DEFAULT_BACKGROUND_EFFECT_VARIANT,
+  cursorEffectEnabled: false,
+  cursorEffect: DEFAULT_CURSOR_EFFECT,
+  cursorEffectColors: [],
+  cursorEffectSpeed: DEFAULT_CURSOR_EFFECT_SPEED,
+  cursorEffectSize: DEFAULT_CURSOR_EFFECT_SIZE,
+  cursorEffectPreset: 'default',
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_INTERFACE_FONT_SIZE,
@@ -234,6 +372,7 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_GLASS_OPACITY_FIELD]: z.number().min(MIN_GLASS_OPACITY).max(MAX_GLASS_OPACITY)
     .default(DEFAULT_GLASS_OPACITY),
   [THEME_TRANSPARENT_FIELD]: z.boolean().default(false),
+  [THEME_SIDEBAR_MASK_FIELD]: z.boolean().default(true),
   [THEME_WALLPAPER_IMAGE_FIELD]: z.string().default(''),
   [THEME_WALLPAPER_BLUR_FIELD]: z.number().min(MIN_WALLPAPER_EFFECT).max(MAX_WALLPAPER_EFFECT)
     .default(DEFAULT_WALLPAPER_EFFECT),
@@ -243,6 +382,28 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_WALLPAPER_CATALOGS_FIELD]: z.array(z.string()).default([]),
   [THEME_WALLPAPER_SOURCES_FIELD]: arrayWithoutDefault(WallpaperSourceSchema),
   [THEME_WALLPAPER_FAVORITES_FIELD]: z.array(WallpaperFavoriteSchema).default([]),
+  [THEME_BACKGROUND_EFFECT_FIELD]: z.union([...BACKGROUND_EFFECTS]).default('gradient'),
+  [THEME_BACKGROUND_EFFECT_COLORS_FIELD]: z.array(z.string()).default(DEFAULT_BACKGROUND_EFFECT_COLORS),
+  [THEME_BACKGROUND_EFFECT_SPEED_FIELD]: z.number()
+    .min(MIN_BACKGROUND_EFFECT_SPEED).max(MAX_BACKGROUND_EFFECT_SPEED)
+    .default(DEFAULT_BACKGROUND_EFFECT_SPEED),
+  [THEME_BACKGROUND_EFFECT_COUNT_FIELD]: z.number().step(1)
+    .min(MIN_BACKGROUND_EFFECT_COUNT).max(MAX_BACKGROUND_EFFECT_COUNT)
+    .default(DEFAULT_BACKGROUND_EFFECT_COUNT),
+  [THEME_BACKGROUND_EFFECT_PRESET_FIELD]: z.union([...BACKGROUND_EFFECT_PRESETS])
+    .default(DEFAULT_BACKGROUND_EFFECT_PRESET),
+  [THEME_BACKGROUND_EFFECT_VARIANT_FIELD]: z.union([...BACKGROUND_EFFECT_VARIANTS])
+    .default(DEFAULT_BACKGROUND_EFFECT_VARIANT),
+  [THEME_CURSOR_EFFECT_ENABLED_FIELD]: z.boolean().default(false),
+  [THEME_CURSOR_EFFECT_FIELD]: z.union([...CURSOR_EFFECTS]).default(DEFAULT_CURSOR_EFFECT),
+  [THEME_CURSOR_EFFECT_COLORS_FIELD]: z.array(z.string()).default([]),
+  [THEME_CURSOR_EFFECT_SPEED_FIELD]: z.number()
+    .min(MIN_CURSOR_EFFECT_SPEED).max(MAX_CURSOR_EFFECT_SPEED)
+    .default(DEFAULT_CURSOR_EFFECT_SPEED),
+  [THEME_CURSOR_EFFECT_SIZE_FIELD]: z.number()
+    .min(MIN_CURSOR_EFFECT_SIZE).max(MAX_CURSOR_EFFECT_SIZE)
+    .default(DEFAULT_CURSOR_EFFECT_SIZE),
+  [THEME_CURSOR_EFFECT_PRESET_FIELD]: z.union([...CURSOR_EFFECT_PRESETS]).default('default'),
   fontFamilySans: z.string().default(''),
   fontFamilyCode: z.string().default(''),
   fontSizeInterface: z.number().min(MIN_INTERFACE_FONT_SIZE).max(MAX_INTERFACE_FONT_SIZE)
@@ -282,6 +443,9 @@ export function resolveThemeSettings(section: ThemeSettings | undefined): ThemeS
     wallpaperCatalogUrls: sanitizeWallpaperCatalogUrls(section.wallpaperCatalogUrls),
     wallpaperSources,
     wallpaperFavorites: sanitizeWallpaperFavorites(section.wallpaperFavorites),
+    backgroundEffectColors: sanitizeBackgroundEffectColors(section.backgroundEffectColors),
+    cursorEffect: normalizeCursorEffect(section.cursorEffect),
+    cursorEffectColors: sanitizeCursorEffectColors(section.cursorEffectColors),
   }
 }
 

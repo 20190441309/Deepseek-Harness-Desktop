@@ -31,7 +31,7 @@ import { SessionInputShell } from '../src/client/input/facade.ts'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
 import { zh } from '../src/client/locales.ts'
-import { DEFAULT_COMPOSER_BEAM_STYLE } from '../src/submission-settings.ts'
+import { DEFAULT_COMPOSER_BEAM_STYLE, DEFAULT_TYPING_FX_STYLE } from '../src/submission-settings.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
@@ -186,6 +186,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
     useMenuLauncher: bindSnapshotSelector(controller.launcher),
     useComposerBeam: sel => sel(true),
     useComposerBeamStyle: sel => sel(DEFAULT_COMPOSER_BEAM_STYLE),
+    useTypingFx: sel => sel(false),
+    useTypingFxStyle: sel => sel(DEFAULT_TYPING_FX_STYLE),
     useComposerResize: sel => sel(false),
     useComposerResizeHeight: sel => sel(null),
     useComposerResizeWidth: sel => sel(null),

@@ -41,22 +41,29 @@ function buildSettingsSectionScript(section) {
       if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
       const id = ${id};
       if (!id) return true;
+      const pick = () => document.querySelector('[data-dsh-settings-section="' + id + '"]');
+      const found = pick();
+      if (found) {
+        found.click();
+        return true;
+      }
+      // rAF polling stalls on a just-unhidden (still throttled) renderer —
+      // a MutationObserver resolves on the DOM mutation as a microtask,
+      // which runs even while frames are paused.
       return new Promise((resolve) => {
-        let n = 0;
-        const tick = () => {
-          const nav = document.querySelector('[data-dsh-settings-section="' + id + '"]');
-          if (nav) {
-            nav.click();
-            resolve(true);
-            return;
-          }
-          if (n++ > 40) {
-            resolve(false);
-            return;
-          }
-          requestAnimationFrame(tick);
-        };
-        tick();
+        const cap = setTimeout(() => {
+          observer.disconnect();
+          resolve(false);
+        }, 5000);
+        const observer = new MutationObserver(() => {
+          const nav = pick();
+          if (!nav) return;
+          observer.disconnect();
+          clearTimeout(cap);
+          nav.click();
+          resolve(true);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
       });
     })()
   `;

@@ -1,5 +1,6 @@
 /**
- * A preset's display metadata: the name and description a picker shows.
+ * A preset's display metadata: the name and description a picker shows, plus
+ * the `hidden` flag that keeps a preset off the roster entirely.
  *
  * It lives in its own file because the composition is a top-level list of
  * plugin rows — YAML cannot carry sibling keys beside it, and faking a
@@ -7,7 +8,7 @@
  * also keeps the composition exactly what its name says: a Cordis file the
  * loader owns and the cordis preset can author.
  *
- * The file carries display text ONLY. `id` is the directory name and `trust`
+ * The file carries presentation ONLY. `id` is the directory name and `trust`
  * comes from the root a preset was discovered under, so neither is writable
  * here — otherwise a locally authored preset could claim to be a shipped one.
  *
@@ -36,6 +37,15 @@ export interface PresetMetadata {
    * can read in capability order while authored ones stay alphabetical.
    */
   readonly order?: number
+  /**
+   * Keep the preset off the client-facing roster while it can compose a
+   * session — a plugin-provisioned composition exists for that plugin's own
+   * sessions, not for a person to pick. Hidden is presentation, never
+   * capability: resolving and mounting by id are unaffected, and a hidden
+   * preset whose composition cannot load still lists, because the roster is
+   * also where its directory gets deleted. Only the literal `true` hides.
+   */
+  readonly hidden?: boolean
 }
 
 /** A non-empty trimmed string, or undefined for anything else. */
@@ -77,10 +87,12 @@ export async function readPresetMetadata(directory: string): Promise<PresetMetad
   const order = typeof record.order === 'number' && Number.isFinite(record.order)
     ? record.order
     : undefined
+  const hidden = record.hidden === true ? true : undefined
   return {
     ...name === undefined ? {} : { name },
     ...description === undefined ? {} : { description },
     ...order === undefined ? {} : { order },
+    ...hidden === undefined ? {} : { hidden },
   }
 }
 
@@ -96,10 +108,14 @@ export function renderPresetMetadata(metadata: PresetMetadata): string | undefin
   const name = text(metadata.name)
   const description = text(metadata.description)
   const { order } = metadata
-  if (name === undefined && description === undefined && order === undefined) return undefined
+  const hidden = metadata.hidden === true
+  if (name === undefined && description === undefined && order === undefined && !hidden) {
+    return undefined
+  }
   return yaml.dump({
     ...name === undefined ? {} : { name },
     ...description === undefined ? {} : { description },
     ...order === undefined ? {} : { order },
+    ...hidden ? { hidden: true } : {},
   }, { lineWidth: -1 })
 }

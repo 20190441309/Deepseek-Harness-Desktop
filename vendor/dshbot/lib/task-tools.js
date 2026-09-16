@@ -35,6 +35,7 @@ import {
   taskStatusDetail,
 } from './tasks.js';
 import { registerWorkSettlement, taskUpdateMessage } from './work-settlement.js';
+import { pushWorkNote } from './memory-review.js';
 
 function readCatalog(scope) {
   return scope.get() ?? { items: [], tasks: [], audit: [] };
@@ -363,6 +364,8 @@ export function registerTaskTools(ctx, deps) {
           detail: taskStatusDetail(finished.task),
         }, at),
       }, catalog);
+      const workDetail = String(finished.task.resultSummary || finished.task.error || '').slice(0, 200);
+      pushWorkNote(sender.id, `[work] task "${String(finished.task.task || finished.task.id).replace(/\s+/g, ' ').slice(0, 120)}": ${finished.task.status}${workDetail ? ` ${workDetail}` : ''}`);
 
       const wake = source
         ? await wakeAgent(ctx, source, `Check your current dshbot inbox for pending task updates.`)

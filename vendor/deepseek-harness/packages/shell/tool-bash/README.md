@@ -59,7 +59,7 @@ Passing `run_in_background: true` returns a job id immediately and no timeout ap
 
 ### Sandboxed execution and escalation
 
-When the mounted executor confines commands (for example `dsh-bash-sandbox`), a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a command failure. The model may then retry the exact same command once in the same turn with `sandbox_permissions` (the narrowest wider mode that suffices) and a one-sentence `justification`; the approval prompt raised by that retry is how the user consents. Escalation is never speculative: a request with no real prior denial, or one that is not strictly wider than the current mode, fails closed without running anything, and a rejected escalation is final for that command.
+When the mounted executor confines commands (for example `dsh-bash-sandbox`), a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a command failure. The model may then retry the exact same command once in the same turn with `sandbox_permissions` (the narrowest wider mode that suffices) and a one-sentence `justification`; the approval prompt raised by that retry is how the user consents. Escalation is never speculative: a request naming a target outside the escalation vocabulary fails closed without running anything, a non-widening request against a real target runs under the mode the call already has, and a rejected escalation is final for that command.
 
 ### What can go wrong
 

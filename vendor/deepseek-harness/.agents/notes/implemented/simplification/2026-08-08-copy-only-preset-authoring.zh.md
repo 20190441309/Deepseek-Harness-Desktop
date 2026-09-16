@@ -10,7 +10,7 @@ agent-preset 设置页带着一个网页 YAML 编辑器：`agentPreset.write` �
 
 ## 决策
 
-创作改为宿主端复制，文件就是编辑器。`agentPreset.write` 变为 `agentPreset.copy { from, agentPreset, name? }`：两个由宿主对照自身根目录解析的 id 加一个可选显示名，整目录 `cp`（符号链接解引用，权限收紧为仅属主并保留属主执行位），元数据重写为保留来源描述、但绝不保留其名称或 `order`。页面包含随附组装的只读查看器、作为唯一创建入口的复制对话框（不提供空白「新建预设」）、自定义行的删除，以及通向文件的位置操作。`settings/openAgentPresetDirectory { agentPreset }` 在 Host 侧解析目录并原生打开，部署没有桌面时回答 `{ opened: false, path }` 供该行以文本形式展示；`settings/canOpenAgentPresetDirectory` 控制该行是否显示，Settings Controller 的 `nativeOpen` 则在平台探测可能误判时固定服务端行为。
+创作改为宿主端复制，文件就是编辑器。`agentPreset.write` 变为 `agentPreset.copy { from, agentPreset, name? }`：两个由宿主对照自身根目录解析的 id 加一个可选显示名，整目录 `cp`（符号链接解引用，权限收紧为仅属主并保留属主执行位），元数据重写为保留来源描述、但绝不保留其名称、`order` 或 `hidden` 标记。页面包含随附组装的只读查看器、作为唯一创建入口的复制对话框（不提供空白「新建预设」）、自定义行的删除，以及通向文件的位置操作。`settings/openAgentPresetDirectory { agentPreset }` 在 Host 侧解析目录并原生打开，部署没有桌面时回答 `{ opened: false, path }` 供该行以文本形式展示；`settings/canOpenAgentPresetDirectory` 控制该行是否显示，Settings Controller 的 `nativeOpen` 则在平台探测可能误判时固定服务端行为。
 
 ## 后果
 

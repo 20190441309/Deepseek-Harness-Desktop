@@ -59,7 +59,7 @@ describe('ui-theme host', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'script', placement: 'body' })
     expect(scriptText(rows[0])).toContain('const preference = "system"')
-    expect(scriptText(rows[0])).toContain('const lightTokens = {}')
+    expect(scriptText(rows[0])).toContain('const lightTokens = {"--dsh-sidebar-rail-fill":"transparent"}')
     expect(scriptText(rows[0])).toContain('"14px"')
     await ctx.settings.update(THEME_SETTINGS_NAMESPACE, { preference: 'dark', fontSize: 17 })
     expect(scriptText(collect(ctx)[0])).toContain('const preference = "dark"')

@@ -3,6 +3,8 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
+const { discoverCodexPets } = require('./desktop-pets');
+
 const PET_SIZE = 88;
 const EDGE_GAP = 16;
 const DEFAULT_POSITION = Object.freeze({ enabled: true, xRatio: 0.82, yRatio: 0.72 });
@@ -25,6 +27,7 @@ function normalizePetState(value) {
     enabled: source.enabled !== false,
     xRatio: clamp(finite(source.xRatio, DEFAULT_POSITION.xRatio), 0, 1),
     yRatio: clamp(finite(source.yRatio, DEFAULT_POSITION.yRatio), 0, 1),
+    petId: typeof source.petId === 'string' ? source.petId : '',
   };
 }
 
@@ -78,12 +81,14 @@ function isPetFrameUrl(url, petUrl) {
 function createDesktopPetManager(options = {}) {
   const electron = options.electron || require('electron');
   const BrowserView = options.BrowserView || electron.BrowserView;
+  const Menu = options.Menu || electron.Menu;
   const ipcMain = options.ipcMain || electron.ipcMain;
   const rendererFile = options.rendererFile || require('./paths').rendererFile;
   const preloadFile = options.preloadFile || require('./paths').preloadFile;
   const loadConfig = options.loadConfig || require('./config').loadConfig;
   const saveConfig = options.saveConfig || require('./config').saveConfig;
   const currentTheme = options.currentTheme || (() => ({}));
+  const discoverPets = options.discoverPets || (() => discoverCodexPets());
   const petUrl = pathToFileURL(rendererFile('pet.html')).href;
 
   let state = normalizePetState(loadConfig()?.pet);
@@ -157,6 +162,7 @@ function createDesktopPetManager(options = {}) {
 
   function createView(targetWindow) {
     view = new BrowserView({
+      backgroundColor: '#00000000',
       webPreferences: {
         preload: preloadFile(),
         additionalArguments: ['--dshd-shell-role=pet'],
@@ -228,17 +234,86 @@ function createDesktopPetManager(options = {}) {
     view?.webContents.send?.('shell:theme', theme);
   }
 
+  function resolvePet(pets = discoverPets()) {
+    const selected = pets.find((pet) => pet.id === state.petId);
+    return selected || pets[0] || null;
+  }
+
+  function petPayload(pets = discoverPets()) {
+    const pet = resolvePet(pets);
+    return {
+      ...state,
+      pet: pet ? {
+        id: pet.id,
+        displayName: pet.displayName,
+        version: pet.version,
+        cols: pet.cols,
+        rows: pet.rows,
+        cellWidth: pet.cellWidth,
+        cellHeight: pet.cellHeight,
+        sheetUrl: pathToFileURL(pet.sheetPath).href,
+      } : null,
+      pets: pets.map((entry) => ({
+        id: entry.id,
+        displayName: entry.displayName,
+        version: entry.version,
+      })),
+      theme: currentTheme(),
+    };
+  }
+
+  function pushState() {
+    view?.webContents.send?.('shell:pet-state', petPayload());
+  }
+
+  function setPet(petId) {
+    state = { ...state, petId: typeof petId === 'string' ? petId : '' };
+    persist();
+    pushState();
+    return { ...state };
+  }
+
+  function openMenu() {
+    if (!view || !hostWindow || hostWindow.isDestroyed?.()) {
+      return;
+    }
+    const pets = discoverPets();
+    const active = resolvePet(pets);
+    const template = pets.map((pet) => ({
+      label: pet.displayName,
+      type: 'radio',
+      checked: active?.id === pet.id,
+      click: () => setPet(pet.id),
+    }));
+    if (template.length) {
+      template.push({ type: 'separator' });
+    }
+    template.push({ label: '隐藏桌面宠物', click: () => setEnabled(false) });
+    const menu = Menu.buildFromTemplate(template);
+    const anchor = lastBounds || { x: 0, y: 0, width: 0, height: 0 };
+    menu.popup({
+      window: hostWindow,
+      x: Math.round(anchor.x + anchor.width / 2),
+      y: Math.round(anchor.y + anchor.height),
+    });
+  }
+
   function registerHandlers() {
     if (handlersRegistered || !ipcMain?.handle) {
       return;
     }
     ipcMain.handle('shell:pet-state', (event) => {
       assertAuthorized(event);
-      return { ...state, theme: currentTheme() };
+      return petPayload();
     });
     ipcMain.handle('shell:pet-drag-commit', (event, payload) => {
       assertAuthorized(event);
       return commitDrag(payload);
+    });
+    ipcMain.handle('shell:pet-menu', (event) => {
+      assertAuthorized(event);
+      openMenu();
+      return null;
     });
     handlersRegistered = true;
   }
@@ -248,6 +323,7 @@ function createDesktopPetManager(options = {}) {
     if (handlersRegistered) {
       ipcMain.removeHandler?.('shell:pet-state');
       ipcMain.removeHandler?.('shell:pet-drag-commit');
+      ipcMain.removeHandler?.('shell:pet-menu');
       handlersRegistered = false;
     }
   }
@@ -259,8 +335,12 @@ function createDesktopPetManager(options = {}) {
     layout,
     bringToFront,
     setEnabled,
+    setPet,
     setTheme,
     commitDrag,
+    openMenu,
+    petPayload,
+    discoverPets,
     dispose,
     getState: () => ({ ...state }),
     isEnabled: () => state.enabled,

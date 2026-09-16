@@ -4,12 +4,13 @@ const { loadConfig, saveConfig, REMOTE_FEATURE_ENABLED, parkRemoteSnapshot, publ
 const { setDesktopDshHome, desktopDshHomeFromUserData, sanitizePackagedDshHomeEnv } = require('../shared/dsh-home');
 const { DshManager, ensureOwnedPort } = require('./dsh');
 const { HarnessController } = require('./harness-controller');
-const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles } = require('./plugins');
+const { stripDroppedPlugins, healDanglingBundles, ensureDesktopInstallPlugin, applyDisabledBundles, listInstalledPlugins } = require('./plugins');
 const { removeDshMarketPreset } = require('./dshmarket-preset');
 const { ensureUsagePanelPlugin } = require('./usage-panel-preset');
 const { ensureSessionSearchOverlay } = require('./session-search-overlay');
 const { ensureDshImPlugin } = require('./dsh-im-desktop');
 const { ensureDshbotPlugin } = require('./dshbot-desktop');
+const { ensureDesktopDshWhale } = require('./dsh-whale-desktop');
 const { ensureDesktopMarket } = require('./dsh-market-desktop');
 const { removeLegacyDshbotPreset } = require('./legacy-dshbot-preset');
 const { ensureWorkspace } = require('./workspace-rpc');
@@ -22,7 +23,8 @@ const { listDir } = require('./workspace-fs');
 const { buildMenu } = require('./menu');
 const { createTray, invokeTrayAction } = require('./tray');
 const { DESKTOP_PET_FEATURE, configureDesktopPet, getDesktopPet } = require('./desktop-pet');
-const { checkUpdate, installUpdate, setGithubTokenProvider } = require('./update');
+const { LIVE2D_PET_FEATURE, configureLive2dPet, getLive2dPet } = require('./desktop-live2d');
+const { checkUpdate, installUpdate, setGithubTokenProvider, currentVersion } = require('./update');
 const { probeImportHold, recoverInterruptedImport } = require('./data-import');
 const {
   shouldCloseLauncherAfterDesktopStart,
@@ -35,7 +37,16 @@ const {
   stopDesktopInstallControl,
   desktopInstallReady,
 } = require('./desktop-install-control');
-const { installPlugin } = require('./marketplace-install');
+const { installPlugin, installMarketplacePlugin, uninstallPlugin } = require('./marketplace-install');
+const { listMarketplace } = require('./marketplace-catalog');
+const { recordMarketplaceOperation } = require('./marketplace-state');
+const {
+  applyRendererConfigPatch,
+  disablePlugins,
+  dshKernelState,
+  enablePlugin,
+  pluginRemoveGuardError,
+} = require('./profile-ops');
 const { downloadSavePath } = require('./download-path');
 const {
   createMainWindow,
@@ -55,8 +66,9 @@ const {
   sendToLauncher,
   closeLauncherWindow,
   showMain,
+  openHarnessSettings,
 } = require('./window');
-const { watchSystemTheme, currentTheme } = require('./chrome');
+const { watchSystemTheme, currentTheme, applyAppTheme } = require('./chrome');
 const { showClosingOverlay } = require('./closing-overlay');
 const { hideOnClose } = require('./close-behavior');
 const { qaFlag, qaRemoteMode: readRemoteMode } = require('./qa-gate');
@@ -320,6 +332,7 @@ const harness = new HarnessController({
   ensureSessionSearchOverlay,
   ensureDshImPlugin,
   ensureDshbotPlugin,
+  ensureDshWhalePlugin: ensureDesktopDshWhale,
   ensureDesktopMarket,
   removeLegacyDshbotPreset,
   applyDisabledBundles,
@@ -428,6 +441,46 @@ if (!gotLock) {
     dsh.log(`Harness 家目录 ${desktopHome}`, 'app');
     const config = loadConfig();
     configureDesktopPet({ loadConfig, saveConfig, currentTheme });
+    if (LIVE2D_PET_FEATURE) {
+      configureLive2dPet({
+        loadConfig,
+        saveConfig,
+        sessionsDir: require('path').join(desktopHome, 'sessions'),
+        getMainWindow,
+        getHarnessOrigin,
+        getSessionCookie: () => dsh.sessionCookie || '',
+        // The pet card's jump button: raise the main window and open her
+        // persistent conversation through the client-side hook.
+        openWhaleAssistant: async () => {
+          const win = showMain();
+          const wc = getHarnessWebContents(win);
+          if (!wc || !isHarnessLoaded(win)) {
+            return { ok: false, reason: 'harness-not-ready' };
+          }
+          // null = hook absent (plugin not mounted/not ready); false = hook
+          // ran but failed; true = session opened.
+          const opened = await wc.executeJavaScript(
+            'typeof window.__dshWhaleOpen === "function"'
+              + ' ? window.__dshWhaleOpen().then(() => true, () => false)'
+              + ' : Promise.resolve(null)',
+          ).catch(() => null);
+          if (opened === null) {
+            return { ok: false, reason: 'hook-missing' };
+          }
+          if (opened !== true) {
+            return { ok: false, reason: 'open-failed' };
+          }
+          win.focus();
+          return { ok: true };
+        },
+        // The pet panel's ⚙ 设置 cell opens her section inside the main
+        // window's Settings shell (section `pet`) — the pet overlay itself
+        // carries no settings UI. openHarnessSettings resolves false when
+        // the harness page is not up.
+        openPetSettings: async () => ({ ok: (await openHarnessSettings('pet')) === true }),
+      });
+      getLive2dPet()?.show();
+    }
     fs.mkdirSync(config.workspace, { recursive: true });
     saveConfig({ workspace: config.workspace });
     app.setLoginItemSettings({ openAtLogin: Boolean(config.openAtLogin) });
@@ -439,6 +492,71 @@ if (!gotLock) {
         token: loadConfig().githubToken,
       }),
       startHarness: restartWithCleanup,
+      // The /desktop/* half of the control channel: dsh-whale's management
+      // tools reach the same profile-ops implementation as the IPC surface,
+      // so config writes and plugin toggles share one serialized align
+      // chain no matter which surface asked.
+      desktop: {
+        state: () => {
+          const configNow = loadConfig();
+          const listed = listInstalledPlugins();
+          return {
+            ok: true,
+            version: currentVersion(),
+            kernel: dshKernelState(dsh),
+            plugins: (listed.plugins || []).map((row) => row.name),
+            disabledPlugins: Array.isArray(configNow.disabledPlugins) ? configNow.disabledPlugins : [],
+            config: publicConfig(configNow),
+          };
+        },
+        listMarketplace: async (options = {}) => {
+          const payload = await listMarketplace({
+            refresh: options.refresh === true,
+            locale: loadConfig().locale === 'en' ? 'en' : 'zh',
+          });
+          const q = String(options.q ?? '').trim().toLowerCase();
+          if (!q || !Array.isArray(payload?.items)) return payload;
+          return {
+            ...payload,
+            items: payload.items.filter((item) =>
+              `${item.id} ${item.description} ${item.packageName} ${item.category}`
+                .toLowerCase()
+                .includes(q)),
+          };
+        },
+        applyConfig: (patch) => {
+          try {
+            const next = applyRendererConfigPatch(patch, {
+              app,
+              applyAppTheme,
+              harness,
+              startHarness: restartWithCleanup,
+              log: (line) => dsh.log(line, 'app'),
+            });
+            return { ok: true, config: publicConfig(next) };
+          } catch (error) {
+            return { ok: false, error: String(error?.message ?? error) };
+          }
+        },
+        installCatalog: (id, options = {}) => recordMarketplaceOperation('install', id, (record) => (
+          installMarketplacePlugin(id, {
+            allowBuilds: Array.isArray(options.allowBuilds) ? options.allowBuilds : [],
+            token: loadConfig().githubToken,
+            onProgress: record,
+          })
+        )),
+        removePlugin: async (name) => {
+          const guardError = pluginRemoveGuardError(name);
+          if (guardError) {
+            return { ok: false, error: guardError };
+          }
+          return recordMarketplaceOperation('uninstall', name, (record) => (
+            uninstallPlugin(name, { onProgress: record })
+          ));
+        },
+        disablePlugins: (names) => disablePlugins(names, { dsh, startHarness: restartWithCleanup }),
+        enablePlugin: (name) => enablePlugin(name, { dsh, startHarness: restartWithCleanup }),
+      },
     });
     try {
       await desktopInstallReady();
@@ -454,6 +572,7 @@ if (!gotLock) {
       startDesktop: startDesktopFromLauncher,
       stopDesktopCleanup: cleanupDesktopResources,
       remote,
+      getLive2dPet,
       onOpenLauncher: async (options = {}) => {
         await openLauncher();
         // Boot-page bridge: land on the home tab so the Recovery Board is
@@ -480,6 +599,11 @@ if (!gotLock) {
           const pet = getDesktopPet();
           const win = getMainWindow();
           pet?.setEnabled(enabled, isHarnessLoaded(win) ? win : null);
+        },
+      } : LIVE2D_PET_FEATURE ? {
+        petEnabled: () => getLive2dPet()?.isEnabled() === true,
+        onPetToggle: (enabled) => {
+          getLive2dPet()?.setEnabled(enabled);
         },
       } : {}),
     });

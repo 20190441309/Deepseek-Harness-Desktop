@@ -40,7 +40,20 @@
   - button "中文":
     - text: 中文
     - img
+  - text: 字号大小 仅影响会话内容的字号 14
+  - button "增大字号":
+    - img
+  - button "减小字号":
+    - img
+  - text: px 对话显示 控制已完成轮次的过程内容
+  - button "紧凑":
+    - text: 紧凑
+    - img
   - text: 繁忙时的发送行为 智能体运行时 Enter 键和发送按钮的行为；Cmd/Ctrl+Enter 使用另一行为
   - button "排队发送":
     - text: 排队发送
     - img
+  - text: 自定义指令 给智能体定几条规则，后续对所有任务都生效
+  - textbox "自定义指令":
+    - /placeholder: 输入规则，例如：回复始终使用中文
+  - text: 0 / 1500

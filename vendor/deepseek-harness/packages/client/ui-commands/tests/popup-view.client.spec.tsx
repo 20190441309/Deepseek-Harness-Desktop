@@ -191,23 +191,35 @@ describe('PopupSelectView', () => {
     expect(screen.getByRole<HTMLInputElement>('checkbox').checked).toBe(false)
   })
 
-  it('submitting shows pending, locks the search input, and further Enter/click no-op', async () => {
+  it('submitting locks the search input and further Enter/click no-op; the status line waits out a fast settle', async () => {
     let release!: () => void
     const onSelect = vi.fn(() => new Promise<void>((resolve) => { release = resolve }))
     const { search, consume } = await mountOpen({ onSelect })
     await act(async () => { fireEvent.keyDown(search, { key: 'Enter' }) })
-    expect(screen.queryByText('正在应用…')).not.toBeNull()
+    // The applying line is gated behind a beat so a settle that lands
+    // quickly never inserts it just to flash back out.
+    expect(screen.queryByText('正在应用…')).toBeNull()
     expect((search as HTMLInputElement).readOnly).toBe(true)
     await act(async () => {
       fireEvent.keyDown(search, { key: 'Enter' })
       fireEvent.click(screen.getAllByRole('option')[1]!)
     })
     expect(onSelect).toHaveBeenCalledTimes(1)
+    // A settle that outlasts the beat earns the line while still open.
+    await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 200) }) })
+    expect(screen.queryByText('正在应用…')).not.toBeNull()
     await act(async () => {
       release()
       await Promise.resolve()
     })
     expect(consume).toHaveBeenCalledTimes(1)
+  })
+
+  it('a settle inside the notice beat never shows the applying line', async () => {
+    const { search } = await mountOpen()
+    await act(async () => { fireEvent.keyDown(search, { key: 'Enter' }) })
+    await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 250) }) })
+    expect(screen.queryByText('正在应用…')).toBeNull()
   })
 
   it('a failed options load shows the error with a retry button that reloads', async () => {

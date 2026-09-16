@@ -920,6 +920,9 @@ module.exports = async function afterPack(context) {
   restoreVendoredPluginNodeModules(projectDir, resources, 'dshbot');
   installPluginRuntimeDeps(path.join(resources, 'vendor', 'dshbot'), { skipIfComplete: true });
   assertVendoredPluginRuntimeDeps(resources, 'dshbot');
+  restoreVendoredPluginNodeModules(projectDir, resources, 'dsh-whale');
+  installPluginRuntimeDeps(path.join(resources, 'vendor', 'dsh-whale'), { skipIfComplete: true });
+  assertVendoredPluginRuntimeDeps(resources, 'dsh-whale');
   await assertDshdRemoteRuntime(resources);
   const harnessDest = path.join(resources, 'vendor', 'deepseek-harness');
   const deployDir = resolveDeployDir(process.env.DSH_DEPLOY_DIR);

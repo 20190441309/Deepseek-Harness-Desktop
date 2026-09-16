@@ -28,6 +28,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   const GROUP_MAX_MESSAGES_PER_TURN = 2;
   const GROUP_DEFAULT_MAX_ROUNDS = GROUP_MAX_ROUNDS;
   const GROUP_DEFAULT_MAX_MEMBER_TURNS = GROUP_MAX_MEMBER_TURNS;
+  // Keep aligned with lib/index.js ItemSchema objective fields.
+  const OBJECTIVE_MAX_ROUNDS = 200;
+  const OBJECTIVE_DEFAULT_MAX_ROUNDS = 16;
   // Keep legacy room reads aligned with lib/group-chat.js.
   const GROUP_THREAD_GAP_MS = 15 * 60 * 1000;
   const GROUP_THREAD_REPLY_PREFIX = "[DSHBOT_THREAD_REPLY:";
@@ -41,6 +44,11 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     { id: "skills", labelKey: "capabilitySkills", icon: IconSkillOutline16 },
     { id: "mcp", labelKey: "capabilityMcp", icon: IconSettingsOutline16 },
   ];
+  const ROUTINE_TERMINAL_STATUSES = new Set(["completed", "failed", "interrupted"]);
+  // Per-session dismissal for the missed-routine banner; not persisted.
+  const dismissedRoutineBanners = new Set();
+  // The browser permission prompt is requested at most once per session.
+  let notificationPermissionRequested = false;
 
   const zh = {
     tab: "机器人",
@@ -110,6 +118,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     avatarBlob: "机器人",
     avatarUpload: "上传",
     avatarPick: "选择图片",
+    avatarCircle: "圆形",
+    avatarSquare: "方形",
     avatarTooLarge: "图片太大，请换一张更小的。",
     avatarBadImage: "无法读取这张图片。",
     avatarCropZoom: "缩放",
@@ -226,7 +236,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     routineHours: "小时",
     routineDays: "天",
     routineSchedule: "计划",
-    routineScheduleHint: "保存为 Hermes 计划：30m、every 2h 或五字段 Cron。",
+    routineScheduleHint: "保存为计划语法：30m、every 2h 或五字段 Cron。",
     routineLegacyMigrated: "旧间隔数据已迁移为结构化计划。",
     routineCron: "五字段 Cron",
     routineCronHint: "例如：0 9 * * 1-5",
@@ -270,6 +280,23 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     routineBusy: "正在处理…",
     routineBotRequired: "请选择一个可用的机器人。",
     routinePromptHint: "最多 8000 个字符。",
+    routineContextFrom: "上下文来源",
+    routineContextFromHint: "运行时注入所选来源的最近输出；self 表示本任务上一次运行。",
+    routineContextSelf: "上一次运行（self）",
+    routineSilentAllowed: "允许静默回复",
+    routineSilentAllowedHint: "没有新结果时可只回复 [SILENT]，完成不计为未读。",
+    routineWatch: "监视",
+    routineWatchNone: "不监视",
+    routineWatchUrl: "URL",
+    routineWatchCommand: "本地命令",
+    routineWatchValue: "监视目标",
+    routineWatchHint: "仅当监视内容变化时才运行；命令只可由用户在此设置。",
+    routineWatchTimeout: "超时（毫秒）",
+    routineTriggerUrl: "触发 URL",
+    routineTriggerHint: "本机回环端点，仅本机可调用。",
+    routineTriggerShow: "显示触发命令",
+    routineTriggerCopy: "复制",
+    routineTriggerCopied: "已复制",
     groupRuntime: "群运行态",
     groupRuntimeLoading: "正在加载群运行态…",
     groupRuntimeUnavailable: "群运行态不可用；不会伪装成正常。",
@@ -371,6 +398,25 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     memoryRequired: "请输入记忆内容。",
     memorySaving: "正在保存记忆…",
     memoryError: "记忆操作失败",
+    memoryTrackNotes: "笔记",
+    memoryTrackUser: "关于用户",
+    memoryUsage: "已用 {used}/{limit}",
+    memoryAutoTag: "auto",
+    memoryReview: "自主学习记忆",
+    memoryReviewHint: "允许 Bot 定期回顾对话，自动把值得长期保留的事实写入记忆（标记为 auto）。",
+    objective: "目标",
+    objectiveHint: "设定目标后 Bot 会在空闲时持续推进，直到它自报完成、轮数用尽或你暂停。模型需要「全部工具」模式，或在已选工具里勾选 read_goal、create_goal、update_goal 才能自报完成。",
+    objectiveRounds: "轮数上限",
+    objectiveRoundsHint: "1–200 的整数，默认 16。",
+    objectiveStart: "开始",
+    objectivePause: "暂停",
+    objectiveClear: "清除",
+    objectiveIdle: "待启动",
+    objectiveWorking: "推进中",
+    objectivePaused: "已暂停",
+    objectiveBlocked: "已受阻",
+    objectiveComplete: "已完成",
+    objectiveRoundsCap: "上限 {limit} 轮",
     groupLimits: "群聊限制",
     maxRounds: "最大轮数",
     maxSpeaks: "群聊发言总上限",
@@ -389,6 +435,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     sessionStopConfirm: "停止这个机器人的整个会话？",
     sessionStopCaveat: "这会停止整个机器人或群聊会话，不是单独取消某个任务；已经发生的外部副作用不会撤销。",
     sessionStopped: "停止请求已发送",
+    notify: "通知",
+    notifyHint: "窗口未聚焦时允许系统通知：待决请求、目标受阻、定时任务完成。",
+    notifyAttention: "有待决定的请求",
+    notifyRoutineFinished: "定时任务完成：{name}",
+    notifyRoutineFailed: "定时任务失败：{name}",
+    notifyObjectiveBlocked: "目标已受阻",
+    routinesMissed: "{count} 个 routine 错过运行",
+    routinesMissedDismiss: "知道了",
   };
 
   const en = {
@@ -459,6 +513,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     avatarBlob: "Robot",
     avatarUpload: "Upload",
     avatarPick: "Choose image",
+    avatarCircle: "Circle",
+    avatarSquare: "Square",
     avatarTooLarge: "That image is too large. Pick a smaller one.",
     avatarBadImage: "Could not read that image.",
     avatarCropZoom: "Zoom",
@@ -575,7 +631,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     routineHours: "Hours",
     routineDays: "Days",
     routineSchedule: "Schedule",
-    routineScheduleHint: "Saved as Hermes syntax: 30m, every 2h, or five-field cron.",
+    routineScheduleHint: "Saved as schedule syntax: 30m, every 2h, or five-field cron.",
     routineLegacyMigrated: "Legacy interval data was migrated to a structured schedule.",
     routineCron: "Five-field cron",
     routineCronHint: "For example: 0 9 * * 1-5",
@@ -619,6 +675,23 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     routineBusy: "Working…",
     routineBotRequired: "Choose an available bot.",
     routinePromptHint: "Up to 8000 characters.",
+    routineContextFrom: "Context sources",
+    routineContextFromHint: "Each run injects the latest output of the picked sources; self means this routine's previous run.",
+    routineContextSelf: "Previous run (self)",
+    routineSilentAllowed: "Allow silent reply",
+    routineSilentAllowedHint: "The bot may reply only [SILENT] when there is nothing new; silent runs never count as unread.",
+    routineWatch: "Watch",
+    routineWatchNone: "No watch",
+    routineWatchUrl: "URL",
+    routineWatchCommand: "Local command",
+    routineWatchValue: "Watch target",
+    routineWatchHint: "The routine only runs when the watched content changes; commands can only be set here by the user.",
+    routineWatchTimeout: "Timeout (ms)",
+    routineTriggerUrl: "Trigger URL",
+    routineTriggerHint: "Loopback endpoint; callable only from this machine.",
+    routineTriggerShow: "Show trigger command",
+    routineTriggerCopy: "Copy",
+    routineTriggerCopied: "Copied",
     groupRuntime: "Group runtime",
     groupRuntimeLoading: "Loading group runtime…",
     groupRuntimeUnavailable: "Group runtime is unavailable; it is not shown as healthy.",
@@ -720,6 +793,25 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     memoryRequired: "Enter some memory content.",
     memorySaving: "Saving memory…",
     memoryError: "Memory operation failed",
+    memoryTrackNotes: "Notes",
+    memoryTrackUser: "About the user",
+    memoryUsage: "Used {used}/{limit}",
+    memoryAutoTag: "auto",
+    memoryReview: "Learn memory automatically",
+    memoryReviewHint: "Lets the Bot periodically review the conversation and write durable facts into memory (tagged auto).",
+    objective: "Objective",
+    objectiveHint: "With an objective set, the Bot keeps working while idle until it reports done, the round cap runs out, or you pause it. The model needs All tools mode, or read_goal, create_goal, and update_goal checked under selected tools, to report completion.",
+    objectiveRounds: "Round cap",
+    objectiveRoundsHint: "An integer from 1–200; defaults to 16.",
+    objectiveStart: "Start",
+    objectivePause: "Pause",
+    objectiveClear: "Clear",
+    objectiveIdle: "Idle",
+    objectiveWorking: "Working",
+    objectivePaused: "Paused",
+    objectiveBlocked: "Blocked",
+    objectiveComplete: "Done",
+    objectiveRoundsCap: "Up to {limit} rounds",
     groupLimits: "Group limits",
     maxRounds: "Maximum rounds",
     maxSpeaks: "Total visible room messages",
@@ -738,6 +830,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     sessionStopConfirm: "Stop this bot's entire conversation?",
     sessionStopCaveat: "This stops the whole bot or group conversation, not one task; external side effects are not undone.",
     sessionStopped: "Stop requested",
+    notify: "Notifications",
+    notifyHint: "Allow system notifications while the window is unfocused: pending requests, blocked objectives, finished routines.",
+    notifyAttention: "A request is waiting for a decision",
+    notifyRoutineFinished: "Routine finished: {name}",
+    notifyRoutineFailed: "Routine failed: {name}",
+    notifyObjectiveBlocked: "Objective is blocked",
+    routinesMissed: "{count} routines missed runs",
+    routinesMissedDismiss: "Dismiss",
   };
 
   const CSS = `
@@ -793,8 +893,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   .dshbot-address { flex: none; max-width: 34%; color: var(--dsw-alias-label-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dshbot-time { margin-left: auto; flex-shrink: 0; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
 .dshbot-preview { font-size: 12px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dshbot-avatar-frame { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: visible; border-radius: 50%; corner-shape: round; }
-.dshbot-avatar-frame[data-crop] { border-radius: 50%; corner-shape: round; overflow: hidden; }
+.dshbot-avatar-frame { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: visible; border-radius: 50%; }
+.dshbot-avatar-frame[data-crop="circle"] { border-radius: 50%; overflow: hidden; }
+.dshbot-avatar-frame[data-crop="square"] { border-radius: 10px; overflow: hidden; }
 .dshbot-avatar-frame[data-active="true"] {
   box-shadow:
     0 0 0 2px var(--dsw-alias-bg-layer-1),
@@ -812,18 +913,18 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-picker-blob { display: flex; flex-direction: column; gap: 12px; }
 .dshbot-pills { display: flex; gap: 4px; flex-wrap: wrap; }
 .dshbot-crop { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
-.dshbot-crop-stage { position: relative; align-self: center; overflow: hidden; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-bg-layer-1); touch-action: none; cursor: grab; }
+.dshbot-crop-stage { position: relative; align-self: center; overflow: hidden; border-radius: 12px; background: var(--dsw-alias-bg-layer-1); touch-action: none; cursor: grab; }
 .dshbot-crop-stage:active { cursor: grabbing; }
 .dshbot-crop-stage img { position: absolute; left: 0; top: 0; max-width: none; user-select: none; -webkit-user-drag: none; }
 .dshbot-crop-mask { position: absolute; inset: 0; pointer-events: none; }
-.dshbot-crop-mask::before { content: ""; position: absolute; inset: 0; border-radius: 50%; corner-shape: round; border: 1px solid rgba(255, 255, 255, 0.75); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); }
+.dshbot-crop-mask::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.75); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); }
 .dshbot-crop-zoom { width: 100%; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; }
 .dshbot-crop-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dshbot-shape-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)); gap: 8px; }
 .dshbot-shape-cell { aspect-ratio: 1; border: 0; border-radius: 12px; background: var(--dsw-alias-bg-module-platform); color: inherit; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer; }
 .dshbot-shape-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); background: var(--dsw-alias-interactive-bg-hover); }
 .dshbot-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
-.dshbot-swatch { width: 28px; height: 28px; border-radius: 50%; corner-shape: round; border: 0; padding: 0; cursor: pointer; background: var(--swatch); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); }
+.dshbot-swatch { width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--swatch); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); }
 .dshbot-swatch[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--dsw-alias-label-primary-foreground), 0 0 0 1px var(--dsw-alias-border-l2); }
 .dshbot-upload { display: flex; flex-direction: column; gap: 12px; }
 .dshbot-blob-ink { color: var(--dshbot-blob-ink); }
@@ -937,7 +1038,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-room-body { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--dsw-alias-label-primary); }
 .dshbot-room-participants { flex: none; width: min(100%, var(--dsh-chat-user-width, 920px)); min-width: 0; min-height: 40px; margin: 0 auto; padding: 6px 20px 2px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; }
 .dshbot-room-participant-list { min-width: 0; display: flex; align-items: center; }
-.dshbot-room-participant { position: relative; display: inline-flex; align-items: center; border-radius: 50%; corner-shape: round; }
+.dshbot-room-participant { position: relative; display: inline-flex; align-items: center; border-radius: 50%; }
 .dshbot-room-participant + .dshbot-room-participant { margin-left: -4px; }
 .dshbot-room-participant[data-state="running"] .dshbot-avatar-frame,
 .dshbot-room-participant[data-state="pending"] .dshbot-avatar-frame { z-index: 1; }
@@ -992,6 +1093,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-routine-toolbar .dshbot-routine-search { flex: 1; min-width: 0; }
 .dshbot-routine-form { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; max-width: 460px; max-height: calc(100vh - 200px); overflow: auto; }
 .dshbot-routine-schedule-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-width: 0; }
+.dshbot-routine-trigger { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.dshbot-routine-trigger-command { flex: 1; min-width: 0; font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; color: var(--dsw-alias-label-primary); }
 .dshbot-time-input { width: 100%; min-width: 0; box-sizing: border-box; padding: 7px 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; font-size: 14px; line-height: 20px; }
 .dshbot-time-input:focus { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
 .dshbot-capability-group { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--dsw-alias-border-l1); }
@@ -1067,11 +1170,24 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-memory-actions { display: flex; flex: none; align-items: center; gap: 2px; }
 .dshbot-memory-editor { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .dshbot-memory-editor-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.dshbot-memory-tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dshbot-memory-usage { margin-left: auto; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+.dshbot-memory-tag { flex: none; margin-top: 3px; padding: 2px 4px; border-radius: 4px; font-size: 10px; line-height: 1; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); }
+.dshbot-memory-review { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.dshbot-objective { flex: none; width: min(100%, var(--dsh-chat-user-width, 920px)); min-width: 0; margin: 0 auto; padding: 6px 20px 0; box-sizing: border-box; }
+.dshbot-objective-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px 5px 12px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-module-platform); box-sizing: border-box; }
+.dshbot-objective-chip { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 11px; line-height: 16px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.dshbot-objective-chip[data-state="active"] { color: var(--dsw-alias-state-business-primary); }
+.dshbot-objective-chip[data-state="blocked"] { color: var(--dsw-alias-state-warn-primary); }
+.dshbot-objective-chip[data-state="complete"] { color: var(--dsw-alias-label-tertiary); }
+.dshbot-objective-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.dshbot-objective-rounds { flex: none; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+.dshbot-objective-actions { display: flex; flex: none; align-items: center; gap: 2px; }
 .dshbot-members { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow: auto; }
 .dshbot-member { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .dshbot-avatar-slot { position: relative; display: inline-flex; flex-shrink: 0; }
 .dshbot-activity-dot {
-  position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; corner-shape: round;
+  position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--dsw-alias-label-primary); box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-1);
 }
 .dshbot-activity-dot[data-state="unread"] { background: var(--dsw-alias-state-business-primary); }
@@ -1117,7 +1233,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 .dshbot-official-trigger[aria-expanded="true"] { color: var(--dsw-alias-label-primary); }
 .dshbot-official-trigger-label { overflow: hidden; white-space: nowrap; }
 .dshbot-official-rail .dshbot-official-trigger {
-  width: 36px; height: 36px; margin: 8px 0; justify-content: center; padding: 0; border-radius: 50%; corner-shape: round;
+  width: 36px; height: 36px; margin: 8px 0; justify-content: center; padding: 0; border-radius: 50%;
 }
 .dshbot-official-overlay { position: fixed; inset: 0; z-index: 1000; }
 .dshbot-official-mask { position: absolute; inset: 0; background: var(--dsw-alias-bg-mask-1); }
@@ -1698,7 +1814,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
                 return;
               }
               try {
-                onChange(assertImageAvatar(dataUrl, "circle"));
+                onChange(assertImageAvatar(dataUrl, resolved.kind === "image" ? resolved.crop : "circle"));
                 setError("");
               } catch {
                 setError(t("avatarTooLarge"));
@@ -1730,6 +1846,22 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             disabled,
             onClick: () => { if (fileRef.current) fileRef.current.click(); },
           }, t("avatarPick")),
+          h("div", { className: "dshbot-pills" },
+            h(Pill, {
+              active: (resolved.kind === "image" ? resolved.crop : "circle") === "circle",
+              disabled,
+              onClick: () => {
+                if (resolved.kind === "image") onChange({ ...resolved, crop: "circle" });
+              },
+            }, t("avatarCircle")),
+            h(Pill, {
+              active: (resolved.kind === "image" ? resolved.crop : "circle") === "square",
+              disabled,
+              onClick: () => {
+                if (resolved.kind === "image") onChange({ ...resolved, crop: "square" });
+              },
+            }, t("avatarSquare")),
+          ),
           error ? h("div", { className: "dshbot-error", role: "alert" }, error) : null,
         ),
     );
@@ -2072,9 +2204,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
   }
 
   function memoryRevision(value, fallback = null) {
-    return typeof value?.memoryRevision === "string" && value.memoryRevision
-      ? value.memoryRevision
-      : fallback;
+    const revision = value?.memoryRevision ?? value?.revision;
+    return typeof revision === "string" && revision ? revision : fallback;
   }
 
   function memoryText(entries) {
@@ -2278,6 +2409,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 
   function sessionIndicator(session, activity, t, active = false) {
     if (!session) return null;
+    if (activity?.attention === true) return { state: "attention", label: t("sessionAttention") };
     if (session.running === true) return { state: "running", label: t("thinking") };
     const status = String(session.status ?? "").toLowerCase();
     const pending = Boolean(session.pendingApproval || session.pendingClarify || session.pendingQuestion
@@ -2285,6 +2417,11 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     if (pending) return { state: "attention", label: t("sessionAttention") };
     const failed = Boolean(session.error || session.failure || session.lastError || /error|failed/.test(status));
     if (failed) return { state: "error", label: t("sessionError") };
+    const goal = activity?.goal;
+    if (goal?.phase === "blocked") return { state: "attention", label: t("objectiveBlocked") };
+    if (goal?.phase === "active" && goal?.activation === "armed") {
+      return { state: "running", label: t("objectiveWorking") };
+    }
     if (!active && activity?.readInitialized === true && Number(activity.activitySeq) > Number(activity.lastSeenSeq)) {
       return { state: "unread", label: t("unreadCompleted") };
     }
@@ -2509,7 +2646,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       togglePin, toggleHide, stampRoomPresets, taskControl, routineControl,
       retryTask,
       stopBot, controlAvailable, useGroupRuntime, refreshGroupRuntime, usePendingInteractions, openSession,
-      getActivity, markRead, sectionControl,
+      getActivity, markRead, sectionControl, getTriggerToken, getMissedRoutines,
     } = props;
     const [open, setOpen] = useState(false);
     useEffect(() => {
@@ -2589,6 +2726,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
               getActivity,
               markRead,
               sectionControl,
+              getTriggerToken,
+              getMissedRoutines,
             }),
           ),
         ),
@@ -2621,7 +2760,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
 
   function RoutineEditorModal(props) {
     const {
-      t, open, mode, routine, items, disabled, busy, error, onClose, onSave,
+      t, open, mode, routine, items, routines, disabled, busy, error, onClose, onSave, getTriggerToken,
     } = props;
     const [name, setName] = useState("");
     const [botId, setBotId] = useState("");
@@ -2639,6 +2778,12 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const [maxRuns, setMaxRuns] = useState("0");
     const [legacyMigrated, setLegacyMigrated] = useState(false);
     const [enabled, setEnabled] = useState(false);
+    const [contextFrom, setContextFrom] = useState([]);
+    const [silentAllowed, setSilentAllowed] = useState(true);
+    const [watchKind, setWatchKind] = useState("");
+    const [watchValue, setWatchValue] = useState("");
+    const [watchTimeout, setWatchTimeout] = useState("15000");
+    const [trigger, setTrigger] = useState({ status: "idle", text: "", copied: false, error: "" });
 
     useEffect(() => {
       if (!open) return;
@@ -2659,6 +2804,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       setMaxRuns(draft.maxRuns);
       setLegacyMigrated(draft.legacyMigrated);
       setEnabled(routine?.enabled === true);
+      setContextFrom(Array.isArray(routine?.contextFrom)
+        ? [...new Set(routine.contextFrom.map(String).filter(Boolean))]
+        : []);
+      setSilentAllowed(routine?.silentAllowed !== false);
+      setWatchKind(routine?.watch?.kind === "command" ? "command" : routine?.watch?.kind === "url" ? "url" : "");
+      setWatchValue(String(routine?.watch?.value ?? ""));
+      setWatchTimeout(String(Number(routine?.watch?.timeoutMs) || 15000));
+      setTrigger({ status: "idle", text: "", copied: false, error: "" });
     }, [open, routine?.id, mode]);
 
     const botChoices = items.filter((item) => item.kind !== "room");
@@ -2689,13 +2842,42 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const maxRunsValue = Number(maxRuns);
     const validMaxRuns = Number.isInteger(maxRunsValue) && maxRunsValue >= 0 && maxRunsValue <= ROUTINE_MAX_RUNS;
     const validTimezone = routineTimezoneValid(timezone);
+    const watchTimeoutValue = Number(watchTimeout);
+    const validWatch = !watchKind || (watchValue.trim().length > 0 && watchValue.trim().length <= 2000
+      && Number.isInteger(watchTimeoutValue) && watchTimeoutValue >= 1 && watchTimeoutValue <= 300000);
     const valid = Boolean(name.trim()) && name.trim().length <= 120
       && botAvailable && Boolean(prompt.trim()) && prompt.length <= 8000
-      && validSchedule && validTimezone && validMaxRuns;
+      && validSchedule && validTimezone && validMaxRuns && validWatch;
     const options = botChoices.map((item) => ({ id: item.id, label: displayName(item) || stableName(item) }));
     if (botId && !botAvailable) {
       options.push({ id: botId, label: `${t("sourceUnavailable")}: ${botId}`, disabled: true });
     }
+    const contextChoices = [
+      { id: "self", label: t("routineContextSelf") },
+      ...(Array.isArray(routines) ? routines : [])
+        .filter((row) => row.botId === botId && row.id !== routine?.id)
+        .map((row) => ({ id: row.id, label: String(row.name || row.id) })),
+    ];
+    const contextIds = new Set(contextChoices.map((choice) => choice.id));
+    const contextSelection = contextFrom.filter((id) => contextIds.has(id));
+    const showTrigger = async () => {
+      if (typeof getTriggerToken !== "function" || !routine?.id) return;
+      setTrigger({ status: "loading", text: "", copied: false, error: "" });
+      try {
+        const result = await getTriggerToken();
+        const token = String(result?.token ?? "");
+        if (!token) throw new Error(t("profileTransportUnavailable"));
+        const origin = typeof location !== "undefined" && location.origin ? location.origin : "http://127.0.0.1";
+        setTrigger({
+          status: "ready",
+          text: `curl -X POST ${origin}/dshbot-hook/routine/${routine.id} -H "X-Dshbot-Token: ${token}"`,
+          copied: false,
+          error: "",
+        });
+      } catch (cause) {
+        setTrigger({ status: "idle", text: "", copied: false, error: cause instanceof Error ? cause.message : String(cause) });
+      }
+    };
     const frequencyOptions = ROUTINE_FREQUENCIES.map((id) => ({ id, label: t(`routineFrequency${id[0].toUpperCase()}${id.slice(1)}`) }));
     const weekdayOptions = [
       ["0", "日"], ["1", "一"], ["2", "二"], ["3", "三"], ["4", "四"], ["5", "五"], ["6", "六"],
@@ -2817,6 +2999,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             timezone: timezone.trim(),
             maxRuns: maxRunsValue,
             enabled,
+            contextFrom: contextSelection,
+            silentAllowed,
+            watch: watchKind ? { kind: watchKind, value: watchValue.trim(), timeoutMs: watchTimeoutValue } : null,
           }),
         }, busy ? t("routineBusy") : t("save")),
       ),
@@ -2900,6 +3085,99 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           Number(maxRuns) === 0 ? h("span", { className: "dshbot-hint" }, t("routineUnlimited")) : null,
         ),
         !validSchedule || !validTimezone || !validMaxRuns ? h("div", { className: "dshbot-error", role: "alert" }, t("routineInvalidSchedule")) : null,
+        h("div", { className: "dshbot-field" },
+          h("label", null, t("routineContextFrom")),
+          h("div", { className: "dshbot-hint" }, t("routineContextFromHint")),
+          contextChoices.length > 0 ? h("div", { className: "dshbot-members" },
+            contextChoices.map((choice) => h("label", { key: choice.id, className: "dshbot-member" },
+              h("input", {
+                type: "checkbox",
+                "aria-label": choice.label,
+                checked: contextSelection.includes(choice.id),
+                disabled: disabled || busy || (!contextSelection.includes(choice.id) && contextSelection.length >= 3),
+                onChange: (event) => setContextFrom((current) => event.target.checked
+                  ? [...current.filter((id) => id !== choice.id), choice.id].slice(-3)
+                  : current.filter((id) => id !== choice.id)),
+              }),
+              h("span", null, choice.label),
+            )),
+          ) : null,
+        ),
+        h("div", { className: "dshbot-field" },
+          h("div", { className: "dshbot-switch-row" },
+            h("label", null, t("routineSilentAllowed")),
+            h(Switch, {
+              checked: silentAllowed,
+              "aria-label": t("routineSilentAllowed"),
+              disabled: disabled || busy,
+              onChange: (event) => setSilentAllowed(event.target.checked),
+            }),
+          ),
+          h("div", { className: "dshbot-hint" }, t("routineSilentAllowedHint")),
+        ),
+        h("div", { className: "dshbot-field" },
+          h("label", null, t("routineWatch")),
+          h(SettingsSelect, {
+            variant: "block",
+            value: watchKind,
+            options: [
+              { id: "", label: t("routineWatchNone") },
+              { id: "url", label: t("routineWatchUrl") },
+              { id: "command", label: t("routineWatchCommand") },
+            ],
+            "aria-label": t("routineWatch"),
+            disabled: disabled || busy,
+            onChange: setWatchKind,
+          }),
+          h("div", { className: "dshbot-hint" }, t("routineWatchHint")),
+          watchKind ? h(Input, {
+            value: watchValue,
+            "aria-label": t("routineWatchValue"),
+            disabled: disabled || busy,
+            onChange: (event) => setWatchValue(event.target.value),
+          }) : null,
+          watchKind ? h("div", { className: "dshbot-number-row" },
+            h("label", { htmlFor: "dshbot-routine-watch-timeout" }, t("routineWatchTimeout")),
+            h("input", {
+              id: "dshbot-routine-watch-timeout",
+              className: "dshbot-number-input",
+              type: "number",
+              min: 1,
+              max: 300000,
+              step: 1000,
+              value: watchTimeout,
+              "aria-label": t("routineWatchTimeout"),
+              disabled: disabled || busy,
+              onChange: (event) => setWatchTimeout(event.target.value),
+            }),
+          ) : null,
+        ),
+        mode === "edit" && routine?.id ? h("div", { className: "dshbot-field" },
+          h("label", null, t("routineTriggerUrl")),
+          h("div", { className: "dshbot-hint" }, t("routineTriggerHint")),
+          trigger.error ? h("div", { className: "dshbot-error", role: "alert" }, trigger.error) : null,
+          trigger.text ? h("div", { className: "dshbot-routine-trigger" },
+            h("code", { className: "dshbot-routine-trigger-command" }, trigger.text),
+            h(Button, {
+              variant: "outline",
+              "aria-label": t("routineTriggerCopy"),
+              disabled: busy,
+              onClick: async () => {
+                try {
+                  await navigator.clipboard.writeText(trigger.text);
+                  setTrigger((current) => ({ ...current, copied: true }));
+                } catch {
+                  setTrigger((current) => ({ ...current, copied: false }));
+                }
+              },
+            }, trigger.copied ? t("routineTriggerCopied") : t("routineTriggerCopy")),
+          ) : h(Button, {
+            variant: "outline",
+            "aria-label": t("routineTriggerShow"),
+            disabled: disabled || busy || trigger.status === "loading" || typeof getTriggerToken !== "function",
+            onClick: () => { void showTrigger(); },
+          }, trigger.status === "loading" ? t("routineBusy") : t("routineTriggerShow")),
+        ) : null,
         h("div", { className: "dshbot-switch-row" },
           h("label", null, t("routineEnabled")),
           h(Switch, {
@@ -2984,7 +3262,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       togglePin, toggleHide, stampRoomPresets, taskControl, routineControl,
       retryTask,
       stopBot, controlAvailable, useGroupRuntime, refreshGroupRuntime, usePendingInteractions, openSession,
-      getActivity, markRead, sectionControl,
+      getActivity, markRead, sectionControl, getTriggerToken, getMissedRoutines,
     } = props;
     const sessions = useSessions((s) => s);
     const catalogSnap = useCatalog((s) => s);
@@ -3020,6 +3298,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const [sectionUndo, setSectionUndo] = useState(null);
     const [activityState, setActivityState] = useState({ status: "idle", byId: {} });
     const [activityTick, setActivityTick] = useState(0);
+    const [missedRoutineIds, setMissedRoutineIds] = useState([]);
+    const activityPrevRef = useRef({});
     const tabListRef = useRef(null);
     const items = catalogItems(catalogSnap);
     const tasks = catalogTasks(catalogSnap);
@@ -3115,6 +3395,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const selectedTask = catalogReady ? tasks.find((task) => task.id === taskDetailId) : undefined;
     const selectedRoutine = routineEditor.id ? routines.find((routine) => routine.id === routineEditor.id) : undefined;
     const currentId = sessions?.current;
+    const visibleMissedRoutines = missedRoutineIds.filter((id) => !dismissedRoutineBanners.has(id));
     const activityKey = items.map((item) => [
       item.id,
       item.sessionId,
@@ -3128,6 +3409,37 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     useEffect(() => {
       stampRoomPresets?.(sessions?.byId);
     }, [stampRoomPresets, sessions, items]);
+    // OS notification path: opt-out per bot, lazy one-shot permission request,
+    // suppressed entirely while the window is focused or unsupported.
+    const notifyBot = (item, body) => {
+      if (!item || item.notify === false) return;
+      if (typeof Notification === "undefined") return;
+      if (document.hasFocus?.() !== false) return;
+      const show = () => {
+        try {
+          const notification = new Notification(displayName(item), { body });
+          notification.onclick = () => {
+            window.focus?.();
+            void openItem(item);
+          };
+        } catch {
+          // Some shells expose the constructor but deny invocation.
+        }
+      };
+      if (Notification.permission === "granted") {
+        show();
+        return;
+      }
+      if (Notification.permission === "denied" || notificationPermissionRequested) return;
+      notificationPermissionRequested = true;
+      try {
+        void Promise.resolve(Notification.requestPermission?.()).then((permission) => {
+          if (permission === "granted") show();
+        });
+      } catch {
+        // Permission requests are best-effort; badges already carry the state.
+      }
+    };
     useEffect(() => {
       if (!catalogReady || !controlAvailable || typeof getActivity !== "function" || items.length === 0) {
         setActivityState({ status: "idle", byId: {} });
@@ -3137,6 +3449,31 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       setActivityState((current) => ({ ...current, status: "loading" }));
       void getActivity(items.map((item) => item.id)).then(async (result) => {
         const entries = Array.isArray(result?.entries) ? result.entries : [];
+        // The first observation per bot is a baseline; transitions after it
+        // may raise an OS notification while the window is unfocused.
+        for (const entry of entries) {
+          if (!entry) continue;
+          const previous = activityPrevRef.current[entry.botId];
+          const run = entry.lastRun && typeof entry.lastRun === "object" ? entry.lastRun : null;
+          const runKey = run && ROUTINE_TERMINAL_STATUSES.has(run.status) && run.silent !== true
+            ? `${run.routineId}:${run.runId}` : "";
+          const snapshot = {
+            attention: entry.attention === true,
+            runKey,
+            goalPhase: String(entry.goal?.phase ?? ""),
+          };
+          activityPrevRef.current[entry.botId] = snapshot;
+          if (!previous) continue;
+          const item = items.find((candidate) => candidate.id === entry.botId);
+          if (snapshot.attention && !previous.attention) notifyBot(item, t("notifyAttention"));
+          if (snapshot.goalPhase === "blocked" && previous.goalPhase !== "blocked") {
+            notifyBot(item, t("notifyObjectiveBlocked"));
+          }
+          if (snapshot.runKey && snapshot.runKey !== previous.runKey) {
+            notifyBot(item, (run.status === "completed" ? t("notifyRoutineFinished") : t("notifyRoutineFailed"))
+              .replace("{name}", String(run.name ?? "")));
+          }
+        }
         const marks = entries.filter((entry) => entry && (
           entry.readInitialized !== true
           || (entry.sessionId === currentId && Number(entry.activitySeq) > Number(entry.lastSeenSeq))
@@ -3163,6 +3500,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       const timer = setInterval(() => setActivityTick((value) => value + 1), 1500);
       return () => clearInterval(timer);
     }, [activityIdsKey, controlAvailable, view]);
+    useEffect(() => {
+      if (view !== "contacts" || !controlAvailable || typeof getMissedRoutines !== "function") return undefined;
+      let disposed = false;
+      void getMissedRoutines().then((result) => {
+        if (!disposed) setMissedRoutineIds(Array.isArray(result?.ids) ? result.ids.map(String) : []);
+      }).catch(() => {});
+      return () => { disposed = true; };
+    }, [controlAvailable, getMissedRoutines, view]);
     useEffect(() => {
       if (!controlAvailable || typeof refreshGroupRuntime !== "function" || roomIds.length === 0) return undefined;
       let disposed = false;
@@ -3640,7 +3985,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       const session = sessions?.byId?.[item.sessionId];
       const isRoom = item.kind === "room";
       const activity = activityState.byId?.[item.id];
-      const preview = activity?.preview || (isRoom ? "" : (item.model?.model || t("noModel")));
+      const preview = activity?.workSummary || activity?.preview || (isRoom ? "" : (item.model?.model || t("noModel")));
       const active = currentId === item.sessionId;
       const indicator = sessionIndicator(session, activity, t, active);
       const name = displayName(item);
@@ -3866,6 +4211,18 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         }),
       ),
       catalogStateText ? h("div", { className: "dshbot-state", role: "status" }, catalogStateText) : null,
+      visibleMissedRoutines.length > 0 ? h("div", { className: "dshbot-state dshbot-missed-banner", role: "status" },
+        h("span", null, t("routinesMissed").replace("{count}", String(visibleMissedRoutines.length))),
+        h(Button, {
+          variant: "ghost",
+          size: "sm",
+          "aria-label": t("routinesMissedDismiss"),
+          onClick: () => {
+            for (const id of visibleMissedRoutines) dismissedRoutineBanners.add(id);
+            setMissedRoutineIds((current) => current.filter((id) => !dismissedRoutineBanners.has(id)));
+          },
+        }, t("routinesMissedDismiss")),
+      ) : null,
       sectionState.error ? h("div", { className: "dshbot-section-error", role: "alert" }, sectionState.error) : null,
       sectionUndo ? h("div", { className: "dshbot-section-undo", role: "status" },
         h("span", null, `${t("sectionDeleted")} ${sectionUndo.name}`),
@@ -4267,6 +4624,8 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         mode: routineEditor.mode,
         routine: selectedRoutine,
         items,
+        routines,
+        getTriggerToken,
         disabled: catalogWriteDisabled || !controlAvailable,
         busy: routineControlState.busy === "save",
         error: routineEditor.error,
@@ -4324,13 +4683,18 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     });
     const [capabilityManager, setCapabilityManager] = useState({ confirm: null, error: "" });
     const [capabilityPicker, setCapabilityPicker] = useState(null);
-    const [memorySource, setMemorySource] = useState({ status: "idle", entries: [], revision: null, error: "" });
+    const [memorySource, setMemorySource] = useState({ status: "idle", value: null, error: "" });
+    const [memoryTrack, setMemoryTrack] = useState("bot");
     const [memoryEditingId, setMemoryEditingId] = useState(null);
     const [memoryDraft, setMemoryDraft] = useState("");
     const [memoryBusy, setMemoryBusy] = useState(false);
     const [deleteConfirmed, setDeleteConfirmed] = useState(false);
     const [maxRounds, setMaxRounds] = useState(String(GROUP_DEFAULT_MAX_ROUNDS));
     const [maxSpeaks, setMaxSpeaks] = useState(String(GROUP_DEFAULT_MAX_MEMBER_TURNS));
+    const [objective, setObjective] = useState("");
+    const [objectiveMaxRounds, setObjectiveMaxRounds] = useState(String(OBJECTIVE_DEFAULT_MAX_ROUNDS));
+    const [memoryReview, setMemoryReview] = useState(true);
+    const [notifyEnabled, setNotifyEnabled] = useState(true);
 
     const catalogReady = catalogSnap?.status === "ready";
     const catalogLoading = catalogSnap?.status === "idle" || catalogSnap?.status === "loading";
@@ -4357,11 +4721,16 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         setSourceIds([]);
         setCapabilities(defaultCapabilities());
         setCapabilitySource({ status: "idle", value: capabilityCatalog(null), active: false, skillsAvailable: false, error: "" });
-        setMemorySource({ status: "idle", entries: [], revision: null, error: "" });
+        setMemorySource({ status: "idle", value: null, error: "" });
+        setMemoryTrack("bot");
         setMemoryEditingId(null);
         setMemoryDraft("");
         setMaxRounds(String(GROUP_DEFAULT_MAX_ROUNDS));
         setMaxSpeaks(String(GROUP_DEFAULT_MAX_MEMBER_TURNS));
+        setObjective("");
+        setObjectiveMaxRounds(String(OBJECTIVE_DEFAULT_MAX_ROUNDS));
+        setMemoryReview(true);
+        setNotifyEnabled(true);
         return;
       }
       if (isBotCreate) {
@@ -4379,11 +4748,16 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         setSourceIds([]);
         setCapabilities(defaultCapabilities());
         setCapabilitySource({ status: "idle", value: capabilityCatalog(null), active: false, skillsAvailable: false, error: "" });
-        setMemorySource({ status: "idle", entries: [], revision: null, error: "" });
+        setMemorySource({ status: "idle", value: null, error: "" });
+        setMemoryTrack("bot");
         setMemoryEditingId(null);
         setMemoryDraft("");
         setMaxRounds(String(GROUP_DEFAULT_MAX_ROUNDS));
         setMaxSpeaks(String(GROUP_DEFAULT_MAX_MEMBER_TURNS));
+        setObjective("");
+        setObjectiveMaxRounds(String(OBJECTIVE_DEFAULT_MAX_ROUNDS));
+        setMemoryReview(true);
+        setNotifyEnabled(true);
         return;
       }
       if (!item) return;
@@ -4403,11 +4777,16 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       setCapabilities(normalizeCapabilities(item.capabilities));
       setCapabilitySource({ status: "idle", value: capabilityCatalog(null), active: false, skillsAvailable: false, error: "" });
       setCapabilityManager({ confirm: null, error: "" });
-      setMemorySource({ status: "idle", entries: [], revision: null, error: "" });
+      setMemorySource({ status: "idle", value: null, error: "" });
+      setMemoryTrack("bot");
       setMemoryEditingId(null);
       setMemoryDraft("");
       setMaxRounds(String(Number.isInteger(item.maxRounds) ? item.maxRounds : GROUP_DEFAULT_MAX_ROUNDS));
       setMaxSpeaks(String(Number.isInteger(item.maxSpeaks) ? item.maxSpeaks : GROUP_DEFAULT_MAX_MEMBER_TURNS));
+      setObjective(item.kind === "room" ? "" : String(item.objective ?? ""));
+      setObjectiveMaxRounds(String(Number.isInteger(item.objectiveMaxRounds) ? item.objectiveMaxRounds : OBJECTIVE_DEFAULT_MAX_ROUNDS));
+      setMemoryReview(item.kind === "room" ? true : item.memoryReview !== false);
+      setNotifyEnabled(item.kind === "room" ? true : item.notify !== false);
     }, [open, editor.itemId, editor.mode]);
 
     useEffect(() => {
@@ -4477,25 +4856,32 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     useEffect(() => {
       if (!open || isRoom || isBotCreate || !item?.id) return undefined;
       let cancelled = false;
-      setMemorySource({ status: "loading", entries: [], revision: null, error: "" });
+      setMemorySource({ status: "loading", value: null, error: "" });
       if (typeof getMemory !== "function") {
-        setMemorySource({ status: "unavailable", entries: [], revision: null, error: t("profileTransportUnavailable") });
+        setMemorySource({ status: "unavailable", value: null, error: t("profileTransportUnavailable") });
         return () => { cancelled = true; };
       }
       getMemory(item.id).then((result) => {
         if (cancelled) return;
         const value = result?.memory ?? result;
+        const trackState = (track) => ({
+          entries: normalizeMemoryEntries(track),
+          revision: memoryRevision(track),
+          text: String(track?.text ?? ""),
+        });
         setMemorySource({
           status: "ready",
-          entries: normalizeMemoryEntries(value),
-          revision: memoryRevision(value),
+          value: {
+            bot: trackState(value?.bot),
+            user: trackState(value?.user),
+            limits: { bot: Number(value?.limits?.bot) || 0, user: Number(value?.limits?.user) || 0 },
+          },
           error: "",
         });
       }, (error) => {
         if (!cancelled) setMemorySource({
           status: "unavailable",
-          entries: [],
-          revision: null,
+          value: null,
           error: error instanceof Error ? error.message : String(error),
         });
       });
@@ -4574,6 +4960,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     const groupLimitsInvalid = isRoom && (!Number.isInteger(maxRoundsValue)
       || maxRoundsValue < 1 || maxRoundsValue > GROUP_MAX_ROUNDS
       || !Number.isInteger(maxSpeaksValue) || maxSpeaksValue < 1 || maxSpeaksValue > GROUP_MAX_MEMBER_TURNS);
+    const objectiveRoundsValue = Number(objectiveMaxRounds);
+    const objectiveInvalid = !isRoom && (!Number.isInteger(objectiveRoundsValue)
+      || objectiveRoundsValue < 1 || objectiveRoundsValue > OBJECTIVE_MAX_ROUNDS);
     const capabilityOptions = (groupId, selectedNames = []) => {
       const available = discoveredCapabilities[groupId] ?? [];
       const availableNames = new Set(available.map((entry) => entry.name));
@@ -4645,6 +5034,11 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       );
     };
 
+    const activeMemory = memorySource.value?.[memoryTrack] ?? { entries: [], revision: null, text: "" };
+    const activeMemoryLimit = Number(memorySource.value?.limits?.[memoryTrack]) || 0;
+    const memoryUsageText = activeMemoryLimit > 0
+      ? t("memoryUsage").replace("{used}", String(activeMemory.text.length)).replace("{limit}", String(activeMemoryLimit))
+      : "";
     const memoryStateMessage = memorySource.status === "loading" || memorySource.status === "idle"
       ? t("memoryLoading")
       : memorySource.status !== "ready"
@@ -4664,6 +5058,22 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       setMemoryEditingId(null);
       setMemoryDraft("");
     };
+    const updateMemoryTrack = (value, fallbackEntries) => setMemorySource((current) => {
+      const returnedEntries = normalizeMemoryEntries(value);
+      return {
+        ...current,
+        status: "ready",
+        error: "",
+        value: {
+          ...current.value,
+          [memoryTrack]: {
+            entries: returnedEntries.length > 0 || fallbackEntries.length === 0 ? returnedEntries : fallbackEntries,
+            revision: memoryRevision(value, current.value?.[memoryTrack]?.revision ?? null),
+            text: String(value?.text ?? ""),
+          },
+        },
+      };
+    });
     const saveMemory = async () => {
       const text = memoryDraft.trim();
       if (!text) {
@@ -4672,19 +5082,12 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       }
       if (!item?.id || memorySource.status !== "ready" || typeof replaceMemory !== "function") return;
       const nextEntries = memoryEditingId === "__new__"
-        ? [...memorySource.entries, { id: newId(), text }]
-        : memorySource.entries.map((entry) => entry.id === memoryEditingId ? { ...entry, text } : entry);
+        ? [...activeMemory.entries, { id: newId(), text }]
+        : activeMemory.entries.map((entry) => entry.id === memoryEditingId ? { ...entry, text } : entry);
       setMemoryBusy(true);
       try {
-        const result = await replaceMemory(item.id, nextEntries, memorySource.revision);
-        const value = result?.memory ?? result;
-        const returnedEntries = normalizeMemoryEntries(value);
-        setMemorySource({
-          status: "ready",
-          entries: returnedEntries.length > 0 || nextEntries.length === 0 ? returnedEntries : nextEntries,
-          revision: memoryRevision(value, memorySource.revision),
-          error: "",
-        });
+        const result = await replaceMemory(item.id, memoryTrack, nextEntries, activeMemory.revision);
+        updateMemoryTrack(result?.memory ?? result, nextEntries);
         cancelMemoryEdit();
       } catch (error) {
         setMemorySource((current) => ({
@@ -4700,16 +5103,9 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       if (!item?.id || memorySource.status !== "ready" || typeof replaceMemory !== "function") return;
       setMemoryBusy(true);
       try {
-        const nextEntries = memorySource.entries.filter((current) => current.id !== entry.id);
-        const result = await replaceMemory(item.id, nextEntries, memorySource.revision);
-        const value = result?.memory ?? result;
-        const returnedEntries = normalizeMemoryEntries(value);
-        setMemorySource({
-          status: "ready",
-          entries: returnedEntries.length > 0 || nextEntries.length === 0 ? returnedEntries : nextEntries,
-          revision: memoryRevision(value, memorySource.revision),
-          error: "",
-        });
+        const nextEntries = activeMemory.entries.filter((current) => current.id !== entry.id);
+        const result = await replaceMemory(item.id, memoryTrack, nextEntries, activeMemory.revision);
+        updateMemoryTrack(result?.memory ?? result, nextEntries);
         if (memoryEditingId === entry.id) cancelMemoryEdit();
       } catch (error) {
         setMemorySource((current) => ({
@@ -4734,18 +5130,43 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           onClick: beginMemoryAdd,
         }) : null,
       ),
+      memorySource.status === "ready" ? h("div", { className: "dshbot-memory-tabs" },
+        h(Pill, {
+          active: memoryTrack === "bot",
+          disabled: memoryBusy || memoryEditingId !== null,
+          onClick: () => setMemoryTrack("bot"),
+        }, t("memoryTrackNotes")),
+        h(Pill, {
+          active: memoryTrack === "user",
+          disabled: memoryBusy || memoryEditingId !== null,
+          onClick: () => setMemoryTrack("user"),
+        }, t("memoryTrackUser")),
+        memoryUsageText ? h("span", { className: "dshbot-memory-usage" }, memoryUsageText) : null,
+      ) : null,
       h("div", { className: "dshbot-hint" }, t("memoryHint")),
+      h("label", { className: "dshbot-memory-review" },
+        h("input", {
+          type: "checkbox",
+          "aria-label": t("memoryReview"),
+          checked: memoryReview,
+          disabled: catalogWriteDisabled || memoryBusy,
+          onChange: (event) => setMemoryReview(event.target.checked),
+        }),
+        h("span", null, t("memoryReview")),
+      ),
+      h("div", { className: "dshbot-hint" }, t("memoryReviewHint")),
       memoryStateMessage ? h("div", { className: "dshbot-model-state", role: "status", "data-error": memorySource.status === "unavailable" ? "true" : undefined }, memoryStateMessage) : null,
-      memorySource.status === "ready" && memorySource.entries.length === 0 && memoryEditingId === null
+      memorySource.status === "ready" && activeMemory.entries.length === 0 && memoryEditingId === null
         ? h("div", { className: "dshbot-empty" }, t("memoryEmpty"))
         : null,
-      memorySource.status === "ready" && memorySource.entries.length > 0
-        ? h("div", { className: "dshbot-memory-list" }, memorySource.entries.map((entry) => h("div", {
+      memorySource.status === "ready" && activeMemory.entries.length > 0
+        ? h("div", { className: "dshbot-memory-list" }, activeMemory.entries.map((entry) => h("div", {
           key: entry.id,
           className: "dshbot-memory-row",
           "data-dshbot-memory-entry": entry.id,
         },
-          h("div", { className: "dshbot-memory-text" }, entry.text),
+          entry.text.startsWith("[auto] ") ? h("span", { className: "dshbot-memory-tag" }, t("memoryAutoTag")) : null,
+          h("div", { className: "dshbot-memory-text" }, entry.text.startsWith("[auto] ") ? entry.text.slice(7) : entry.text),
           h("div", { className: "dshbot-memory-actions" },
             h(Tooltip, { label: t("memoryEdit"), side: "top", delayMs: 400 },
               h("span", { className: "dshbot-tooltip-anchor" }, h(Button, {
@@ -4805,6 +5226,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       memberBotIds: isRoom ? normalizeRoomMemberIds(memberIds, items) : (item?.memberBotIds ?? []),
       maxRounds: isRoom ? maxRoundsValue : item?.maxRounds,
       maxSpeaks: isRoom ? maxSpeaksValue : item?.maxSpeaks,
+      objective: isRoom ? "" : objective,
+      objectiveMaxRounds: isRoom ? item?.objectiveMaxRounds : objectiveRoundsValue,
+      memoryReview: isRoom ? true : memoryReview,
+      notify: isRoom ? true : notifyEnabled,
     };
     const deletePreview = editor.deletePreview;
     const deletePreviewNames = (rows) => {
@@ -4849,7 +5274,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           "aria-label": t("save"),
           disabled: catalogWriteDisabled || busy || (!isRoom && modelSource.status === "loading") || (!isRoom && modelSelectionInvalid) || (isRoom && (
              memberIds.length < GROUP_MIN_MEMBERS || memberIds.length > GROUP_MAX_MEMBERS
-           )) || sourceSelectionInvalid || groupLimitsInvalid || capabilitySelectedInvalid,
+           )) || sourceSelectionInvalid || groupLimitsInvalid || capabilitySelectedInvalid || objectiveInvalid,
           onClick: async () => {
             setBusy(true);
             try {
@@ -5160,6 +5585,50 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
               ? h("div", { className: "dshbot-error", role: "alert" }, capabilityManager.error)
               : null,
             h("div", { className: "dshbot-capability-groups" }, CAPABILITY_GROUPS.map(capabilityGroup)),
+          ) : null,
+          !isRoom ? h("div", { className: "dshbot-field", "data-dshbot-objective-field": "" },
+            h("label", null, t("objective")),
+            h("div", { className: "dshbot-hint" }, t("objectiveHint")),
+            h("textarea", {
+              id: "dshbot-objective",
+              className: "dshbot-textarea",
+              "aria-label": t("objective"),
+              value: objective,
+              rows: 3,
+              maxLength: 2000,
+              disabled: catalogWriteDisabled,
+              onChange: (event) => setObjective(event.target.value),
+            }),
+            h("div", { className: "dshbot-number-row" },
+              h("label", { htmlFor: "dshbot-objective-rounds" }, t("objectiveRounds")),
+              h("input", {
+                id: "dshbot-objective-rounds",
+                className: "dshbot-number-input",
+                type: "number",
+                min: 1,
+                max: OBJECTIVE_MAX_ROUNDS,
+                step: 1,
+                value: objectiveMaxRounds,
+                "aria-label": t("objectiveRounds"),
+                disabled: catalogWriteDisabled,
+                onChange: (event) => setObjectiveMaxRounds(event.target.value),
+              }),
+              h("span", { className: "dshbot-hint" }, t("objectiveRoundsHint")),
+            ),
+            objectiveInvalid ? h("div", { className: "dshbot-error", role: "alert" }, t("objectiveRoundsHint")) : null,
+          ) : null,
+          !isRoom ? h("div", { className: "dshbot-field" },
+            h("label", { className: "dshbot-memory-review" },
+              h("input", {
+                type: "checkbox",
+                "aria-label": t("notify"),
+                checked: notifyEnabled,
+                disabled: catalogWriteDisabled,
+                onChange: (event) => setNotifyEnabled(event.target.checked),
+              }),
+              h("span", null, t("notify")),
+            ),
+            h("div", { className: "dshbot-hint" }, t("notifyHint")),
           ) : null,
           memorySection,
         ),
@@ -6244,6 +6713,79 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     );
   }
 
+  /** 1:1 Bot objective strip in the composer dock; the catalog objective renders even while the agent is cold. */
+  function ObjectiveDock(props) {
+    const { sessionId, t, useCatalog, getActivity, objectiveControl, controlAvailable } = props;
+    const item = useCatalog((snapshot) => catalogItems(snapshot).find(
+      (entry) => entry.kind !== "room" && entry.sessionId === sessionId));
+    const botId = item?.id ?? "";
+    const hasObjective = Boolean(String(item?.objective ?? "").trim());
+    const [goal, setGoal] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+      if (!botId || !hasObjective || !controlAvailable || typeof getActivity !== "function") {
+        setGoal(null);
+        return undefined;
+      }
+      let disposed = false;
+      const poll = () => {
+        getActivity([botId]).then((result) => {
+          if (disposed) return;
+          const entry = Array.isArray(result?.entries) ? result.entries[0] : null;
+          setGoal(entry?.goal ?? null);
+        }, () => {});
+      };
+      poll();
+      const timer = setInterval(poll, 1500);
+      return () => { disposed = true; clearInterval(timer); };
+    }, [botId, hasObjective, controlAvailable, getActivity]);
+
+    if (!item || !hasObjective) return null;
+    // A live goal is already managed by the host GoalBar in the same dock;
+    // this strip covers the cold / not-yet-materialized catalog objective.
+    if (goal) return null;
+    const limit = Number(item.objectiveMaxRounds) || OBJECTIVE_DEFAULT_MAX_ROUNDS;
+    const run = async (action) => {
+      if (busy || typeof objectiveControl !== "function") return;
+      setBusy(true);
+      setError("");
+      try {
+        const result = await objectiveControl(action, item.id);
+        if (result && Object.hasOwn(result, "goal")) setGoal(result.goal ?? null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setBusy(false);
+      }
+    };
+    return h("div", { className: "dshbot-objective", "data-dshbot-objective": "", "data-session-id": sessionId },
+      h("div", { className: "dshbot-objective-row" },
+        h("span", { className: "dshbot-objective-chip", "data-state": "idle" }, t("objectiveIdle")),
+        h("span", { className: "dshbot-objective-text", title: String(item.objective ?? "").trim() },
+          String(item.objective ?? "").trim()),
+        h("span", { className: "dshbot-objective-rounds" },
+          t("objectiveRoundsCap").replace("{limit}", String(limit))),
+        h("div", { className: "dshbot-objective-actions" },
+          h(Button, {
+            variant: "ghost", size: "sm", disabled: busy || !controlAvailable,
+            "aria-label": t("objectiveStart"), title: t("objectiveStart"),
+            icon: h(IconPlayOutline16, { size: 16 }),
+            onClick: () => { void run("start"); },
+          }, t("objectiveStart")),
+          h(Button, {
+            variant: "ghost", size: "sm", disabled: busy || !controlAvailable,
+            "aria-label": t("objectiveClear"), title: t("objectiveClear"),
+            icon: h(IconTrashOutline16, { size: 16 }),
+            onClick: () => { void run("clear"); },
+          }, t("objectiveClear")),
+        ),
+      ),
+      error ? h("div", { className: "dshbot-error", role: "alert" }, error) : null,
+    );
+  }
+
   function apply(ctx) {
     injectCss();
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dshbot: dictionaries");
@@ -6379,17 +6921,15 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
     );
     const describeCapabilities = async (botId) => dshbotRpc("describe", botId ? { botId } : {}, t("profileTransportUnavailable"));
     const getActivity = async (ids) => dshbotRpc("bot/activity", { ids }, t("profileTransportUnavailable"));
+    const getMissedRoutines = async () => dshbotRpc("routine/missed", {}, t("profileTransportUnavailable"));
     const markRead = async (marks) => dshbotRpc("bot/mark-read", { marks }, t("profileTransportUnavailable"));
     const getMemory = async (botId) => dshbotRpc("memory/get", { id: botId }, t("profileTransportUnavailable"));
-    const replaceMemory = async (botId, entries, expectedMemoryRevision) => {
-      const snapshot = editableSnapshot();
-      return dshbotRpc("memory/replace", {
-        revision: snapshot.revision,
-        memoryRevision: expectedMemoryRevision,
-        id: botId,
-        text: memoryText(entries),
-      }, t("profileTransportUnavailable"));
-    };
+    const replaceMemory = async (botId, track, entries, expectedMemoryRevision) => dshbotRpc("memory/replace", {
+      id: botId,
+      track: track === "user" ? "user" : "bot",
+      memoryRevision: expectedMemoryRevision,
+      text: memoryText(entries),
+    }, t("profileTransportUnavailable"));
 
     const stopRoom = async (sessionId, roomId) => {
       const binding = sessionsSvc?.binding?.(sessionId);
@@ -6503,6 +7043,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       controlAvailable,
       describeCapabilities,
       getActivity,
+      getMissedRoutines,
       markRead,
       getModelCatalog,
       getMemory,
@@ -6528,12 +7069,20 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
         return result;
       },
       routineControl: (action, input, revision) => controlCommand(`routine/${action}`, input, revision),
+      getTriggerToken: () => dshbotRpc("bot/trigger-token", {}, t("profileTransportUnavailable")),
       sectionControl: (action, input, revision) => {
         const actions = new Set(["create", "rename", "move", "assign", "delete", "restore"]);
         if (!actions.has(action)) throw new Error(t("sectionControlUnavailable"));
         return controlCommand(`section/${action}`, input, revision, t("sectionControlUnavailable"));
       },
       stopBot: (botId) => controlCommand("bot/stop", { botId }),
+      objectiveControl: (action, botId) => {
+        const actions = new Set(["start", "pause", "clear"]);
+        if (!actions.has(action)) throw new Error(t("taskControlUnavailable"));
+        return action === "clear"
+          ? controlCommand("bot/objective/clear", { id: botId })
+          : dshbotRpc(`bot/objective/${action}`, { id: botId }, t("profileTransportUnavailable"));
+      },
       memberName: (botId) => {
         const item = readItems().find((entry) => entry.id === botId || entry.name === botId);
         return item ? displayName(item) : "";
@@ -6564,6 +7113,10 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             model: profile.model,
             capabilities: profile.capabilities,
             allowedSenderIds: profile.allowedSenderIds,
+            objective: profile.objective,
+            objectiveMaxRounds: profile.objectiveMaxRounds,
+            memoryReview: profile.memoryReview !== false,
+            notify: profile.notify !== false,
             scratchCwd: getScratchCwd(),
           });
           if (!result?.view) throw new Error(t("profileTransportUnavailable"));
@@ -6718,7 +7271,7 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           if (snapshot.revision !== editor.revision) throw new Error(t("saveConflict"));
           const current = readItems().find((item) => item.id === next.id);
           if (!current) throw new Error(t("saveConflict"));
-          const editableFields = ["name", "title", "description", "avatar", "workspaceId", "model", "allowedSenderIds", "memberBotIds", "capabilities", "maxRounds", "maxSpeaks", "updatedAt"];
+          const editableFields = ["name", "title", "description", "avatar", "workspaceId", "model", "allowedSenderIds", "memberBotIds", "capabilities", "maxRounds", "maxSpeaks", "objective", "objectiveMaxRounds", "memoryReview", "notify", "updatedAt"];
           const patch = Object.fromEntries(editableFields.filter((key) => Object.hasOwn(next, key)).map((key) => [key, next[key]]));
           next = { ...current, ...patch, workspaceId: (Object.hasOwn(patch, "workspaceId") ? patch.workspaceId : current.workspaceId) || "" };
           if (Object.hasOwn(patch, "model")) {
@@ -6755,6 +7308,13 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
           } else {
             next.maxRounds = current.maxRounds;
             next.maxSpeaks = current.maxSpeaks;
+            const rounds = Object.hasOwn(patch, "objectiveMaxRounds") ? Number(patch.objectiveMaxRounds)
+              : (Number.isInteger(current.objectiveMaxRounds) ? current.objectiveMaxRounds : OBJECTIVE_DEFAULT_MAX_ROUNDS);
+            if (!Number.isInteger(rounds) || rounds < 1 || rounds > OBJECTIVE_MAX_ROUNDS) {
+              throw new Error(t("objectiveRoundsHint"));
+            }
+            next.objectiveMaxRounds = rounds;
+            next.objective = String(Object.hasOwn(patch, "objective") ? patch.objective ?? "" : current.objective ?? "");
           }
           const workspaceChanged = (current.workspaceId || "") !== (next.workspaceId || "");
           if (workspaceChanged && workspaceLocked) next = { ...next, workspaceId: current.workspaceId };
@@ -6769,7 +7329,13 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
             capabilities: next.capabilities,
             scratchCwd: getScratchCwd(),
           };
-          if (current.kind !== "room") profileUpdate.title = String(next.title ?? "").trim();
+          if (current.kind !== "room") Object.assign(profileUpdate, {
+            title: String(next.title ?? "").trim(),
+            objective: String(next.objective ?? ""),
+            objectiveMaxRounds: next.objectiveMaxRounds,
+            memoryReview: next.memoryReview !== false,
+            notify: next.notify !== false,
+          });
           if (current.kind === "room") Object.assign(profileUpdate, {
             memberBotIds: next.memberBotIds,
             maxRounds: next.maxRounds,
@@ -6889,6 +7455,14 @@ window.__ModuleLoader__.load({ id: "dshbot", factory: (require) => {
       locale: NS,
       inject: (sessionId) => ({ ...injectFace(), managedSessionId: sessionId }),
     }, ManagedInputControl));
+
+    ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+      name: "conversation.input.dock",
+      id: "dshbot-objective",
+      order: 20,
+      locale: NS,
+      inject: injectFace,
+    }, ObjectiveDock));
 
     const inputTriggers = ctx.inputTriggers ?? ctx.get("inputTriggers");
     if (inputTriggers?.registerSource) {

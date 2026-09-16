@@ -12,7 +12,7 @@
 2. 同页点「浏览图库」→ 顶部分类页签 + 搜索，下方网格（含必应、Wallhaven、收藏）。
 3. 星标收藏 → 点缩略图 → 确认设为壁纸 → 是 → 裁剪；否 → 图库仍开着且不换壁纸。
 4. 图库窗内图源：新增 / 编辑 / 删除具名 HTTPS JSON 目录；Appearance 行不出现源列表或裸 URL。
-5. 清除壁纸后恢复无壁纸底，frost / pixelate 仅在有图时可用。
+5. 清除壁纸后恢复无壁纸底（已开启「背景特效」时回到特效底，见 [background-gradient](background-gradient.md)），frost / pixelate 仅在有图时可用。
 
 ## Invariants
 

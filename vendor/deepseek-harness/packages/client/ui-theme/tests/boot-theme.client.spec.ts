@@ -84,9 +84,22 @@ describe('theme bootstrap row', () => {
       customThemes: [],
       glassOpacity: 70,
       transparentTheme: false,
+      sidebarMaskHidden: false,
       wallpaperImage: '',
       wallpaperBlur: 0,
       wallpaperPixelate: 0,
+      backgroundEffect: 'none',
+      backgroundEffectColors: [],
+      backgroundEffectSpeed: 100,
+      backgroundEffectCount: 5,
+      backgroundEffectPreset: 'default',
+      backgroundEffectVariant: 'orbs',
+      cursorEffectEnabled: false,
+      cursorEffect: 'trail',
+      cursorEffectColors: [],
+      cursorEffectSpeed: 100,
+      cursorEffectSize: 100,
+      cursorEffectPreset: 'default',
       wallpaperBingEnabled: false,
       wallpaperCatalogUrls: [],
       wallpaperSources: DEFAULT_WALLPAPER_SOURCES,
@@ -129,5 +142,18 @@ describe('theme bootstrap row', () => {
       transparentTheme: true,
     })
     expect(withoutWallpaper.glassOpacity).toBe(70)
+  })
+
+  it('embeds a transparent rail fill while the sidebar mask is hidden', () => {
+    // The flag ships on: the default payload already carries the rewrite.
+    const payload = buildThemeBootPayload({ ...DEFAULT_THEME_SETTINGS, customThemes: [] })
+    expect(payload.lightTokens['--dsh-sidebar-rail-fill']).toBe('transparent')
+    expect(payload.darkTokens['--dsh-sidebar-rail-fill']).toBe('transparent')
+    const masked = buildThemeBootPayload({
+      ...DEFAULT_THEME_SETTINGS,
+      customThemes: [],
+      sidebarMaskHidden: false,
+    })
+    expect(masked.lightTokens['--dsh-sidebar-rail-fill']).toBeUndefined()
   })
 })

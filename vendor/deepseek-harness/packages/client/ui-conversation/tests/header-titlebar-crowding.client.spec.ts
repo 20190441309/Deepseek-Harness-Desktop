@@ -24,7 +24,14 @@ function declarations(selector: string): Map<string, string> | undefined {
 
 describe('ConversationRoot.module.css titlebar crowding', () => {
   it('pads the header by the conversation reserve AppFrame publishes', () => {
-    expect(css).toContain('max(28px, calc(var(--dshd-titlebar-conversation-reserve, 0px) + 8px))')
+    // +8px is the cluster's own margin; +16px absorbs .headerCorner's -16px
+    // reach so the corner seat cannot paint under the cluster's left edge.
+    expect(css).toContain('max(28px, calc(var(--dshd-titlebar-conversation-reserve, 0px) + 8px + 16px))')
+    expect(css).toContain('var(--dshd-wco-controls, 8px))\n      + 16px')
+  })
+
+  it('pins the corner seat reach the reserve padding absorbs', () => {
+    expect(declarations('.headerCorner')?.get('margin-right')).toBe('-16px')
   })
 
   it('hides header actions at cozy and compact density', () => {
@@ -46,6 +53,10 @@ describe('ConversationRoot.module.css titlebar crowding', () => {
     expect(declarations('.headerHidden')).toBeUndefined()
     expect(declarations('.blankCaption')?.get('min-height')).toBe('32px')
     expect(declarations('.headerBlank::after')?.get('display')).toBe('none')
+  })
+
+  it('drops the header hairline when no tab strip renders', () => {
+    expect(declarations('.headerNoTabs::after')?.get('display')).toBe('none')
   })
 
   it('keeps phone left padding so the caption does not cover the menu', () => {

@@ -20,6 +20,22 @@ export const DEFAULT_GLASS_OPACITY = 80
 /** Glass opacity slider step (percent). */
 export const GLASS_OPACITY_STEP = 5
 
+/**
+ * Indirection token the rail chrome (layout column, sidebar root, phone
+ * drawer, session-list fade) resolves through; it falls back to
+ * `--dsw-specific-sidebar-fill` until the theme rebinds it, like the
+ * `--dsh-scrollbar-*` pair.
+ */
+export const SIDEBAR_RAIL_FILL_TOKEN = '--dsh-sidebar-rail-fill'
+
+/**
+ * Rail fill written while the sidebar mask is hidden. The rail chrome paints
+ * the sidebar fill twice by design, so a translucent canvas value would
+ * still darken the rail; `transparent` lets the frame's own
+ * `--dsw-alias-bg-base` show through for an exact workspace match.
+ */
+export const SIDEBAR_UNMASKED_FILL = 'transparent'
+
 /** Smallest interface font size the settings slider accepts (px). */
 export const MIN_INTERFACE_FONT_SIZE = 12
 /** Largest interface font size the settings slider accepts (px). */

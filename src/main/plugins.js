@@ -24,6 +24,8 @@ const DROPPED = [
   // Bots ships first-party from vendor/dshbot.
   // Reject marketplace installs of the same package to avoid a second mount.
   'dshbot',
+  // The whale-girl assistant ships first-party from vendor/dsh-whale.
+  'dsh-whale',
 ];
 // Exact unscoped basenames of the dropped families. A rename that only moves
 // the package to a new scope (e.g. `@changfenhuang/dsh-genui`) or a new
@@ -37,6 +39,7 @@ const DROPPED_BASENAMES = [
   'xmanrui-dsh-im',
   'dsh-usage-panel',
   'dshbot',
+  'dsh-whale',
 ];
 
 /** The npm name without its scope (`@scope/name` → `name`). */
@@ -261,6 +264,23 @@ function ensureDesktopInstallPlugin(options = {}) {
       return { ok: false, reason: `missing-source:${name}` };
     }
     fs.copyFileSync(src, path.join(destDir, name));
+  }
+  // The overlay mounts install-dsh-plugin.mjs by file URL. The request-time
+  // plugin-package inventory resolves such an entry's owning manifest by
+  // walking up from the module path; without this package.json it reaches
+  // the versionless profile marker and throws, failing every DeepSeek
+  // request.
+  const manifestFile = path.join(destDir, 'package.json');
+  const manifestContents = `${JSON.stringify({
+    name: 'dshd-desktop-plugin-install',
+    version: require('../../package.json').version,
+    private: true,
+  }, null, 2)}\n`;
+  const existingManifest = fs.existsSync(manifestFile)
+    ? fs.readFileSync(manifestFile, 'utf8')
+    : '';
+  if (existingManifest !== manifestContents) {
+    writeAtomic(manifestFile, manifestContents);
   }
   const entry = path.join(destDir, 'install-dsh-plugin.mjs');
   const href = pathToFileURL(entry).href;

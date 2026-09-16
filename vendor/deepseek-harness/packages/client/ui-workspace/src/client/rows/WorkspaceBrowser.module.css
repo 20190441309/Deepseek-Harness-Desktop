@@ -315,7 +315,7 @@
   right: var(--dsh-session-list-edge-inset);
   bottom: 0;
   height: 24px;
-  background: linear-gradient(to bottom, transparent, var(--dsw-specific-sidebar-fill));
+  background: linear-gradient(to bottom, transparent, var(--dsh-sidebar-rail-fill, var(--dsw-specific-sidebar-fill)));
   pointer-events: none;
 }
 

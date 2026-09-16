@@ -343,6 +343,11 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(Math.round(expandBox.y + expandBox.height / 2)).toBe(Math.round(rowBox.y + rowBox.height / 2))
       // Its own corner seat, past the utilities' right edge — not a utility.
       expect(expandBox.x).toBeGreaterThan(rowBox.x + rowBox.width)
+      // The corner seat's -16px reach stays inside the header padding while
+      // the trailing cluster shares the row: never under the cluster's edge.
+      const trailingBox = await page.locator('#dshd-shell-titlebar-trailing').boundingBox()
+      if (trailingBox === null) throw new Error('titlebar trailing cluster is not rendered')
+      expect(expandBox.x + expandBox.width).toBeLessThanOrEqual(trailingBox.x + 1)
       const conversationBoxBefore = await conversation.boundingBox()
       if (conversationBoxBefore === null) throw new Error('conversation is not rendered')
       // How far the utilities' right edge sits from the conversation's own.

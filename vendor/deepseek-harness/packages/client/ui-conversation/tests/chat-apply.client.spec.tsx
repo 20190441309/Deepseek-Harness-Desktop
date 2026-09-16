@@ -13,7 +13,8 @@ import type { StatsLineRowInjected } from '../src/client/settings/StatsLineRow.t
 import type { PeakValleySettingsRowInjected } from '../src/client/settings/PeakValleyRow.tsx'
 import type { PeakValleyRowInjected } from '../src/client/chat/PeakValleyRow.tsx'
 import type { ViewTabsRowInjected } from '../src/client/settings/ViewTabsRow.tsx'
-import { DEFAULT_COMPOSER_BEAM_STYLE } from '../src/submission-settings.ts'
+import type { TypingFxRowInjected } from '../src/client/settings/TypingFxRow.tsx'
+import { DEFAULT_COMPOSER_BEAM_STYLE, DEFAULT_TYPING_FX_STYLE } from '../src/submission-settings.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -40,6 +41,7 @@ async function bench() {
     'main': { kind: 'keyed', scope: 'root' },
     'settings.general.item': { kind: 'list', scope: 'root' },
     'settings.interface.item': { kind: 'list', scope: 'root' },
+    'settings.appearance.item': { kind: 'list', scope: 'root' },
   }, (_p: { renderSlot?: unknown }) => null)
 
   const feature = await runtime.mount({ inject: [...inject], apply })
@@ -56,7 +58,8 @@ describe('conversation apply wiring (desktop peak/valley + session cost)', () =>
 
   it('registers interface rows including session-cost and official peak/valley', async () => {
     const b = await bench()
-    expect(b.slots.entries('settings.general.item').map(entry => entry.options.id)).toEqual(['composer-enter'])
+    expect(b.slots.entries('settings.general.item').map(entry => entry.options.id))
+      .toEqual(['composer-enter', 'custom-instructions'])
     expect(b.slots.entries('settings.interface.item').map(entry => entry.options.id)).toEqual([
       'composer-beam', 'composer-resize', 'stats-line', 'session-cost', 'official-peak-valley', 'view-tabs',
     ])
@@ -88,6 +91,13 @@ describe('conversation apply wiring (desktop peak/valley + session cost)', () =>
     expect(peakValleyInjected.hooks.peakValley.getSnapshot()).toBe(false)
     peakValleyInjected.setPeakValley(true)
     expect(peakValleyInjected.hooks.peakValley.getSnapshot()).toBe(true)
+    const typingFx = b.slots.entries('settings.appearance.item')
+    expect(typingFx.map(entry => entry.options.id)).toEqual(['composer-typing-fx'])
+    const typingFxInjected = (typingFx[0]?.inject as unknown as () => TypingFxRowInjected)()
+    expect(typingFxInjected.hooks.typingFx.getSnapshot()).toBe(false)
+    expect(typingFxInjected.hooks.typingFxStyle.getSnapshot()).toEqual(DEFAULT_TYPING_FX_STYLE)
+    typingFxInjected.setTypingFx(true)
+    expect(typingFxInjected.hooks.typingFx.getSnapshot()).toBe(true)
     await b.runtime.dispose()
   })
 
@@ -109,6 +119,7 @@ describe('conversation apply wiring (desktop peak/valley + session cost)', () =>
     expect(b.slots.entries('conversation.view')).toHaveLength(0)
     expect(b.slots.entries('settings.general.item')).toHaveLength(0)
     expect(b.slots.entries('settings.interface.item')).toHaveLength(0)
+    expect(b.slots.entries('settings.appearance.item')).toHaveLength(0)
     expect(b.runtime.ctx.get('conversation')).toBeUndefined()
     await b.runtime.dispose()
   })

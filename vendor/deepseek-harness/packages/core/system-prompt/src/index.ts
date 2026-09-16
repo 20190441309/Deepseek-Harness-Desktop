@@ -151,6 +151,8 @@ const SECTION_ORDERS = {
   HARNESS_SOURCE: 10000,
   WEB_SURFACE: 10100,
   DEPLOYMENT_PERSONA_SUFFIX: 10200,
+  // The user's own standing instructions close the assembled prompt.
+  USER_INSTRUCTIONS: 10300,
 } as const
 
 /** Name of a centrally allocated prompt-section position. */

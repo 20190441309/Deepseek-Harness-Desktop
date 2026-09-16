@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   ComposerSubmissionPolicy, DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_COMPOSER_BEAM_PRESETS,
-  DEFAULT_COMPOSER_BEAM_STYLE, normalizeComposerBeamPresets, normalizeComposerBeamStyle, resolveSubmitMode,
+  DEFAULT_COMPOSER_BEAM_STYLE, DEFAULT_TYPING_FX_PRESETS, DEFAULT_TYPING_FX_STYLE,
+  normalizeComposerBeamPresets, normalizeComposerBeamStyle,
+  normalizeTypingFxPresets, normalizeTypingFxStyle, resolveSubmitMode,
 } from '../src/client/input/submission-policy.ts'
 import type { ConversationSettings } from '../src/submission-settings.ts'
 
@@ -14,6 +16,7 @@ function chrome(over: Partial<ConversationSettings> = {}): ConversationSettings 
     composerResize: false,
     composerResizeHeight: null,
     composerResizeWidth: null,
+    customInstructions: '',
     statsLine: true,
     officialPeakValley: false,
     viewTabs: true,
@@ -350,5 +353,160 @@ describe('ComposerSubmissionPolicy', () => {
       writable: true,
     })
     expect(policy.officialPeakValley.getSnapshot()).toBe(false)
+  })
+
+  it('keeps typingFx off while the Host section is missing and adopts true independently', () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    expect(policy.typingFx.getSnapshot()).toBe(false)
+    host.publish({ status: 'unavailable', value: undefined, writable: false, mode: 'memory' })
+    expect(policy.typingFx.getSnapshot()).toBe(false)
+    host.publish({
+      status: 'ready',
+      value: chrome({ typingFx: true, typingFxStyle: { ...DEFAULT_TYPING_FX_STYLE, cursor: 'block' } }),
+      revision: 1,
+      writable: true,
+    })
+    expect(policy.typingFx.getSnapshot()).toBe(true)
+    expect(policy.typingFxStyle.getSnapshot().cursor).toBe('block')
+    policy.setTypingFx(false)
+    expect(policy.typingFx.getSnapshot()).toBe(false)
+    expect(host.set).toHaveBeenCalledWith('typingFx', false)
+    policy.setTypingFx(false)
+    expect(host.set).toHaveBeenCalledOnce()
+  })
+
+  it('treats missing typingFx fields as the shipped defaults', () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    policy.setTypingFx(true)
+    host.publish({
+      status: 'ready',
+      value: { busyEnter: 'queue' } as ConversationSettings,
+      revision: 1,
+      writable: true,
+    })
+    expect(policy.typingFx.getSnapshot()).toBe(false)
+    expect(policy.typingFxStyle.getSnapshot()).toEqual(DEFAULT_TYPING_FX_STYLE)
+    expect(policy.typingFxPresets.getSnapshot()).toEqual(DEFAULT_TYPING_FX_PRESETS)
+  })
+
+  it('normalizes malformed typing-fx tuning at the adoption boundary', () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    host.publish({
+      status: 'ready',
+      value: chrome({
+        typingFx: true,
+        typingFxStyle: { effect: 'spiral', cursor: 'beam', cursorBlink: 'yes', speed: 9999 } as never,
+      }),
+      revision: 1,
+      writable: true,
+    })
+    expect(policy.typingFxStyle.getSnapshot()).toEqual({ ...DEFAULT_TYPING_FX_STYLE, speed: 240 })
+    expect(normalizeTypingFxStyle('junk')).toEqual(DEFAULT_TYPING_FX_STYLE)
+    expect(normalizeTypingFxPresets('junk')).toEqual({})
+  })
+
+  it('publishes typing-fx style and presets in one atomic mutation', async () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    host.publish({ status: 'ready', value: chrome(), revision: 7, writable: true })
+    const style = {
+      effect: 'flash' as const, cursor: 'underline' as const, cursorBlink: false, speed: 160,
+      colors: { kind: 'preset' as const, id: 'candy' as const },
+    }
+    const presets = { Calm: style }
+    host.mutate.mockImplementation(async (ops: readonly { path: string[]; value?: unknown }[]) => {
+      host.publish({
+        status: 'ready',
+        value: chrome({
+          typingFxStyle: ops[0]?.value as never,
+          typingFxPresets: ops[1]?.value as never,
+        }),
+        revision: 8,
+        writable: true,
+      })
+    })
+    await policy.setTypingFxConfiguration(style, presets)
+    expect(policy.typingFxStyle.getSnapshot()).toEqual(style)
+    expect(policy.typingFxPresets.getSnapshot()).toEqual({ Calm: style })
+    expect(host.mutate).toHaveBeenCalledWith([
+      { op: 'set', path: ['typingFxStyle'], value: style },
+      { op: 'set', path: ['typingFxPresets'], value: { Calm: style } },
+    ], 7)
+    expect(host.set).not.toHaveBeenCalled()
+  })
+
+  it('reports a rejected typing-fx mutation instead of claiming that the save succeeded', async () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    host.publish({ status: 'ready', value: chrome(), revision: 2, writable: true })
+    await expect(policy.setTypingFxConfiguration({ ...DEFAULT_TYPING_FX_STYLE, speed: 200 }, {}))
+      .rejects.toThrow()
+    expect(host.mutate).toHaveBeenCalledOnce()
+  })
+
+  it('refuses typing-fx configuration writes while the Host is not writable', async () => {
+    const host = stubSettingsScope<ConversationSettings>()
+    const policy = new ComposerSubmissionPolicy(host.scope)
+    await expect(policy.setTypingFxConfiguration({ ...DEFAULT_TYPING_FX_STYLE, speed: 200 }, {}))
+      .rejects.toThrow()
+    expect(host.mutate).not.toHaveBeenCalled()
+    expect(policy.typingFxStyle.getSnapshot()).toEqual(DEFAULT_TYPING_FX_STYLE)
+  })
+
+  it('publishes custom instructions immediately and debounces the durable write', async () => {
+    vi.useFakeTimers()
+    try {
+      const host = stubSettingsScope<ConversationSettings>()
+      const policy = new ComposerSubmissionPolicy(host.scope)
+      policy.setCustomInstructions('first')
+      policy.setCustomInstructions('second')
+      expect(policy.customInstructions.getSnapshot()).toBe('second')
+      expect(host.set).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(host.set).toHaveBeenCalledWith('customInstructions', 'second')
+      expect(host.set).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('adopts committed instructions but never reverts a queued or in-flight edit', async () => {
+    vi.useFakeTimers()
+    try {
+      const host = stubSettingsScope<ConversationSettings>()
+      const policy = new ComposerSubmissionPolicy(host.scope)
+      host.publish({
+        status: 'ready',
+        value: chrome({ customInstructions: 'committed' }),
+        revision: 1,
+        writable: true,
+      })
+      expect(policy.customInstructions.getSnapshot()).toBe('committed')
+
+      policy.setCustomInstructions('draft')
+      host.publish({
+        status: 'ready',
+        value: chrome({ customInstructions: 'committed' }),
+        revision: 2,
+        writable: true,
+      })
+      expect(policy.customInstructions.getSnapshot()).toBe('draft')
+      await vi.advanceTimersByTimeAsync(1000)
+      await vi.waitFor(() => {
+        expect(policy.customInstructions.getSnapshot()).toBe('draft')
+      })
+      host.publish({
+        status: 'ready',
+        value: chrome({ customInstructions: 'draft' }),
+        revision: 3,
+        writable: true,
+      })
+      expect(policy.customInstructions.getSnapshot()).toBe('draft')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -5,6 +5,8 @@ import {
   DEFAULT_INTERFACE_FONT_SIZE,
 } from './theme-family.ts'
 import { TRANSPARENT_ATTR, applyWallpaperLayer, isWallpaperDataUrl } from './wallpaper.ts'
+import { applyCursorFxLayer } from './cursor-fx.ts'
+import type { BackgroundEffect } from './theme-settings.ts'
 
 const DEFAULT_SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 const DEFAULT_CODE_STACK = "'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei'"
@@ -63,6 +65,26 @@ export interface AppearanceDocumentExtras {
   wallpaperBlur?: number
   /** Pixelation percent. */
   wallpaperPixelate?: number
+  /** Ambient backdrop effect; paints only while no wallpaper is set. */
+  backgroundEffect?: BackgroundEffect
+  /** Ambient backdrop color overrides (theme tokens paint empty slots). */
+  backgroundEffectColors?: readonly string[]
+  /** Ambient backdrop speed percent. */
+  backgroundEffectSpeed?: number
+  /** Ambient backdrop bloom count. */
+  backgroundEffectCount?: number
+  /** Bloom shape variant the gradient paints. */
+  backgroundEffectVariant?: string
+  /** Pointer decoration layer switch (指针特效). */
+  cursorEffectEnabled?: boolean
+  /** Pointer decoration: `trail` or `splash`. */
+  cursorEffect?: string
+  /** Pointer palette overrides; empty follows the theme accent. */
+  cursorEffectColors?: readonly string[]
+  /** Pointer decoration speed percent. */
+  cursorEffectSpeed?: number
+  /** Pointer decoration size percent. */
+  cursorEffectSize?: number
   /** Transparent theme flag; effective only while a wallpaper is live. */
   transparentTheme?: boolean
 }
@@ -88,13 +110,26 @@ export function applyAppearanceDocumentExtras(extras: AppearanceDocumentExtras):
     '--dsw-font-family-terminal',
     appearanceFontStack(extras.fontFamilyTerminal ?? '', code),
   )
+  const wallpaperImage = extras.wallpaperImage ?? ''
   applyWallpaperLayer({
-    wallpaperImage: extras.wallpaperImage ?? '',
+    wallpaperImage,
     wallpaperBlur: extras.wallpaperBlur ?? 0,
     wallpaperPixelate: extras.wallpaperPixelate ?? 0,
+    backgroundEffect: extras.backgroundEffect ?? 'none',
+    backgroundEffectColors: extras.backgroundEffectColors ?? [],
+    backgroundEffectSpeed: extras.backgroundEffectSpeed,
+    backgroundEffectCount: extras.backgroundEffectCount,
+    backgroundEffectVariant: extras.backgroundEffectVariant,
+  })
+  applyCursorFxLayer({
+    cursorEffectEnabled: extras.cursorEffectEnabled,
+    cursorEffect: extras.cursorEffect,
+    cursorEffectColors: extras.cursorEffectColors ?? [],
+    cursorEffectSpeed: extras.cursorEffectSpeed,
+    cursorEffectSize: extras.cursorEffectSize,
   })
   root.toggleAttribute(
     TRANSPARENT_ATTR,
-    extras.transparentTheme === true && isWallpaperDataUrl(extras.wallpaperImage ?? ''),
+    extras.transparentTheme === true && isWallpaperDataUrl(wallpaperImage),
   )
 }

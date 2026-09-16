@@ -33,7 +33,7 @@ The shipped Web `standard`, `ptc`, and `cordis` presets include [explicit file d
 
 A session composed from a preset runs the plugins that preset's `agent.cordis.yml` names: its tools, prompt sections, and skills. Sessions joined to the same preset share one installed composition, and each session's state stays separate. A child agent (subagent) joins its parent's composition, so it sees the same tools and prompt sections as the agent that spawned it.
 
-The presets you can choose from come from two places: the presets shipped inside this package under `presets/`, and your own presets under `<dshHome>/.agent-presets`. The picker shows each preset's display name and description; a preset whose composition cannot load is listed with the reason rather than hidden, so you can see what to fix or delete.
+The presets you can choose from come from two places: the presets shipped inside this package under `presets/`, and your own presets under `<dshHome>/.agent-presets`. The picker shows each preset's display name and description; a preset whose composition cannot load is listed with the reason rather than suppressed, so you can see what to fix or delete. A preset can also declare `hidden: true` in its `preset.yml` to stay off the roster every client reads — the flag is for a plugin-provisioned preset that exists to compose that plugin's own sessions, not to be picked. Resolving and mounting by id are unaffected, and a hidden preset that cannot load still lists with its reason so its directory can be deleted.
 
 ### Minimal configuration
 
@@ -130,7 +130,7 @@ A directly-plugged subtree is absent from `ctx.loader.entries()`, so no boot aud
 
 ### Authoring mechanics
 
-A copy dereferences symlinks so it is self-contained, re-tightens the tree to owner-only (`0o600` files keeping their owner-execute bit, `0o700` directories), and creates the root on first copy. The copied `preset.yml` is rewritten: the source's description is kept for the author to edit, its name and roster `order` dropped, so the roster keeps distinguishing the copy from its source. Removal refuses presets that ship with the deployment and clears a user default that named the preset just deleted.
+A copy dereferences symlinks so it is self-contained, re-tightens the tree to owner-only (`0o600` files keeping their owner-execute bit, `0o700` directories), and creates the root on first copy. The copied `preset.yml` is rewritten: the source's description is kept for the author to edit; its name, roster `order`, and `hidden` flag are dropped, so the copy presents itself as its own preset and stays on the pickers it was authored for. Removal refuses presets that ship with the deployment and clears a user default that named the preset just deleted.
 
 ### The session record
 

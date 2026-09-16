@@ -20,12 +20,14 @@ export type FileCardState = 'uploading' | 'ready' | 'error'
 
 /** One pending file card: type glyph, name, size or upload status, remove, retry. */
 export function FileCard({
-  name, bytes, state, progress, labels, onRemove, onRetry,
+  name, bytes, state, progress, reason, labels, onRemove, onRetry,
 }: {
   name: string
   bytes: number
   state: FileCardState
   progress?: number
+  /** Diagnostic detail for the failed state, surfaced in the card tooltip. */
+  reason?: string
   labels: FileCardLabels
   onRemove: () => void
   onRetry: () => void
@@ -40,7 +42,7 @@ export function FileCard({
   return (
     <div
       className={`${css.card}${retryable ? ` ${css.failed}` : ''}`}
-      title={name}
+      title={reason === undefined ? name : `${name}\n${reason}`}
     >
       <span className={css.icon} aria-hidden>
         {state === 'uploading'

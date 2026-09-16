@@ -98,7 +98,7 @@ None; this package neither assembles nor sends a provider request.
 
 These limits define when the seam contract leaves a decision to a future consumer. They are current package constraints, not a task backlog.
 
-- **No multi-root support** — the browse contract exposes one ancestry chain per listing; per-deployment root scoping (and Windows drive-root enumeration above a drive) waits for a consumer that needs it, per the DirectoryPicker Agent Note.
+- **No multi-root support** — the browse contract exposes one ancestry chain per listing; on Windows that chain is headed by the synthetic volume-picker root (`\\.\dsh-computer`), which enumerates the enterable drive roots. Per-deployment root scoping still waits for a consumer that needs it, per the DirectoryPicker Agent Note.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -83,6 +83,21 @@ test('generateCommitMessage fail-closes when a key is set and the model returns 
   }
 });
 
+test('generateCommitMessage refuses a cleartext off-host baseUrl without fetching', async (t) => {
+  let fetched = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { fetched += 1; throw new Error('must not be called'); };
+  t.after(() => { globalThis.fetch = realFetch; });
+  setApiCredentials({ apiKey: 'test-key', baseUrl: 'http://203.0.113.9/v1' });
+  try {
+    const generated = await generateCommitMessage({ stagedSummary: 'A\tREADME.md', stagedPatch: '' });
+    assert.equal(generated.error, 'Commit message generation failed.');
+    assert.equal(fetched, 0);
+  } finally {
+    setApiCredentials(null);
+  }
+});
+
 test('generateCommitMessage keeps the model branch when includeBranch is set', async () => {
   setTextGenerator(async (input) => {
     assert.equal(input.includeBranch, true);

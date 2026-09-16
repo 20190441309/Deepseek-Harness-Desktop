@@ -14,6 +14,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     customThemes: [],
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
     transparentTheme: false,
+    sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
     wallpaperImage: '',
     wallpaperBlur: 0,
     wallpaperPixelate: 0,
@@ -58,6 +59,64 @@ describe('createAppearanceRowStore', () => {
     expect(store.getSnapshot().transparentTheme).toBe(false)
     store.actions.sync(snap({ transparentTheme: true }), 0)
     expect(store.getSnapshot().transparentTheme).toBe(true)
+  })
+
+  it('mirrors the sidebar-mask flag', () => {
+    const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().sidebarMaskHidden).toBe(true)
+    store.actions.sync(snap({ sidebarMaskHidden: false }), 0)
+    expect(store.getSnapshot().sidebarMaskHidden).toBe(false)
+  })
+
+  it('mirrors the ambient backdrop effect', () => {
+    const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().backgroundEffect).toBe('gradient')
+    store.actions.sync(snap({ backgroundEffect: 'none' }), 0)
+    expect(store.getSnapshot().backgroundEffect).toBe('none')
+  })
+
+  it('mirrors the ambient effect tunables', () => {
+    const store = createAppearanceRowStore().create()
+    store.actions.sync(snap({
+      backgroundEffectColors: ['#102030'],
+      backgroundEffectSpeed: 160,
+      backgroundEffectCount: 3,
+      backgroundEffectPreset: 'sakura',
+      backgroundEffectVariant: 'rays',
+    }), 0)
+    expect(store.getSnapshot()).toMatchObject({
+      backgroundEffectColors: ['#102030'],
+      backgroundEffectSpeed: 160,
+      backgroundEffectCount: 3,
+      backgroundEffectPreset: 'sakura',
+      backgroundEffectVariant: 'rays',
+    })
+  })
+
+  it('mirrors the pointer-effect flag, effect, and tunables', () => {
+    const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().cursorEffectEnabled).toBe(false)
+    expect(store.getSnapshot().cursorEffect).toBe('trail')
+    store.actions.sync(snap({
+      cursorEffectEnabled: true,
+      cursorEffect: 'splash',
+      cursorEffectColors: ['#102030'],
+      cursorEffectSpeed: 160,
+      cursorEffectSize: 120,
+      cursorEffectPreset: 'ocean',
+    }), 0)
+    expect(store.getSnapshot()).toMatchObject({
+      cursorEffectEnabled: true,
+      cursorEffect: 'splash',
+      cursorEffectColors: ['#102030'],
+      cursorEffectSpeed: 160,
+      cursorEffectSize: 120,
+      cursorEffectPreset: 'ocean',
+    })
+    store.actions.sync(snap({ cursorEffect: 'pixel-trail' as unknown as NonNullable<AppearanceSyncSnapshot['cursorEffect']> }), 1)
+    expect(store.getSnapshot().cursorEffect).toBe('trail')
+    store.actions.sync(snap({ cursorEffect: 'splash-cursor' as unknown as NonNullable<AppearanceSyncSnapshot['cursorEffect']> }), 2)
+    expect(store.getSnapshot().cursorEffect).toBe('splash')
   })
 
   it('mirrors wallpaperSources and wallpaperFavorites', () => {

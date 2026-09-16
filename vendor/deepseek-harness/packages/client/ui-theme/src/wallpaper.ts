@@ -32,6 +32,15 @@ export const WALLPAPER_BLEED = 48
 /** Root attribute flipped on while a wallpaper is live. */
 export const WALLPAPER_ATTR = 'data-dsh-wallpaper'
 
+/** Ambient gradient element inside the shared fixed layer. */
+export const GRADIENT_LAYER_ID = 'dsh-gradient'
+
+/** Blurred container carrying the looping blooms. */
+export const GRADIENT_BLOBS_ID = 'dsh-gradient-blobs'
+
+/** Root attribute flipped on while the gradient backdrop effect is live. */
+export const GRADIENT_ATTR = 'data-dsh-gradient'
+
 /**
  * Root attribute flipped on while the transparent theme is effective (the
  * flag is on and a wallpaper is live). The stylesheet drops the wallpaper
@@ -64,6 +73,90 @@ export const MAX_WALLPAPER_CANVAS_SOLIDITY = 45
 
 /** Glass opacity at or above which Appearance hints that the wallpaper is covered. */
 export const WALLPAPER_HIGH_GLASS_HINT = 90
+
+/** Lowest ambient-gradient speed percent the settings slider accepts. */
+export const MIN_BACKGROUND_EFFECT_SPEED = 20
+/** Highest ambient-gradient speed percent the settings slider accepts. */
+export const MAX_BACKGROUND_EFFECT_SPEED = 300
+/**
+ * Speed percent whose divisor is exactly 1: the authored keyframe durations.
+ * The inline `--dsh-gradient-speed` override is omitted at this value.
+ */
+export const NEUTRAL_BACKGROUND_EFFECT_SPEED = 100
+
+/** Default ambient-gradient speed percent. */
+export const DEFAULT_BACKGROUND_EFFECT_SPEED = 190
+
+/** Lowest bloom count the ambient gradient paints. */
+export const MIN_BACKGROUND_EFFECT_COUNT = 1
+/** Highest bloom count; the authored set is five blooms. */
+export const MAX_BACKGROUND_EFFECT_COUNT = 5
+/** Default ambient-gradient bloom count. */
+export const DEFAULT_BACKGROUND_EFFECT_COUNT = MAX_BACKGROUND_EFFECT_COUNT
+
+/** Bloom shapes the ambient gradient can paint (`data-variant` on `#dsh-gradient`). */
+export const BACKGROUND_EFFECT_VARIANTS = ['orbs', 'aurora', 'chaos', 'rays'] as const
+
+/** Default bloom shape. */
+export const DEFAULT_BACKGROUND_EFFECT_VARIANT = 'orbs'
+
+/** Color slots a stored override may fill: base start, base end, blooms 1–5. */
+export const BACKGROUND_EFFECT_COLOR_SLOTS = 7
+
+/** Inline custom-property names the color slots write onto `#dsh-gradient`. */
+const GRADIENT_COLOR_VARS = [
+  '--dsh-gradient-start',
+  '--dsh-gradient-end',
+  '--dsh-gradient-1',
+  '--dsh-gradient-2',
+  '--dsh-gradient-3',
+  '--dsh-gradient-4',
+  '--dsh-gradient-5',
+] as const
+
+const EFFECT_COLOR = /^#[0-9a-f]{6}$/i
+
+/**
+ * Clamp an ambient-gradient speed percent into the slider range.
+ * @param value - raw slider or Host number.
+ * @returns an integer percent, {@link MIN_BACKGROUND_EFFECT_SPEED}–{@link MAX_BACKGROUND_EFFECT_SPEED}.
+ */
+export function clampBackgroundEffectSpeed(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKGROUND_EFFECT_SPEED
+  return Math.min(MAX_BACKGROUND_EFFECT_SPEED, Math.max(MIN_BACKGROUND_EFFECT_SPEED, Math.round(value)))
+}
+
+/**
+ * Clamp an ambient-gradient bloom count into the authored range.
+ * @param value - raw slider or Host number.
+ * @returns an integer count, {@link MIN_BACKGROUND_EFFECT_COUNT}–{@link MAX_BACKGROUND_EFFECT_COUNT}.
+ */
+export function clampBackgroundEffectCount(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BACKGROUND_EFFECT_COUNT
+  return Math.min(MAX_BACKGROUND_EFFECT_COUNT, Math.max(MIN_BACKGROUND_EFFECT_COUNT, Math.round(value)))
+}
+
+/** Whether a slot value is a usable `#rrggbb` color override. */
+export function isBackgroundEffectColor(value: unknown): value is string {
+  return typeof value === 'string' && EFFECT_COLOR.test(value.trim())
+}
+
+/**
+ * Keep at most the authored color slots; each entry is a lowercase `#rrggbb`
+ * or `''` (the theme token paints that slot). Trailing empty slots are
+ * dropped so the stored list stays short.
+ * @param values - wire or writer input; non-arrays yield an empty list.
+ * @returns a persistable slot list.
+ */
+export function sanitizeBackgroundEffectColors(values: unknown): string[] {
+  if (!Array.isArray(values)) return []
+  const slots: string[] = []
+  for (const raw of values.slice(0, BACKGROUND_EFFECT_COLOR_SLOTS)) {
+    slots.push(isBackgroundEffectColor(raw) ? raw.trim().toLowerCase() : '')
+  }
+  while (slots.length > 0 && slots[slots.length - 1] === '') slots.pop()
+  return slots
+}
 
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'])
 
@@ -357,10 +450,30 @@ export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark'
  * and re-setting the megabyte-scale data URL or redrawing the bitmap on every
  * tick is what makes dragging janky.
  */
-let applied: { image: string; blurPx: number; factor: number } | null = null
+let applied: { image: string; blurPx: number; factor: number; gradient: boolean } | null = null
 let decodedFor = ''
 let decoded: HTMLImageElement | null = null
 let resizeBound = false
+
+
+/**
+ * Build the ambient gradient element: a blurred blob container with five
+ * looping blooms. Colors and motion live in
+ * `wallpaper.css` on the `--dsw-specific-gradient-*` theme tokens.
+ */
+function createGradientLayer(): HTMLElement {
+  const layer = document.createElement('div')
+  layer.id = GRADIENT_LAYER_ID
+  const blooms = document.createElement('div')
+  blooms.id = GRADIENT_BLOBS_ID
+  for (let index = 1; index <= 5; index += 1) {
+    const bloom = document.createElement('i')
+    bloom.dataset.blob = `${index}`
+    blooms.appendChild(bloom)
+  }
+  layer.appendChild(blooms)
+  return layer
+}
 
 /** Viewport plus bleed, in CSS px (matches the stylesheet's inset). */
 function layerCssSize(): { width: number; height: number } {
@@ -424,23 +537,69 @@ function redrawWallpaper(canvas: HTMLCanvasElement, image: string, factor: numbe
 }
 
 /**
- * Paint or remove the fixed wallpaper layer. Idempotent per field: only the
- * fields that actually changed touch the DOM. Safe when `document` is missing.
- * @param extras - stored image plus the two effect sliders.
+ * Write the stored effect overrides onto the gradient element. Empty slots
+ * fall back to the theme tokens through the stylesheet's var() chain, so a
+ * reset only removes the inline custom properties.
+ */
+function applyGradientConfig(gradientEl: HTMLElement, extras: {
+  backgroundEffectColors?: readonly string[] | undefined
+  backgroundEffectSpeed?: number | undefined
+  backgroundEffectCount?: number | undefined
+  backgroundEffectVariant?: string | undefined
+}): void {
+  const variant = extras.backgroundEffectVariant ?? ''
+  gradientEl.dataset.variant = (BACKGROUND_EFFECT_VARIANTS as readonly string[]).includes(variant)
+    ? variant
+    : DEFAULT_BACKGROUND_EFFECT_VARIANT
+  const colors = sanitizeBackgroundEffectColors(extras.backgroundEffectColors)
+  GRADIENT_COLOR_VARS.forEach((name, index) => {
+    const value = colors[index] ?? ''
+    if (value === '') gradientEl.style.removeProperty(name)
+    else gradientEl.style.setProperty(name, value)
+  })
+  const speed = clampBackgroundEffectSpeed(extras.backgroundEffectSpeed ?? DEFAULT_BACKGROUND_EFFECT_SPEED)
+  if (speed === NEUTRAL_BACKGROUND_EFFECT_SPEED) {
+    gradientEl.style.removeProperty('--dsh-gradient-speed')
+  } else {
+    gradientEl.style.setProperty('--dsh-gradient-speed', `${speed / 100}`)
+  }
+  const count = clampBackgroundEffectCount(extras.backgroundEffectCount ?? DEFAULT_BACKGROUND_EFFECT_COUNT)
+  let index = 0
+  for (const bloom of gradientEl.querySelectorAll<HTMLElement>('[data-blob]')) {
+    index += 1
+    bloom.hidden = index > count
+  }
+}
+
+/**
+ * Paint or remove the shared fixed backdrop layer. The layer hosts exactly
+ * one occupant: the wallpaper bitmap canvas while a data-URL image is set,
+ * or the ambient gradient element while `backgroundEffect` is `gradient`
+ * and no image is set — the image always wins. Idempotent per field: only
+ * the fields that actually changed touch the DOM. Safe when `document` is
+ * missing.
+ * @param extras - stored image, the two effect sliders, and the backdrop effect.
  */
 export function applyWallpaperLayer(extras: {
   wallpaperImage: string
   wallpaperBlur: number
   wallpaperPixelate: number
+  backgroundEffect?: string | undefined
+  backgroundEffectColors?: readonly string[] | undefined
+  backgroundEffectSpeed?: number | undefined
+  backgroundEffectCount?: number | undefined
+  backgroundEffectVariant?: string | undefined
 }): void {
   if (typeof document === 'undefined') return
   const image = isWallpaperDataUrl(extras.wallpaperImage) ? extras.wallpaperImage : ''
+  const gradient = image.length === 0 && extras.backgroundEffect === 'gradient'
   const root = document.documentElement
-  if (image.length === 0) {
+  if (image.length === 0 && !gradient) {
     applied = null
     decoded = null
     decodedFor = ''
     root.removeAttribute(WALLPAPER_ATTR)
+    root.removeAttribute(GRADIENT_ATTR)
     document.getElementById(WALLPAPER_LAYER_ID)?.remove()
     root.style.removeProperty('--dsh-wallpaper-blur')
     if (resizeBound && typeof window !== 'undefined') {
@@ -449,22 +608,38 @@ export function applyWallpaperLayer(extras: {
     }
     return
   }
-  const blurPx = wallpaperBlurPx(extras.wallpaperBlur)
-  const factor = wallpaperPixelFactor(extras.wallpaperPixelate)
-  root.setAttribute(WALLPAPER_ATTR, '')
+  root.toggleAttribute(WALLPAPER_ATTR, image.length > 0)
+  root.toggleAttribute(GRADIENT_ATTR, gradient)
   let layer = document.getElementById(WALLPAPER_LAYER_ID)
-  let canvas: HTMLCanvasElement
   if (layer === null) {
     layer = document.createElement('div')
     layer.id = WALLPAPER_LAYER_ID
     layer.setAttribute('aria-hidden', 'true')
+    document.body.insertBefore(layer, document.body.firstChild)
+    applied = null
+  }
+  if (gradient) {
+    const gradientEl = document.getElementById(GRADIENT_LAYER_ID) ?? createGradientLayer()
+    if (gradientEl.parentElement === null) layer.appendChild(gradientEl)
+    document.getElementById(WALLPAPER_INNER_ID)?.remove()
+    root.style.removeProperty('--dsh-wallpaper-blur')
+    if (resizeBound && typeof window !== 'undefined') {
+      window.removeEventListener('resize', redrawApplied)
+      resizeBound = false
+    }
+    applyGradientConfig(gradientEl, extras)
+    applied = { image: '', blurPx: 0, factor: 1, gradient: true }
+    return
+  }
+  document.getElementById(GRADIENT_LAYER_ID)?.remove()
+  const blurPx = wallpaperBlurPx(extras.wallpaperBlur)
+  const factor = wallpaperPixelFactor(extras.wallpaperPixelate)
+  let canvas = document.getElementById(WALLPAPER_INNER_ID) as HTMLCanvasElement | null
+  if (canvas === null) {
     canvas = document.createElement('canvas')
     canvas.id = WALLPAPER_INNER_ID
     layer.appendChild(canvas)
-    document.body.insertBefore(layer, document.body.firstChild)
     applied = null
-  } else {
-    canvas = layer.firstElementChild as HTMLCanvasElement
   }
   if (!resizeBound && typeof window !== 'undefined') {
     window.addEventListener('resize', redrawApplied)
@@ -476,6 +651,6 @@ export function applyWallpaperLayer(extras: {
   const imageChanged = applied === null || applied.image !== image
   const factorChanged = applied === null || applied.factor !== factor
   if (imageChanged) canvas.style.backgroundImage = `url("${image}")`
-  applied = { image, blurPx, factor }
+  applied = { image, blurPx, factor, gradient: false }
   if (imageChanged || factorChanged) redrawWallpaper(canvas, image, factor)
 }

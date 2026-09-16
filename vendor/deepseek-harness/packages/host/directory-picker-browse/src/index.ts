@@ -15,7 +15,7 @@ import { basename, dirname, join, posix, resolve, win32 } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
-  DirectoryPicker, DirectoryPickerError,
+  DirectoryPicker, DirectoryPickerError, WINDOWS_VOLUME_ROOT,
 } from '@deepseek-ai/dsh-host-directory-picker'
 import type {
   DirectoryEntry, DirectoryListing, DirectoryPickerCapability,
@@ -143,6 +143,59 @@ function asError(reason: unknown): Error {
 function swallowCloseFailure(): void {}
 /* v8 ignore stop */
 
+/**
+ * Per-letter probe bound of the volume picker: a polled floppy or a still
+ * spinning optical controller must not hold the level open behind its
+ * driver. Fixed by the interaction, not the deployment — a longer wait buys
+ * nothing the operator can act on faster than typing the path.
+ */
+const VOLUME_PROBE_TIMEOUT_MS = 300
+
+/**
+ * One drive letter's row for the Win32 volume picker: the `stat` races the
+ * probe window (and the caller's lifetime), so an absent, empty, blocked, or
+ * non-directory letter is simply omitted rather than listed or surfaced.
+ * @param letter - the drive letter A–Z.
+ * @param signal - caller lifetime, raced beside the probe's own window.
+ * @returns the drive-root row, or null when the letter is not enterable.
+ */
+async function probeDrive(letter: string, signal: AbortSignal | undefined): Promise<DirectoryEntry | null> {
+  const root = `${letter}:\\`
+  const lifetime = [AbortSignal.timeout(VOLUME_PROBE_TIMEOUT_MS)]
+  if (signal !== undefined) lifetime.push(signal)
+  try {
+    const stats = await raceAbort(stat(root), AbortSignal.any(lifetime))
+    return stats.isDirectory() ? { name: `${letter}:`, path: root, hidden: false } : null
+  } catch {
+    // Not enterable — the picker shows what can be entered.
+    return null
+  }
+}
+
+/**
+ * The Win32 volume-picker level: one row per enterable drive root, probed
+ * A–Z in parallel so the level answers inside one probe window instead of a
+ * serial sweep of every letter's worst-case stall.
+ * @param home - the host account's home, stamped on the listing.
+ * @param signal - caller lifetime; an abort rejects the whole level.
+ * @returns the synthetic level, carrying itself as the sole crumb.
+ */
+async function volumeListing(home: string, signal: AbortSignal | undefined): Promise<DirectoryListing> {
+  const probes: Promise<DirectoryEntry | null>[] = []
+  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code += 1) {
+    probes.push(probeDrive(String.fromCharCode(code), signal))
+  }
+  const probed = await Promise.all(probes)
+  signal?.throwIfAborted()
+  return {
+    path: WINDOWS_VOLUME_ROOT,
+    home,
+    crumbs: [{ name: WINDOWS_VOLUME_ROOT, path: WINDOWS_VOLUME_ROOT, hidden: false }],
+    entries: probed.filter((entry): entry is DirectoryEntry => entry !== null),
+    truncated: false,
+  }
+}
+
 /** Message text of an unknown thrown value. */
 function messageOf(error: unknown): string {
   /* v8 ignore next -- node:fs rejects with Error instances; the String arm only satisfies the unknown narrowing. */
@@ -216,6 +269,12 @@ export default class BrowseDirectoryPicker extends DirectoryPicker {
 
   private async list(path?: string, signal?: AbortSignal): Promise<DirectoryListing> {
     const home = homedir()
+    // The Win32 volume picker is a synthetic level, not a filesystem path:
+    // it answers before the fully-qualified fence and resolve() (on POSIX
+    // the sentinel stays unqualified, so the fence below rejects it).
+    if (process.platform === 'win32' && path === WINDOWS_VOLUME_ROOT) {
+      return volumeListing(home, signal)
+    }
     // The seam contract takes fully qualified paths only; resolve() would
     // silently rebase a relative or empty wire value under the host process
     // cwd (or, for rooted drive-less Windows forms, its current drive).
@@ -293,10 +352,22 @@ export default class BrowseDirectoryPicker extends DirectoryPicker {
       }
       entries.push(row)
     }
-    return { path: target, home, crumbs: ancestryCrumbs(target), entries, truncated }
+    const crumbs = ancestryCrumbs(target)
+    // On Win32 the display root is the volume picker, one step above every
+    // drive or UNC chain — the browser's only way across drives.
+    if (process.platform === 'win32') {
+      crumbs.unshift({ name: WINDOWS_VOLUME_ROOT, path: WINDOWS_VOLUME_ROOT, hidden: false })
+    }
+    return { path: target, home, crumbs, entries, truncated }
   }
 
   private async createDirectory(path: string, name: string): Promise<string> {
+    // The volume picker is a synthetic level, never a mkdir parent: refuse
+    // it before the fully-qualified fence so the answer is the same on every
+    // platform (POSIX would reject it as unqualified anyway).
+    if (path === WINDOWS_VOLUME_ROOT) {
+      throw new DirectoryPickerError('directory-create-failed', path, `cannot create under "${path}": not a filesystem directory`)
+    }
     // Same fully-qualified fence as list: never rebase a parent under the
     // cwd or the current drive.
     if (!fullyQualified(path)) {

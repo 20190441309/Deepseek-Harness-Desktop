@@ -16,6 +16,17 @@ import type { DirectoryListing } from './types.ts'
 
 export type { DirectoryEntry, DirectoryListing } from './types.ts'
 
+/**
+ * The Win32 volume-picker list path: a synthetic display root above every
+ * drive letter that never names a filesystem location. On Windows a `browse`
+ * backend answers `list(WINDOWS_VOLUME_ROOT)` with the enterable drive roots
+ * and prepends this crumb to every listing's ancestry; `createDirectory`
+ * against it fails closed. POSIX backends reject it as an unqualified path.
+ * The Client browser duplicates this literal — its bundle must not import
+ * this Host-only package.
+ */
+export const WINDOWS_VOLUME_ROOT = '\\\\.\\dsh-computer'
+
 /** The native interaction: one OS directory chooser on the host display. */
 export interface DirectoryPickerNativeCapability {
   kind: 'native'

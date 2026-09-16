@@ -98,8 +98,8 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx': '<TasksSectionHeader onCreate={() => { connectNoDirectory() }} /><GroupSessionRun open={group.expanded} />\n',
       'packages/client/ui-workspace/src/client/locales.ts': "'menu.noDirectory': 'No workspace folder',\n",
       'packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx': 'const noDirectorySession = false\nvoid selectNoDirectory()\n',
-      'packages/client/ui-conversation/src/client/apply.ts': 'selectNoDirectory: async () => { await workspaceNavigation.connectNoDirectory() }\n',
-      'packages/client/ui-conversation/src/client/locales.ts': "'hero.noDirectory': 'No workspace folder',\n",
+      'packages/client/ui-conversation/src/client/apply.ts': "selectNoDirectory: async () => { await workspaceNavigation.connectNoDirectory() }\nimport { TypingFxRow } from './settings/TypingFxRow.tsx'\nctx.slots.inject('settings.appearance.item', () => {})\ntypingFx: submissionPolicy.typingFx\n",
+      'packages/client/ui-conversation/src/client/locales.ts': "'hero.noDirectory': 'No workspace folder',\n'settings.typingFx.title': '输入特效',\n",
       'packages/api/workspace-controller/tsconfig.host.json': '{"references":[{"path":"../../util/home-paths"}]}\n',
       'packages/api/workspace-controller/package.json': '{"peerDependencies":{"@deepseek-ai/dsh-home-paths":"workspace:^"}}\n',
       'apps/cli/src/args.ts': "program.option('--skip-user-plugins', 'boot the shipped bundle template')\n",
@@ -114,6 +114,25 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'apps/web/tsconfig.json': '{\n  "exclude": ["tests/composer-resize-dock.e2e.ts"]\n}\n',
       'apps/web/tests/snapshots/agent-preset-selection/header.expected.md': '- navigation "Session hierarchy"\n',
       'package.json': '"build:lib:client": "node packages/client/ui-user-terminal/scripts/copy-ghostty-assets.mjs"\n',
+      'packages/client/ui-settings/src/client/contract/slots.ts': "'settings.appearance.item': { kind: 'list', scope: 'root', owner: SettingsAppearanceItemOwnerProps }\ninterface SettingsAppearanceItemOwnerProps {}\n",
+      'packages/client/ui-theme/src/client/index.ts': "children: { 'settings.appearance.item': { kind: 'list', scope: 'root' } }\n",
+      'packages/client/ui-theme/src/client/AppearanceSection.tsx': "{renderSlot('settings.appearance.item', {})}\n",
+      'packages/client/ui-conversation/src/submission-settings.ts': "const TYPING_FX_FIELD = 'typingFx'\nconst TYPING_FX_EFFECTS = ['drop']\nconst TYPING_FX_COLOR_SCHEMES = ['ocean']\nfunction normalizeTypingFxStyle() {}\n",
+      'packages/client/ui-conversation/src/index.ts': "export { TYPING_FX_FIELD, DEFAULT_TYPING_FX_STYLE }\n",
+      'packages/client/ui-conversation/src/client/input/submission-policy.ts': 'readonly typingFxStyle = {}\nsetTypingFxConfiguration() {}\n',
+      'packages/client/ui-conversation/src/client/input/editor/typing-fx.ts': 'export function typingFxInsertedText() {}\nexport const MAX_TYPING_FX_ECHOES = 24\n',
+      'packages/client/ui-conversation/src/client/TypingFxLayer.tsx': 'data-typing-fx-echo={echo.id}\neditor.registerUpdateListener\n',
+      'packages/client/ui-conversation/src/client/TypingFxLayer.module.css': '@keyframes dsh-typing-fx-drop {}\n@media (prefers-reduced-motion: reduce) {}\n',
+      'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx': 'import { TypingFxLayer } from "../TypingFxLayer.tsx"\ndata-typing-fx-caret\n',
+      'packages/client/ui-conversation/src/client/skeleton/InputBar.module.css': '.input[data-typing-fx-caret] { caret-color: transparent; }\n',
+      'packages/client/ui-conversation/src/client/settings/TypingFxRow.tsx': "PropsRuntime<'settings.appearance.item'>\nimport { TypingFxModal } from './TypingFxModal.tsx'\n",
+      'packages/client/ui-conversation/src/client/settings/TypingFxModal.tsx': "const TYPING_FX_EXPORT_CORE = 'dsh-typing-fx'\ndata-typing-fx-root\n",
+      'packages/client/ui-conversation/tests/typing-fx.client.spec.ts': 'diffInsertedText(\n',
+      'packages/client/ui-conversation/tests/typing-fx-layer.client.spec.tsx': 'import { TypingFxLayer }\ndata-typing-fx-echo\n',
+      'packages/client/ui-conversation/tests/typing-fx-row.client.spec.tsx': 'import { TypingFxRow }\n',
+      'packages/host/directory-picker/src/index.ts': "export const WINDOWS_VOLUME_ROOT = '\\\\.\\\\dsh-computer'\n",
+      'packages/host/directory-picker-browse/src/index.ts': 'async function volumeListing() {}\nconst sentinel = WINDOWS_VOLUME_ROOT\n',
+      'packages/host/directory-picker-browse/tests/service.spec.ts': 'WINDOWS_VOLUME_ROOT\n',
     };
     writeFile(root, marker.file, content[marker.file] ?? 'export {}\n');
   }
@@ -184,7 +203,7 @@ test('assertDesktopForks throws when copy-ghostty-assets drops out of package.js
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /copy-ghostty-assets/);
 });
 
-test('assertDesktopForks accepts the current vendor tree at rc.1', () => {
+test('assertDesktopForks accepts the current vendor tree at rc.2', () => {
   const vendor = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
-  assertDesktopForks(vendor, '0.1.5-rc.1');
+  assertDesktopForks(vendor, '0.1.5-rc.2');
 });

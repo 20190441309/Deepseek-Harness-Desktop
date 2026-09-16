@@ -8,7 +8,9 @@
 
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { deriveThemeTokens } from './derive.ts'
-import { DEFAULT_FAMILY_ID, type ThemeTokens } from './theme-family.ts'
+import {
+  DEFAULT_FAMILY_ID, SIDEBAR_RAIL_FILL_TOKEN, SIDEBAR_UNMASKED_FILL, type ThemeTokens,
+} from './theme-family.ts'
 import { resolveThemeFamily } from './builtin-families.ts'
 import {
   DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, DEFAULT_THEME_SETTINGS, resolveThemeSettings,
@@ -35,7 +37,11 @@ export interface ThemeBootPayload {
 function tokensFor(settings: ThemeSettings, mode: 'light' | 'dark'): ThemeTokens {
   const familyId = mode === 'dark' ? settings.activeDarkThemeId : settings.activeLightThemeId
   const family = resolveThemeFamily(familyId, settings.customThemes)
-  return family.id === DEFAULT_FAMILY_ID ? {} : deriveThemeTokens(family[mode])
+  const tokens: ThemeTokens = family.id === DEFAULT_FAMILY_ID ? {} : deriveThemeTokens(family[mode])
+  // Same rewrite composeActive applies; the pre-plugin interval must not
+  // flash the masked rail back.
+  if (settings.sidebarMaskHidden) tokens[SIDEBAR_RAIL_FILL_TOKEN] = SIDEBAR_UNMASKED_FILL
+  return tokens
 }
 
 /**

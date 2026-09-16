@@ -73,6 +73,42 @@ export function normalizeHarnessRestart(input?: Partial<HarnessRestartConfig> | 
   }
 }
 
+/** Live2D pet settings (`live2dPet.settings`) the 桌宠 section edits. Every
+ * field is optional on the wire — the shell normalizes each patch with the
+ * same rules the pet window uses. */
+export type Live2dPetSettings = {
+  scale?: number
+  opacity?: number
+  personality?: string
+  activity?: string
+  selfTalk?: boolean
+  wander?: boolean
+  lockPosition?: boolean
+  shiftToDrag?: boolean
+  powerSave?: boolean
+  clickSound?: boolean
+  chatEnabled?: boolean
+  approvalButtons?: boolean
+  /** Vision model for 「看看屏幕」; empty keeps the look cell hidden. */
+  lookModel?: string
+  /** Provider id of the picked vision route; informational for the select. */
+  lookProvider?: string
+}
+
+/** The pet slice of the public config: the overlay switch plus settings. */
+export type Live2dPetConfig = {
+  enabled?: boolean
+  settings?: Live2dPetSettings
+}
+
+/** Result of the `saveLive2dPetSettings` write channel. */
+export type Live2dPetSettingsResult = {
+  ok?: boolean
+  enabled?: boolean
+  settings?: Live2dPetSettings
+  reason?: string
+}
+
 /** Public desktop config fields the settings UI reads or writes. */
 export type DesktopConfig = {
   appVersion?: string
@@ -86,6 +122,13 @@ export type DesktopConfig = {
    * restarts Harness after this field changes.
    */
   dshbotEnabled?: boolean
+  /**
+   * Whether the desktop mounts the built-in dsh-whale assistant plugin;
+   * the shell restarts Harness after this field changes.
+   */
+  whaleAssistantEnabled?: boolean
+  /** Desktop pet state — `settings` is written via saveLive2dPetSettings. */
+  live2dPet?: Live2dPetConfig
   /**
    * How the desktop persists credentials.json: `encrypted` via the OS
    * keychain (safeStorage), or `plaintext` on platforms without one.
@@ -105,6 +148,17 @@ export type DesktopShell = {
   installUpdate?: () => Promise<UpdateInfo>
   onUpdateProgress?: (handler: (payload: ProgressPayload) => void) => () => void
   openDshHome?: () => Promise<OpenDshHomeResult>
+  /**
+   * Live2D pet write channel: `{patch}` merges normalized fields,
+   * `{reset:true}` restores defaults, `enabled` shows or hides the overlay.
+   * Routing through the pet manager keeps the live pet in sync — pet
+   * settings are intentionally absent from the saveConfig whitelist.
+   */
+  saveLive2dPetSettings?: (body: {
+    enabled?: boolean
+    patch?: Live2dPetSettings
+    reset?: boolean
+  }) => Promise<Live2dPetSettingsResult>
 }
 
 /**

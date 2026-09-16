@@ -6,6 +6,9 @@ const { DEFAULT_CLOSE_TO_TRAY } = require('./close-behavior');
 const { normalizeRelayHostToken } = require('../shared/relay-auth');
 const { normalizeRelayOrigin } = require('../shared/lan');
 const { normalizeRemotePatch } = require('./remote-patch');
+const { normalizeGrowthState } = require('./pet-growth');
+const { normalizeStats } = require('./pet-stats');
+const petSettings = require('./pet-settings');
 
 const REMOTE_FEATURE_ENABLED = true;
 
@@ -48,10 +51,25 @@ const DEFAULTS = {
   askOnUpdate: true,
   disabledPlugins: [],
   dshbotEnabled: false,
+  // Whale assistant (R3) — off by default so it can never silently hijack
+  // IM routing or spawn a session before the feature card ships.
+  whaleAssistantEnabled: false,
   pet: {
     enabled: true,
     xRatio: 0.82,
     yRatio: 0.72,
+    petId: '',
+  },
+  live2dPet: {
+    enabled: true,
+    x: null,
+    y: null,
+    growth: { points: 0, tokensFed: 0, tokensSeen: 0 },
+    stats: { satiety: 70, mood: 70, affection: 0, lastTick: 0, care: {} },
+    settings: petSettings.defaultSettings(),
+    dsh: petSettings.defaultDshState(),
+    fileEaten: { total: 0, history: [] },
+    assistantSessionId: '',
   },
 };
 
@@ -70,6 +88,7 @@ function normalizePetState(value) {
     enabled: source.enabled !== false,
     xRatio: clampRatio(source.xRatio, DEFAULTS.pet.xRatio),
     yRatio: clampRatio(source.yRatio, DEFAULTS.pet.yRatio),
+    petId: typeof source.petId === 'string' ? source.petId : '',
   };
 }
 
@@ -80,13 +99,36 @@ function normalizePetStateInConfig(config) {
   };
 }
 
+function normalizeLive2dPetState(value) {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    enabled: source.enabled !== false,
+    x: Number.isFinite(source.x) ? Math.round(source.x) : null,
+    y: Number.isFinite(source.y) ? Math.round(source.y) : null,
+    growth: normalizeGrowthState(source.growth),
+    stats: normalizeStats(source.stats),
+    settings: petSettings.normalizeSettings(source.settings),
+    dsh: petSettings.normalizeDshState(source.dsh),
+    fileEaten: petSettings.normalizeFileEaten(source.fileEaten),
+    assistantSessionId: typeof source.assistantSessionId === 'string'
+      ? source.assistantSessionId : '',
+  };
+}
+
+function normalizeLive2dPetStateInConfig(config) {
+  return {
+    ...config,
+    live2dPet: normalizeLive2dPetState(config?.live2dPet),
+  };
+}
+
 function normalizeRendererConfigPatch(patch) {
   if (!isPlainObject(patch)) {
     throw new TypeError('Config patch must be an object');
   }
   const next = {};
   for (const [key, value] of Object.entries(patch)) {
-    if (['closeToTray', 'openAtLogin', 'openDevTools', 'harnessAutoRestart', 'autoStartDesktop', 'dshbotEnabled'].includes(key)) {
+    if (['closeToTray', 'openAtLogin', 'openDevTools', 'harnessAutoRestart', 'autoStartDesktop', 'dshbotEnabled', 'whaleAssistantEnabled'].includes(key)) {
       if (typeof value !== 'boolean') {
         throw new TypeError(`${key} must be a boolean`);
       }
@@ -225,12 +267,13 @@ function normalizePluginRecovery(config) {
 function normalizeDisabledPlugins(list) {
   const { withoutDshImAliases } = require('./dsh-im-desktop');
   const { withoutDshbotAliases } = require('./dshbot-desktop');
+  const { withoutDshWhaleAliases } = require('./dsh-whale-desktop');
   const { withoutUsagePanelAliases } = require('./usage-panel-preset');
-  return [...new Set(withoutDshbotAliases(withoutUsagePanelAliases(withoutDshImAliases(
+  return [...new Set(withoutDshWhaleAliases(withoutDshbotAliases(withoutUsagePanelAliases(withoutDshImAliases(
     (Array.isArray(list) ? list : [])
       .map((name) => String(name || '').trim())
       .filter(Boolean),
-  ))))];
+  )))))];
 }
 
 function normalizeLauncherSettings(config) {
@@ -404,7 +447,7 @@ function loadConfig() {
     remoteDevices: Array.isArray(creds.remoteDevices) ? creds.remoteDevices : [],
   };
   config = normalizeLauncherSettings(
-    normalizePetStateInConfig(normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery(config)))),
+    normalizePetStateInConfig(normalizeLive2dPetStateInConfig(normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery(config))))),
   );
   if (!config.workspace || isUnsafeWorkspace(config.workspace)) {
     config.workspace = defaultWorkspace();
@@ -420,7 +463,7 @@ function loadConfig() {
 function saveConfig(next) {
   const current = loadConfig();
   const merged = normalizeLauncherSettings(
-    normalizePetStateInConfig(normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery({ ...current, ...next })))),
+    normalizePetStateInConfig(normalizeLive2dPetStateInConfig(normalizeRemoteConfig(normalizePluginRecovery(normalizeHarnessRecovery({ ...current, ...next }))))),
   );
   if (merged.githubToken === '********') {
     merged.githubToken = current.githubToken;
@@ -448,6 +491,7 @@ function publicConfig(config) {
   return {
     ...config,
     pet: normalizePetState(config?.pet),
+    live2dPet: normalizeLive2dPetState(config?.live2dPet),
     apiKey: config.apiKey ? '********' : '',
     githubToken: config.githubToken ? '********' : '',
     hasApiKey: Boolean(config.apiKey),

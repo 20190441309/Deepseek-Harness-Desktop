@@ -103,15 +103,46 @@ describe('ComposerAttachments', () => {
     expect(view.queryByRole('status')).toBeNull()
 
     const image = attachment('dropped').file
-    const dataTransfer = { types: ['Files'], files: [image], dropEffect: 'none' }
+    const dataTransfer = { types: ['Files'], files: [image], items: [], dropEffect: 'none' }
     expect(fireEvent.dragEnter(document.body, { dataTransfer })).toBe(false)
     expect(view.getByRole('status').textContent).toContain('文件或图片拖动到此处即可添加')
     expect(view.getByRole('status').textContent).toContain('图片限制：最多 20 张，每张 5MB')
     expect(fireEvent.dragOver(document.body, { dataTransfer })).toBe(false)
     expect(dataTransfer.dropEffect).toBe('copy')
     expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
-    expect(onAddFiles).toHaveBeenCalledWith([image])
+    expect(onAddFiles).toHaveBeenCalledWith([image], [])
     expect(view.queryByRole('status')).toBeNull()
+  })
+
+  it('reports a dropped folder as rejected instead of drafting an unreadable stub', () => {
+    const onAddFiles = vi.fn()
+    const view = render(<ComposerAttachments {...props({ onAddFiles })} />)
+    const file = fileDraft('kept').file
+    const folder = new File([], 'autoshop-mcp-server-main')
+    const orphan = new File([Uint8Array.of(1)], 'orphan.txt', { type: 'text/plain' })
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file, folder, orphan],
+      dropEffect: 'none',
+      items: [
+        {
+          kind: 'file',
+          getAsFile: () => file,
+          webkitGetAsEntry: () => ({ isFile: true, isDirectory: false, name: 'kept.pdf' }),
+        },
+        {
+          kind: 'file',
+          getAsFile: () => folder,
+          webkitGetAsEntry: () => ({ isFile: false, isDirectory: true, name: 'autoshop-mcp-server-main' }),
+        },
+        { kind: 'string', getAsFile: () => null, webkitGetAsEntry: () => null },
+        { kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => null },
+      ],
+    }
+    expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
+    // The files entry no item claimed still lands as a file, never silently lost.
+    expect(onAddFiles).toHaveBeenCalledWith([file, orphan], [folder])
+    view.unmount()
   })
 
   it('tracks nested file drags and clears an aborted drag', () => {
@@ -223,6 +254,8 @@ describe('ComposerAttachments file drafts', () => {
     expect(group.textContent).toContain('ok.pdf')
     expect(group.textContent).toContain('PDF 3B')
     expect(group.textContent).toContain('上传失败，点击重试')
+    const badCard = view.getByRole('button', { name: '重试上传 bad.pdf' }).closest('[title]')
+    expect(badCard?.getAttribute('title')).toBe('bad.pdf\nboom')
     fireEvent.click(view.getByRole('button', { name: '重试上传 bad.pdf' }))
     expect(onRetryFile).toHaveBeenCalledWith('bad')
     fireEvent.click(view.getByRole('button', { name: '移除文件 ok.pdf' }))

@@ -74,8 +74,11 @@ function writeProfileDep(packageName, spec) {
 function writePlugin(packageName, manifest, files = {}) {
   const dir = path.join(profileDir(), 'node_modules', packageName);
   fs.mkdirSync(dir, { recursive: true });
+  // Real installs always carry a version; `version: undefined` drops the key
+  // for the versionless-manifest cases the install validation must refuse.
   fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
     name: packageName,
+    version: '0.0.0',
     ...manifest,
   }, null, 2)}\n`);
   for (const [rel, body] of Object.entries(files)) {
@@ -425,14 +428,32 @@ test('parseImportRegistrySpec accepts pinned name@semver and rejects loose specs
 });
 
 test('installImportPlugin adds a registry name@semver spec through the CLI', async () => {
-  const { calls, runPlugin } = recordRunner();
+  const { calls, runPlugin } = recordRunner((spec) => {
+    writeProfileDep('good-plugin', spec);
+    writeClientPlugin('good-plugin');
+  });
+  const result = await installImportPlugin('good-plugin@1.2.3', { runPlugin });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['add', 'good-plugin@1.2.3']]);
+});
+
+test('installImportPlugin re-adds an already-installed registry name', async () => {
+  writeProfileDep('good-plugin', '1.0.0');
+  writeClientPlugin('good-plugin');
+  const { calls, runPlugin } = recordRunner((spec) => {
+    writeProfileDep('good-plugin', spec);
+    writeClientPlugin('good-plugin');
+  });
   const result = await installImportPlugin('good-plugin@1.2.3', { runPlugin });
   assert.equal(result.ok, true);
   assert.deepEqual(calls, [['add', 'good-plugin@1.2.3']]);
 });
 
 test('installImportPlugin still accepts the github channel', async () => {
-  const { calls, runPlugin } = recordRunner();
+  const { calls, runPlugin } = recordRunner((spec) => {
+    writeProfileDep('good', spec);
+    writeClientPlugin('good');
+  });
   const result = await installImportPlugin('github:acme/good#0123456789abcdef0123456789abcdef01234567', { runPlugin });
   assert.equal(result.ok, true);
   assert.equal(calls.length, 1);
@@ -501,7 +522,11 @@ test('dropped basenames are rejected under any scope or GitHub owner (rename byp
 });
 
 test('segment-exact dropped matching keeps different packages installable', async () => {
-  const { calls, runPlugin } = recordRunner();
+  const { calls, runPlugin } = recordRunner((spec) => {
+    const name = spec.startsWith('github:') ? 'dsh-im-bridge' : 'dsh-genui-viewer';
+    writeProfileDep(name, spec);
+    writeClientPlugin(name);
+  });
   const bridge = await installPlugin('github:acme/dsh-im-bridge', { runPlugin });
   assert.equal(bridge.ok, true);
   const viewer = await installImportPlugin('dsh-genui-viewer@1.0.0', { runPlugin });
@@ -687,6 +712,54 @@ test('installMarketplacePlugin removes a github package with no loadable dsh ent
   assert.equal(result.ok, false);
   assert.match(result.error, /可加载/);
   assert.deepEqual(calls, [['add', GITHUB_SPEC], ['remove', '@virex/dsh-status-rotator']]);
+});
+
+test('installMarketplacePlugin removes a versionless package that would break request inventory', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep(NPM_SPEC, 'workspace:*');
+    writePlugin(NPM_SPEC, {
+      version: undefined,
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, {
+      'cordis.patch.yml': `- insert:\n    - id: versionless\n      name: ${NPM_SPEC}\n`,
+    });
+  });
+  const result = await installMarketplacePlugin(NPM_ID, { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /name 或 version/);
+  assert.deepEqual(calls, [['add', NPM_SPEC], ['remove', NPM_SPEC]]);
+});
+
+test('installPlugin removes a versionless github package that would break request inventory', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep('versionless-plugin', 'git+https://github.com/acme/versionless-plugin.git');
+    writePlugin('versionless-plugin', {
+      version: undefined,
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, {
+      'cordis.patch.yml': '- insert:\n    - id: versionless\n      name: versionless-plugin\n',
+    });
+  });
+  const result = await installPlugin('github:acme/versionless-plugin', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /name 或 version/);
+  assert.deepEqual(calls, [['add', 'github:acme/versionless-plugin'], ['remove', 'versionless-plugin']]);
+});
+
+test('installImportPlugin removes a versionless registry package', async () => {
+  const { calls, runPlugin } = recordRunner(() => {
+    writeProfileDep('versionless-plugin', '0.9.0');
+    writePlugin('versionless-plugin', {
+      version: undefined,
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, {
+      'cordis.patch.yml': '- insert:\n    - id: versionless\n      name: versionless-plugin\n',
+    });
+  });
+  const result = await installImportPlugin('versionless-plugin@0.9.0', { runPlugin });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /name 或 version/);
+  assert.deepEqual(calls, [['add', 'versionless-plugin@0.9.0'], ['remove', 'versionless-plugin']]);
 });
 
 test('installMarketplacePlugin removes a #path: package with no loadable dsh entry', async () => {
@@ -915,6 +988,41 @@ test('updateMarketplacePlugin rolls back a successful command that did not chang
   assert.equal(result.rolledBack, true);
   assert.match(result.error, /没有变化/);
   assert.deepEqual(calls, [['add', `${NPM_SPEC}@2.0.0`], ['install']]);
+});
+
+test('updateMarketplacePlugin rolls back a github update whose manifest lacks a version', async () => {
+  const previous = '1111111111111111111111111111111111111111';
+  const latest = '2222222222222222222222222222222222222222';
+  writeGithubOnlyStatusRotatorRegistry();
+  writeProfileDep('@virex/dsh-status-rotator', `${GITHUB_SPEC}#${previous}`);
+  writeClientPlugin('@virex/dsh-status-rotator');
+  writeLockCommit('01Virex', 'dsh-status-rotator', previous);
+  const calls = [];
+  const result = await updateMarketplacePlugin(GITHUB_ID, {
+    fetchImpl: async () => ({ ok: true, text: async () => latest }),
+    runPlugin: async (args) => {
+      calls.push(args.slice());
+      if (args[0] === 'add') {
+        writeProfileDep('@virex/dsh-status-rotator', args[1]);
+        writePlugin('@virex/dsh-status-rotator', {
+          version: undefined,
+          dsh: { client: { platform: 'web', inject: [] } },
+          exports: { './client': { default: './lib/client.js' } },
+        }, { 'lib/client.js': 'export {}\n' });
+        writeLockCommit('01Virex', 'dsh-status-rotator', latest);
+      }
+      if (args[0] === 'install') writeClientPlugin('@virex/dsh-status-rotator');
+      return { ok: true, code: 0, log: '', needsAllowBuilds: false, allowBuilds: [] };
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.rolledBack, true);
+  assert.match(result.error, /name 或 version/);
+  assert.deepEqual(calls, [['add', `${GITHUB_SPEC}#${latest}`], ['install']]);
+  const manifest = JSON.parse(fs.readFileSync(
+    path.join(profileDir(), 'node_modules', '@virex/dsh-status-rotator', 'package.json'), 'utf8',
+  ));
+  assert.equal(manifest.version, '0.0.0');
 });
 
 test('parseAllowBuilds reads ndjson-escaped prepare-not-allowed package names', () => {

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  GRADIENT_ATTR, GRADIENT_BLOBS_ID, GRADIENT_LAYER_ID,
   MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, TRANSPARENT_ATTR, TRANSPARENT_GLASS_SOLIDITY,
   WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
   applyWallpaperLayer, clampWallpaperEffect, downscaleWallpaper, encodeWallpaperFile,
@@ -93,6 +94,13 @@ describe('wallpaper helpers', () => {
     expect(css).toMatch(/html\[data-dsh-transparent\] #dsh-wallpaper::after[\s\S]{0,120}background: transparent/)
     expect(TRANSPARENT_ATTR).toBe('data-dsh-transparent')
   })
+
+  it('scopes the shared bloom geometry to data-blob elements', () => {
+    const css = readFileSync(join(process.cwd(), 'packages/client/ui-theme/src/styles/wallpaper.css'), 'utf8')
+    // A `#dsh-gradient-blobs > i` rule would outrank any non-blob child of
+    // the container; shared bloom styles stay scoped to [data-blob].
+    expect(css).not.toMatch(/#dsh-gradient-blobs > i\b/)
+  })
 })
 
 describe('applyWallpaperLayer', () => {
@@ -162,6 +170,68 @@ describe('applyWallpaperLayer', () => {
     // A viewport resize redraws with the applied state.
     window.dispatchEvent(new Event('resize'))
     expect(drawn).toHaveLength(3)
+  })
+
+  it('paints the ambient gradient only while no wallpaper image is set', () => {
+    const gradient = { wallpaperImage: '', wallpaperBlur: 0, wallpaperPixelate: 0, backgroundEffect: 'gradient' as const }
+    applyWallpaperLayer(gradient)
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(true)
+    expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(false)
+    expect(document.getElementById(GRADIENT_LAYER_ID)).not.toBeNull()
+    expect(document.getElementById(GRADIENT_BLOBS_ID)?.children).toHaveLength(5)
+    expect(document.getElementById(WALLPAPER_INNER_ID)).toBeNull()
+    // The image always wins: the gradient steps aside while a wallpaper is live.
+    applyWallpaperLayer({ ...gradient, wallpaperImage: PNG })
+    expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(true)
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(false)
+    expect(document.getElementById(GRADIENT_LAYER_ID)).toBeNull()
+    expect(document.getElementById(WALLPAPER_INNER_ID)).not.toBeNull()
+    // Clearing the image brings the stored effect back.
+    applyWallpaperLayer(gradient)
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(true)
+    expect(document.getElementById(WALLPAPER_INNER_ID)).toBeNull()
+    // Off tears the whole layer down.
+    applyWallpaperLayer({ ...gradient, backgroundEffect: 'none' })
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(false)
+    expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
+  })
+
+  it('writes stored color, speed, count, and variant overrides onto the gradient element', () => {
+    applyWallpaperLayer({
+      wallpaperImage: '',
+      wallpaperBlur: 0,
+      wallpaperPixelate: 0,
+      backgroundEffect: 'gradient',
+      backgroundEffectColors: ['#102030', '', '#a1b2c3', 'junk'],
+      backgroundEffectSpeed: 160,
+      backgroundEffectCount: 3,
+      backgroundEffectVariant: 'chaos',
+    })
+    const layer = document.getElementById(GRADIENT_LAYER_ID) as HTMLElement
+    expect(layer.dataset.variant).toBe('chaos')
+    expect(layer.style.getPropertyValue('--dsh-gradient-start')).toBe('#102030')
+    expect(layer.style.getPropertyValue('--dsh-gradient-end')).toBe('')
+    expect(layer.style.getPropertyValue('--dsh-gradient-1')).toBe('#a1b2c3')
+    expect(layer.style.getPropertyValue('--dsh-gradient-2')).toBe('')
+    expect(layer.style.getPropertyValue('--dsh-gradient-speed')).toBe('1.6')
+    const blooms = document.getElementById(GRADIENT_BLOBS_ID)!.querySelectorAll<HTMLElement>('[data-blob]')
+    expect([...blooms].map(b => b.hidden)).toEqual([false, false, false, true, true])
+    // Reset clears the inline overrides.
+    applyWallpaperLayer({
+      wallpaperImage: '',
+      wallpaperBlur: 0,
+      wallpaperPixelate: 0,
+      backgroundEffect: 'gradient',
+      backgroundEffectColors: [],
+      backgroundEffectSpeed: 100,
+      backgroundEffectCount: 5,
+      backgroundEffectVariant: 'bogus',
+    })
+    expect(layer.dataset.variant).toBe('orbs')
+    expect(layer.style.getPropertyValue('--dsh-gradient-start')).toBe('')
+    expect(layer.style.getPropertyValue('--dsh-gradient-speed')).toBe('')
+    expect([...document.getElementById(GRADIENT_BLOBS_ID)!.querySelectorAll<HTMLElement>('[data-blob]')]
+      .every(b => !b.hidden)).toBe(true)
   })
 })
 

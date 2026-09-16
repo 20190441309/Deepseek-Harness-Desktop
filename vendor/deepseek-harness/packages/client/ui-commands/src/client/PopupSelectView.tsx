@@ -9,7 +9,7 @@
  * target takes focus). Closed state renders null; the overlay slot stays
  * mounted. The card height clamps to the space above the composer.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { IconCheckOutline16, RiskConfirmation, useAnchoredMaxHeight, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -20,6 +20,10 @@ import css from './PopupSelectView.module.css'
 
 /** Design cap on the card height (same MenuDropdown family as the slash menu). */
 const MAX_HEIGHT = 320
+
+/** A settle must outlast this beat before the status line inserts — faster
+ *  settles close first, so the row never pops in just to flash back out. */
+const APPLYING_NOTICE_MS = 160
 
 /** Injected business face of the popupSelect overlay entry. */
 export interface PopupSelectInjected {
@@ -77,6 +81,18 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
   useEffect(() => {
     if (mounted && state.open && state.confirming === null) searchRef.current?.focus()
   }, [mounted, state.open, state.confirming])
+
+  // The applying line waits one beat: a settle that lands inside it (the
+  // common case) never inserts the row, so a fast pick doesn't flash the
+  // card open → line → gone. Once earned it stays through the frozen exit
+  // frame, and the next open resets it.
+  const [applyingShown, setApplyingShown] = useState(false)
+  useEffect(() => {
+    if (!state.open) return
+    if (!state.submitting) { setApplyingShown(false); return }
+    const timer = setTimeout(() => { setApplyingShown(true) }, APPLYING_NOTICE_MS)
+    return () => { clearTimeout(timer) }
+  }, [state.open, state.submitting])
 
   if (!mounted) return null
 
@@ -139,7 +155,7 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
             </div>
           )}
           {view.status === 'pending' && <div className={css.status}>{t('status.loading')}</div>}
-          {view.submitting && <div className={css.status}>{t('status.applying')}</div>}
+          {view.submitting && applyingShown && <div className={css.status}>{t('status.applying')}</div>}
           {view.status === 'ready' && rows.length === 0 && <div className={css.status}>{t('status.empty')}</div>}
           {view.status === 'ready' && (
             <div role="listbox" aria-label={t('listbox.aria', { command: String(view.command) })} className={css.viewport}>

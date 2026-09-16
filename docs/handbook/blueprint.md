@@ -46,7 +46,8 @@ flowchart TB
 | 启动页 | `src/renderer/boot.*` | main：状态、日志、恢复动作 |
 | 四栏主框（侧栏 / 对话 / 右栏 Surfaces / 底栏终端） | Harness Web UI | 桌面 IPC：FS、Git、PTY、preview |
 | 设置各 section | Harness `settings.section` 插件 / 桌面内置模块 | 市场安装、用量统计（桌面内置）、壁纸 catalog、跳转 IPC |
-| 托盘 / 应用菜单 | main `tray.js` / `menu.js` | 打开设置、显示窗口、退出 |
+| 托盘 / 应用菜单 | main `tray.js` / `menu.js` | 打开设置、显示窗口、宠物开关、退出 |
+| 桌面宠物 | `src/renderer/pet-live2d.*`（Live2D 整屏透明 `BrowserWindow`，`pet://` scheme）/ `pet.*`（Codex BrowserView，feature 关闭） | main `desktop-live2d.js` / `desktop-pet*.js`：窄 IPC、位置与养成持久化 |
 | 手机 SPA | `mobile/web` | main `remote.js` / `mobile-web.js` 代理到 loopback harness |
 | Android | `mobile/android` | 同一网关；JSON 登录 + `/__remote__/shell` |
 
@@ -57,7 +58,7 @@ flowchart TB
 | 状态 | 权威存储 |
 | --- | --- |
 | 主题、壁纸图、frost/pixelate、图源、收藏 | 桌面 `userData/dsh-home/settings.yaml`，不是 `~/.dsh` |
-| 工作区路径、关闭行为、远程配对等壳配置 | `userData/config.json` |
+| 工作区路径、关闭行为、远程配对、宠物状态（`pet` / `live2dPet`）等壳配置 | `userData/config.json` |
 | 会话、模型、MCP、技能、市场插件 | 桌面 `userData/dsh-home`（插件在 `profiles/web`）；官方 CLI 仍用 `~/.dsh` |
 | 壳层默认 API key | `userData/credentials.json` |
 | 市场目录缓存 / 安装进度 | main 市场模块 + 安装到桌面 profile |
@@ -67,7 +68,7 @@ flowchart TB
 
 ## 安全边界（摘要）
 
-- IPC 按 sender 角色区分 boot / harness / launcher（[modules/ipc-preload.md](modules/ipc-preload.md)）。
+- IPC 按 sender 角色区分 boot / harness / launcher / pet / pet-live2d（[modules/ipc-preload.md](modules/ipc-preload.md)）。
 - 工作区路径受 `workspace-authority.js` 约束；FS / Git / 打开路径不得任意越权。
 - Harness 与远程代理只认 loopback / 已配对通道（`local-url.js`、remote 鉴权）。
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `marketplace-settings` |
 | **status** | `active` |
-| **last verified** | 2026-09-08 — 迁移 dshmarket 1.45.0 的收藏、排序 / 时间过滤、截图 / README / manifest 声明详情、安装卸载确认、批量更新和持久脱敏操作记录，保留桌面 IPC / profile / HarnessController / DSHD 视觉。来源一致性与模糊 lock commit 判定 fail closed，回滚失败停止批次。桌面 / IPC / preload 141 项、市场 52 项、完整 GUI 5483 项（1 跳过）、市场与滚动条聚焦 73 项、client typecheck、官方 Web 构建及 Electron 源码 smoke 通过。全仓 Web 回放在聊天滚动、设置、PTC 等场景出现失败和长时间超时后主动中止，未通过，未与基线对照确认归因；国际化全仓剩余 25 条其他模块违规，市场无违规。 |
+| **last verified** | 2026-09-14 — 全部安装/更新通道新增 manifest 身份校验（非空 `name` + `version`，缺失即移除新装包并回滚），堵 versionless 包打爆请求 inventory 的残余路径。`marketplace-install.test.js` + `plugins.test.js` 共 69 项通过。2026-09-08 — 迁移 dshmarket 1.45.0 的收藏、排序 / 时间过滤、截图 / README / manifest 声明详情、安装卸载确认、批量更新和持久脱敏操作记录，保留桌面 IPC / profile / HarnessController / DSHD 视觉。来源一致性与模糊 lock commit 判定 fail closed，回滚失败停止批次。桌面 / IPC / preload 141 项、市场 52 项、完整 GUI 5483 项（1 跳过）、市场与滚动条聚焦 73 项、client typecheck、官方 Web 构建及 Electron 源码 smoke 通过。全仓 Web 回放在聊天滚动、设置、PTC 等场景出现失败和长时间超时后主动中止，未通过，未与基线对照确认归因；国际化全仓剩余 25 条其他模块违规，市场无违规。 |
 
 ## User paths
 
@@ -36,6 +36,10 @@
   （已装行不受影响，仍显示「已安装」标记 + 卸载）。
 - 已安装 ↔ 目录行的规格匹配走 `spec-match.ts` 的 owner/repo 整段边界匹配
   （`packageName` 精确匹配优先），不做子串 `includes`。
+- 所有安装通道（catalog id / in-chat `install_dsh_plugin` / launcher 导入 / 更新）在
+  `add` 成功后统一校验新装包有可加载入口且 manifest 携带非空 `name` + `version`
+  ——缺 `version` 的包会在请求期打爆 plugin inventory（`REQUEST_EXTENSION`），
+  校验不过即移除新装包并回滚依赖。
 - 更新检查只覆盖已安装且仍在精选目录中的行。npm 仅当 registry `latest` 的 semver
   严格高于已装版本时标记更新，无法判定或较低版本不提供更新；GitHub 用 profile
   `pnpm-lock.yaml` 的锁定 commit（或 manifest 中的 commit pin）与远端 HEAD 比较；

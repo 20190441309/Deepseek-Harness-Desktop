@@ -4,6 +4,8 @@
  * step runs against staged summary + patch.
  */
 
+const { isCleartextBaseUrl } = require('../shared/cleartext-base-url');
+
 const DEFAULT_SUBJECT = 'Update project files';
 
 let textGenerator = null;
@@ -121,6 +123,9 @@ function completionUrl(baseUrl) {
 async function requestJsonCompletion({ system, user }) {
   const { apiKey, baseUrl } = readApiCredentials();
   if (!apiKey) return null;
+  // Bearer over off-host http is a credential leak; loopback gateways are
+  // allowed (nothing leaves the machine). Fail closed to the heuristic.
+  if (isCleartextBaseUrl(baseUrl)) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {

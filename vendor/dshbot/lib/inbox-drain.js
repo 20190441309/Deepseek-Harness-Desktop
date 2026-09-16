@@ -17,6 +17,7 @@ import { wakeAgent } from './agent-resolution.js';
 import { appendTaskDeliveredAudit, markTaskDelivered } from './tasks.js';
 import { projectCatalog } from './catalog-scope.js';
 import { routineRunFor, ROUTINE_RUN_STATUS, updateRoutineRun } from './routine-runs.js';
+import { goalViewFor } from './objective.js';
 
 /**
  * Pending drain snapshot keyed by bot id (acked after successful wake or explicit drain).
@@ -32,6 +33,8 @@ let reservedAdmission = new WeakMap();
 let ownedSnapshots = new WeakMap();
 let ownedTurns = new WeakMap();
 let activeTurns = new WeakMap();
+let drainIssued = new WeakMap();
+let drainCooldowns = new WeakMap();
 
 function pendingFor(scope) {
   let pending = pendingDrain.get(scope);
@@ -94,6 +97,20 @@ function activeFor(scope) {
   if (!active) activeTurns.set(scope, active = new Map());
   return active;
 }
+
+function drainIssuedFor(scope) {
+  let issued = drainIssued.get(scope);
+  if (!issued) drainIssued.set(scope, issued = new Set());
+  return issued;
+}
+
+function drainCooldownFor(scope) {
+  let cooldowns = drainCooldowns.get(scope);
+  if (!cooldowns) drainCooldowns.set(scope, cooldowns = new Map());
+  return cooldowns;
+}
+
+const DRAIN_COOLDOWN_MS = 60_000;
 
 const inboxMessageKey = (msg) => JSON.stringify([msg.timestampMs, msg.fromId, msg.text, msg.kind ?? 'message', msg.taskId ?? '', msg.routineId ?? '', msg.runId ?? '', msg.priority === true]);
 
@@ -531,6 +548,8 @@ export function resetPendingDrainForTests() {
   ownedSnapshots = new WeakMap();
   ownedTurns = new WeakMap();
   activeTurns = new WeakMap();
+  drainIssued = new WeakMap();
+  drainCooldowns = new WeakMap();
 }
 
 /**
@@ -546,25 +565,37 @@ export async function restorePendingInbox(ctx, scope) {
     if (target.kind === 'room' || attempts.has(target.id)) continue;
     if (!(target.inbox ?? []).some((mail) => isDeliverableMail(catalog, mail))) continue;
     attempts.add(target.id);
-    const relay = relayWakeBatch(catalog, target);
-    const snapshot = relay.messages.length > 0
-      ? relay.messages
-      : prioritizeAgentInbound((target.inbox ?? []).filter((mail) => isDeliverableMail(catalog, mail)));
-    const relayPrompt = relay.messages.map((message) => buildAgentInboundWakePrompt(message)).join('\n\n');
-    if (relay.messages.length > 0) markInboxMessageAdmitted(scope, target.id, relay.messages);
-    else reserveInboxMessages(scope, target.id, snapshot);
-    const wake = await wakeAgent(
-      ctx,
-      target,
-      relayPrompt || 'Check your current dshbot inbox for pending work. Process durable messages and tasks; ignore paused or cancelled tasks.',
-      relay.source,
-    );
-    if (wake.ok) commitInboxMessages(scope, target.id, snapshot);
-    else if (relay.messages.length > 0) unmarkInboxMessageAdmitted(scope, target.id, relay.messages);
-    else releaseInboxMessages(scope, target.id, snapshot);
+    const wake = await wakePendingMail(ctx, scope, catalog, target);
     results.push({ botId: target.id, ...wake });
   }
   return results;
+}
+
+/**
+ * Wake one bot for its deliverable durable mail, preserving the relay source
+ * when every pending message shares one sender. Ownership bookkeeping mirrors
+ * the admission contract: admitted mail for an exact relay wake, a reserved
+ * snapshot for the generic prompt, committed on accept and rolled back on
+ * failure so undelivered mail is never lost.
+ */
+async function wakePendingMail(ctx, scope, catalog, target) {
+  const relay = relayWakeBatch(catalog, target);
+  const snapshot = relay.messages.length > 0
+    ? relay.messages
+    : prioritizeAgentInbound((target.inbox ?? []).filter((mail) => isDeliverableMail(catalog, mail)));
+  const relayPrompt = relay.messages.map((message) => buildAgentInboundWakePrompt(message)).join('\n\n');
+  if (relay.messages.length > 0) markInboxMessageAdmitted(scope, target.id, relay.messages);
+  else reserveInboxMessages(scope, target.id, snapshot);
+  const wake = await wakeAgent(
+    ctx,
+    target,
+    relayPrompt || 'Check your current dshbot inbox for pending work. Process durable messages and tasks; ignore paused or cancelled tasks.',
+    relay.source,
+  );
+  if (wake.ok) commitInboxMessages(scope, target.id, snapshot);
+  else if (relay.messages.length > 0) unmarkInboxMessageAdmitted(scope, target.id, relay.messages);
+  else releaseInboxMessages(scope, target.id, snapshot);
+  return wake;
 }
 
 /**
@@ -627,6 +658,8 @@ export function registerInboxDrain(ctx, deps) {
       ownedSnapshots.delete(scope);
       ownedTurns.delete(scope);
       activeTurns.delete(scope);
+      drainIssued.delete(scope);
+      drainCooldowns.delete(scope);
     };
   });
   ctx.on?.('agent/pre-step', async ({ agent, messages, turn, step }, next) => {
@@ -709,6 +742,30 @@ export function registerInboxDrain(ctx, deps) {
     });
     return decision;
   });
+  /**
+   * Post-turn self-drain: a completed turn that left deliverable mail behind
+   * gets exactly one follow-up wake. An active armed goal already owns
+   * continuation (its driver yields to queued mail), so this never becomes a
+   * second engine for the same session; the per-bot cooldown bounds retries.
+   */
+  const drainRemainingInbox = async (bot) => {
+    const catalog = scope.get() ?? { items: [] };
+    const target = (catalog.items ?? []).find((item) => item.id === bot.id && item.kind !== 'room');
+    if (!target || !(target.inbox ?? []).some((mail) => isDeliverableMail(catalog, mail))) return;
+    const agent = ctx.agents?.get?.(target.sessionId);
+    const goal = agent ? goalViewFor(ctx, agent) : null;
+    if (goal?.phase === 'active' && goal?.activation === 'armed') return;
+    const cooldowns = drainCooldownFor(scope);
+    const at = now();
+    if (at - (cooldowns.get(bot.id) ?? -Infinity) < DRAIN_COOLDOWN_MS) return;
+    cooldowns.set(bot.id, at);
+    try {
+      const wake = await wakePendingMail(ctx, scope, catalog, target);
+      if (wake.ok) drainIssuedFor(scope).add(bot.id);
+    } catch (error) {
+      ctx.logger?.warn?.('dshbot inbox self-drain failed: %s', String(error?.message ?? error));
+    }
+  };
   ctx.on?.('session/event', async (session, event) => {
     if (event?.type !== 'turn/end') return;
     const catalog = scope.get() ?? { items: [] };
@@ -720,8 +777,12 @@ export function registerInboxDrain(ctx, deps) {
     if (!active
       || active.sessionId !== session.id
       || active.turn !== event.data?.turn) return;
+    // A drain-issued turn never schedules another drain; mail that arrived
+    // during it waits for the next natural wake.
+    const wasDrain = drainIssuedFor(scope).delete(bot.id);
     if (event.data?.reason?.kind === 'completed') {
       await ackPendingInboxDrain(scope, bot.id);
+      if (!wasDrain) await drainRemainingInbox(bot);
       return;
     }
     // The durable inbox and ownership snapshot stay intact for a later retry.

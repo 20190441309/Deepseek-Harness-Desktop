@@ -404,7 +404,7 @@ export function registerAskParticipant(ctx) {
       instruction: {
         type: 'string',
         required: true,
-        description: 'Turn prompt for this member (Grok-style).',
+        description: 'Turn prompt for this member.',
       },
       threadId: {
         type: 'string',

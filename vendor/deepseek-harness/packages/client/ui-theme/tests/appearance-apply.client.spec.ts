@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   appearanceFontStack, applyAppearanceDocumentExtras, cssFontFamilies, quoteFontFamilyName,
 } from '../src/appearance-apply.ts'
-import { TRANSPARENT_ATTR, WALLPAPER_ATTR, WALLPAPER_LAYER_ID } from '../src/wallpaper.ts'
+import {
+  GRADIENT_ATTR, GRADIENT_LAYER_ID, TRANSPARENT_ATTR, WALLPAPER_ATTR, WALLPAPER_LAYER_ID,
+} from '../src/wallpaper.ts'
+import { CURSOR_FX_LAYER_ID } from '../src/cursor-fx.ts'
 
 afterEach(() => {
   document.documentElement.style.fontSize = ''
@@ -84,6 +87,34 @@ describe('applyAppearanceDocumentExtras', () => {
     })
     expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(false)
     expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
+  })
+
+  it('paints the ambient gradient only while no wallpaper is set', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const base = { fontFamilySans: '', fontFamilyCode: '', fontSizeInterface: 16, fontSizeCode: 13 }
+    applyAppearanceDocumentExtras({ ...base, backgroundEffect: 'gradient' })
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(true)
+    expect(document.getElementById(GRADIENT_LAYER_ID)).not.toBeNull()
+    applyAppearanceDocumentExtras({ ...base, backgroundEffect: 'gradient', wallpaperImage: png })
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(false)
+    expect(document.documentElement.hasAttribute(WALLPAPER_ATTR)).toBe(true)
+    applyAppearanceDocumentExtras(base)
+    expect(document.documentElement.hasAttribute(GRADIENT_ATTR)).toBe(false)
+    expect(document.getElementById(WALLPAPER_LAYER_ID)).toBeNull()
+  })
+
+  it('accepts pointer-effect extras and fails closed without canvas support', () => {
+    const base = { fontFamilySans: '', fontFamilyCode: '', fontSizeInterface: 16, fontSizeCode: 13 }
+    applyAppearanceDocumentExtras({
+      ...base,
+      cursorEffectEnabled: true,
+      cursorEffect: 'trail',
+      cursorEffectColors: ['#112233'],
+      cursorEffectSpeed: 100,
+      cursorEffectSize: 100,
+    })
+    // jsdom has no canvas 2D: the engine fails closed and leaves no residue.
+    expect(document.getElementById(CURSOR_FX_LAYER_ID)).toBeNull()
   })
 
   it('flips the transparent-theme attribute only while a wallpaper is live', () => {

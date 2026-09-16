@@ -93,8 +93,19 @@ half-publishing.
 - A2A task and message transitions append a bounded audit trail to the dshbot
   catalog (`queued`, `delivered`, `completed`, `failed`, and refusal events),
   without adding a database or worker service.
-- `remember` is the only memory write path and appends durable notes under
-  `$DSH_HOME/dshbot-memory/`; the profile editor has no memory field.
+- Memory is a two-track entry store under `$DSH_HOME/dshbot-memory/`:
+  `<id>.md` keeps bot/project notes and `<id>.user.md` keeps facts about the
+  user. The `memory` tool adds, replaces or removes single `- ` entries
+  (substring match, dedupe, CAS revisions, atomic writes, per-entry threat
+  scanning, 8k/4k character budgets); `remember` remains as an add alias. The
+  profile editor exposes both tracks. A background review pass can also write
+  entries after enough completed turns or before compaction; learned entries
+  are prefixed `[auto] ` and can be switched off per bot (`memoryReview`).
+- A catalog `objective` turns the bot into a goal-driven worker: the host
+  goal-round driver continues the same session until the bot reports the
+  objective complete, the round cap (default 16) is reached, or the user
+  pauses. The goal materializes lazily only while the agent is already live,
+  and a restart re-arms it at most once per runtime.
 - Avatars are local profile data: a local JPEG/PNG upload or a
   deterministic/default blob avatar is retained. Existing and default blob
   records are preserved; generated avatars are out of scope.
@@ -160,6 +171,16 @@ Pausing removes queued mail but does not stop an active model turn. Model failur
 disables the schedule and quarantines retained mail until explicit recovery;
 three unavailable-session failures also disable it. Run-now on a paused routine
 does not enable future intervals. Errors and run outcomes remain visible.
+Runs capture their assistant output (`lastOutput`, 8k cap) so a routine can
+continue where it stopped via `contextFrom` (`self` or sibling routines), keep
+a per-routine notepad (`routine_notepad` tool), and stay silent by replying
+`[SILENT]` when `silentAllowed`. A `watch` (URL fetch or command, hashed)
+skips the model call entirely while the checked value is unchanged; watch
+specs are user-only and never writable by tools. Routines can also be fired
+locally through `POST /dshbot-hook/routine/<id>` with the catalog
+`X-Dshbot-Token` (loopback only). After a completed turn, leftover deliverable
+inbox mail triggers one self-drain wake (60s cooldown; skipped while an armed
+goal owns continuation).
 
 ## Persistence and delivery
 

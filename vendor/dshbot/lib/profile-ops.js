@@ -1,8 +1,18 @@
 import { normalizeAvatar } from './avatar.js';
 import { botDisplayName, MAX_BOT_TITLE } from './bot-identity.js';
 import { projectCatalog } from './catalog-scope.js';
-import { MAX_BOT_MEMORY_CHARS, readBotMemory, readBotMemoryState, replaceBotMemory } from './memory.js';
+import {
+  DEFAULT_BOT_MEMORY_LIMIT,
+  DEFAULT_USER_MEMORY_LIMIT,
+  readBotMemory,
+  readMemoryTrack,
+  replaceBotMemory,
+  writeMemoryTrack,
+} from './memory.js';
 import { eventsToGroupHistory } from './catalog.js';
+import { latestWorkNote } from './memory-review.js';
+import { goalViewFor } from './objective.js';
+import { deleteRoutineNotepad } from './routine-notepad.js';
 import {
   createSessionHygiene,
   managedPresentationForItem,
@@ -83,6 +93,18 @@ function normalizeBotDraft(input, current, catalog, now) {
     || !Number.isInteger(maxSpeaks) || maxSpeaks < 1 || maxSpeaks > 10)) {
     fail('Group limits are invalid.');
   }
+  const objective = kind === 'room' ? ''
+    : string(Object.hasOwn(input, 'objective') ? input.objective : current?.objective, 2_000, 'objective');
+  const objectiveMaxRounds = kind === 'room' ? 16
+    : Number(Object.hasOwn(input, 'objectiveMaxRounds') ? input.objectiveMaxRounds : current?.objectiveMaxRounds ?? 16);
+  if (kind !== 'room' && (!Number.isInteger(objectiveMaxRounds)
+    || objectiveMaxRounds < 1 || objectiveMaxRounds > 200)) {
+    fail('Objective round cap is invalid.');
+  }
+  const memoryReview = kind === 'room' ? true
+    : Object.hasOwn(input, 'memoryReview') ? input.memoryReview !== false : current?.memoryReview !== false;
+  const notify = kind === 'room' ? true
+    : Object.hasOwn(input, 'notify') ? input.notify !== false : current?.notify !== false;
   return {
     ...(current ?? {}), id, kind,
     sessionId,
@@ -98,6 +120,10 @@ function normalizeBotDraft(input, current, catalog, now) {
     pinOrder: Number(current?.pinOrder) || 0,
     allowedSenderIds,
     memberBotIds,
+    objective,
+    objectiveMaxRounds,
+    memoryReview,
+    notify,
     capabilities: kind === 'room' ? (current?.capabilities ?? normalizeCapabilities())
       : normalizeCapabilities(input.capabilities),
     maxRounds,
@@ -162,14 +188,68 @@ function directPreview(events) {
   return '';
 }
 
-function activityFor(item, events, items) {
-  const list = events ?? [];
+/** Turns whose terminal routine run was silent must not surface as activity. */
+function silentTurnsFor(item, routines) {
+  const turns = new Set();
+  if (item.kind === 'room') return turns;
+  for (const routine of routines ?? []) {
+    if (routine.botId !== item.id) continue;
+    for (const run of routine.runHistory ?? []) {
+      if (run.silent === true && run.sessionId === item.sessionId && Number.isInteger(run.turn)) {
+        turns.add(run.turn);
+      }
+    }
+  }
+  return turns;
+}
+
+/** An asked approval/question with no recorded decision needs attention. */
+function pendingAttention(events) {
+  const open = new Set();
+  for (const event of events ?? []) {
+    const type = event?.type;
+    const id = String(event?.data?.id ?? event?.data?.requestId ?? '');
+    if (!id) continue;
+    if (type === 'approval/asked' || type === 'user-questions/asked') open.add(id);
+    else if (type === 'approval/decided' || type === 'user-questions/answered') open.delete(id);
+  }
+  return open.size > 0;
+}
+
+/** The bot's latest routine run across its catalog routines, or null. */
+function lastRoutineRun(item, routines) {
+  if (item.kind === 'room') return null;
+  let latest = null;
+  for (const routine of routines ?? []) {
+    if (routine.botId !== item.id) continue;
+    for (const run of routine.runHistory ?? []) {
+      const endedAt = Number(run.endedAt) || Number(run.startedAt) || Number(run.createdAt) || 0;
+      if (latest && endedAt <= latest.endedAt) continue;
+      latest = {
+        routineId: String(routine.id ?? ''),
+        runId: String(run.runId ?? ''),
+        name: String(routine.name ?? ''),
+        status: String(run.status ?? ''),
+        silent: run.silent === true,
+        endedAt,
+      };
+    }
+  }
+  return latest;
+}
+
+function activityFor(item, events, items, goal = null, routines = []) {
+  const silentTurns = silentTurnsFor(item, routines);
+  const list = silentTurns.size
+    ? (events ?? []).filter((event) => !silentTurns.has(Number(event?.data?.turn)))
+    : (events ?? []);
   const activity = [...list].reverse().find((event) => event?.type === 'turn/end'
     || event?.type === 'assistant/message' || event?.type === 'user/message' || event?.type === 'tool/result');
   const latest = item.kind === 'room' ? eventsToGroupHistory(list, items).at(-1) : undefined;
   const preview = item.kind === 'room'
     ? latest ? `${latest.speaker.kind === 'member' ? `${latest.speaker.name}: ` : ''}${latest.content}` : ''
     : directPreview(list);
+  const lastRun = lastRoutineRun(item, routines);
   return {
     botId: item.id,
     sessionId: item.sessionId,
@@ -178,6 +258,31 @@ function activityFor(item, events, items) {
     preview: compactPreview(preview),
     readInitialized: item.readInitialized === true,
     lastSeenSeq: Number(item.lastSeenSeq) || 0,
+    goal,
+    attention: pendingAttention(list),
+    lastRun,
+    // The B-5 work ring is freshest but process-local; the durable latest run
+    // covers restarts and quiet bots.
+    workSummary: latestWorkNote(item.id)
+      || (lastRun && lastRun.silent !== true ? `${lastRun.name}: ${lastRun.status}` : ''),
+  };
+}
+
+/** Goal row for bot/activity; cold agents keep goal state out of the report. */
+function goalActivity(ctx, item) {
+  if (item.kind === 'room') return null;
+  const agent = ctx.agents?.get?.(item.sessionId);
+  if (!agent) return null;
+  const goal = goalViewFor(ctx, agent);
+  if (!goal) return null;
+  return {
+    phase: String(goal.phase ?? ''),
+    activation: String(goal.activation ?? ''),
+    roundsStarted: Number(goal.roundsStarted) || 0,
+    maxGoalRounds: Number(goal.maxGoalRounds) || 0,
+    blocker: goal.blockedReason
+      ? { code: String(goal.blockedReason.code ?? ''), message: String(goal.blockedReason.message ?? '') }
+      : null,
   };
 }
 
@@ -281,6 +386,8 @@ export function createProfileOperations(ctx, scope, {
   capabilities = async () => ({ tools: [], skills: [], mcp: [], skillsAvailable: false }),
   stop = async () => {},
   sessionHygiene = null,
+  memoryLimits,
+  objective = null,
 } = {}) {
   const hygiene = sessionHygiene ?? createSessionHygiene(ctx);
   const controller = () => {
@@ -291,6 +398,11 @@ export function createProfileOperations(ctx, scope, {
       // Normalize optional Cordis service lookup failures below.
     }
     return fail('Session Controller is unavailable.');
+  };
+  const memoryLimit = (track) => {
+    const configured = Number(memoryLimits?.[track]);
+    if (Number.isFinite(configured) && configured > 0) return Math.floor(configured);
+    return track === 'user' ? DEFAULT_USER_MEMORY_LIMIT : DEFAULT_BOT_MEMORY_LIMIT;
   };
   const checkRevision = (revision) => {
     if (ctx.settings.writable === false) fail('Bot catalog is read-only.');
@@ -557,6 +669,9 @@ export function createProfileOperations(ctx, scope, {
       } catch (error) {
         warnings.push(`Bot profile was saved, but the Session title could not be renamed: ${String(error.message ?? error)}`);
       }
+      // The catalog stays authoritative: live bots sync now, cold bots sync on
+      // their next live idle — this path never resolves a cold agent.
+      if (next.kind !== 'room') objective?.requestSync?.(next);
       return { view: currentView(), item: next, sessionId: next.sessionId, warnings };
     },
 
@@ -633,6 +748,14 @@ export function createProfileOperations(ctx, scope, {
         }
         throw error;
       }
+      const home = process.env.DSH_HOME || process.env.DSHD_HOME || '';
+      for (const routine of (previous.routines ?? []).filter((row) => row.botId === item.id)) {
+        try {
+          deleteRoutineNotepad(home, routine.id);
+        } catch (error) {
+          warnings.push(`Could not remove routine notepad ${routine.id}: ${String(error.message ?? error)}`);
+        }
+      }
       return { view: currentView(), removed: item.id, preservedHistory: true, preservedMemory: true, warnings };
     },
 
@@ -644,11 +767,12 @@ export function createProfileOperations(ctx, scope, {
         ? requested.map((id) => catalog.items.find((item) => item.id === id) ?? fail(`Bot is unavailable: ${id}`))
         : catalog.items;
       const entries = await Promise.all(items.map(async (item) => {
+        const goal = goalActivity(ctx, item);
         try {
           const inspection = await controller().inspect(item.sessionId);
-          return activityFor(item, inspection.events ?? [], catalog.items);
+          return activityFor(item, inspection.events ?? [], catalog.items, goal, catalog.routines);
         } catch (error) {
-          return { ...activityFor(item, [], catalog.items), error: String(error.message ?? error) };
+          return { ...activityFor(item, [], catalog.items, goal, catalog.routines), error: String(error.message ?? error) };
         }
       }));
       return { entries };
@@ -685,23 +809,29 @@ export function createProfileOperations(ctx, scope, {
       const catalog = scope.get();
       const item = catalog.items.find((candidate) => candidate.id === input.id && candidate.kind !== 'room')
         ?? fail('Bot profile is unavailable.');
-      return { botId: item.id, ...readBotMemoryState(process.env.DSH_HOME || process.env.DSHD_HOME || '', item.id) };
+      const home = process.env.DSH_HOME || process.env.DSHD_HOME || '';
+      return {
+        botId: item.id,
+        bot: readMemoryTrack(home, item.id, 'bot'),
+        user: readMemoryTrack(home, item.id, 'user'),
+        limits: { bot: memoryLimit('bot'), user: memoryLimit('user') },
+      };
     },
 
     memoryReplace(input) {
-      checkRevision(input.revision);
       const catalog = scope.get();
       const item = catalog.items.find((candidate) => candidate.id === input.id && candidate.kind !== 'room')
         ?? fail('Bot profile is unavailable.');
+      const track = input.track === 'user' ? 'user' : 'bot';
       const text = String(input.text ?? '');
-      if (text.length > MAX_BOT_MEMORY_CHARS) fail('Bot memory is too large.');
       if (typeof input.memoryRevision !== 'string' || !input.memoryRevision) {
         fail('Bot memory revision is required. Refresh and try again.');
       }
-      const memory = replaceBotMemory(
-        process.env.DSH_HOME || process.env.DSHD_HOME || '', item.id, text, input.memoryRevision,
+      const state = writeMemoryTrack(
+        process.env.DSH_HOME || process.env.DSHD_HOME || '', item.id, track, text,
+        { expectedRevision: input.memoryRevision, limits: { [track]: memoryLimit(track) } },
       );
-      return { view: currentView(), botId: item.id, ...memory };
+      return { view: currentView(), botId: item.id, track, ...state, memoryRevision: state.revision };
     },
   };
 }

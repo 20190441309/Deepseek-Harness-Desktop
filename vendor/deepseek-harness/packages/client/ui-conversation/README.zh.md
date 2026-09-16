@@ -56,6 +56,8 @@ Session 首次绑定或缓存的 Session 成为 current 时，shell 会在渲染
 
 界面设置保留即时 beam 开关，并增加设置图标弹窗，用于调节完整运行态 beam profile。弹窗使用共享 `ComposerBeam` 渲染器预览，通过一次 Host-backed namespace mutation 同时保存 active `composerBeamStyle` 与 `composerBeamPresets`，默认值恢复历史 legacy 渲染；这些控件不会改变 4px 裁切壳、22px 圆角、1.5px bloom 光源、mask 或 pointer-inert 分层。
 
+外观设置承载可选的 composer 输入特效行：即时开关加设置图标弹窗。开启后 `TypingFxLayer` 在 pointer-inert 叠加层上，于每个新键入字符的字形位置播放瞬态回显——Lexical 托管的文本 DOM 从不被包装或改写——并可用方块或下划线替换原生光标。粘贴、历史、草稿种子、程序化更新和 IME 组合进行中的输入都不产生回显，composition-end 提交时把整段提交文本播一次回显（对 composition-start 快照做整段 diff），有界回显池让每个 ghost 在自己的动画结束时退休。弹窗提供效果预览，可调节回显样式、光标、闪烁、速度与回显/光标/文本颜色（跟随主题、6 个内置配色或自定义三色），最多保存 5 个预设，并通过剪贴板交换带版本号的 `dsh-typing-fx` JSON 封套；`typingFx`、`typingFxStyle` 与 `typingFxPresets` 通过一次 Host-backed mutation 持久化在本包设置命名空间中，减弱动效时所有动画停止。
+
 默认发送采用乐观提交：Enter 在同一事务里清空草稿、occurrence 表和撤销历史，composer 保持 `plain`，发送作为 detached attempt 运行，发送期间可以继续输入和提交。`sendSession` 在序列化之前用投递模式注册 Session 提交回显（`session.beginSubmission`），并在 `pendingSubmissions` 中保留图片与文件的选择顺序；Session 根据该模式与当前运行状态推导位置，因此空闲发送进入 transcript，繁忙时 Queue 进入 QueueDock，繁忙时 Steer 进入 pending-steering 区域。随后让出一帧，图片经浏览器原生 `FileReader` data-URL 路径编码，文件则引用已暂存凭证。命令提交也用同一凭证表示通用文件，因此发送 `/goal` 或 `/plan` 时不会再次读取这些浏览器文件。prompt 复用提交 `requestId`；queue 或历史以同一 `rpcId` 被观察后，回显只退休一次。多个并发发送失败时，在用户编辑还原内容之前按提交顺序合并还原；命令提交保持冻结的 `submitting` 阶段。Detached attempt 持有附件 id，直到 admission 完成或 Session scope 销毁。回显以 observed 退休时，durable 图片缓存立即公开每个预览 URL，读取 admitted 附件后用规范化 URL 替换预览，并在各 URL 停止使用后撤销，同时释放文件卡。选中的通用文件进入同一个先进先出的后台上传队列；`maxConcurrentFileUploads` 默认允许两个 Worker transport 同时运行，Conversation service 在切换 Session 时继续持有排队和运行中的传输操作及字节进度，移除草稿会跳过排队中的传输或中止正在运行的传输。continuable 子代理禁用附件入口，也不创建本地回显，因为其 transport 不保留浏览器 request id。
 
 排队提交的本地回显在禁用的编辑、删除、插话按钮旁显示“发送中…”；折叠后的队列在标题栏保留发送状态。匹配的 Host 队列行替换回显后，各操作按原有的纯文本内容和运行状态要求启用。仅收到 prompt 确认不会启用队列操作。提交失败会移除回显并显示错误；输入框为空或仍保留上一次自动恢复的内容时，composer 恢复失败草稿，保留用户随后输入的文字。
@@ -113,11 +115,11 @@ selector 必须是 owner currency 的纯函数。非 null 返回值作为 `match
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为本包渲染浏览器状态，并通过 Session Controller API 发送用户确认提交的输入，而不构造模型请求。
+Host 入口贡献 `ui:custom-instructions` prompt section 与 `custom_instructions` prompt 变量：`ui-conversation` 设置命名空间的 `customInstructions` 字段（≤1500 字符，默认空）追加进每个模型步前组装的系统提示词末尾，因此常驻用户指令随每个 scope（含子智能体）的每次请求发送；空白或纯空格文本不产生内容。编辑即时生效：下一步组装读取已提交的值，循环的 system-prompt 投影记录变化后的文本。
 
 #### KV Cache 影响
 
-无；Conversation 组装和浏览器输入状态不会改变提供方侧的 prompt cache。
+该 section 是提示词的最后一块，编辑仅使尾部后缀失效，此前各 section 的缓存前缀全部保留。
 
 ## 已知限制与暂缓事项
 

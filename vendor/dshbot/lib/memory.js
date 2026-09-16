@@ -1,5 +1,7 @@
 /**
  * Pure memory helpers for per-bot durable notes under $DSH_HOME.
+ * Two tracks per bot: 'bot' (<safeId>.md) and 'user' (<safeId>.user.md).
+ * Entries are `- ` prefixed lines; other lines are ignored on parse.
  */
 
 import fs from 'node:fs';
@@ -7,9 +9,20 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const MAX_BOT_MEMORY_CHARS = 64_000;
+export const DEFAULT_BOT_MEMORY_LIMIT = 8_000;
+export const DEFAULT_USER_MEMORY_LIMIT = 4_000;
+export const MEMORY_TRACKS = ['bot', 'user'];
 
 const MAX_MEMORY_SCAN_CHARS = 65_536;
 const memoryMutationLocks = new Set();
+
+export class MemoryError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'MemoryError';
+    this.code = code;
+  }
+}
 
 // Keep the scanner local to the plugin. Memory is user-editable and remains
 // raw on disk, but prompt assembly needs the same broad, deterministic guard
@@ -54,16 +67,21 @@ const MEMORY_THREAT_PATTERNS = [
 ];
 
 const INVISIBLE_MEMORY_CHARS = new Set([
-  '\u200B', '\u200C', '\u200D', '\u2060', '\u2062', '\u2063', '\u2064',
-  '\uFEFF', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066',
-  '\u2067', '\u2068', '\u2069',
+  '​', '‌', '‍', '⁠', '⁢', '⁣', '⁤',
+  '﻿', '‪', '‫', '‬', '‭', '‮', '⁦',
+  '⁧', '⁨', '⁩',
 ]);
 
 function revisionFor(text) {
   return crypto.createHash('sha256').update(String(text ?? ''), 'utf8').digest('hex');
 }
 
-function firstMemoryThreat(text) {
+/**
+ * Deterministic threat scan of a single memory entry.
+ * @param {string} text
+ * @returns {string | null} threat id, or null when the entry is clean.
+ */
+export function scanMemoryEntryThreats(text) {
   const value = String(text ?? '');
   if (!value) return null;
   const scanned = value.slice(0, MAX_MEMORY_SCAN_CHARS);
@@ -77,28 +95,64 @@ function firstMemoryThreat(text) {
   return null;
 }
 
+export function parseMemoryEntries(text) {
+  return String(text ?? '').split(/\r?\n/)
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2))
+    .filter((entry) => entry.trim());
+}
+
+function serializeMemoryEntries(entries) {
+  return entries.length ? `${entries.map((entry) => `- ${entry}`).join('\n')}\n` : '';
+}
+
 /**
- * Remove memory content from the prompt when it resembles promptware or
- * exfiltration content. The raw value is never included in the replacement.
+ * Per-entry sanitization for prompt assembly: a threatening entry is replaced
+ * by a placeholder; other entries pass through untouched.
  *
- * @param {string} text
+ * @param {string} text raw memory file body
  * @returns {string}
  */
 export function sanitizeMemoryForPrompt(text) {
-  const value = String(text ?? '');
-  const threat = firstMemoryThreat(value);
-  if (!threat) return value;
-  return `[Blocked memory content: ${threat}; original text omitted.]`;
+  return parseMemoryEntries(text)
+    .map((entry) => {
+      const threat = scanMemoryEntryThreats(entry);
+      return threat ? `- [Blocked memory entry: ${threat}]` : `- ${entry}`;
+    })
+    .join('\n');
+}
+
+function normalizeTrack(track) {
+  return track === 'user' ? 'user' : 'bot';
 }
 
 /**
  * @param {string} homeDir
  * @param {string} botId
+ * @param {'bot' | 'user'} [track]
  * @returns {string}
  */
-export function memoryFilePath(homeDir, botId) {
-  const safe = String(botId ?? '').replace(/[^a-zA-Z0-9._-]/g, '_');
-  return path.join(homeDir, 'dshbot-memory', `${safe || 'unknown'}.md`);
+export function memoryFilePath(homeDir, botId, track = 'bot') {
+  const safe = String(botId ?? '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'unknown';
+  const suffix = normalizeTrack(track) === 'user' ? '.user.md' : '.md';
+  return path.join(homeDir, 'dshbot-memory', `${safe}${suffix}`);
+}
+
+/**
+ * Read one memory track: raw text, parsed entries, and a CAS revision token.
+ * @returns {{ entries: string[], text: string, revision: string }}
+ */
+export function readMemoryTrack(homeDir, botId, track = 'bot') {
+  if (!homeDir) throw new Error('DSH_HOME is not set');
+  const file = memoryFilePath(homeDir, botId, track);
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') text = '';
+    else throw error;
+  }
+  return { entries: parseMemoryEntries(text), text, revision: revisionFor(text) };
 }
 
 /**
@@ -112,22 +166,15 @@ export function readBotMemory(homeDir, botId) {
 
 /** Read one Bot memory with an independent compare-and-swap token. */
 export function readBotMemoryState(homeDir, botId) {
-  if (!homeDir) throw new Error('DSH_HOME is not set');
-  const file = memoryFilePath(homeDir, botId);
-  try {
-    const text = fs.readFileSync(file, 'utf8');
-    return { text, memoryRevision: revisionFor(text) };
-  } catch (error) {
-    if (error?.code === 'ENOENT') return { text: '', memoryRevision: revisionFor('') };
-    throw error;
-  }
+  const { text, revision } = readMemoryTrack(homeDir, botId, 'bot');
+  return { text, memoryRevision: revision };
 }
 
 /**
  * Read a safe, immutable prompt snapshot once at session start.
- * `text` is sanitized while `memoryRevision` still identifies the raw file
- * for editor CAS operations. Callers should retain this object for the whole
- * session; later writes do not change it.
+ * `text` is sanitized per entry while `memoryRevision` still identifies the
+ * raw file for editor CAS operations. Callers should retain this object for
+ * the whole session; later writes do not change it.
  */
 export function readBotMemorySnapshot(homeDir, botId) {
   const state = readBotMemoryState(homeDir, botId);
@@ -137,13 +184,14 @@ export function readBotMemorySnapshot(homeDir, botId) {
   });
 }
 
-/**
- * @param {string} homeDir
- * @param {string} botId
- * @param {string} text
- */
-export function writeBotMemory(homeDir, botId, text) {
-  return replaceBotMemory(homeDir, botId, text);
+/** Frozen dual-track prompt snapshot; later writes do not change it. */
+export function readMemorySnapshot(homeDir, botId) {
+  const bot = readMemoryTrack(homeDir, botId, 'bot');
+  const user = readMemoryTrack(homeDir, botId, 'user');
+  return Object.freeze({
+    bot: Object.freeze({ text: sanitizeMemoryForPrompt(bot.text), revision: bot.revision }),
+    user: Object.freeze({ text: sanitizeMemoryForPrompt(user.text), revision: user.revision }),
+  });
 }
 
 function withMemoryMutationLock(homeDir, botId, operation) {
@@ -159,16 +207,29 @@ function withMemoryMutationLock(homeDir, botId, operation) {
   }
 }
 
-function replaceBotMemoryLocked(homeDir, botId, file, body, expectedRevision, currentState) {
-  if (body.length > MAX_BOT_MEMORY_CHARS) throw new Error('Bot memory is too large.');
-  const current = currentState ?? readBotMemoryState(homeDir, botId);
-  if (expectedRevision !== undefined && expectedRevision !== current.memoryRevision) {
-    throw new Error('Bot memory changed. Refresh and try again.');
+function readTrackByPath(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') text = '';
+    else throw error;
+  }
+  return { entries: parseMemoryEntries(text), text, revision: revisionFor(text) };
+}
+
+function writeTrackFile(file, body, expectedRevision, currentState) {
+  if (body.length > MAX_BOT_MEMORY_CHARS) {
+    throw new MemoryError('MEMORY_FULL', `Bot memory exceeds the ${MAX_BOT_MEMORY_CHARS}-character file limit. Remove or replace entries to free space.`);
+  }
+  const current = currentState ?? readTrackByPath(file);
+  if (expectedRevision !== undefined && expectedRevision !== current.revision) {
+    throw new MemoryError('MEMORY_REVISION_MISMATCH', 'Bot memory changed. Refresh and try again.');
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (!body.trim()) {
     fs.rmSync(file, { force: true });
-    return { text: '', memoryRevision: revisionFor('') };
+    return { entries: [], text: '', revision: revisionFor('') };
   }
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(temporary, body, 'utf8');
@@ -178,30 +239,154 @@ function replaceBotMemoryLocked(homeDir, botId, file, body, expectedRevision, cu
     fs.rmSync(temporary, { force: true });
     throw error;
   }
-  return { text: body, memoryRevision: revisionFor(body) };
+  return { entries: parseMemoryEntries(body), text: body, revision: revisionFor(body) };
+}
+
+function normalizeOpText(value) {
+  return String(value ?? '').trim().replace(/\s*\r?\n\s*/g, ' ').trim();
+}
+
+function matchEntryIndex(entries, match) {
+  const hits = entries.map((entry, index) => (entry.includes(match) ? index : -1)).filter((index) => index >= 0);
+  if (hits.length === 0) {
+    throw new MemoryError('MEMORY_MATCH_NOT_FOUND', `No memory entry contains "${match}".`);
+  }
+  if (hits.length > 1) {
+    throw new MemoryError('MEMORY_MATCH_AMBIGUOUS', `The match "${match}" hits ${hits.length} memory entries; provide a longer match.`);
+  }
+  return hits[0];
+}
+
+function limitForTrack(limits, track) {
+  const configured = Number(limits?.[track]);
+  const fallback = track === 'user' ? DEFAULT_USER_MEMORY_LIMIT : DEFAULT_BOT_MEMORY_LIMIT;
+  const limit = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : fallback;
+  return Math.min(limit, MAX_BOT_MEMORY_CHARS);
+}
+
+/**
+ * Apply structured memory ops across both tracks under the per-bot mutation
+ * lock. Each touched track is written atomically.
+ *
+ * @param {string} homeDir
+ * @param {string} botId
+ * @param {Array<{ op: 'add' | 'replace' | 'remove', track?: 'bot' | 'user', text?: string, match?: string }>} ops
+ * @param {{ expectedRevision?: string | { bot?: string, user?: string }, limits?: { bot?: number, user?: number } }} [options]
+ * @returns {{ applied: number, skipped: string[], snapshot: { bot: object, user: object } }}
+ */
+export function applyMemoryOps(homeDir, botId, ops, { expectedRevision, limits } = {}) {
+  if (!homeDir) throw new Error('DSH_HOME is not set');
+  const list = Array.isArray(ops) ? ops : [];
+  const expected = typeof expectedRevision === 'string' ? { bot: expectedRevision } : (expectedRevision ?? {});
+  const grouped = { bot: [], user: [] };
+  for (const op of list) {
+    const track = normalizeTrack(op?.track);
+    if (!['add', 'replace', 'remove'].includes(op?.op)) {
+      throw new MemoryError('MEMORY_OP_INVALID', `Unknown memory op "${String(op?.op)}".`);
+    }
+    grouped[track].push(op);
+  }
+  return withMemoryMutationLock(homeDir, botId, () => {
+    const applied = { count: 0 };
+    const skipped = [];
+    const snapshot = {};
+    for (const track of MEMORY_TRACKS) {
+      const file = memoryFilePath(homeDir, botId, track);
+      const state = readTrackByPath(file);
+      const trackExpected = expected[track];
+      if (trackExpected !== undefined && trackExpected !== state.revision) {
+        throw new MemoryError('MEMORY_REVISION_MISMATCH', 'Bot memory changed. Refresh and try again.');
+      }
+      const entries = [...state.entries];
+      for (const op of grouped[track]) {
+        if (op.op === 'add') {
+          const text = normalizeOpText(op.text);
+          if (!text) continue;
+          if (entries.includes(text)) {
+            skipped.push(text);
+            continue;
+          }
+          entries.push(text);
+          applied.count += 1;
+        } else {
+          const match = String(op.match ?? '');
+          if (!match) throw new MemoryError('MEMORY_MATCH_NOT_FOUND', 'A match is required for replace and remove.');
+          const index = matchEntryIndex(entries, match);
+          if (op.op === 'replace') {
+            const text = normalizeOpText(op.text);
+            if (!text) throw new MemoryError('MEMORY_OP_INVALID', 'Replacement text is empty.');
+            if (entries.includes(text) && entries[index] !== text) {
+              skipped.push(text);
+              continue;
+            }
+            entries[index] = text;
+          } else {
+            entries.splice(index, 1);
+          }
+          applied.count += 1;
+        }
+      }
+      if (grouped[track].length === 0) {
+        snapshot[track] = state;
+        continue;
+      }
+      const body = serializeMemoryEntries(entries);
+      const limit = limitForTrack(limits, track);
+      if (body.length > limit) {
+        throw new MemoryError('MEMORY_FULL',
+          `Memory is full (${body.length}/${limit} characters used). Remove or replace entries before adding more.`);
+      }
+      snapshot[track] = writeTrackFile(file, body, state.revision, state);
+    }
+    return { applied: applied.count, skipped, snapshot };
+  });
+}
+
+/**
+ * Replace one track's raw body atomically; an empty value removes the file.
+ * Enforces the track limit when `limits` supplies one.
+ */
+export function writeMemoryTrack(homeDir, botId, track, text, { expectedRevision, limits } = {}) {
+  if (!homeDir) throw new Error('DSH_HOME is not set');
+  const normalized = normalizeTrack(track);
+  const file = memoryFilePath(homeDir, botId, normalized);
+  const body = String(text ?? '');
+  const limit = limitForTrack(limits, normalized);
+  if (body.length > limit) {
+    throw new MemoryError('MEMORY_FULL',
+      `Memory is full (${body.length}/${limit} characters used). Remove or replace entries before adding more.`);
+  }
+  return withMemoryMutationLock(homeDir, botId, () => (
+    writeTrackFile(file, body, expectedRevision)
+  ));
+}
+
+/**
+ * @param {string} homeDir
+ * @param {string} botId
+ * @param {string} text
+ */
+export function writeBotMemory(homeDir, botId, text) {
+  return replaceBotMemory(homeDir, botId, text);
 }
 
 /** Replace one Bot memory atomically; an empty value removes the note file. */
 export function replaceBotMemory(homeDir, botId, text, expectedRevision) {
-  if (!homeDir) throw new Error('DSH_HOME is not set');
-  const file = memoryFilePath(homeDir, botId);
-  const body = String(text ?? '');
-  return withMemoryMutationLock(homeDir, botId, () => (
-    replaceBotMemoryLocked(homeDir, botId, file, body, expectedRevision)
-  ));
+  const state = writeMemoryTrack(homeDir, botId, 'bot', text, {
+    expectedRevision,
+    limits: { bot: MAX_BOT_MEMORY_CHARS },
+  });
+  return { text: state.text, memoryRevision: state.revision };
 }
 
 /** Append a normalized bullet without exposing a read/write race to callers. */
 export function appendBotMemory(homeDir, botId, note) {
-  const value = String(note ?? '').trim();
+  const value = normalizeOpText(note);
   if (!value) return readBotMemoryState(homeDir, botId);
-  if (!homeDir) throw new Error('DSH_HOME is not set');
-  const file = memoryFilePath(homeDir, botId);
-  return withMemoryMutationLock(homeDir, botId, () => {
-    const current = readBotMemoryState(homeDir, botId);
-    const text = current.text ? `${current.text.trim()}\n- ${value}\n` : `- ${value}\n`;
-    return replaceBotMemoryLocked(homeDir, botId, file, text, current.memoryRevision, current);
+  const result = applyMemoryOps(homeDir, botId, [{ op: 'add', track: 'bot', text: value }], {
+    limits: { bot: MAX_BOT_MEMORY_CHARS },
   });
+  return { text: result.snapshot.bot.text, memoryRevision: result.snapshot.bot.revision };
 }
 
 /**

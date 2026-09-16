@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const SHELL_ROLES = new Set(['boot', 'harness', 'launcher', 'pet']);
+const SHELL_ROLES = new Set(['boot', 'harness', 'launcher', 'pet', 'pet-live2d']);
 
 function shellRole(argv = process.argv) {
   const prefix = '--dshd-shell-role=';
@@ -73,6 +73,9 @@ function harnessApi(renderer, remoteFeature) {
     ...configApi(renderer),
     openExternal: invoke(renderer, 'shell:open-external'),
     openSettings: invoke(renderer, 'shell:open-settings'),
+    // Live2D pet settings section writes — normalize + persist + push to
+    // the live pet window through the pet manager.
+    saveLive2dPetSettings: invoke(renderer, 'shell:live2d-pet-settings'),
     openLauncher: invoke(renderer, 'shell:open-launcher'),
     retryFullPlugins: invoke(renderer, 'shell:retry-full-plugins'),
     checkUpdate: invoke(renderer, 'shell:check-update'),
@@ -215,7 +218,45 @@ function petApi(renderer) {
   return {
     getState: invoke(renderer, 'shell:pet-state'),
     commitDrag: invoke(renderer, 'shell:pet-drag-commit'),
+    openMenu: invoke(renderer, 'shell:pet-menu'),
+    onState: subscribe(renderer, 'shell:pet-state'),
     onTheme: subscribe(renderer, 'shell:theme'),
+  };
+}
+
+function live2dPetApi(renderer) {
+  return {
+    setInteractive: invoke(renderer, 'shell:live2d-interactive'),
+    dragStart: invoke(renderer, 'shell:live2d-drag-start'),
+    dragMove: invoke(renderer, 'shell:live2d-drag-move'),
+    dragCommit: invoke(renderer, 'shell:live2d-drag-commit'),
+    relocate: invoke(renderer, 'shell:live2d-relocate'),
+    hidePet: invoke(renderer, 'shell:live2d-hide'),
+    getGrowth: invoke(renderer, 'shell:live2d-growth'),
+    feedTokens: invoke(renderer, 'shell:live2d-feed'),
+    care: invoke(renderer, 'shell:live2d-care'),
+    onMove: subscribe(renderer, 'shell:live2d-move'),
+    onLayout: subscribe(renderer, 'shell:live2d-layout'),
+    onCursor: subscribe(renderer, 'shell:live2d-cursor'),
+    onGrowth: subscribe(renderer, 'shell:live2d-growth'),
+    getSettings: invoke(renderer, 'shell:live2d-settings-get'),
+    onSettings: subscribe(renderer, 'shell:live2d-settings'),
+    // 「⚙ 设置」格 navigates to the pet section of the main window's
+    // Settings shell — the pet overlay has no settings UI of its own.
+    openSettings: invoke(renderer, 'shell:live2d-open-settings'),
+    reportRoam: invoke(renderer, 'shell:live2d-roam'),
+    fileEat: invoke(renderer, 'shell:live2d-file-eat'),
+    // Later-round surface (handlers land with the DSH-link work); callers
+    // are optional-chained and must tolerate rejection while unimplemented.
+    chat: invoke(renderer, 'shell:live2d-chat'),
+    chatFocus: invoke(renderer, 'shell:live2d-chat-focus'),
+    chatState: invoke(renderer, 'shell:live2d-chat-state'),
+    chatSelectModel: invoke(renderer, 'shell:live2d-chat-select-model'),
+    openWhale: invoke(renderer, 'shell:live2d-open-whale'),
+    lookScreen: invoke(renderer, 'shell:live2d-look'),
+    respondApproval: invoke(renderer, 'shell:live2d-respond'),
+    onDsh: subscribe(renderer, 'shell:live2d-dsh'),
+    onAlert: subscribe(renderer, 'shell:live2d-alert'),
   };
 }
 
@@ -224,6 +265,7 @@ function buildShellApi(role, renderer, remoteFeature = remoteFeatureEnabled()) {
   if (role === 'harness') return harnessApi(renderer, remoteFeature);
   if (role === 'launcher') return launcherApi(renderer);
   if (role === 'pet') return petApi(renderer);
+  if (role === 'pet-live2d') return live2dPetApi(renderer);
   return null;
 }
 

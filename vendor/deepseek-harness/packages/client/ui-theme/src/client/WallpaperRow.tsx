@@ -16,9 +16,13 @@ import { WallpaperGalleryModal } from './WallpaperGalleryModal.tsx'
 import { wallpaperShell, type WallpaperCatalogItem } from './wallpaper-shell.ts'
 import css from './AppearanceSection.module.css'
 
-/** Persist wallpaper image and/or the two effect sliders. */
+/** Persist wallpaper image, the two effect sliders, and/or the backdrop effect and its tunables. */
 export type SetWallpaper = (
-  patch: Partial<Pick<ThemeSettings, 'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate'>>,
+  patch: Partial<Pick<ThemeSettings,
+    'wallpaperImage' | 'wallpaperBlur' | 'wallpaperPixelate' | 'backgroundEffect'
+    | 'backgroundEffectColors' | 'backgroundEffectSpeed' | 'backgroundEffectCount'
+    | 'backgroundEffectPreset' | 'backgroundEffectVariant'
+  >>,
 ) => void
 
 /**

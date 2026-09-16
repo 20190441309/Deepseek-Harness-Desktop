@@ -54,6 +54,8 @@ class HarnessController extends EventEmitter {
       || (async () => ({ ok: true, added: false }));
     this.ensureDshbotPlugin = options.ensureDshbotPlugin
       || (async () => ({ ok: true, added: false }));
+    this.ensureDshWhalePlugin = options.ensureDshWhalePlugin
+      || (async () => ({ ok: true, added: false }));
     this.ensureDesktopMarket = options.ensureDesktopMarket
       || (async () => ({ ok: true, added: false }));
     this.removeLegacyDshbotPreset = options.removeLegacyDshbotPreset
@@ -623,6 +625,33 @@ class HarnessController extends EventEmitter {
         throw error;
       }
       throw new Error(`桌面内置 dshbot 失败：${errorMessage(error)}`);
+    }
+    // dsh-whale is the desktop built-in whale-girl assistant — same contract
+    // as dshbot: overlay on every start only while `whaleAssistantEnabled`
+    // (default off, toggled from the pet settings page) is true; the disable
+    // list never applies; a missing vendor copy fails the start.
+    try {
+      const whale = await this.ensureDshWhalePlugin({
+        enabled: (this.loadConfig() || {}).whaleAssistantEnabled === true,
+      });
+      this.assertOperationCurrent(generation);
+      if (whale && whale.ok === false) {
+        throw new Error(`桌面内置 dsh-whale 失败：${whale.error || 'unknown'}`);
+      }
+      if (whale?.overlayFile) {
+        patchFiles.push(whale.overlayFile);
+      }
+      if (whale && whale.ok && whale.disabled) {
+        this.dsh.log('桌面内置 dsh-whale 已按设置关闭', 'app');
+      } else if (whale && whale.ok) {
+        this.dsh.log(whale.added ? '已接入桌面内置 dsh-whale（鲸鱼娘助理）' : '桌面内置 dsh-whale 已就绪', 'app');
+      }
+    } catch (error) {
+      if (isCancellation(error)) throw error;
+      if (error instanceof Error && error.message.startsWith('桌面内置 dsh-whale 失败：')) {
+        throw error;
+      }
+      throw new Error(`桌面内置 dsh-whale 失败：${errorMessage(error)}`);
     }
     try {
       const disabled = this.applyDisabledBundles((this.loadConfig() || {}).disabledPlugins);

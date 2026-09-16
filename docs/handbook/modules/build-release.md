@@ -7,7 +7,7 @@
 
 ## 当前版本
 
-`0.2.9`（2026-09-06）仍是最近已公开版本；`0.3.1` 当前处于候选修复阶段，默认仅生成 Windows x64。Harness 钉 `dsh-v0.1.5-rc.1`（SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）。候选运行完成后，必须把同一候选运行的 SHA、Desktop tests 结果和 Setup SHA256 写入发布记录，再使用 `publish.yml` 晋级；中文 / English 发布说明分别在 [release-notes.md](../../../.github/release-notes.md) / [release-notes.en.md](../../../.github/release-notes.en.md)。
+`0.3.1`（tag `v0.3.1`）是最近已发布版本；`0.3.2` 当前处于候选阶段，默认仅生成 Windows x64。Harness 钉 `dsh-v0.1.5-rc.2`（SHA `fb2c4b9e698e30edb738bca4cf0618587db7d203`）。候选运行完成后，必须把同一候选运行的 SHA、Desktop tests 结果和 Setup SHA256 写入发布记录，再使用 `publish.yml` 晋级；中文 / English 发布说明分别在 [release-notes.md](../../../.github/release-notes.md) / [release-notes.en.md](../../../.github/release-notes.en.md)。
 
 ## 用户路径（开发者）
 

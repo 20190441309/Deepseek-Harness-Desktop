@@ -40,7 +40,20 @@
   - button "English":
     - text: English
     - img
+  - text: Font size Only affects conversation content 14
+  - button "Increase font size":
+    - img
+  - button "Decrease font size":
+    - img
+  - text: px Conversation display Controls process content in completed turns
+  - button "Compact":
+    - text: Compact
+    - img
   - text: Send behavior while busy What Enter and the Send button do while the agent is running; Cmd/Ctrl+Enter uses the other behavior
   - button "Queue":
     - text: Queue
     - img
+  - text: Custom instructions Set a few standing rules for the agent; they apply to every later task
+  - textbox "Custom instructions":
+    - /placeholder: Write your rules, e.g. always reply in Chinese
+  - text: 0 / 1500

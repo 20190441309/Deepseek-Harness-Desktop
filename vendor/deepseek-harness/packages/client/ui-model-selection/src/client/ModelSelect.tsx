@@ -7,9 +7,11 @@
  * ToggleButton) shows both: model name + effort in the caption tone.
  * Data and submission ride the SAME per-session ModelDirectory as the
  * /model popup; exact-model reasoning metadata and the selected effort come
- * from the Host rather than a client-owned vocabulary. A rejected selection
- * announces through the shared transient Toast anchored to the composer
- * card; the in-menu strip with Retry remains the catalog-load surface.
+ * from the Host rather than a client-owned vocabulary. The menu closes on
+ * the pick (the same contract every Menu consumer keeps) and the settlement
+ * lands in the background — a rejected selection announces through the
+ * shared transient Toast anchored to the composer card; the in-menu strip
+ * with Retry remains the catalog-load surface.
  */
 import {
   useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
@@ -109,7 +111,15 @@ export function ModelSelect(
         label: effort.name,
       })),
     ], [reasoning, t])
-  const busy = state.status === 'selecting'
+  // The exit replays the last open frame: a pick's store updates (selecting,
+  // then the settled current) land while the card is still fading out, and
+  // live reads would flash the dim/check/position changes mid-exit — the
+  // same freeze PopupSelectView's lastOpen does. The trigger stays live:
+  // its relabel IS the settle feedback.
+  const openFrame = useRef({ state, action: lastActionRef.current, effort: effectiveEffort, effortChoices })
+  if (open) openFrame.current = { state, action: lastActionRef.current, effort: effectiveEffort, effortChoices }
+  const view = openFrame.current
+  const viewBusy = view.state.status === 'selecting'
 
   const reload = (): void => {
     lastActionRef.current = 'load'
@@ -135,14 +145,16 @@ export function ModelSelect(
   // Portaled placement (the Menu primitive's portal rules: fixed from the
   // anchor rect, measured before paint, clamped inside the viewport): above
   // the trigger, right edges aligned. Depends on pane and directory state
-  // because pane switches and async catalog loads resize the card. The
-  // placement survives the exit animation (`mounted`, not `open`), so the
-  // closing card keeps its measured origin until presence unmounts it.
+  // because pane switches and async catalog loads resize the card. The exit
+  // keeps the last measured origin — a settling pick republishes state (and
+  // relabels the trigger) mid-fade, and re-placing then would teleport the
+  // closing card.
   /* jscpd:ignore-start -- deliberate mirror of ui-primitives useAnchoredPosition:
      that hook only places from the anchor's LEFT edge, while this card aligns
      right edges (x = rect.right - width), so the measure-and-clamp plumbing repeats. */
   useLayoutEffect(() => {
     if (!mounted) { setMenuPos(null); return }
+    if (!open) return
     const place = (): void => {
       /* v8 ignore next 2 -- the trigger ref is attached whenever the menu is open. */
       const rect = triggerRef.current?.getBoundingClientRect()
@@ -165,7 +177,7 @@ export function ModelSelect(
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [mounted, pane, state])
+  }, [mounted, open, pane, state])
   /* jscpd:ignore-end */
 
   if (!available) return null
@@ -212,11 +224,10 @@ export function ModelSelect(
     close()
   }
 
+  // A rejected selection reports on the toast; the card itself already left
+  // on the pick, so settling only announces.
   const settleSelection = (accepted: boolean): void => {
-    if (accepted) {
-      if (rootRef.current !== null) close(true)
-      return
-    }
+    if (accepted) return
     const message = directory.getSnapshot().error
     if (message !== null) {
       toastSeq.current += 1
@@ -230,7 +241,8 @@ export function ModelSelect(
       return
     }
     lastActionRef.current = 'select'
-    void select(selection).then(settleSelection)
+    void select(selection).then(settleSelection, () => { settleSelection(false) })
+    close(true)
   }
 
   const chooseEffort = (effort: string | undefined): void => {
@@ -245,7 +257,8 @@ export function ModelSelect(
       ...effort === undefined ? {} : { reasoningEffort: effort },
     }
     lastActionRef.current = 'select'
-    void select(selection).then(settleSelection)
+    void select(selection).then(settleSelection, () => { settleSelection(false) })
+    close(true)
   }
 
   const waiting = state.current === null && state.status === 'loading'
@@ -305,7 +318,7 @@ export function ModelSelect(
           style={menuPos ?? MEASURE_STYLE}
           role="menu"
           aria-label={t('menu.aria')}
-          aria-busy={state.status === 'loading' || busy}
+          aria-busy={view.state.status === 'loading' || viewBusy}
           data-dsh-motion="popover"
           data-state={motionState}
           aria-hidden={open ? undefined : true}
@@ -329,29 +342,29 @@ export function ModelSelect(
 
           {pane === 'model' && (
             <>
-              {state.status === 'loading' && (
+              {view.state.status === 'loading' && (
                 <div className={css.status}>{t('status.loading')}</div>
               )}
-              {state.error !== null && lastActionRef.current === 'load' && (
+              {view.state.error !== null && view.action === 'load' && (
                 <div className={css.error}>
-                  <span>{t('error.action', { message: state.error })}</span>
+                  <span>{t('error.action', { message: view.state.error })}</span>
                   <button type="button" className={css.retry} onClick={reload}>{t('retry')}</button>
                 </div>
               )}
-              {state.failures.map(failure => (
+              {view.state.failures.map(failure => (
                 <div className={css.warning} key={failure.id}>
                   <span>{t('warning.groupLoad', { name: failure.name, message: failure.message })}</span>
                   <button type="button" className={css.retry} onClick={reload}>{t('retry')}</button>
                 </div>
               ))}
               <div className={clsx(css.groups, 'scrollable')}>
-                {state.groups.map((group) => {
+                {view.state.groups.map((group) => {
                   const headingId = `${id}-${group.id}`
                   return (
                     <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
                       <div className={css.groupTitle} id={headingId}>{group.name}</div>
                       {group.models.map((model) => {
-                        const selected = state.current?.provider === group.id && state.current.model === model.id
+                        const selected = view.state.current?.provider === group.id && view.state.current.model === model.id
                         return (
                           <button
                             ref={itemRef()}
@@ -361,7 +374,7 @@ export function ModelSelect(
                             className={clsx(css.option, selected && css.selected)}
                             key={model.id}
                             title={model.name}
-                            disabled={busy}
+                            disabled={viewBusy}
                             onClick={() => { choose({ provider: group.id, model: model.id }) }}
                           >
                             <span className={css.optionCopy}>
@@ -377,7 +390,7 @@ export function ModelSelect(
                   )
                 })}
               </div>
-              {state.status === 'ready' && choices.length === 0 && (
+              {view.state.status === 'ready' && view.state.groups.every(group => group.models.length === 0) && (
                 <div className={css.empty}>{t('empty.models')}</div>
               )}
             </>
@@ -385,30 +398,30 @@ export function ModelSelect(
 
           {pane === 'effort' && (
             <>
-              {state.error !== null && lastActionRef.current === 'load' && (
+              {view.state.error !== null && view.action === 'load' && (
                 <div className={css.error}>
-                  <span>{t('error.action', { message: state.error })}</span>
+                  <span>{t('error.action', { message: view.state.error })}</span>
                   <button type="button" className={css.retry} onClick={reload}>{t('action.reload')}</button>
                 </div>
               )}
-              {effortChoices.length === 0
+              {view.effortChoices.length === 0
                 ? <div className={css.empty}>{t('empty.efforts')}</div>
-                : effortChoices.map(level => (
+                : view.effortChoices.map(level => (
                   <button
                     ref={itemRef()}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={effectiveEffort === level.effort}
-                    className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
+                    aria-checked={view.effort === level.effort}
+                    className={clsx(css.option, view.effort === level.effort && css.selected)}
                     key={level.key}
-                    disabled={busy}
+                    disabled={viewBusy}
                     onClick={() => { chooseEffort(level.effort) }}
                   >
                     <span className={css.optionCopy}>
                       <span className={css.modelName}>{level.label}</span>
                     </span>
                     <span className={css.check}>
-                      {effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}
+                      {view.effort === level.effort ? <IconCheckOutline16 /> : null}
                     </span>
                   </button>
                 ))}

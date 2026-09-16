@@ -181,12 +181,14 @@ test('remote defaults to server without enabling pairing and preserves an explic
 });
 
 test('desktop pet defaults and malformed saved state are normalized', () => {
-  assert.deepEqual(DEFAULTS.pet, { enabled: true, xRatio: 0.82, yRatio: 0.72 });
-  assert.deepEqual(normalizePetState({ enabled: 'yes', xRatio: 2, yRatio: -1 }), {
+  assert.deepEqual(DEFAULTS.pet, { enabled: true, xRatio: 0.82, yRatio: 0.72, petId: '' });
+  assert.deepEqual(normalizePetState({ enabled: 'yes', xRatio: 2, yRatio: -1, petId: 'wargreymon' }), {
     enabled: true,
     xRatio: 1,
     yRatio: 0,
+    petId: 'wargreymon',
   });
+  assert.equal(normalizePetState({ petId: 7 }).petId, '');
   assert.deepEqual(loadConfig().pet, DEFAULTS.pet);
 });
 

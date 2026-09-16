@@ -71,3 +71,20 @@ export function routineReachedLimit(routine, nextRunCount = Number(routine?.runC
   const maxRuns = Number(routine?.maxRuns ?? 0);
   return Number.isInteger(maxRuns) && maxRuns > 0 && nextRunCount >= maxRuns;
 }
+
+/**
+ * An enabled routine missed runs when it still carries failures or its
+ * nextRunAt is more than one full interval stale — the fire after nextRunAt
+ * is already in the past too.
+ */
+export function missedRoutine(routine, at = Date.now()) {
+  if (routine?.enabled !== true) return false;
+  if (Number(routine.failureCount) > 0) return true;
+  const next = Number(routine.nextRunAt);
+  if (!Number.isFinite(next) || next > at) return false;
+  try {
+    return nextRoutineRun(scheduleFromRoutine(routine), next) <= at;
+  } catch {
+    return false;
+  }
+}

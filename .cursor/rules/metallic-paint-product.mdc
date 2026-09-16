@@ -1,0 +1,5 @@
+# Metallic paint hover
+
+Every native `button` in the main Web UI shows a translucent silver `linear-gradient` sheen on `:hover` — a layered `background-image` over the variant's own hover fill, never a replacement. Painted by the global `metallic-paint.css` sheet mounted via `installThemeStyles`; colors come only from `color-mix` on label aliases — bright bands `--dsw-alias-label-primary-foreground` (keeps glyph contrast), shades `--dsw-alias-label-primary`, mid `--dsw-alias-label-secondary` — so the sheen inverts with the theme and tints with custom themes (no literals, no theme branch). The 4.5s `background-position` sweep is a design value (motion.md indicator family); `prefers-reduced-motion` stops the sweep, keeps the static sheen. Scope stays native `<button>` in the app document — no `role='button'` rows, selects, inputs, boot/launcher/gallery windows, or mobile/web. No WebGL/shader port, no settings toggle.
+
+Full card: [docs/features/metallic-paint.md](../../docs/features/metallic-paint.md)

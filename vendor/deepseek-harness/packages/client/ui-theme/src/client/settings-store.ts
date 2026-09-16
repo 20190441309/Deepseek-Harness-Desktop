@@ -6,9 +6,10 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import { DEFAULT_FAMILY_ID, type ThemeFamily } from '../theme-family.ts'
 import {
-  DEFAULT_FONT_SIZE, DEFAULT_THEME_SETTINGS, type ThemePreference, type ThemeSettings,
-  type WallpaperFavorite, type WallpaperSource,
+  DEFAULT_FONT_SIZE, DEFAULT_THEME_SETTINGS, type BackgroundEffect, type ThemePreference,
+  type ThemeSettings, type WallpaperFavorite, type WallpaperSource,
 } from '../theme-settings.ts'
+import { normalizeCursorEffect } from '../cursor-fx.ts'
 
 /** Fields the Appearance page mirrors from a theme snapshot. */
 export interface AppearanceSyncSnapshot {
@@ -28,6 +29,8 @@ export interface AppearanceSyncSnapshot {
   glassOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
+  /** Sidebar mask flag; the rail paints the canvas fill while on. */
+  sidebarMaskHidden: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -42,6 +45,30 @@ export interface AppearanceSyncSnapshot {
   wallpaperSources?: readonly WallpaperSource[]
   /** Starred gallery items. */
   wallpaperFavorites?: readonly WallpaperFavorite[]
+  /** Ambient backdrop effect painted while no wallpaper is set. */
+  backgroundEffect?: BackgroundEffect
+  /** Ambient backdrop color overrides (theme tokens paint empty slots). */
+  backgroundEffectColors?: readonly string[]
+  /** Ambient backdrop speed percent. */
+  backgroundEffectSpeed?: number
+  /** Ambient backdrop bloom count. */
+  backgroundEffectCount?: number
+  /** Selected backdrop scheme: a preset id or `custom`. */
+  backgroundEffectPreset?: ThemeSettings['backgroundEffectPreset']
+  /** Bloom shape variant the gradient paints. */
+  backgroundEffectVariant?: ThemeSettings['backgroundEffectVariant']
+  /** Pointer decoration layer switch (指针特效). */
+  cursorEffectEnabled?: boolean
+  /** Pointer decoration: `trail` or `splash`. */
+  cursorEffect?: ThemeSettings['cursorEffect']
+  /** Pointer palette overrides; empty follows the theme accent. */
+  cursorEffectColors?: readonly string[]
+  /** Pointer decoration speed percent. */
+  cursorEffectSpeed?: number
+  /** Pointer decoration size percent. */
+  cursorEffectSize?: number
+  /** Selected pointer scheme: a preset id or `custom`. */
+  cursorEffectPreset?: ThemeSettings['cursorEffectPreset']
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -74,6 +101,8 @@ export interface AppearanceRowState {
   glassOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
+  /** Sidebar mask flag; the rail paints the canvas fill while on. */
+  sidebarMaskHidden: boolean
   /** Wallpaper data URL; empty means no wallpaper. */
   wallpaperImage: string
   /** Frosted-glass blur on the wallpaper, 0–100. */
@@ -88,6 +117,30 @@ export interface AppearanceRowState {
   wallpaperSources: readonly WallpaperSource[]
   /** Starred gallery items. */
   wallpaperFavorites: readonly WallpaperFavorite[]
+  /** Ambient backdrop effect painted while no wallpaper is set. */
+  backgroundEffect: BackgroundEffect
+  /** Ambient backdrop color overrides (theme tokens paint empty slots). */
+  backgroundEffectColors: readonly string[]
+  /** Ambient backdrop speed percent. */
+  backgroundEffectSpeed: number
+  /** Ambient backdrop bloom count. */
+  backgroundEffectCount: number
+  /** Selected backdrop scheme: a preset id or `custom`. */
+  backgroundEffectPreset: ThemeSettings['backgroundEffectPreset']
+  /** Bloom shape variant the gradient paints. */
+  backgroundEffectVariant: ThemeSettings['backgroundEffectVariant']
+  /** Pointer decoration layer switch (指针特效). */
+  cursorEffectEnabled: boolean
+  /** Pointer decoration: `trail` or `splash`. */
+  cursorEffect: ThemeSettings['cursorEffect']
+  /** Pointer palette overrides; empty follows the theme accent. */
+  cursorEffectColors: readonly string[]
+  /** Pointer decoration speed percent. */
+  cursorEffectSpeed: number
+  /** Pointer decoration size percent. */
+  cursorEffectSize: number
+  /** Selected pointer scheme: a preset id or `custom`. */
+  cursorEffectPreset: ThemeSettings['cursorEffectPreset']
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -118,6 +171,7 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   customThemes: [],
   glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
   transparentTheme: DEFAULT_THEME_SETTINGS.transparentTheme,
+  sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
   wallpaperImage: '',
   wallpaperBlur: DEFAULT_THEME_SETTINGS.wallpaperBlur,
   wallpaperPixelate: DEFAULT_THEME_SETTINGS.wallpaperPixelate,
@@ -125,6 +179,18 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   wallpaperCatalogUrls: [],
   wallpaperSources: DEFAULT_THEME_SETTINGS.wallpaperSources,
   wallpaperFavorites: [],
+  backgroundEffect: DEFAULT_THEME_SETTINGS.backgroundEffect,
+  backgroundEffectColors: DEFAULT_THEME_SETTINGS.backgroundEffectColors,
+  backgroundEffectSpeed: DEFAULT_THEME_SETTINGS.backgroundEffectSpeed,
+  backgroundEffectCount: DEFAULT_THEME_SETTINGS.backgroundEffectCount,
+  backgroundEffectPreset: DEFAULT_THEME_SETTINGS.backgroundEffectPreset,
+  backgroundEffectVariant: DEFAULT_THEME_SETTINGS.backgroundEffectVariant,
+  cursorEffectEnabled: DEFAULT_THEME_SETTINGS.cursorEffectEnabled,
+  cursorEffect: DEFAULT_THEME_SETTINGS.cursorEffect,
+  cursorEffectColors: DEFAULT_THEME_SETTINGS.cursorEffectColors,
+  cursorEffectSpeed: DEFAULT_THEME_SETTINGS.cursorEffectSpeed,
+  cursorEffectSize: DEFAULT_THEME_SETTINGS.cursorEffectSize,
+  cursorEffectPreset: DEFAULT_THEME_SETTINGS.cursorEffectPreset,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -151,6 +217,7 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.customThemes = snapshot.customThemes
         d.glassOpacity = snapshot.glassOpacity
         d.transparentTheme = snapshot.transparentTheme
+        d.sidebarMaskHidden = snapshot.sidebarMaskHidden
         d.wallpaperImage = snapshot.wallpaperImage
         d.wallpaperBlur = snapshot.wallpaperBlur
         d.wallpaperPixelate = snapshot.wallpaperPixelate
@@ -158,6 +225,18 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.wallpaperCatalogUrls = snapshot.wallpaperCatalogUrls ?? []
         d.wallpaperSources = snapshot.wallpaperSources ?? DEFAULT_THEME_SETTINGS.wallpaperSources
         d.wallpaperFavorites = snapshot.wallpaperFavorites ?? []
+        d.backgroundEffect = snapshot.backgroundEffect ?? DEFAULT_THEME_SETTINGS.backgroundEffect
+        d.backgroundEffectColors = snapshot.backgroundEffectColors ?? DEFAULT_THEME_SETTINGS.backgroundEffectColors
+        d.backgroundEffectSpeed = snapshot.backgroundEffectSpeed ?? DEFAULT_THEME_SETTINGS.backgroundEffectSpeed
+        d.backgroundEffectCount = snapshot.backgroundEffectCount ?? DEFAULT_THEME_SETTINGS.backgroundEffectCount
+        d.backgroundEffectPreset = snapshot.backgroundEffectPreset ?? DEFAULT_THEME_SETTINGS.backgroundEffectPreset
+        d.backgroundEffectVariant = snapshot.backgroundEffectVariant ?? DEFAULT_THEME_SETTINGS.backgroundEffectVariant
+        d.cursorEffectEnabled = snapshot.cursorEffectEnabled ?? DEFAULT_THEME_SETTINGS.cursorEffectEnabled
+        d.cursorEffect = normalizeCursorEffect(snapshot.cursorEffect)
+        d.cursorEffectColors = snapshot.cursorEffectColors ?? DEFAULT_THEME_SETTINGS.cursorEffectColors
+        d.cursorEffectSpeed = snapshot.cursorEffectSpeed ?? DEFAULT_THEME_SETTINGS.cursorEffectSpeed
+        d.cursorEffectSize = snapshot.cursorEffectSize ?? DEFAULT_THEME_SETTINGS.cursorEffectSize
+        d.cursorEffectPreset = snapshot.cursorEffectPreset ?? DEFAULT_THEME_SETTINGS.cursorEffectPreset
         d.fontFamilySans = snapshot.fontFamilySans
         d.fontFamilyCode = snapshot.fontFamilyCode
         d.fontSizeInterface = snapshot.fontSizeInterface

@@ -98,9 +98,22 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     customThemes,
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
     transparentTheme: false,
+    sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
     wallpaperImage: '',
     wallpaperBlur: 0,
     wallpaperPixelate: 0,
+    backgroundEffect: DEFAULT_THEME_SETTINGS.backgroundEffect,
+    backgroundEffectColors: DEFAULT_THEME_SETTINGS.backgroundEffectColors,
+    backgroundEffectSpeed: DEFAULT_THEME_SETTINGS.backgroundEffectSpeed,
+    backgroundEffectCount: DEFAULT_THEME_SETTINGS.backgroundEffectCount,
+    backgroundEffectPreset: DEFAULT_THEME_SETTINGS.backgroundEffectPreset,
+    backgroundEffectVariant: DEFAULT_THEME_SETTINGS.backgroundEffectVariant,
+    cursorEffectEnabled: false,
+    cursorEffect: 'trail',
+    cursorEffectColors: [],
+    cursorEffectSpeed: 100,
+    cursorEffectSize: 100,
+    cursorEffectPreset: 'default',
     fontFamilySans: '',
     fontFamilyCode: '',
     fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -116,6 +129,7 @@ function mount(
   preference: ThemePreference = 'system',
   overrides: Partial<AppearanceSyncSnapshot> = {},
   wallpaper?: Pick<WallpaperShell, 'listWallpaperCatalog' | 'downloadWallpaper'>,
+  renderSlot: AppearanceSectionComponentProps['renderSlot'] = () => null,
 ) {
   const store = createAppearanceRowStore().create()
   store.actions.sync(snap({ preference, ...overrides }), 0)
@@ -125,7 +139,9 @@ function mount(
   const previewTheme = vi.fn()
   const setGlassOpacity = vi.fn()
   const setTransparentTheme = vi.fn()
+  const setSidebarMask = vi.fn()
   const setWallpaper = vi.fn()
+  const setCursorFx = vi.fn()
   const setTypography = vi.fn()
   const setWallpaperSources = vi.fn()
   const setWallpaperFavorites = vi.fn()
@@ -139,20 +155,23 @@ function mount(
     actions: store.actions,
     t: (key: string) => COPY[key as keyof typeof COPY] ?? key,
     close: vi.fn(),
+    renderSlot,
     setTheme,
     setThemeHalf,
     setCustomThemes,
     previewTheme,
     setGlassOpacity,
     setTransparentTheme,
+    setSidebarMask,
     setWallpaper,
+    setCursorFx,
     setTypography,
     ...(wallpaper !== undefined ? { setWallpaperSources, setWallpaperFavorites } : {}),
   }
   const view = render(<AppearanceSection {...props} />)
   return {
     store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setTransparentTheme,
-    setWallpaper, setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
+    setSidebarMask, setWallpaper, setCursorFx, setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
   }
 }
 
@@ -376,6 +395,17 @@ describe('AppearanceSection', () => {
     expect(b.setTransparentTheme).toHaveBeenCalledWith(false)
   })
 
+  it('toggles the sidebar mask independently of the wallpaper state', () => {
+    const b = mount('system')
+    expect(screen.getByText(COPY['glass.sidebarMaskHint'])).toBeDefined()
+    const toggle = screen.getByRole('switch', { name: COPY['glass.sidebarMask'] })
+    fireEvent.click(toggle)
+    expect(b.setSidebarMask).toHaveBeenCalledWith(false)
+    act(() => { b.store.actions.sync(snap({ sidebarMaskHidden: false }), 1) })
+    fireEvent.click(screen.getByRole('switch', { name: COPY['glass.sidebarMask'] }))
+    expect(b.setSidebarMask).toHaveBeenCalledWith(true)
+  })
+
   it('hints when the frosted-glass blur drops below the readability floor while transparent', () => {
     const b = mount('system', { wallpaperImage: PNG, transparentTheme: true, wallpaperBlur: 5 })
     expect(screen.getByText(COPY['glass.transparentBlurHint'])).toBeDefined()
@@ -476,9 +506,11 @@ describe('AppearanceSection', () => {
     expect(screen.getByRole('button', { name: '浏览图库' })).toBeDefined()
     expect(screen.queryByRole('heading', { name: '图源' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '图库来源' })).toBeNull()
-    // The transparent-theme switch is the only Appearance toggle; no source switches.
-    expect(screen.getAllByRole('switch')).toHaveLength(1)
+    // Transparent theme, sidebar mask, background effect, and cursor effect are the only switches; no source switches.
+    expect(screen.getAllByRole('switch')).toHaveLength(4)
     expect(screen.getByRole('switch', { name: COPY['glass.transparent'] })).toBeDefined()
+    expect(screen.getByRole('switch', { name: COPY['glass.sidebarMask'] })).toBeDefined()
+    expect(screen.getByRole('switch', { name: COPY['cursorFx.title'] })).toBeDefined()
     expect(screen.queryByText('Bing 每日壁纸')).toBeNull()
     expect(screen.queryByLabelText('壁纸目录地址')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增图源' })).toBeNull()
@@ -657,5 +689,166 @@ describe('AppearanceSection', () => {
     fireEvent.click(within(again).getByRole('button', { name: '设为壁纸' }))
     await vi.waitFor(() => { expect(downloadWallpaper).toHaveBeenCalledWith('https://example.com/f.jpg') })
     expect(await screen.findByRole('dialog', { name: COPY['wallpaper.crop'] })).toBeDefined()
+  })
+
+  it('toggles the ambient gradient effect through setWallpaper', () => {
+    const bindings = mount('system', { backgroundEffect: 'none' })
+    fireEvent.click(screen.getByRole('switch', { name: COPY['effect.gradient'] }))
+    expect(bindings.setWallpaper).toHaveBeenCalledWith({ backgroundEffect: 'gradient' })
+  })
+
+  it('marks the stored effect as paused while a wallpaper is set', () => {
+    mount('system', { backgroundEffect: 'gradient', wallpaperImage: PNG })
+    expect(screen.getByText(COPY['effect.pausedByWallpaper'])).toBeDefined()
+  })
+
+  it('saves a preset scheme through the effect dialog', () => {
+    const b = mount('system', { backgroundEffect: 'gradient' })
+    const effectSection = screen.getByRole('heading', { name: COPY['effect.title'] }).closest('section')!
+    fireEvent.click(within(effectSection).getByRole('button', { name: COPY['effect.configure'] }))
+    fireEvent.click(screen.getByRole('radio', { name: COPY['effect.preset.aurora'] }))
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.save'] }))
+    expect(b.setWallpaper).toHaveBeenLastCalledWith({
+      backgroundEffectPreset: 'aurora',
+      backgroundEffectColors: ['', '', '#34d399', '#22d3ee', '#a78bfa', '#4ade80', '#38bdf8'],
+      backgroundEffectSpeed: 190,
+      backgroundEffectCount: 5,
+      backgroundEffectVariant: 'orbs',
+    })
+  })
+
+  it('saves custom scheme edits through the effect dialog', () => {
+    const b = mount('system', { backgroundEffect: 'gradient' })
+    const effectSection = screen.getByRole('heading', { name: COPY['effect.title'] }).closest('section')!
+    fireEvent.click(within(effectSection).getByRole('button', { name: COPY['effect.configure'] }))
+    fireEvent.click(screen.getByRole('radio', { name: COPY['effect.preset.custom'] }))
+    fireEvent.change(screen.getByRole('slider', { name: COPY['effect.speed'] }), { target: { value: '160' } })
+    fireEvent.change(screen.getByLabelText(`${COPY['effect.colorBloom']} 2`), { target: { value: '#112233' } })
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.variant'] }))
+    fireEvent.click(screen.getByRole('menuitem', { name: COPY['effect.variant.chaos'] }))
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.save'] }))
+    // The draft starts from the shipped aurora scheme; the color edit lands on it.
+    expect(b.setWallpaper).toHaveBeenLastCalledWith({
+      backgroundEffectPreset: 'custom',
+      backgroundEffectColors: ['', '', '#34d399', '#112233', '#a78bfa', '#4ade80', '#38bdf8'],
+      backgroundEffectSpeed: 160,
+      backgroundEffectCount: 5,
+      backgroundEffectVariant: 'chaos',
+    })
+  })
+
+  it('toggles the pointer effect through setCursorFx', () => {
+    const b = mount('system')
+    fireEvent.click(screen.getByRole('switch', { name: COPY['cursorFx.title'] }))
+    expect(b.setCursorFx).toHaveBeenCalledWith({ cursorEffectEnabled: true })
+  })
+
+  it('saves the chosen effect and preset scheme through the cursor dialog', () => {
+    const b = mount('system', { cursorEffectEnabled: true })
+    const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+    fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] }))
+    fireEvent.click(screen.getByRole('radio', { name: COPY['cursorFx.kind.splash'] }))
+    fireEvent.click(screen.getByRole('radio', { name: COPY['cursorFx.preset.ocean'] }))
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.save'] }))
+    expect(b.setCursorFx).toHaveBeenLastCalledWith({
+      cursorEffectEnabled: true,
+      cursorEffect: 'splash',
+      cursorEffectPreset: 'ocean',
+      cursorEffectColors: ['#38bdf8', '#2dd4bf', '#60a5fa', '#818cf8', '#22d3ee', '#67e8f9'],
+      cursorEffectSpeed: 100,
+      cursorEffectSize: 100,
+    })
+  })
+
+  it('keeps the cursor draft when a theme publish lands while the dialog is open', () => {
+    const b = mount('system', { cursorEffectEnabled: true })
+    const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+    fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] }))
+    fireEvent.click(screen.getByRole('radio', { name: COPY['cursorFx.preset.ocean'] }))
+    act(() => { b.store.actions.sync(snap({ cursorEffectPreset: 'aurora', glassOpacity: 61 }), 1) })
+    expect(screen.getByRole('radio', { name: COPY['cursorFx.preset.ocean'] }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('restores stored values and a fresh canvas when the cursor dialog reopens', async () => {
+    const b = mount('system', { cursorEffectEnabled: true })
+    const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+    const open = () => { fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] })) }
+    open()
+    const firstCanvas = document.querySelector('[role=dialog] canvas')
+    fireEvent.click(screen.getByRole('radio', { name: COPY['cursorFx.kind.splash'] }))
+    const switchedCanvas = document.querySelector('[role=dialog] canvas')
+    expect(switchedCanvas === firstCanvas).toBe(false)
+    fireEvent.click(screen.getByRole('radio', { name: COPY['cursorFx.preset.ocean'] }))
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.cancel'] }))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    open()
+    expect(screen.getByRole('radio', { name: COPY['cursorFx.kind.trail'] }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: COPY['cursorFx.preset.default'] }).getAttribute('aria-checked')).toBe('true')
+    expect(b.setCursorFx).not.toHaveBeenCalled()
+  })
+
+  it('marks the cursor scheme custom after a custom edit', () => {
+    const b = mount('system', { cursorEffectEnabled: true })
+    const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+    fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] }))
+    fireEvent.change(screen.getByRole('slider', { name: COPY['cursorFx.speed'] }), { target: { value: '160' } })
+    fireEvent.change(screen.getByLabelText(`${COPY['cursorFx.color']} 2`), { target: { value: '#112233' } })
+    fireEvent.click(screen.getByRole('button', { name: COPY['effect.save'] }))
+    expect(b.setCursorFx).toHaveBeenLastCalledWith({
+      cursorEffectEnabled: true,
+      cursorEffect: 'trail',
+      cursorEffectPreset: 'custom',
+      cursorEffectColors: ['', '#112233', '', '', '', ''],
+      cursorEffectSpeed: 160,
+      cursorEffectSize: 100,
+    })
+  })
+
+  it('resets, strokes the preview, and cancels the cursor dialog without writing', () => {
+    const b = mount('system', { cursorEffectEnabled: true })
+    const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+    fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] }))
+    const dialog = screen.getByRole('dialog', { name: COPY['cursorFx.title'] })
+    fireEvent.click(within(dialog).getByRole('radio', { name: COPY['cursorFx.preset.custom'] }))
+    fireEvent.change(within(dialog).getByRole('slider', { name: COPY['cursorFx.size'] }), { target: { value: '180' } })
+    const preview = within(dialog).getByText(COPY['cursorFx.previewHint']).parentElement as HTMLElement
+    fireEvent.pointerMove(preview, { clientX: 12, clientY: 12 })
+    fireEvent.pointerDown(preview, { clientX: 12, clientY: 12 })
+    fireEvent.click(within(dialog).getByRole('button', { name: COPY['reset'] }))
+    expect(within(dialog).getByRole('slider', { name: COPY['cursorFx.size'] }).value).toBe('100')
+    fireEvent.click(within(dialog).getByRole('button', { name: COPY['effect.cancel'] }))
+    expect(b.setCursorFx).not.toHaveBeenCalled()
+  })
+
+  it('resolves a var()-chained accent for the empty cursor color slots', () => {
+    const real = window.getComputedStyle.bind(window)
+    const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element, pseudo?: string | null) => {
+      const style = real(element, pseudo)
+      if (element !== document.body) return style
+      return new Proxy(style, {
+        get: (target, prop) => prop === 'getPropertyValue'
+          ? (name: string) => name === '--dsw-alias-brand-primary'
+            ? 'var(--brand-deep)'
+            : name === '--brand-deep' ? '#1A2B3C' : target.getPropertyValue(name)
+          : target[prop as keyof CSSStyleDeclaration],
+      })
+    })
+    try {
+      mount('system', { cursorEffectEnabled: true })
+      const section = screen.getByRole('heading', { name: COPY['cursorFx.title'] }).closest('section')!
+      fireEvent.click(within(section).getByRole('button', { name: COPY['effect.configure'] }))
+      expect(screen.getByLabelText(`${COPY['cursorFx.color']} 1`).value).toBe('#1a2b3c')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('renders feature-owned appearance item rows after the fixed controls', () => {
+    mount('system', {}, undefined, name =>
+      name === 'settings.appearance.item' ? <div data-testid="appearance-item" /> : null)
+    const item = screen.getByTestId('appearance-item')
+    // Feature rows stack after the last fixed section (typography).
+    const typography = screen.getByText(COPY['type.title'])
+    expect(typography.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "Deepseek-Harness-Desktop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Electron desktop shell for DeepSeek Harness Web UI",
   "author": "Chisa",
   "license": "MIT",
@@ -78,7 +78,8 @@
         "filter": [
           "dsh-usage-panel/**",
           "dsh-im/**",
-          "dshbot/**"
+          "dshbot/**",
+          "dsh-whale/**"
         ]
       },
       {

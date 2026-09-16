@@ -32,8 +32,12 @@ export interface ComposerKeymapHandlers {
   canSubmit(): boolean
   /** The Enter gesture after every guard passed; `accelerated` = Ctrl/Cmd held. */
   submit(accelerated: boolean): void
-  /** Pasted files (image intake). */
-  intakeFiles(files: readonly File[]): void
+  /**
+   * Pasted files (image/file intake). `rejected` carries items identified as
+   * non-files (a pasted folder arrives as an unreadable File stub), which the
+   * bar announces instead of drafting them.
+   */
+  intakeFiles(files: readonly File[], rejected?: readonly File[]): void
   /** Pasted plain text (sanitized insertion through the shell). */
   pasteText(text: string): void
   /** End a live composer edit session; true when Escape should be consumed. */
@@ -138,14 +142,29 @@ export function registerComposerKeymap(editor: LexicalEditor, handlers: Composer
       // deliver clipboardData on plain events.
       const clipboardData = (event as ClipboardEvent).clipboardData ?? null
       if (clipboardData === null) return false
-      const files = Array.from(clipboardData.items)
-        .filter(item => item.kind === 'file')
-        .map(item => item.getAsFile())
-        .filter((file): file is File => file !== null)
-      if (files.length > 0) handlers.intakeFiles(files)
+      // A pasted folder arrives as a File stub whose bytes cannot be read;
+      // the item's FileSystem entry is the only in-band classifier.
+      const files: File[] = []
+      const rejected: File[] = []
+      const classified = new Set<File>()
+      for (const item of clipboardData.items) {
+        if (item.kind !== 'file') continue
+        const file = item.getAsFile()
+        if (file === null) continue
+        classified.add(file)
+        if (item.webkitGetAsEntry()?.isDirectory === true) rejected.push(file)
+        else files.push(file)
+      }
+      for (const file of clipboardData.files) {
+        if (!classified.has(file)) files.push(file)
+      }
+      if (files.length > 0 || rejected.length > 0) handlers.intakeFiles(files, rejected)
       const text = clipboardData.getData('text/plain')
       if (text === '') {
-        if (files.length === 0) return false
+        // A folder-only paste still owns the gesture — the rejection toast
+        // fired above — so the event is consumed rather than falling through
+        // to lower-priority handlers that could touch the unreadable stub.
+        if (files.length === 0 && rejected.length === 0) return false
         event.preventDefault()
         return true
       }

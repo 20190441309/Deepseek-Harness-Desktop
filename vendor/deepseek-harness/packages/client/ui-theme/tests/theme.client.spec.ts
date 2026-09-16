@@ -16,6 +16,7 @@ import {
   sanitizeWallpaperSources,
   ThemeSettingsSchema,
 } from '../src/theme-settings.ts'
+import { effectPreset } from '../src/client/effect-presets.ts'
 
 function section(overrides: Partial<ThemeSettings> = {}): ThemeSettings {
   return { ...DEFAULT_THEME_SETTINGS, customThemes: [], ...overrides }
@@ -31,6 +32,25 @@ const make = (host = stubSettingsScope<ThemeSettings>()): {
   const events: ThemeSnapshot[] = []
   ctx.on('theme/change', (snapshot) => { events.push(snapshot) })
   return { ctx, theme: new ThemeRuntime(ctx, host.scope), events, host }
+}
+
+/**
+ * Runtime constructed on a Host section without the backdrop extras, so raw
+ * (unmixed) token assertions stay about their own feature.
+ */
+const makeBare = (): ReturnType<typeof make> => {
+  const host = stubSettingsScope<ThemeSettings>()
+  host.publish({
+    status: 'ready',
+    value: section({ backgroundEffect: 'none', sidebarMaskHidden: false }),
+    revision: 1,
+    writable: true,
+  })
+  const made = make(host)
+  // Construction adopts the standing section with one publish; drop it so
+  // event counts inside tests reflect only test actions.
+  made.events.length = 0
+  return made
 }
 
 /** Advance past the durable-write debounce so queued scope writes land. */
@@ -52,6 +72,14 @@ describe('ThemeRuntime', () => {
     expect(snapshot.activeLightThemeId).toBe('deepseek')
     expect(snapshot.activeDarkThemeId).toBe('deepseek')
     expect(snapshot.themes.map(t => t.id)).toEqual(['light', 'dark'])
+    // Shipped backdrop defaults: aurora gradient at 190% and an unmasked rail.
+    expect(snapshot.sidebarMaskHidden).toBe(true)
+    expect(snapshot.backgroundEffect).toBe('gradient')
+    expect(snapshot.backgroundEffectPreset).toBe('aurora')
+    expect(snapshot.backgroundEffectColors).toEqual(effectPreset('aurora')!.colors)
+    expect(snapshot.backgroundEffectSpeed).toBe(190)
+    expect(snapshot.backgroundEffectCount).toBe(5)
+    expect(snapshot.backgroundEffectVariant).toBe('orbs')
   })
 
   it('seeds the initial font size from the boot-script body variable, ignoring junk', () => {
@@ -136,7 +164,7 @@ describe('ThemeRuntime', () => {
   })
 
   it('registered themes join the snapshot; disposing the active one resets to default', () => {
-    const { theme, events, host } = make()
+    const { theme, events, host } = makeBare()
     const dispose = theme.register({ id: 'sepia', colorScheme: 'light', tokens: { '--dsw-alias-bg-base': 'red' } })
     expect(theme.getTheme().themes.map(t => t.id)).toEqual(['light', 'dark', 'sepia'])
     theme.setTheme('sepia')
@@ -200,7 +228,7 @@ describe('ThemeRuntime', () => {
   })
 
   it('replacing one source leaves its stale disposer harmless', () => {
-    const { theme, events } = make()
+    const { theme, events } = makeBare()
     const stale = theme.overrideTokens('package', {
       '--old': { light: 'old-light', dark: 'old-dark' },
     })
@@ -314,7 +342,7 @@ describe('ThemeRuntime', () => {
   })
 
   it('setThemeHalf persists one half and derives tokens for non-DeepSeek families', () => {
-    const { theme, host } = make()
+    const { theme, host } = makeBare()
     theme.setTheme('light')
     theme.setThemeHalf('light', 'celadon')
     expect(theme.getTheme().activeLightThemeId).toBe('celadon')
@@ -358,7 +386,12 @@ describe('ThemeRuntime', () => {
     const { theme, host } = make()
     host.publish({
       status: 'ready',
-      value: section({ preference: 'dark', activeDarkThemeId: 'violet' }),
+      value: section({
+        preference: 'dark',
+        activeDarkThemeId: 'violet',
+        backgroundEffect: 'none',
+        sidebarMaskHidden: false,
+      }),
       revision: 1,
       writable: true,
     })
@@ -444,6 +477,127 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().wallpaperPixelate).toBe(0)
   })
 
+  it('persists the ambient backdrop effect and mixes chrome fills like a wallpaper', () => {
+    const { theme, host } = make()
+    // Shipped default: the gradient is already on and the canvas is mixed.
+    expect(theme.getTheme().backgroundEffect).toBe('gradient')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('color-mix')
+    theme.setWallpaper({ backgroundEffect: 'none' })
+    expect(theme.getTheme().backgroundEffect).toBe('none')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toBeUndefined()
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffect', 'none')
+    theme.setWallpaper({ backgroundEffect: 'gradient' })
+    expect(theme.getTheme().backgroundEffect).toBe('gradient')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffect', 'gradient')
+    // Unknown values fall back to none.
+    theme.setWallpaper({ backgroundEffect: 'fireworks' as never })
+    expect(theme.getTheme().backgroundEffect).toBe('none')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffect', 'none')
+    // The stored value survives a wallpaper being set; the image wins the layer.
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    theme.setWallpaper({ backgroundEffect: 'gradient', wallpaperImage: png })
+    expect(theme.getTheme().backgroundEffect).toBe('gradient')
+    expect(theme.getTheme().wallpaperImage).toBe(png)
+  })
+
+  it('persists and sanitizes the ambient effect tunables', () => {
+    const { theme, host } = make()
+    // The shipped variant is already orbs; move off it so the fallback write lands.
+    theme.setWallpaper({ backgroundEffectVariant: 'chaos' })
+    theme.setWallpaper({
+      backgroundEffectColors: ['#A1B2C3', 'junk', '#102030'],
+      backgroundEffectSpeed: 999,
+      backgroundEffectCount: 0,
+      backgroundEffectPreset: 'bogus' as never,
+      backgroundEffectVariant: 'bogus' as never,
+    })
+    expect(theme.getTheme().backgroundEffectColors).toEqual(['#a1b2c3', '', '#102030'])
+    expect(theme.getTheme().backgroundEffectSpeed).toBe(300)
+    expect(theme.getTheme().backgroundEffectCount).toBe(1)
+    expect(theme.getTheme().backgroundEffectPreset).toBe('custom')
+    expect(theme.getTheme().backgroundEffectVariant).toBe('orbs')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectColors', ['#a1b2c3', '', '#102030'])
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectSpeed', 300)
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectCount', 1)
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectPreset', 'custom')
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectVariant', 'orbs')
+  })
+
+  it('persists a named ambient scheme preset', () => {
+    const { theme, host } = make()
+    // `aurora` is the shipped scheme, so the write starts from another preset.
+    theme.setWallpaper({ backgroundEffectPreset: 'sakura', backgroundEffectVariant: 'rays' })
+    expect(theme.getTheme().backgroundEffectPreset).toBe('sakura')
+    expect(theme.getTheme().backgroundEffectVariant).toBe('rays')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectPreset', 'sakura')
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectVariant', 'rays')
+    theme.setWallpaper({ backgroundEffectPreset: 'aurora' })
+    expect(theme.getTheme().backgroundEffectPreset).toBe('aurora')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('backgroundEffectPreset', 'aurora')
+  })
+
+  it('persists the pointer decoration flag and effect, and the toggle keeps the stored look', () => {
+    const { theme, host, events } = make()
+    expect(theme.getTheme().cursorEffectEnabled).toBe(false)
+    expect(theme.getTheme().cursorEffect).toBe('trail')
+    theme.setCursorFx({ cursorEffect: 'splash', cursorEffectEnabled: true })
+    expect(theme.getTheme().cursorEffectEnabled).toBe(true)
+    expect(theme.getTheme().cursorEffect).toBe('splash')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('cursorEffect', 'splash')
+    expect(host.set).toHaveBeenCalledWith('cursorEffectEnabled', true)
+    // The toggle only writes the flag; the chosen effect survives while off.
+    theme.setCursorFx({ cursorEffectEnabled: false })
+    expect(theme.getTheme().cursorEffectEnabled).toBe(false)
+    expect(theme.getTheme().cursorEffect).toBe('splash')
+    // Unknown values fall back to the default effect.
+    theme.setCursorFx({ cursorEffect: 'meteors' as never })
+    expect(theme.getTheme().cursorEffect).toBe('trail')
+    // Same-value set is a no-op.
+    const published = events.length
+    theme.setCursorFx({ cursorEffectEnabled: false })
+    expect(events.length).toBe(published)
+  })
+
+  it('persists and sanitizes the pointer-effect tunables', () => {
+    const { theme, host } = make()
+    theme.setCursorFx({
+      cursorEffectColors: ['#A1B2C3', 'junk', '#102030', '#112233', '#223344', '#334455', '#445566', '#556677'],
+      cursorEffectSpeed: 999,
+      cursorEffectSize: -4,
+      cursorEffectPreset: 'bogus' as never,
+    })
+    expect(theme.getTheme().cursorEffectColors).toEqual(['#a1b2c3', '#102030', '#112233', '#223344', '#334455', '#445566'])
+    expect(theme.getTheme().cursorEffectSpeed).toBe(300)
+    expect(theme.getTheme().cursorEffectSize).toBe(25)
+    expect(theme.getTheme().cursorEffectPreset).toBe('custom')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('cursorEffectColors', ['#a1b2c3', '#102030', '#112233', '#223344', '#334455', '#445566'])
+    expect(host.set).toHaveBeenCalledWith('cursorEffectSpeed', 300)
+    expect(host.set).toHaveBeenCalledWith('cursorEffectSize', 25)
+    expect(host.set).toHaveBeenCalledWith('cursorEffectPreset', 'custom')
+    theme.setCursorFx({ cursorEffectPreset: 'ocean' })
+    expect(theme.getTheme().cursorEffectPreset).toBe('ocean')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('cursorEffectPreset', 'ocean')
+  })
+
+  it('keeps the transparent theme inert under the ambient gradient without a wallpaper', () => {
+    const { theme } = make()
+    theme.setWallpaper({ backgroundEffect: 'gradient' })
+    theme.setTransparentTheme(true)
+    expect(theme.getTheme().transparentTheme).toBe(true)
+    // The gradient is not a wallpaper: the glass slider stays effective.
+    expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('80%')
+    expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('color-mix')
+  })
+
   it('transparent theme drops every mixed surface to 0% while a wallpaper is set', () => {
     const { theme, host, events } = make()
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -468,6 +622,38 @@ describe('ThemeRuntime', () => {
     // Same-value set is a no-op.
     const published = events.length
     theme.setTransparentTheme(false)
+    expect(events.length).toBe(published)
+  })
+
+  it('hides the sidebar mask by making the rail chrome transparent', () => {
+    const { theme, host, events } = make()
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    theme.setWallpaper({ wallpaperImage: png })
+    // Shipped default: the rail indirection is already transparent so the
+    // frame canvas shows through; the sidebar fill token keeps its mixed
+    // value for the surfaces that do not belong to the rail chrome.
+    expect(theme.getTheme().active.tokens['--dsh-sidebar-rail-fill']).toBe('transparent')
+    expect(theme.getTheme().active.tokens['--dsw-specific-sidebar-fill']).toContain('color-mix')
+    // Off restores whatever fill the theme and mix produce.
+    theme.setSidebarMask(false)
+    expect(theme.getTheme().sidebarMaskHidden).toBe(false)
+    expect(theme.getTheme().active.tokens['--dsh-sidebar-rail-fill']).toBeUndefined()
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('sidebarMaskHidden', false)
+    // An override layer paints the masked rail; the flag wins again once on.
+    theme.overrideTokens('test', {
+      '--dsh-sidebar-rail-fill': { light: '#111111', dark: '#222222' },
+    })
+    expect(theme.getTheme().active.tokens['--dsh-sidebar-rail-fill']).toBe('#111111')
+    theme.setSidebarMask(true)
+    expect(theme.getTheme().active.tokens['--dsh-sidebar-rail-fill']).toBe('transparent')
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('sidebarMaskHidden', true)
+    theme.setWallpaper({ wallpaperImage: '' })
+    expect(theme.getTheme().active.tokens['--dsh-sidebar-rail-fill']).toBe('transparent')
+    // Same-value set is a no-op.
+    const published = events.length
+    theme.setSidebarMask(true)
     expect(events.length).toBe(published)
   })
 

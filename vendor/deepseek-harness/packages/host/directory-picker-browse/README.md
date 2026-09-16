@@ -29,7 +29,7 @@ Compose this backend when a workspace directory must be chosen without an OS cho
 
 ### Listing a directory
 
-`list(path?)` returns one directory level: name-sorted child directories with their absolute paths, a `hidden` flag (dot-prefixed on POSIX), a `home` anchor, and `crumbs` — the root-to-target ancestor chain where every crumb is a jump target and the root is labeled by its full path. An absent path lists the host account's home directory. One call returns at most `maxEntries` rows (config, default 1,000 — the bound GitHub's web UI applies to directory listings), and a cut level reports `truncated: true` so the client can say the level is incomplete. Symlinks to directories are followed; broken and cyclic links are skipped.
+`list(path?)` returns one directory level: name-sorted child directories with their absolute paths, a `hidden` flag (dot-prefixed on POSIX), a `home` anchor, and `crumbs` — the root-to-target ancestor chain where every crumb is a jump target and the root is labeled by its full path. On Windows the chain is headed by the synthetic volume picker (`\\.\dsh-computer`): its own level enumerates the enterable drive roots (each letter's `stat` races a 300 ms probe window, so a stalled controller cannot freeze the picker) and refuses `createDirectory`. An absent path lists the host account's home directory. One call returns at most `maxEntries` rows (config, default 1,000 — the bound GitHub's web UI applies to directory listings), and a cut level reports `truncated: true` so the client can say the level is incomplete. Symlinks to directories are followed; broken and cyclic links are skipped.
 
 ### Creating a directory
 
@@ -108,7 +108,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define where the browse interaction is incomplete or intentionally unscoped. They are current package constraints, not a task backlog.
 
 - **Windows hidden attribute is not read** — Node dirents do not expose `FILE_ATTRIBUTE_HIDDEN`, so `hidden` means dot-prefixed on every platform until a native probe is worth its cost.
-- **No drive-root enumeration** — on Windows the ancestry stops at the drive root; crossing drives waits for the browser UI's path-entry affordance rather than an enumeration primitive here.
+- **No network-neighborhood enumeration** — the Windows volume picker enumerates drive letters only; a UNC share still reaches `list` through a fully qualified path, not through browsing.
 - **Whole-filesystem scope** — there is no per-deployment browse-root restriction; `workspace.create` accepts arbitrary paths, so a root here would be UX scoping rather than a security boundary.
 
 <a id="dev-note"></a>

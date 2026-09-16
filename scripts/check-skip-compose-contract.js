@@ -34,6 +34,13 @@ const {
   DSHBOT_END,
 } = require('../src/main/legacy-dshbot-preset');
 const {
+  ensureDesktopDshWhale,
+  DSH_WHALE_PACKAGE,
+  DSH_WHALE_INSERT_ID,
+  DSH_WHALE_BEGIN,
+  DSH_WHALE_END,
+} = require('../src/main/dsh-whale-desktop');
+const {
   ensureSessionSearchOverlay,
 } = require('../src/main/session-search-overlay');
 
@@ -61,6 +68,7 @@ const IM_ID = DSH_IM_INSERT_ID;
 const USAGE_ID = 'usage-stats';
 const MARKET_ID = DSH_MARKET_INSERT_ID;
 const BOT_ID = DSHBOT_INSERT_ID;
+const WHALE_ID = DSH_WHALE_INSERT_ID;
 const SESSION_SEARCH_ID = 'session-query-sqlite';
 const DUMP_TIMEOUT_MS = 120_000;
 
@@ -98,6 +106,15 @@ const LEGACY_DSHBOT_BLOCK = [
   `    - id: ${BOT_ID}`,
   `      name: ${JSON.stringify(DSHBOT_PACKAGE)}`,
   DSHBOT_END,
+  '',
+].join('\n');
+
+const LEGACY_DSH_WHALE_BLOCK = [
+  DSH_WHALE_BEGIN,
+  '- insert:',
+  `    - id: ${WHALE_ID}`,
+  `      name: ${JSON.stringify(DSH_WHALE_PACKAGE)}`,
+  DSH_WHALE_END,
   '',
 ].join('\n');
 
@@ -164,6 +181,36 @@ function writeDshbotFixture(home) {
 }
 
 /**
+ * Minimal first-party dsh-whale fixture: same contract as the dshbot
+ * fixture — the REAL ensureDesktopDshWhale junctions it and emits the
+ * overlay. The whale row is asserted exactly-once when its overlay rides
+ * `--patch` (production gates the overlay on whaleAssistantEnabled).
+ * @param {string} home - the throwaway DSH_HOME.
+ * @returns {string} the fixture source directory.
+ */
+function writeDshWhaleFixture(home) {
+  const dir = path.join(home, 'fixtures', 'dsh-whale');
+  fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'client'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+    name: DSH_WHALE_PACKAGE,
+    version: '0.0.0-contract',
+    type: 'module',
+    main: './lib/index.js',
+    exports: {
+      '.': './lib/index.js',
+      './client': './client/client.js',
+      './cordis.patch.yml': './cordis.patch.yml',
+    },
+    dependencies: {},
+  }, null, 2), 'utf8');
+  fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'export function apply() {}\n', 'utf8');
+  fs.writeFileSync(path.join(dir, 'client', 'client.js'), 'export function apply() {}\n', 'utf8');
+  fs.writeFileSync(path.join(dir, 'cordis.patch.yml'), `- insert:\n    - id: ${WHALE_ID}\n      name: ${JSON.stringify(DSH_WHALE_PACKAGE)}\n`, 'utf8');
+  return dir;
+}
+
+/**
  * Pure verdict on one dump-config round. The positive assertion comes first:
  * an empty or truncated dump must fail on the missing desktop rows, never
  * pass because the canary also vanished with everything else. Exactly one
@@ -183,6 +230,7 @@ function composeContractProblems(round, stdout) {
     [IM_ID, '桌面内置 dsh-im'],
     [MARKET_ID, '桌面内置市场'],
     [BOT_ID, '桌面内置 dshbot'],
+    [WHALE_ID, '桌面内置 dsh-whale'],
   ];
   for (const [id, label] of requiredRows) {
     const count = countRows(text, id);
@@ -262,7 +310,7 @@ async function runSkipComposeContract(harnessRoot, options = {}) {
     const stalePlaceholderHref = 'file:///stale/desktop-plugins/install-dsh-plugin/install-dsh-plugin.mjs';
     fs.writeFileSync(
       path.join(profileDir, 'cordis.patch.yml'),
-      `${CANARY_PATCH}\n${LEGACY_MANAGED_BLOCK(stalePlaceholderHref)}\n${LEGACY_DSH_IM_BLOCK}\n${LEGACY_DSHBOT_BLOCK}`,
+      `${CANARY_PATCH}\n${LEGACY_MANAGED_BLOCK(stalePlaceholderHref)}\n${LEGACY_DSH_IM_BLOCK}\n${LEGACY_DSHBOT_BLOCK}\n${LEGACY_DSH_WHALE_BLOCK}`,
       'utf8',
     );
     const ensure = ensureDesktopInstallPlugin({ profileDir });
@@ -294,12 +342,19 @@ async function runSkipComposeContract(harnessRoot, options = {}) {
     if (!botEnsure || botEnsure.ok !== true) {
       throw new Error(`skip compose 契约门禁：ensureDesktopDshbot 失败（${(botEnsure && botEnsure.error) || 'unknown'}）`);
     }
+    // The whale overlay composes only when the built-in assistant is
+    // enabled — the contract proves the enabled path mounts exactly once.
+    const whaleEnsure = ensureDesktopDshWhale({ sourceDir: writeDshWhaleFixture(home), profileDir, enabled: true });
+    if (!whaleEnsure || whaleEnsure.ok !== true) {
+      throw new Error(`skip compose 契约门禁：ensureDesktopDshWhale 失败（${(whaleEnsure && whaleEnsure.error) || 'unknown'}）`);
+    }
     const searchEnsure = ensureSessionSearchOverlay({ profileDir, dshHome: home });
     if (!searchEnsure || searchEnsure.ok !== true) {
       throw new Error(`skip compose 契约门禁：ensureSessionSearchOverlay 失败（${(searchEnsure && searchEnsure.error) || 'unknown'}）`);
     }
     const migrated = fs.readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8');
-    if (migrated.includes(DESKTOP_INSTALL_BEGIN) || migrated.includes(DSH_IM_BEGIN) || migrated.includes(DSHBOT_BEGIN)) {
+    if (migrated.includes(DESKTOP_INSTALL_BEGIN) || migrated.includes(DSH_IM_BEGIN)
+      || migrated.includes(DSHBOT_BEGIN) || migrated.includes(DSH_WHALE_BEGIN)) {
       throw new Error('skip compose 契约门禁：受管块迁移失败——cordis.patch.yml 仍含桌面受管块');
     }
     if (!migrated.includes(CANARY_ID)) {
@@ -320,6 +375,7 @@ async function runSkipComposeContract(harnessRoot, options = {}) {
       imEnsure.overlayFile,
       marketEnsure.overlayFile,
       botEnsure.overlayFile,
+      whaleEnsure.overlayFile,
     ];
     const fullOverlayFiles = [
       ensure.overlayFile,
@@ -328,6 +384,7 @@ async function runSkipComposeContract(harnessRoot, options = {}) {
       imEnsure.overlayFile,
       marketEnsure.overlayFile,
       botEnsure.overlayFile,
+      whaleEnsure.overlayFile,
     ];
     for (const { round, args } of composeContractRounds(binJs, overlayFiles, fullOverlayFiles)) {
       log(`dump-config ${round} 轮…`);
@@ -364,6 +421,7 @@ module.exports = {
   USAGE_ID,
   MARKET_ID,
   BOT_ID,
+  WHALE_ID,
   SESSION_SEARCH_ID,
   composeContractProblems,
   composeContractRounds,

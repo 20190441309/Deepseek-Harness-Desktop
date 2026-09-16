@@ -253,6 +253,12 @@ export class AgentPresets extends TypertRemoteService {
    * The roster off the Host: {@link list} projected to path-free rows, with
    * the default marked and this deployment's authoring capability beside it.
    *
+   * A preset that declares `hidden` stays off the roster while it can compose
+   * — it exists for a plugin's own sessions, not for a person to pick, and
+   * sessions a plugin creates by id still resolve and mount through
+   * {@link list}. A hidden preset that cannot load is still listed, because
+   * this roster is also where its directory gets deleted.
+   *
    * Whether a client can open a preset's directory is the Host's own opener
    * capability, not a roster property — a caller needing both joins them.
    * @returns the rows and the authoring capability.
@@ -261,14 +267,16 @@ export class AgentPresets extends TypertRemoteService {
   async remoteExportList(): Promise<AgentPresetRoster> {
     const defaultId = this.defaultId
     return {
-      presets: (await this.list()).map(preset => ({
-        id: preset.id,
-        trust: preset.trust,
-        isDefault: preset.id === defaultId,
-        ...preset.name === undefined ? {} : { name: preset.name },
-        ...preset.description === undefined ? {} : { description: preset.description },
-        ...preset.broken === undefined ? {} : { broken: preset.broken },
-      })),
+      presets: (await this.list())
+        .filter(preset => preset.hidden !== true || preset.broken !== undefined)
+        .map(preset => ({
+          id: preset.id,
+          trust: preset.trust,
+          isDefault: preset.id === defaultId,
+          ...preset.name === undefined ? {} : { name: preset.name },
+          ...preset.description === undefined ? {} : { description: preset.description },
+          ...preset.broken === undefined ? {} : { broken: preset.broken },
+        })),
       authorable: this.authorable,
     }
   }
@@ -276,6 +284,10 @@ export class AgentPresets extends TypertRemoteService {
   /**
    * Every preset's composition as flattened plugin rows, for plugin-listing
    * surfaces beside the roster's own picker.
+   *
+   * The inventory is complete on purpose: it answers which presets mount
+   * which plugins, so a `hidden` preset still appears — dropping it would
+   * misreport the mount graph a diagnostic surface exists to describe.
    *
    * A preset with a live standing mount answers from its newest generation's
    * Loader entries — the composition new sessions join — even when the file

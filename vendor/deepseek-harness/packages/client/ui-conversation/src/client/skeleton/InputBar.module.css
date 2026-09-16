@@ -280,9 +280,15 @@
   word-break: break-word;
   overflow-wrap: anywhere;
   outline: none;
-  color: var(--dsw-alias-label-primary);
+  /* Typing-fx schemes recolor composer text through the var; unset = theme. */
+  color: var(--dsh-typing-fx-text-color, var(--dsw-alias-label-primary));
   /* Business blue, not brand-primary: that token resolves to ink in this sheet. */
   caret-color: var(--dsw-alias-state-business-primary);
+}
+
+/* The typing-fx overlay draws the caret instead. */
+.input[data-typing-fx-caret] {
+  caret-color: transparent;
 }
 
 /* Lexical paragraphs are <p> blocks: strip the UA margins so the surface
@@ -458,9 +464,10 @@
   border-radius: 999px;
   corner-shape: round;
   background: var(--dsw-alias-button-info-fill);
-  /* Static white, not the foreground token: the arrow stays white on the blue
-     fill in both themes (design 34:10465). */
-  color: #fff;
+  /* On-accent text token, not static white: theme derivation remaps info-fill
+     to the family accent, so a fixed #fff glyph disappears under light accents
+     (e.g. the contrast family's white send disc). */
+  color: var(--dsw-alias-label-primary-foreground);
   cursor: pointer;
   transition: background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
   /* Opts out of the row's 2px downward shift (.row top pad): the send circle

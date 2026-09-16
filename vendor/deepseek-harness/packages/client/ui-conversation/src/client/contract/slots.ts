@@ -14,7 +14,7 @@ import type { SessionPendingInteraction } from '@deepseek-ai/dsh-client-ui-sessi
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { ComposerBeamStyle } from '../../submission-settings.ts'
+import type { ComposerBeamStyle, TypingFxStyle } from '../../submission-settings.ts'
 import type { ComposerBlock } from './composer-blocks.ts'
 import type {
   ComposerKeyboard, DraftAttachmentId, EditSelection, InputActions, InputNotice, InputState,
@@ -61,8 +61,13 @@ export interface ComposerAttachmentsOwnerProps {
   attachments: readonly ComposerAttachment[]
   /** Whether a document-level file drop may add attachments now. */
   canAcceptDrop: boolean
-  /** Add one dropped batch through the composer's validation path. */
-  onAddFiles: (files: readonly File[]) => void
+  /**
+   * Add one dropped batch through the composer's validation path. `rejected`
+   * carries entries the intake site identified as non-files — a dropped or
+   * pasted folder arrives as a File stub whose bytes cannot be read — which
+   * the owner announces instead of drafting them.
+   */
+  onAddFiles: (files: readonly File[], rejected?: readonly File[]) => void
   /** Remove one draft attachment through the Conversation service. */
   onRemoveAttachment: (id: DraftAttachmentId) => void
   /** Current per-draft upload states for file-kind attachments. */
@@ -345,6 +350,10 @@ export interface ComposerBarInjected {
     composerResizeHeight: ObservableSnapshot<number | null>
     /** Last Host-remembered card width in CSS pixels (null = column width). */
     composerResizeWidth: ObservableSnapshot<number | null>
+    /** Whether the composer paints typing echoes and a custom caret. */
+    typingFx: ObservableSnapshot<boolean>
+    /** Visual tuning for the same typing effect. */
+    typingFxStyle: ObservableSnapshot<TypingFxStyle>
   }
   /** Persist a finished drag so remounts restore the box. */
   setComposerResizeSize: (size: Partial<{ height: number; width: number }>) => void

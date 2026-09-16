@@ -32,6 +32,14 @@ export interface AgentPreset {
   /** Declared position within its group; absent sorts after those that declare one. */
   readonly order?: number
   /**
+   * The preset asked to stay off the client-facing roster while it can
+   * compose a session. Hidden is presentation, never a capability: sessions
+   * a plugin creates by id still resolve and mount, and a hidden preset
+   * whose composition cannot load still lists, because the roster is also
+   * where its directory gets deleted.
+   */
+  readonly hidden?: boolean
+  /**
    * Why this preset cannot compose a session, absent when it can. A broken
    * preset stays on the roster — hiding it would leave its directory blocking
    * the id with nothing to see or delete — but every mounting path refuses it

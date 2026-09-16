@@ -41,6 +41,7 @@ export const Config: z<Config> = z.object({
 interface PackageManifest {
   readonly name?: unknown
   readonly version?: unknown
+  readonly private?: unknown
 }
 
 interface ActiveEntry {
@@ -57,15 +58,20 @@ function barePackageName(specifier: string): string | undefined {
   return first.startsWith('@') ? `${first}/${second}` : first
 }
 
-/** Read one manifest identity, optionally treating an absent name as a loose-module marker. */
+/**
+ * Read one manifest identity. A loose module's nearest manifest may be an
+ * unrelated ancestor marker (a profile or workspace package.json), so
+ * nameless or private incomplete manifests contribute nothing; only a
+ * package entry's malformed manifest fails the request.
+ */
 function identityFromManifest(path: string, allowAnonymous: boolean): DeepSeekPluginPackageIdentity | undefined {
   const manifest = JSON.parse(readFileSync(path, 'utf8')) as PackageManifest
-  if (allowAnonymous && manifest.name === undefined) return undefined
-  if (typeof manifest.name !== 'string' || manifest.name.length === 0
-    || typeof manifest.version !== 'string' || manifest.version.length === 0) {
-    throw new Error(`plugin-package-inventory-deepseek: ${path} must declare non-empty name and version`)
+  if (typeof manifest.name === 'string' && manifest.name.length > 0
+    && typeof manifest.version === 'string' && manifest.version.length > 0) {
+    return { name: manifest.name, version: manifest.version }
   }
-  return { name: manifest.name, version: manifest.version }
+  if (allowAnonymous && (manifest.name === undefined || manifest.private === true)) return undefined
+  throw new Error(`plugin-package-inventory-deepseek: ${path} must declare non-empty name and version`)
 }
 
 /** Resolve a bare package without requiring it to export `./package.json`. */

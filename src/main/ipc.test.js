@@ -7,6 +7,10 @@ const { IPC_ROLES } = require('./ipc-authorization');
 const launcherGate = require('./launcher-gate');
 
 const ipcPath = require.resolve('./ipc');
+// profile-ops is ipc.js's delegate for plugin/config mutations: it is NOT
+// stubbed, so it must reload per loadIpc call or it would keep the first
+// test's stubbed './config' closures forever.
+const profileOpsPath = require.resolve('./profile-ops');
 
 function harnessEvent(progress = []) {
   return {
@@ -296,7 +300,9 @@ function loadIpc(options = {}) {
   });
 
   const previousIpc = require.cache[ipcPath];
+  const previousProfileOps = require.cache[profileOpsPath];
   delete require.cache[ipcPath];
+  delete require.cache[profileOpsPath];
   let startDesktopCalls = 0;
   const startDesktopArgs = [];
   const { registerIpc } = require('./ipc');
@@ -315,6 +321,7 @@ function loadIpc(options = {}) {
     stopDesktopCleanup: options.stopDesktopCleanup,
     remote: options.remote === undefined ? null : options.remote,
     onOpenLauncher: options.onOpenLauncher,
+    getLive2dPet: options.getLive2dPet,
   });
 
   async function invoke(channel, event, ...args) {
@@ -325,7 +332,9 @@ function loadIpc(options = {}) {
 
   function restore() {
     delete require.cache[ipcPath];
+    delete require.cache[profileOpsPath];
     if (previousIpc) require.cache[ipcPath] = previousIpc;
+    if (previousProfileOps) require.cache[profileOpsPath] = previousProfileOps;
     for (const { filename, previous } of restoreEntries) {
       if (previous) require.cache[filename] = previous;
       else delete require.cache[filename];
@@ -514,6 +523,49 @@ test('config surfaces reject leftover marketplace senders', async () => {
     await assert.rejects(() => ipc.invoke('shell:get-config', sender), unauthorized);
     await assert.rejects(() => ipc.invoke('shell:save-config', sender, { theme: 'midnight' }), unauthorized);
     await assert.rejects(() => ipc.invoke('shell:open-external', sender, 'https://example.com'), unauthorized);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:live2d-pet-settings routes writes through the pet manager', async () => {
+  let enabled = true;
+  const calls = [];
+  const pet = {
+    isEnabled: () => enabled,
+    setEnabled: (next) => { enabled = next === true; calls.push(['enabled', enabled]); },
+    applySettings: (body) => { calls.push(['apply', body]); return { scale: 1.4 }; },
+    getSettings: () => ({ scale: 1 }),
+  };
+  const ipc = loadIpc({ getLive2dPet: () => pet });
+  try {
+    const unauthorized = (error) => error.code === 'ERR_DSH_IPC_SENDER';
+    await assert.rejects(
+      () => ipc.invoke('shell:live2d-pet-settings', leftoverMarketplaceEvent(), {}),
+      unauthorized,
+    );
+    // enabled + patch in one write: the toggle lands first, then the patch.
+    const res = await ipc.invoke('shell:live2d-pet-settings', harnessEvent(),
+      { enabled: false, patch: { scale: 1.4 } });
+    assert.deepEqual(calls[0], ['enabled', false]);
+    assert.deepEqual(calls[1], ['apply', { enabled: false, patch: { scale: 1.4 } }]);
+    assert.deepEqual(res, { ok: true, enabled: false, settings: { scale: 1.4 } });
+    // No patch/reset → a read-only echo of the manager's settings.
+    const echo = await ipc.invoke('shell:live2d-pet-settings', harnessEvent(), {});
+    assert.deepEqual(echo, { ok: true, enabled: false, settings: { scale: 1 } });
+    // A reset body goes through applySettings even alongside no patch.
+    await ipc.invoke('shell:live2d-pet-settings', harnessEvent(), { reset: true });
+    assert.deepEqual(calls.at(-1), ['apply', { reset: true }]);
+  } finally {
+    ipc.restore();
+  }
+});
+
+test('shell:live2d-pet-settings reports unavailable without a pet manager', async () => {
+  const ipc = loadIpc({ getLive2dPet: () => null });
+  try {
+    const res = await ipc.invoke('shell:live2d-pet-settings', harnessEvent(), { patch: { scale: 1.4 } });
+    assert.deepEqual(res, { ok: false, reason: 'unavailable' });
   } finally {
     ipc.restore();
   }
