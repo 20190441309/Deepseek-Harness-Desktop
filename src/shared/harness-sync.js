@@ -31,6 +31,7 @@ function realGit(args, options = {}) {
     shell: false,
     cwd: options.cwd,
     env: options.env || process.env,
+    maxBuffer: 64 * 1024 * 1024,
   });
 }
 
@@ -162,7 +163,7 @@ function buildCandidate(git, root, mergedTree) {
   const env = { ...process.env, GIT_INDEX_FILE: indexFile };
   try {
     gitOk(git, ['read-tree', 'HEAD'], { cwd: root, env });
-    gitOk(git, ['rm', '-r', '--cached', '--ignore-unmatch', PREFIX], { cwd: root, env });
+    gitOk(git, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', PREFIX], { cwd: root, env });
     gitOk(git, ['read-tree', `--prefix=${PREFIX}/`, mergedTree], { cwd: root, env });
     return gitOk(git, ['write-tree'], { cwd: root, env }).stdout.trim();
   } finally {
