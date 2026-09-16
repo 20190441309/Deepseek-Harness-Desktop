@@ -15,7 +15,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import clsx from 'clsx'
 import {
   ConnectionIndicator,
-  IconAgentPresetOutline16, IconBrowseOutline16, IconChartOutline16,
+  IconAgentPresetOutline16, IconArchiveOutline20, IconBrowseOutline16, IconChartOutline16,
   IconCloseOutline16, IconDataOutline16, IconDeviceOutline16,
   IconInfoOutline16, IconLightOutline16, IconPanelLeftOutline16,
   IconPersonalizationOutline16, IconServerOutline16, IconSettingsOutline16,
@@ -28,6 +28,9 @@ import { UpdateAction } from './UpdateAction.tsx'
 import css from './SettingsRoot.module.css'
 
 const RECOVERY_CONFIRMATION_MS = 2_000
+
+/** Minimum visible time for the connecting pill; shorter attempts read as flicker. */
+const CONNECTING_MIN_VISIBLE_MS = 800
 
 const NAV_ICONS: Readonly<Record<string, typeof IconSettingsOutline16>> = {
   general: IconSettingsOutline16,
@@ -42,6 +45,8 @@ const NAV_ICONS: Readonly<Record<string, typeof IconSettingsOutline16>> = {
   remote: IconDeviceOutline16,
   about: IconInfoOutline16,
   'usage-stats': IconChartOutline16,
+  // 20-native glyph in the rail's 16px icon slot, as on the Session row menu.
+  'archived-sessions': IconArchiveOutline20,
 }
 
 /** Nav glyph by section id; unknown ids fall back to the settings gear. */
@@ -146,6 +151,8 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   } = props
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
   const [showRecovery, setShowRecovery] = useState(false)
+  const [holdConnecting, setHoldConnecting] = useState(false)
+  const connectingShownAt = useRef<number | undefined>(undefined)
   const triggerButton = useRef<HTMLButtonElement | null>(null)
   const navigation = useNavigation(state => state)
   const { open, sectionId: activeId } = navigation
@@ -189,8 +196,32 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     }
     if (previous !== 'disconnected' && previous !== 'connecting') return
     setShowRecovery(true)
+  }, [connectionState])
+
+  // The confirmation window starts when the recovered pill becomes visible,
+  // which the connecting minimum-visible hold can delay past the transition.
+  useLayoutEffect(() => {
+    if (!showRecovery || holdConnecting) return
     const timeout = window.setTimeout(() => { setShowRecovery(false) }, RECOVERY_CONFIRMATION_MS)
     return () => { window.clearTimeout(timeout) }
+  }, [showRecovery, holdConnecting])
+
+  useLayoutEffect(() => {
+    if (connectionState === 'connecting') {
+      connectingShownAt.current = Date.now()
+      return
+    }
+    const shownAt = connectingShownAt.current
+    if (shownAt === undefined) return
+    connectingShownAt.current = undefined
+    const remaining = CONNECTING_MIN_VISIBLE_MS - (Date.now() - shownAt)
+    if (remaining <= 0) return
+    setHoldConnecting(true)
+    const timeout = window.setTimeout(() => { setHoldConnecting(false) }, remaining)
+    return () => {
+      window.clearTimeout(timeout)
+      setHoldConnecting(false)
+    }
   }, [connectionState])
 
   const completeOnboardingStep = useCallback((id: string) => {
@@ -201,10 +232,10 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   }, [])
 
   let connectionIndicator: ConnectionIndicatorState | undefined
-  if (connectionState === 'disconnected') {
-    connectionIndicator = 'disconnected'
-  } else if (connectionState === 'connecting') {
+  if (connectionState === 'connecting' || holdConnecting) {
     connectionIndicator = 'connecting'
+  } else if (connectionState === 'disconnected') {
+    connectionIndicator = 'disconnected'
   } else if (showRecovery) {
     connectionIndicator = 'recovered'
   }
@@ -228,7 +259,6 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
         <ConnectionIndicator
           state={wide ? connectionIndicator : undefined}
           disconnectedLabel={t('connection.error')}
-          reconnectLabel={t('connection.retry')}
           connectingLabel={t('connection.connecting')}
           recoveredLabel={t('connection.connected')}
           reconnectActionLabel={t('connection.reconnect')}

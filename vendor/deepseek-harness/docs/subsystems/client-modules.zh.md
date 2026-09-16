@@ -131,7 +131,8 @@ graph(): WebBootGraph
 clientPath(id: string): string | undefined
 
 /**
- * Serve an advertised revisioned bundle or source map without a Web server.
+ * Serve an advertised revisioned bundle, its source map, or an asset stored
+ * beside one registered package's client bundle, without a Web server.
  * Unknown URLs return 404, unsupported methods return 405, and `HEAD`
  * returns the same immutable headers without a body.
  * @param request - shell-carrier request for a `/plugins` resource.

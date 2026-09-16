@@ -71,4 +71,4 @@ Confirmed Archived delete permanently removes the conversation log directory (JS
 
 ## Related
 
-[Session archive (registry-global set)](2026-07-31-session-archive-global-set.md). [Workspace registration deletion](2026-07-27-workspace-registration-deletion.md). [Session persistence seam](../architecture/2026-06-14-session-persistence.md).
+[Session archive (registry-global set)](../../archived/feature/2026-07-31-session-archive-global-set.md). [Workspace registration deletion](2026-07-27-workspace-registration-deletion.md). [Session persistence seam](../architecture/2026-06-14-session-persistence.md).

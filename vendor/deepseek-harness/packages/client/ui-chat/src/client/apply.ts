@@ -133,6 +133,11 @@ export function apply(ctx: Context): void {
             if (typeof openPath !== 'function') throw new Error('workspace path opener is unavailable')
             await openPath.call(workspaces, resolveWorkspacePath(cwd, path), options)
           },
+          openSkill: (name) => {
+            const scope = ctx.sessions.scope(sessionId)
+            if (scope === undefined) return
+            ctx.get('inputTriggers')?.sessionOf(scope).openReference('skill', { ref: `/${name}` })
+          },
           loadOlder: () => { void session.loadOlder() },
           loadThrough: seq => session.loadThrough(seq),
           loadImage: Object.assign(

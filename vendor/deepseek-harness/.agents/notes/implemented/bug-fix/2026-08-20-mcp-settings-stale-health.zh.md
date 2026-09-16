@@ -24,7 +24,7 @@ Settings 的 MCP 页用一次性 `mcpServers.list` 快照列出服务器。`dsh-
 
 ## Consequences
 
-刷新可以在不重启 Host 的情况下恢复已放弃的受管子实例。仍然返回 401 的 HTTP 服务器还是显示「连接失败」，但会带上错误文本。组成配置行仍只读，不会被 remount。目录归属仍在 [MCP 与 Skill 设置管理](../feature/2026-08-14-mcp-and-skill-settings.md)。HTTP OAuth 登录见 [MCP Settings 为 HTTP 服务器登录](../feature/2026-08-20-mcp-settings-oauth.md)。
+刷新可以在不重启 Host 的情况下恢复已放弃的受管子实例。仍然返回 401 的 HTTP 服务器还是显示「连接失败」，但会带上错误文本。组成配置行仍只读，不会被 remount。目录归属仍在 [MCP 与 Skill 设置管理](../feature/2026-08-14-mcp-and-skill-settings.zh.md)。HTTP OAuth 登录见 [MCP Settings 为 HTTP 服务器登录](../feature/2026-08-20-mcp-settings-oauth.zh.md)。
 
 ## Testing
 

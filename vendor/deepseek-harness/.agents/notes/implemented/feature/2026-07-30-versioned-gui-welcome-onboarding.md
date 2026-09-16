@@ -10,7 +10,7 @@ The GUI's credential onboarding begins with a DeepSeek-specific readiness check,
 
 ## Decision
 
-**The Settings shell coordinates ordered steps.** `settings.onboarding` remains a root-scoped list, but `ui-settings` projects its entry ids and order into one coordinator and mounts only the first incomplete step. The active registrant receives `complete()` and `openSection(id)`; no later step mounts until ownership transfers. `ui-settings-models` now registers the restored welcome notice at order `-100` and the conditional DeepSeek credential step at order `0`; their current shared presentation is owned by the [shared-modal onboarding decision](2026-08-13-shared-modal-product-onboarding.md).
+**The Settings shell coordinates ordered steps.** `settings.onboarding` remains a root-scoped list, but `ui-settings` projects its entry ids and order into one coordinator and mounts only the first incomplete step. The active registrant receives `complete()` and `openSection(id)`; no later step mounts until ownership transfers. `ui-settings-models` now registers the restored welcome notice at order `-100` and the conditional DeepSeek credential step at order `0`; their current shared presentation is owned by the [shared-modal onboarding decision](../../archived/feature/2026-08-13-shared-modal-product-onboarding.md).
 
 **The product welcome step is versioned and feature-owned.** The notice was historically removed by the [first-run beta notice removal](../simplification/2026-08-13-remove-first-run-beta-notice.md) and is now restored in `ui-settings-models` with new testing-stage copy. `ui-settings-general` still seats no onboarding step; the plugin that owns both current steps also owns the copy, store, and shared modal.
 

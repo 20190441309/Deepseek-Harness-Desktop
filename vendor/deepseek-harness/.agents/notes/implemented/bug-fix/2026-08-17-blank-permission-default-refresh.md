@@ -14,7 +14,7 @@ The Web workspace runtime owns candidate selection: a reusable session must be b
 
 `dsh-permission-presets` records each `permission/preset` origin as `default`, `selection`, or `inferred`. On confirmed reuse, it advances the session to the current `defaultPreset` only when no turn has started, the latest selection is default-origin, and the effective sandbox and approval knobs still match that selection. Explicit picks, inferred or origin-less legacy selections, and independently changed knobs remain pinned. The update goes through the normal preset writer, so durable `permission/preset`, `sandbox/mode`, and `approval/policy` facts remain the source for projections and execution.
 
-This partially refines the earlier [permission default for new sessions](../feature/2026-07-31-permission-default-for-new-sessions.md) decision: a settings write alone does not mutate an existing session, while the later confirmed reuse of a default-origin Workspace blank may advance it after live or cold adoption.
+This partially refines the earlier [permission default for new sessions](../../archived/feature/2026-07-31-permission-default-for-new-sessions.md) decision: a settings write alone does not mutate an existing session, while the later confirmed reuse of a default-origin Workspace blank may advance it after live or cold adoption.
 
 ## Alternatives considered
 

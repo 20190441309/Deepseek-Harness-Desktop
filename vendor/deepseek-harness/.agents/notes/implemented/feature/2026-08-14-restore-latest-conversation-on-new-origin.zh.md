@@ -16,7 +16,7 @@ Status: implemented
 
 **每个新源继续造空白会话。** 否决：手机远程连的是同一个 Host；用户要看已经有的对话，不是空输入栏。
 
-**用配对 Cookie 共享 `dsh.sessions.current`。** 否决：选中哪条会话是浏览器本地的查看事实。Cookie 是每台手机的访问令牌；见 [paired-remote-devices](2026-08-14-paired-remote-devices.md)。
+**用配对 Cookie 共享 `dsh.sessions.current`。** 否决：选中哪条会话是浏览器本地的查看事实。Cookie 是每台手机的访问令牌；见 [paired-remote-devices](2026-08-14-paired-remote-devices.zh.md)。
 
 ## 后果
 

@@ -10,13 +10,13 @@ Status: implemented
 
 ## Decision
 
-`TerminalWorkspace` 的 `.root` 保持 `background: transparent`。PTY 井本身是不透明的 `--dsw-alias-terminal-pane` 填充，由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md) 拥有：不做壁纸 mix、没有 `backdrop-filter`、`allowTransparency: false`、`theme.background` 为不透明画布 RGB。`#dsh-wallpaper::after` 铺 `--dsw-alias-bg-mask-1`，对应 T3code 的 0.28 照片压暗。`theme.cursorAccent` 与 ANSI 0（`black`）用该不透明 RGB。鼠标 `selectionBackground` 为 `--dsw-alias-interactive-bg-hover-solid`。井上的 ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.md)。反色单元格 CSS 见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.md)。`TerminalPane` 在 `open()` 后再铺一次主题，并观察壁纸／配色突变。工具条与会话列表铬仍用 `--dsw-alias-bg-base`。`.xterm-viewport` 在不透明窗格上保持透明。
+`TerminalWorkspace` 的 `.root` 保持 `background: transparent`。PTY 井本身是不透明的 `--dsw-alias-terminal-pane` 填充，由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md) 拥有：不做壁纸 mix、没有 `backdrop-filter`、`allowTransparency: false`、`theme.background` 为不透明画布 RGB。`#dsh-wallpaper::after` 铺 `--dsw-alias-bg-mask-1`，对应 T3code 的 0.28 照片压暗。`theme.cursorAccent` 与 ANSI 0（`black`）用该不透明 RGB。鼠标 `selectionBackground` 为 `--dsw-alias-interactive-bg-hover-solid`。井上的 ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。反色单元格 CSS 见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md)。`TerminalPane` 在 `open()` 后再铺一次主题，并观察壁纸／配色突变。工具条与会话列表铬仍用 `--dsw-alias-bg-base`。`.xterm-viewport` 在不透明窗格上保持透明。
 
 ## Alternatives considered
 
-**无论有没有壁纸，都把 mix 后的会话画布涂实。** 拒绝：会话周围仍应透出壁纸；不透明井只在 `.paneTerminal`，见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md)。
+**无论有没有壁纸，都把 mix 后的会话画布涂实。** 拒绝：会话周围仍应透出壁纸；不透明井只在 `.paneTerminal`，见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)。
 
-**有壁纸且浅色画布时，一律把 xterm 单元格涂成深色井。** 拒绝：井跟随主题半（浅井／深井）。PTY 挡住原图由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md) 拥有；浅底强制深井是第二层皮肤。
+**有壁纸且浅色画布时，一律把 xterm 单元格涂成深色井。** 拒绝：井跟随主题半（浅井／深井）。PTY 挡住原图由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md) 拥有；浅底强制深井是第二层皮肤。
 
 **窗格继续铺 `--dsw-alias-bg-layer-2`，只打开 `allowTransparency`。** 拒绝作为对齐会话的填充：layer-2 是抬起对话框标记。井用 `--dsw-alias-terminal-pane` 作为不透明画布家族，而不是叠一层对话框。
 
@@ -36,4 +36,4 @@ Status: implemented
 
 ## Related
 
-安置该窗格见 [右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.md)。FitAddon 与不拉伸的 `.xterm-screen` 见 [终端窗格 fit 与焦点](2026-08-17-terminal-pane-fit-and-focus.md)。嵌套铬不重涂 `--dsw-alias-bg-base` 的规则见 [外观导航选中对比与壁纸画布实心度上限](2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.md)。PTY 井不透明见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md)。ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.md)。反色单元格填充见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.md)。
+安置该窗格见 [右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.zh.md)。FitAddon 与不拉伸的 `.xterm-screen` 见 [终端窗格 fit 与焦点](2026-08-17-terminal-pane-fit-and-focus.zh.md)。嵌套铬不重涂 `--dsw-alias-bg-base` 的规则见 [外观导航选中对比与壁纸画布实心度上限](2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.zh.md)。PTY 井不透明见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)。ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。反色单元格填充见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md)。

@@ -78,6 +78,7 @@ const ASK_SENTENCE = 'Approval policy: ask. Operations that require approval may
  */
 function hasOpenTurn(session: Session): boolean {
   for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const type = session.eventAt(SessionSeq(seq))?.type
     if (type === 'turn/start') return true
     if (type === 'turn/end') return false
@@ -295,12 +296,22 @@ export class ApprovalService extends Service {
     return waiter.promise
   }
 
-  /** Return unresolved approval requests from one Session log. */
+  /**
+   * Return unresolved approval requests from one Session log.
+   * @param session - the session whose log supplies the requests.
+   * @returns every asked approval that has no recorded outcome yet.
+   */
   pending(session: Session): readonly PendingApprovalRecord[] {
     return approvalRecords(session).filter(record => record.outcome === undefined)
   }
 
-  /** Commit one approval decision at most once, then release its live waiter. */
+  /**
+   * Commit one approval decision at most once, then release its live waiter.
+   * @param agent - the agent whose session owns the request.
+   * @param requestId - the pending approval identifier.
+   * @param outcome - the decision to record.
+   * @returns the claim result: accepted, already-resolved, or not-pending.
+   */
   respond(agent: Agent, requestId: ApprovalRequestId, outcome: ApprovalOutcome): ApprovalClaimResult {
     const record = approvalRecords(agent.session).find(candidate => candidate.id === requestId)
     if (record === undefined) return { status: 'not-pending' }
@@ -332,6 +343,7 @@ export class ApprovalService extends Service {
    */
   overrideOf(session: Session): ApprovalPolicy | undefined {
     for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       const event = session.eventAt(SessionSeq(seq))
       if (event?.type === 'approval/policy') return event.data.policy
     }

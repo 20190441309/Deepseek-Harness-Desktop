@@ -227,14 +227,24 @@ export class UserQuestionService extends Service {
     }
   }
 
-  /** Return unresolved durable questions from one Session log. */
+  /**
+   * Return unresolved durable questions from one Session log.
+   * @param session - the session whose log supplies the questions.
+   * @returns every asked question that has no terminal answer yet.
+   */
   pending(session: QuestionSession): readonly PendingQuestionRecord[] {
     return questionRecords(session)
       .filter(record => record.terminal === undefined)
       .map(record => structuredClone(record))
   }
 
-  /** Idempotently commit one human answer before releasing a live tool call. */
+  /**
+   * Idempotently commit one human answer before releasing a live tool call.
+   * @param agent - the agent whose session owns the question.
+   * @param requestId - the pending question identifier.
+   * @param answer - the human's chosen or typed answer.
+   * @returns the claim result: accepted, already-resolved, or not-pending.
+   */
   respond(agent: Agent, requestId: UserQuestionRequestIdType, answer: AskUserQuestionAnswer): UserQuestionClaimResult {
     const record = questionRecords(agent.session).find(entry => entry.id === requestId)
     if (record === undefined) return { status: 'not-pending' }
@@ -250,7 +260,12 @@ export class UserQuestionService extends Service {
     return { status: 'accepted', outcome: 'answered', answer }
   }
 
-  /** Idempotently cancel one pending durable question. */
+  /**
+   * Idempotently cancel one pending durable question.
+   * @param agent - the agent whose session owns the question.
+   * @param requestId - the pending question identifier.
+   * @returns the claim result: accepted, already-resolved, or not-pending.
+   */
   cancel(agent: Agent, requestId: UserQuestionRequestIdType): UserQuestionClaimResult {
     return this.rejectPending(agent, requestId, 'cancelled', new UserQuestionError(
       'the user cancelled ask_user_question', 'ASK_CANCELLED'))

@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-17-titlebar-crowding-density.md
 2026-08-17-titlebar-crowding-density.md: d37c7833823c0ce24dcfabfc301e58b1b52b8ddb
-2026-08-17-titlebar-crowding-density.zh.md: ec12721aa4ac7c46cd6ece1b897553a49f879f10
+2026-08-17-titlebar-crowding-density.zh.md: a9ee10477c2a35a6894fea10979a82c7c7eeef2a

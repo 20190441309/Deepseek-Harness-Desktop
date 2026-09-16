@@ -163,15 +163,19 @@ export function PopupSelectView({ popup, t }: PopupSelectViewProps) {
                 <div
                   key={option.id}
                   role="option"
-                  aria-selected={index === view.active}
-                  className={clsx(css.row, index === view.active && css.rowActive)}
+                  aria-selected={index === state.active}
+                  aria-label={option.badge === undefined ? undefined : `${option.label} ${option.badge}`}
+                  className={clsx(css.row, index === state.active && css.rowActive)}
                   // mousedown would race the document capture listener; the shell
                   // owns focus anyway, so a plain click (inside the card → no
                   // dismiss) works.
                   onClick={() => { void popup.select(index) }}
                   onMouseEnter={() => { popup.highlight(index) }}
                 >
-                  <span className={css.label}>{option.label}</span>
+                  <span className={css.label}>
+                    <span className={css.labelText}>{option.label}</span>
+                    {option.badge !== undefined && <sup className={css.badge}>{option.badge}</sup>}
+                  </span>
                   {option.detail !== undefined && <span className={css.detail}>{option.detail}</span>}
                   {option.active === true && <span className={css.check}><IconCheckOutline16 /></span>}
                 </div>

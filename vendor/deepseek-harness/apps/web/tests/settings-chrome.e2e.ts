@@ -303,6 +303,9 @@ describe('web e2e: settings modal and General preferences', () => {
     // tiles live in Appearance.
     await restoredDialog.getByRole('button', { name: '外观', exact: true }).click()
     const systemCube = restoredDialog.getByRole('button', { name: '跟随系统', exact: true })
+    // The boot palette precedes the settings mirror's saved preference.
+    const restoredDarkCube = restoredDialog.getByRole('button', { name: '深色' })
+    await expect.poll(() => restoredDarkCube.getAttribute('aria-pressed'), { timeout: 5_000 }).toBe('true')
     await selectTheme(systemCube, 'system')
     await expect.poll(() => systemCube.getAttribute('aria-pressed'), { timeout: 5_000 }).toBe('true')
     await expect.poll(() => page.evaluate(() => document.body.hasAttribute('data-ds-dark-theme')), {

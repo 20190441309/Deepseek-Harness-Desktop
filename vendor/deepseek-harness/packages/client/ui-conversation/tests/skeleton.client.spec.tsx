@@ -304,7 +304,6 @@ function mount(
           useComposerResizeWidth={sel => sel(null)}
           setComposerResizeSize={() => {}}
           stop={stop}
-          command={() => Promise.resolve(true)}
           t={t}
           renderSlot={((key: string, seatOwner: object) => {
             composerSlotCalls.push(key)

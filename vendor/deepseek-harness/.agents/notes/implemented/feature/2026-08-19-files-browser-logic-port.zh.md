@@ -40,4 +40,4 @@ guest、主窗口与 PiP 的隔离是拆分，不是同一份 preference。选�
 
 ## 相关
 
-[右边栏与终端工作环](2026-08-16-surfaces-terminal-work-loops.md) 拥有本移植补全的 Files/Browser/Terminal 工作环。[对话链接进入 Files 与 Browser](2026-08-19-conversation-surface-links.md) 拥有 html/svg 双开与带 token 的工作区文件服务。
+[右边栏与终端工作环](2026-08-16-surfaces-terminal-work-loops.zh.md) 拥有本移植补全的 Files/Browser/Terminal 工作环。[对话链接进入 Files 与 Browser](2026-08-19-conversation-surface-links.zh.md) 拥有 html/svg 双开与带 token 的工作区文件服务。

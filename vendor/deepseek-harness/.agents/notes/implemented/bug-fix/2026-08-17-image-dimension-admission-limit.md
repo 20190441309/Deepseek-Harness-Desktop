@@ -20,8 +20,8 @@ English | [中文](2026-08-17-image-dimension-admission-limit.zh.md)
 
 ## Related
 
-- [Minimal read_image tool](../feature/2026-08-10-minimal-read-image-tool.md) — the tool whose admission gap this closes.
-- [Web image intake and limits alignment](../feature/2026-08-12-web-image-intake-and-limits-alignment.md) — the composer-side surfacing of the same `ImageAttachmentLimits`.
+- [Minimal read_image tool](../../archived/feature/2026-08-10-minimal-read-image-tool.md) — the tool whose admission gap this closes.
+- [Web image intake and limits alignment](../../archived/feature/2026-08-12-web-image-intake-and-limits-alignment.md) — the composer-side surfacing of the same `ImageAttachmentLimits`.
 
 ## Consequences
 

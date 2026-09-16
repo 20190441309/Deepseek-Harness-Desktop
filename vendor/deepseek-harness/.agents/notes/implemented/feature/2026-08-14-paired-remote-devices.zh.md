@@ -16,7 +16,7 @@ Status: implemented
 
 **继续用一把共享令牌当长期 Cookie。** 否决：解绑一台手机就得轮换二维码，所有手机一起掉线。
 
-**把每次扫码当成新源，靠打开最近一条对话当产品修复。** 否决：看不到对话是还没绑定的症状。配对才是长期关系；第一次打开选哪条会话是另一条运行时规则，见 [restore-latest-conversation-on-new-origin](2026-08-14-restore-latest-conversation-on-new-origin.md)。
+**把每次扫码当成新源，靠打开最近一条对话当产品修复。** 否决：看不到对话是还没绑定的症状。配对才是长期关系；第一次打开选哪条会话是另一条运行时规则，见 [restore-latest-conversation-on-new-origin](2026-08-14-restore-latest-conversation-on-new-origin.zh.md)。
 
 ## 后果
 

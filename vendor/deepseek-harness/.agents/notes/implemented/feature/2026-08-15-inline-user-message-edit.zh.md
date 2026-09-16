@@ -18,7 +18,7 @@ Status: implemented
 
 `ui-message-edit` 占据这两个座位。铅笔只调用 `startEdit`，不 fork。编辑器是用户气泡几何里的 textarea，外加「取消／发送」（`Button` `sm` ghost / primary）。Escape 取消；Enter 发送；Shift+Enter 换行；三者均对 IME 安全。确认时执行 `sessions.fork({ beforeSeq, increaseTitle: true })`，解析子会话作用域，再 `sessions.open(childId)`，然后在子会话输入面上 `setDraft(text)` 和 `submit()`。fork 失败或子会话作用域缺失则留在源会话、在该 composer 上提示，并让编辑器带着草稿继续待命；编辑中途的状态守卫与焦点交还 store 由[生产打磨记录](2026-08-25-message-edit-production-polish.zh.md)定案。
 
-日志不变：子会话切在被编辑轮次之前，模型不会两次看到旧提示词。[去掉无效编辑存根](../simplification/2026-07-31-drop-user-message-edit-stub.zh.md) 对 `MessageIconActions` 仍然有效；控件只存在于该插件中。
+日志不变：子会话切在被编辑轮次之前，模型不会两次看到旧提示词。[去掉无效编辑存根](../../archived/simplification/2026-07-31-drop-user-message-edit-stub.md) 对 `MessageIconActions` 仍然有效；控件只存在于该插件中。
 
 ## 曾考虑的替代方案
 

@@ -155,6 +155,11 @@ describe('WorkspaceController commands', () => {
     vi.spyOn(ctx.workspaceRegistry, 'archiveSession').mockRejectedValueOnce(archiveFailure)
     await expect(controller.archiveSession({ sessionId: SessionId('session') }))
       .rejects.toBe(archiveFailure)
+
+    const unarchiveFailure = new Error('unarchive storage failed')
+    vi.spyOn(ctx.workspaceRegistry, 'unarchiveSession').mockRejectedValueOnce(unarchiveFailure)
+    await expect(controller.unarchiveSession({ sessionId: SessionId('session') }))
+      .rejects.toBe(unarchiveFailure)
   })
 
   it('resolves queued Workspace identities when their operation starts', async () => {
@@ -254,8 +259,9 @@ describe('WorkspaceController commands', () => {
       .rejects.toMatchObject({ code: 'session/not-found' })
     await expect(controller.unarchiveSession({ sessionId: session.id }))
       .resolves.toEqual({ archivedSessionIds: [] })
-    await expect(controller.unarchiveSession({ sessionId: SessionId('unknown') }))
-      .rejects.toMatchObject({ code: 'session/not-found' })
+    // Unarchive is idempotent: an id that is not archived is not an error.
+    await expect(controller.unarchiveSession({ sessionId: session.id }))
+      .resolves.toEqual({ archivedSessionIds: [] })
   })
 })
 
@@ -331,6 +337,7 @@ describe('WorkspaceController follow', () => {
     await expect(nextFrame(iterator)).resolves.toEqual({
       type: 'archived', archivedSessionIds: [session.id],
     })
+    // Unarchive rides the same complete-set increment: no new frame type.
     await controller.unarchiveSession({ sessionId: session.id })
     await expect(nextFrame(iterator)).resolves.toEqual({
       type: 'archived', archivedSessionIds: [],

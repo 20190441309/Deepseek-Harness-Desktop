@@ -28,4 +28,4 @@ Status: implemented
 
 `AgentPreset` 新增 `hidden` 字段；线上的 `AgentPresetRow` 不变，因为被过滤的行从不序列化。健康的 hidden preset 对选择器和管理分区都不可见——删除它的目录是文件系统操作，这是诚实的，因为播种它的插件下次启动总会把它补回来。插件停止播种、或播种副本损坏时，会留下一条用户仍能看到并移除的 `broken` 行。一处外观上的边角：运行在 hidden preset 上的会话，其头部标签按裸 id 显示组合名，因为携带显示名的名单行已经不在了——id 在那里是诚实的标签。
 
-相关：[per-session agent presets](2026-08-03-per-session-agent-presets.md) 拥有本说明扩展的 preset 模型；[copy-only preset authoring](../simplification/2026-08-08-copy-only-preset-authoring.md) 拥有丢弃该标记的复制路径。
+相关：[per-session agent presets](2026-08-03-per-session-agent-presets.zh.md) 拥有本说明扩展的 preset 模型；[copy-only preset authoring](../simplification/2026-08-08-copy-only-preset-authoring.zh.md) 拥有丢弃该标记的复制路径。

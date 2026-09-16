@@ -25,6 +25,10 @@
 - 使用中性 `--dsw-alias-border-*` token 的平面边框与分割线一律 `0.5px`——按钮、输入框、卡片、行分割线，以及以填充盒绘制的分隔线（菜单分隔、对话标题栏接缝、markdown `hr`、竖向轨道线）共用发丝线粗细，Chromium 将其绘制为一个设备像素。dashed 记号与状态色 border 保持 1px；spinner 圆环经 spec 的显式豁免保留原宽度。更宽的中性 solid border 会被 ui-theme elevation spec 拒绝。
 - 可点击产物链接（Markdown 锚点、正文文件引用、网页来源与抓取链接、产物 chips、workflow 成员链接）经 `--dsw-alias-link` 着色、`font-weight: 500`，默认无下划线，hover/focus 时为 3px offset 的点状下划线。带文字的锚点另以 ui-primitives 的 `LinkIcon` 分类图形（随 `currentColor`）作前置；workflow 成员链接与只包图片的锚点不带图形，工具行文件链接保持其灰色点线示能（[可点击链接 Agent Note](../.agents/notes/implemented/feature/2026-09-04-web-clickable-link-styles.zh.md)）。
 
+## 动效
+
+共享的进场/退场动效位于 [`ui-theme` `motion.css`](../packages/client/ui-theme/src/styles/motion.css) 与 [`usePresence`](../packages/client/ui-primitives/src/usePresence.ts)。overlay、popover、fade、swap、flip 配方只动画 `opacity` 和 `transform`。surface 通过 `usePresence` 设置 `data-dsh-motion` 与 `data-state`，不自造时长或缓动。composer 的加号、权限、模型、context-meter 弹出层都用 `popover`。`FlipText` 在权限、模型或 effort 触发标签变化时播放 400ms flip 配方（`--ds-motion-duration-flip`）。`prefers-reduced-motion: reduce` 会把 `--ds-transition-duration*` 与 `--ds-motion-duration-*` token 归零。不要动画 `backdrop-filter`、大面板的宽高，也不要引入动画库。新对话框、菜单和原位切换复用既有 primitive 或同一 hook 与配方。依据见 [motion-system Agent Note](../.agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.zh.md)。
+
 ## 变更系统
 
-在所属 `ui-theme` 样式表中添加或修改共享 token，然后在功能包中使用其语义别名。公共样式约定发生变化时，更新所属包的参考文档。视觉行为遵循[测试策略](testing.zh.md)；[样式系统 Agent Note](../.agents/notes/implemented/process/2026-07-19-web-styling-system.zh.md) 记录框架依据。
+在所属 `ui-theme` 样式表中添加或修改共享 token，然后在功能包中使用其语义别名。公共样式约定发生变化时，更新所属包的参考文档。视觉行为遵循[测试策略](testing.zh.md)。动效配方、Presence 与 FlipText 由 `test:gui` 下各包套件及 role / `aria-hidden` 关闭断言钉住，不靠浏览器 golden。[样式系统 Agent Note](../.agents/notes/implemented/process/2026-07-19-web-styling-system.zh.md) 记录框架依据。

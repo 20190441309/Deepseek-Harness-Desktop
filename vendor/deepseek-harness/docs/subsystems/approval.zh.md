@@ -132,6 +132,22 @@ setPolicy(agent: Agent, policy: ApprovalPolicy): void
 async request(req: ApprovalRequest): Promise<ApprovalOutcome>
 
 /**
+ * Return unresolved approval requests from one Session log.
+ * @param session - the session whose log supplies the requests.
+ * @returns every asked approval that has no recorded outcome yet.
+ */
+pending(session: Session): readonly PendingApprovalRecord[]
+
+/**
+ * Commit one approval decision at most once, then release its live waiter.
+ * @param agent - the agent whose session owns the request.
+ * @param requestId - the pending approval identifier.
+ * @param outcome - the decision to record.
+ * @returns the claim result: accepted, already-resolved, or not-pending.
+ */
+respond(agent: Agent, requestId: ApprovalRequestId, outcome: ApprovalOutcome): ApprovalClaimResult
+
+/**
  * Read the session override without applying the configured default.
  * @param session - session whose log supplies the override.
  * @returns the last logged policy, or `undefined` without one.

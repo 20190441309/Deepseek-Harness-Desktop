@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[English](2026-08-29-composer-row-centering.md) | 中文
+English | [中文](2026-08-29-composer-row-centering.zh.md)
 
 ## Problem
 

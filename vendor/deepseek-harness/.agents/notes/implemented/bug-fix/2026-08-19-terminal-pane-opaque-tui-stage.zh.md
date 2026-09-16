@@ -10,7 +10,7 @@ CodeBuddy 斜杠菜单用 Ink 的 `bold` 加 `colors.info` 标记选中行，且
 
 ## 决策
 
-PTY 井是不透明的。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw-alias-bg-base)`；`mixWallpaperSurfaces` 把它保持为不透明的画布回退（浅色 `--dsw-static-neutral-bluish-00`，深色 `--dsw-static-neutral-bluish-950`）或家族的实心 `--dsw-alias-bg-base`，从不对 transparent 做 `color-mix`。`.paneTerminal` 铺该 token，没有 `backdrop-filter`。`readXtermTheme` 把 `theme.background` 设为无 alpha 的画布 RGB。`TerminalPane` 以 `allowTransparency: false` 构造 xterm，避免半透明填充被换成 `#000000`。壁纸仍混合会话画布和侧栏；终端井不参与。窗格仍不重涂 `.xterm-bold`，也不画猜出来的选中条。反色单元格保留 `.xterm-bg-257`／`.xterm-fg-257` token 覆盖。`minimumContrastRatio` 为 1；ANSI 青／蓝为 Pierre，见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.md)。
+PTY 井是不透明的。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw-alias-bg-base)`；`mixWallpaperSurfaces` 把它保持为不透明的画布回退（浅色 `--dsw-static-neutral-bluish-00`，深色 `--dsw-static-neutral-bluish-950`）或家族的实心 `--dsw-alias-bg-base`，从不对 transparent 做 `color-mix`。`.paneTerminal` 铺该 token，没有 `backdrop-filter`。`readXtermTheme` 把 `theme.background` 设为无 alpha 的画布 RGB。`TerminalPane` 以 `allowTransparency: false` 构造 xterm，避免半透明填充被换成 `#000000`。壁纸仍混合会话画布和侧栏；终端井不参与。窗格仍不重涂 `.xterm-bold`，也不画猜出来的选中条。反色单元格保留 `.xterm-bg-257`／`.xterm-fg-257` token 覆盖。`minimumContrastRatio` 为 1；ANSI 青／蓝为 Pierre，见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。
 
 ## 曾考虑的替代方案
 
@@ -32,4 +32,4 @@ PTY 井是不透明的。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw
 
 ## 相关
 
-[终端画布使用应用背景](2026-08-18-terminal-canvas-app-background.md) 拥有透明工作区根、壁纸压暗，以及嵌套铬不在会话画布上重涂 `--dsw-alias-bg-base` 的规则。[终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.md) 拥有已删除的行画笔与反色单元格 CSS。[PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.md) 拥有 ANSI 1–15 与 `minimumContrastRatio`。
+[终端画布使用应用背景](2026-08-18-terminal-canvas-app-background.zh.md) 拥有透明工作区根、壁纸压暗，以及嵌套铬不在会话画布上重涂 `--dsw-alias-bg-base` 的规则。[终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md) 拥有已删除的行画笔与反色单元格 CSS。[PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md) 拥有 ANSI 1–15 与 `minimumContrastRatio`。

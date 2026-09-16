@@ -10,7 +10,7 @@ CodeBuddy 斜杠菜单用 Ink 的 `bold` 加 `colors.info`（青色）标记选�
 
 ## 决策
 
-Windows 的 `ptySpawnOptions` 复制 T3code `NodePtyAdapter`：Windows 上 `name` 为 `xterm-color`（其它平台 `xterm-256color`），env 为 `createTerminalSpawnEnv`。Windows 上丢掉 Electron 的 `TERM=dumb`，使 Node 色深与 T3code 未设置 `$TERM` 时一致。交互窗格是 T3code 的 Ghostty 适配，ANSI 1–15 留在引擎色板，应用只覆盖 fg/bg/cursor/selection；见 [交互式 PTY 窗格使用 T3code 的 libghostty-vt 适配](2026-08-19-terminal-ghostty-libghostty-vt.md)。`TERMINAL_MINIMUM_CONTRAST` 仍为 `1`，留给任何剩余的 xterm 调用方。窗格仍不画猜出来的选中条。
+Windows 的 `ptySpawnOptions` 复制 T3code `NodePtyAdapter`：Windows 上 `name` 为 `xterm-color`（其它平台 `xterm-256color`），env 为 `createTerminalSpawnEnv`。Windows 上丢掉 Electron 的 `TERM=dumb`，使 Node 色深与 T3code 未设置 `$TERM` 时一致。交互窗格是 T3code 的 Ghostty 适配，ANSI 1–15 留在引擎色板，应用只覆盖 fg/bg/cursor/selection；见 [交互式 PTY 窗格使用 T3code 的 libghostty-vt 适配](2026-08-19-terminal-ghostty-libghostty-vt.zh.md)。`TERMINAL_MINIMUM_CONTRAST` 仍为 `1`，留给任何剩余的 xterm 调用方。窗格仍不画猜出来的选中条。
 
 ## 曾考虑的替代方案
 
@@ -30,4 +30,4 @@ Windows 的 `ptySpawnOptions` 复制 T3code `NodePtyAdapter`：Windows 上 `name
 
 ## 相关
 
-井不透明见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md)。已删除的行画笔见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.md)；对比度重映射在本笔记退役。不带 DLL 的 ConPTY 见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.md)。
+井不透明见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)。已删除的行画笔见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md)；对比度重映射在本笔记退役。不带 DLL 的 ConPTY 见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.zh.md)。

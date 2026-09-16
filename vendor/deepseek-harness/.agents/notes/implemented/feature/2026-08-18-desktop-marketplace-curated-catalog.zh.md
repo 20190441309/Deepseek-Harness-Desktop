@@ -10,7 +10,7 @@ Host 的 `installPlugin` 只接受 `github:owner/repo[#ref]`。awesome-dsh-plugi
 
 ## 决策
 
-**产品市场界面不是这个标签页。** 设置 → 插件市场是预置的 `dshmarket` 插件（`settings.section` id `market`），由 [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.md) 拥有。本笔记拥有主进程精选目录和 Host／IPC 安装白名单。没有 id 为 `marketplace` 的 `settings.plugins.tab`。托盘和菜单的 `openMarketplace()` 仍绝不创建市场 `BrowserWindow`。
+**产品市场界面不是这个标签页。** 设置 → 插件市场是预置的 `dshmarket` 插件（`settings.section` id `market`），由 [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.zh.md) 拥有。本笔记拥有主进程精选目录和 Host／IPC 安装白名单。没有 id 为 `marketplace` 的 `settings.plugins.tab`。托盘和菜单的 `openMarketplace()` 仍绝不创建市场 `BrowserWindow`。
 
 **目录是 `https://awesome-dsh-plugin.com/plugins.json`。** 主进程拉取（测试用 `DSHD_MARKETPLACE_REGISTRY_URL`）。超时 4 秒。成功响应必须是带非空 `plugins` 数组的对象。`listMarketplace({ refresh?, locale? })` 的 `locale` 为 `zh` | `en`（默认 `zh`；`zh*` 映射为 `zh`）。磁盘缓存在 `app.getPath('userData')`，`CACHE_VERSION` 为 3，TTL 1 小时。回退顺序是内存、磁盘、打包快照 `src/main/marketplace-registry-snapshot.json`。`source` 为 `live` | `cache` | `snapshot`；非 live 必须带 `warning`。每一层都空时返回 `ok: false`、`items: []` 和可见警告。不搜 GitHub topic。
 
@@ -24,7 +24,7 @@ Host 的 `installPlugin` 只接受 `github:owner/repo[#ref]`。awesome-dsh-plugi
 
 ## 曾考虑的替代方案
 
-**预装或 vendor `dshmarket` 作为设置里的插件市场界面。** 由 [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.md) 拥有。本笔记把目录拉取和 Host 只接受 github 的 `installPlugin` 路径留在该插件之外。
+**预装或 vendor `dshmarket` 作为设置里的插件市场界面。** 由 [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.zh.md) 拥有。本笔记把目录拉取和 Host 只接受 github 的 `installPlugin` 路径留在该插件之外。
 
 **保留第二个 Electron 市场窗口（`src/renderer/marketplace/`）。** 否决：第二份 `file:` 文档需要平行色板、市场 IPC 角色，以及钉在 `marketplace/index.html` 上的导航守卫。托盘和菜单的 `openMarketplace()` 打开设置页。
 
@@ -40,6 +40,6 @@ Host 的 `installPlugin` 只接受 `github:owner/repo[#ref]`。awesome-dsh-plugi
 
 ## 相关
 
-- [右边栏与终端工作环](2026-08-16-surfaces-terminal-work-loops.md)
-- [Host install_dsh_plugin 控制通道](2026-08-15-marketplace-draft-install.md)
-- [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.md)
+- [右边栏与终端工作环](2026-08-16-surfaces-terminal-work-loops.zh.md)
+- [Host install_dsh_plugin 控制通道](2026-08-15-marketplace-draft-install.zh.md)
+- [桌面预置 dshmarket](2026-08-19-desktop-dshmarket-preset.zh.md)

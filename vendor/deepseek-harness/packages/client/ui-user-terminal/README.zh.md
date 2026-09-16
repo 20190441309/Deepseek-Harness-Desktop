@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-用户终端：对话列底栏（`shell.terminalDrawer`）与右边栏 Terminal surface（`surfaces.terminal`）各自坐在独立的 `createTerminalSessionStore()` handle 上，因此在一侧打开的窗格不会出现在另一侧。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
+用户终端：对话列底栏（`shell.terminalDrawer`）与右边栏 Terminal surface（`surfaces.terminal`）各自坐在独立的 `createTerminalSessionStore()` handle 上，因此在一侧打开的窗格不会出现在另一侧。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.zh.md)。
 
 store 保存 `sessions[]`、`activeId`、每会话的 `cols`／`rows`／`buffer`，以及分屏组，上限为 `MAX_TERMINALS_PER_GROUP`（4）。`appendData` 把回放缓冲封顶在 `MAX_TERMINAL_BUFFER`，并把掐头切点在 `BUFFER_REALIGN_WINDOW` 内对齐到下一个行首或 ESC，重挂载回放不会从转义序列中间开始。桌面 PTY IPC 只挂在 `window.shell`（`ptyCreate`／`ptyWrite`／`ptyResize`／`ptyKill`／`onPtyData`／`onPtyExit`）；渲染进程不加载 Node。没有项目 cwd 时不创建 PTY。每个窗格是 `libghostty-vt` Canvas 适配（`GhosttyTerminalSurface`），不是 xterm。种子回放用 `resetAndWrite`（断开 PTY writer）。Ghostty 自己负责 fit、150 ms 的 PTY resize 防抖、粗体 canvas `font-weight: 700`，以及引擎 ANSI 色板（应用只覆盖 fg/bg/cursor/selection）。`onResize` 按 `TerminalViewport` 原样转发 Ghostty 的 fit。30 ms settle fit 只在 Ghostty 报告视口已在底部时跟随输出。活动窗格会获得焦点；在窗格上 pointerdown 会激活它，但不会把 DOM 焦点移到铬上。空单元格与窗格落在不透明的 `--dsw-alias-terminal-pane` 上。画布字体来自 `--dsw-font-family-terminal`（否则 `--ds-font-family-code`），经 `terminalFontOptions` 传入。Windows PTY 启动使用 `resolveShellCandidates` 和 `createTerminalSpawnEnv`；打开默认 120×30；`name` 为 `xterm-color`。Windows 上丢掉 Electron 的 `TERM=dumb`，使 PTY 与 Windows node-pty 一致（它不会把 `name` 写进 `$TERM`）。
 

@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.md
 2026-08-14-web-motion-presence-and-recipes.md: 662ebe48d956d85937c8fe0f5199f9ea01052602
-2026-08-14-web-motion-presence-and-recipes.zh.md: 7e07555ea57d478fed9108872e0768de41b9ef73
+2026-08-14-web-motion-presence-and-recipes.zh.md: 2febfe1cbb6fbd900121428d973f68c0eb5250c7

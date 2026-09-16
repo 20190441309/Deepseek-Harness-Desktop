@@ -34,4 +34,4 @@ Mention、拖拽、加入对话能在 session-maybe fiber 上写入草稿。键�
 
 ## 相关
 
-[右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.md)。[远程配对放在设置旁边的手机控件上](../feature/2026-08-14-settings-remote-section.md)。[桌面组装手机 Remote 网关](../feature/2026-08-22-desktop-phone-remote.md)。[Web 文件与会话引用](../feature/2026-07-27-web-file-and-session-references.md)。
+[右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.zh.md)。[远程配对放在设置旁边的手机控件上](../feature/2026-08-14-settings-remote-section.zh.md)。[桌面组装手机 Remote 网关](../feature/2026-08-22-desktop-phone-remote.zh.md)。[Web 文件与会话引用](../feature/2026-07-27-web-file-and-session-references.md)。

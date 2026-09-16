@@ -6,7 +6,7 @@ English | [中文](2026-08-18-product-subagent-failure-facts.zh.md)
 
 ## Problem
 
-The [Claude Code and Codex product providers](2026-08-04-claude-code-and-codex-subagent-backends.md) receive structured product failures, but a published run historically flattened most of them to the shared `error` stop reason. Product logs retained detail that the foreground parent and a [one-shot background Job](2026-08-12-product-subagent-one-shot-background-tasks.md) could not use to distinguish a product limit, an execution failure, or an early process exit.
+The [Claude Code and Codex product providers](2026-08-04-claude-code-and-codex-subagent-backends.md) receive structured product failures, but a published run historically flattened most of them to the shared `error` stop reason. Product logs retained detail that the foreground parent and a [one-shot background Job](../../archived/feature/2026-08-12-product-subagent-one-shot-background-tasks.md) could not use to distinguish a product limit, an execution failure, or an early process exit.
 
 Copying SDK error text, app-server payloads, or stderr into the result would expose task text, paths, environment values, credentials, or product internals. Adding shared error fields would also make the provider-neutral [subagent seam](2026-06-21-subagent-capability-seam.md) own product version vocabularies that change independently.
 

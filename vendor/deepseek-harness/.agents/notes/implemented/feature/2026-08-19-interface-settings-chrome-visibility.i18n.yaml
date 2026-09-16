@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-19-interface-settings-chrome-visibility.md
 2026-08-19-interface-settings-chrome-visibility.md: dc117734bceeaf45ea2dee477a095a3371027bbe
-2026-08-19-interface-settings-chrome-visibility.zh.md: a971a5a5721513490dbce20b22bcdb41d0ff49a8
+2026-08-19-interface-settings-chrome-visibility.zh.md: 974d60c9d81d0608e831758316ba9897e03cf95c

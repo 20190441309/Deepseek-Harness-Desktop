@@ -24,7 +24,7 @@ Status: implemented
 
 字体字段仍是 CSS `font-family` 名称。空表示产品默认栈。文案写明这一点，不增加系统字体选择器。
 
-这修正了[主题家族外观系统](../feature/2026-08-14-theme-family-appearance-system.md)里的混合曲线；家族文档、Host 分节和背景图层不变。
+这修正了[主题家族外观系统](../feature/2026-08-14-theme-family-appearance-system.zh.md)里的混合曲线；家族文档、Host 分节和背景图层不变。
 
 ## 考虑过的替代方案
 

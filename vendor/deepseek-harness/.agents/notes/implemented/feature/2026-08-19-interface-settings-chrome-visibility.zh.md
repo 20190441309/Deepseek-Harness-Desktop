@@ -49,4 +49,4 @@ Status: implemented
 
 ## 相关
 
-[标题栏拥挤密度](../bug-fix/2026-08-17-titlebar-crowding-density.md)。[Host settings 支撑的 Web 偏好](../bug-fix/2026-08-06-host-backed-web-preferences.md)。[审批接管跟随输入框拖动调整](../bug-fix/2026-08-20-approval-panel-composer-resize.md)。
+[标题栏拥挤密度](../bug-fix/2026-08-17-titlebar-crowding-density.zh.md)。[Host settings 支撑的 Web 偏好](../bug-fix/2026-08-06-host-backed-web-preferences.zh.md)。[审批接管跟随输入框拖动调整](../bug-fix/2026-08-20-approval-panel-composer-resize.zh.md)。

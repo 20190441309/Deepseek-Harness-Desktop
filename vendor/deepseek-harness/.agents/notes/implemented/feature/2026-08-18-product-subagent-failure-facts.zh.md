@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-[Claude Code 与 Codex 产品提供方](2026-08-04-claude-code-and-codex-subagent-backends.zh.md)会收到结构化产品失败，但已发布运行以往会把其中大多数压成共享的 `error` 终止原因。产品日志保留了细节，前台父 agent 与[一次性后台 Job](2026-08-12-product-subagent-one-shot-background-tasks.zh.md)却无法据此区分产品限制、执行失败或进程提前退出。
+[Claude Code 与 Codex 产品提供方](2026-08-04-claude-code-and-codex-subagent-backends.zh.md)会收到结构化产品失败，但已发布运行以往会把其中大多数压成共享的 `error` 终止原因。产品日志保留了细节，前台父 agent 与[一次性后台 Job](../../archived/feature/2026-08-12-product-subagent-one-shot-background-tasks.md)却无法据此区分产品限制、执行失败或进程提前退出。
 
 若把 SDK 错误文本、app-server payload 或 stderr 复制进结果，就会暴露任务文本、路径、环境值、凭证或产品内部信息。若增加共享错误字段，又会让提供方无关的 [subagent seam](2026-06-21-subagent-capability-seam.zh.md)拥有彼此独立变化的产品版本词汇。
 

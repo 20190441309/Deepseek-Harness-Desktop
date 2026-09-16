@@ -16,7 +16,7 @@ Status: implemented — **已被 [桌面自有市场分区](2026-08-25-desktop-o
 
 **托盘和菜单的 `openMarketplace()` 跳到该分区。** 显示主窗口并调用 `openHarnessSettings('market')`。Harness 未加载时记下待跳转，绝不创建市场 `BrowserWindow`。
 
-主进程目录拉取和 `installMarketplacePlugin(id)` 仍给 Host `install_dsh_plugin` 与 IPC 调用方用，不是设置里的插件市场界面。该 Host 路径仍由 [桌面插件市场精选目录](2026-08-18-desktop-marketplace-curated-catalog.md) 拥有。
+主进程目录拉取和 `installMarketplacePlugin(id)` 仍给 Host `install_dsh_plugin` 与 IPC 调用方用，不是设置里的插件市场界面。该 Host 路径仍由 [桌面插件市场精选目录](2026-08-18-desktop-marketplace-curated-catalog.zh.md) 拥有。
 
 ## 曾考虑的替代方案
 
@@ -37,4 +37,5 @@ Status: implemented — **已被 [桌面自有市场分区](2026-08-25-desktop-o
 
 ## 相关
 
-- [桌面插件市场精选目录](2026-08-18-desktop-marketplace-curated-catalog.md)
+- 反转方：[桌面自有市场分区](2026-08-25-desktop-owned-market-section.zh.md)
+- [桌面插件市场精选目录](2026-08-18-desktop-marketplace-curated-catalog.zh.md)

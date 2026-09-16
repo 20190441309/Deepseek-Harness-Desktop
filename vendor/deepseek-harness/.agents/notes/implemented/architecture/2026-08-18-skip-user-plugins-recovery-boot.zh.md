@@ -10,7 +10,7 @@ profile 一旦多列一个组合包，或携带损坏的用户 `cordis.patch.yml
 
 ## Decision
 
-`--skip-user-plugins` 是根命令与 `web` 别名上的启动器旗标，在 `--host` / `--port` 这类应用旗标之前解析。它通过 `loadProfile(..., { userLayer: false, bundles: 'template' })` 组合 `PROFILE_TEMPLATES[name]`；该名称没有模板时使用 `DEFAULT_PROFILE_BUNDLES`，并且从不写回 `dsh.profile.bundles`。模板加载只读取磁盘上的清单、不改写它，然后解析 `PROFILE_TEMPLATES` / `DEFAULT_PROFILE_BUNDLES`。profile 与 home 的 `cordis.patch.yml` 都不读取；`--patch` overlay 与 telemetry 开关仍然应用；不安装 `watchUserPatches`，否则 HMR（热模块替换）会把跳过的层重新热加载回来。`--dump-default-config` 仍是「清单上的组合包层、无用户文件、无 `--patch`」；跳过栈用 `--skip-user-plugins --dump-config` dump。这两个旗标互斥。这不会按 loader id 禁用插件、隔离包装，也不会改变 Cordis 的响亮失败语义；需要在用户层失败后启动官方 Web 的宿主，对同一 `$DSH_HOME` 做这次二次 spawn。profile 组合本身仍由 [profile 插件组合包](2026-08-05-profile-plugin-bundles.md) 决策负责。
+`--skip-user-plugins` 是根命令与 `web` 别名上的启动器旗标，在 `--host` / `--port` 这类应用旗标之前解析。它通过 `loadProfile(..., { userLayer: false, bundles: 'template' })` 组合 `PROFILE_TEMPLATES[name]`；该名称没有模板时使用 `DEFAULT_PROFILE_BUNDLES`，并且从不写回 `dsh.profile.bundles`。模板加载只读取磁盘上的清单、不改写它，然后解析 `PROFILE_TEMPLATES` / `DEFAULT_PROFILE_BUNDLES`。profile 与 home 的 `cordis.patch.yml` 都不读取；`--patch` overlay 与 telemetry 开关仍然应用；不安装 `watchUserPatches`，否则 HMR（热模块替换）会把跳过的层重新热加载回来。`--dump-default-config` 仍是「清单上的组合包层、无用户文件、无 `--patch`」；跳过栈用 `--skip-user-plugins --dump-config` dump。这两个旗标互斥。这不会按 loader id 禁用插件、隔离包装，也不会改变 Cordis 的响亮失败语义；需要在用户层失败后启动官方 Web 的宿主，对同一 `$DSH_HOME` 做这次二次 spawn。profile 组合本身仍由 [profile 插件组合包](2026-08-05-profile-plugin-bundles.zh.md) 决策负责。
 
 ## Alternatives considered
 

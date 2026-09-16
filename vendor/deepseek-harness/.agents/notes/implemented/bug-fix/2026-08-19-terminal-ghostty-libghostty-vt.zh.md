@@ -30,4 +30,4 @@ CodeBuddy 的斜杠菜单用 Ink 的 `bold` 加 `colors.info`（青色）标出�
 
 ## 相关
 
-[PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.md) 描述了已放弃的 xterm Pierre 映射；此处 ANSI 1–15 由 Ghostty 引擎色板拥有。[终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md) 拥有 `--dsw-alias-terminal-pane`。[ConPTY 启动匹配 T3code；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.md) 拥有 Windows 启动；xterm 的 DA1 锁存器不被此窗格使用。
+[PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md) 描述了已放弃的 xterm Pierre 映射；此处 ANSI 1–15 由 Ghostty 引擎色板拥有。[终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md) 拥有 `--dsw-alias-terminal-pane`。[ConPTY 启动匹配 T3code；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.zh.md) 拥有 Windows 启动；xterm 的 DA1 锁存器不被此窗格使用。

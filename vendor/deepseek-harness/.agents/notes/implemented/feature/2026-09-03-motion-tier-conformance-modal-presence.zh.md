@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-[动效系统 note](../architecture/2026-08-14-web-motion-presence-and-recipes.md) 交付了五个 recipe 和 `usePresence`，但已发布的 Web UI 在三个方向上偏离了它。其一，`Modal` 在 `!open` 时直接卸载且不带 `data-dsh-motion`，于是所有建在它之上的对话框——`RiskConfirmation`、Git 各弹窗、工作区重命名/删除、目录选择，以及 MCP、Skills、Models、Agent 预设设置弹窗——虽然都列在 overlay 使用对照里，实际却毫无进出场动效，关闭即卸载，也没有 200ms 退场保持。其二，约 120 处功能 CSS transition 写死时长（反复出现的表外 120ms 档，外加 80 / 140 / 180 / 220 / 420ms 与 `.12s` / `.16s` 变体）和写死的 `ease` / `ease-out` 曲线；字面量时长不随减弱动效的 token 归零而归零，减弱动效下它们照播不误。五个已发布的无限指示器（`TodoPanel`、`StateDot`、斜杠菜单 `MenuView` 骨架、更新进度条、无框架 boot 页 spinner）完全没有减弱动效停止，多个表面还在动画布局属性（`height`、`width`、`top`、`left`、`max-width`、`padding`、`margin`、`box-shadow`）且无任何记录在案的合同。其三，一整层已发布的产品动效——骨架扫光、composer 光束、忙碌 spinner、状态点追逐——以及有意设计的编排（侧栏轨道收合相位、Hero 小鱼）游离在任何合同之外，而「Web UI 内不要再加无限旋转」的既有措辞与已发布现实直接矛盾。
+[动效系统 note](../architecture/2026-08-14-web-motion-presence-and-recipes.zh.md) 交付了五个 recipe 和 `usePresence`，但已发布的 Web UI 在三个方向上偏离了它。其一，`Modal` 在 `!open` 时直接卸载且不带 `data-dsh-motion`，于是所有建在它之上的对话框——`RiskConfirmation`、Git 各弹窗、工作区重命名/删除、目录选择，以及 MCP、Skills、Models、Agent 预设设置弹窗——虽然都列在 overlay 使用对照里，实际却毫无进出场动效，关闭即卸载，也没有 200ms 退场保持。其二，约 120 处功能 CSS transition 写死时长（反复出现的表外 120ms 档，外加 80 / 140 / 180 / 220 / 420ms 与 `.12s` / `.16s` 变体）和写死的 `ease` / `ease-out` 曲线；字面量时长不随减弱动效的 token 归零而归零，减弱动效下它们照播不误。五个已发布的无限指示器（`TodoPanel`、`StateDot`、斜杠菜单 `MenuView` 骨架、更新进度条、无框架 boot 页 spinner）完全没有减弱动效停止，多个表面还在动画布局属性（`height`、`width`、`top`、`left`、`max-width`、`padding`、`margin`、`box-shadow`）且无任何记录在案的合同。其三，一整层已发布的产品动效——骨架扫光、composer 光束、忙碌 spinner、状态点追逐——以及有意设计的编排（侧栏轨道收合相位、Hero 小鱼）游离在任何合同之外，而「Web UI 内不要再加无限旋转」的既有措辞与已发布现实直接矛盾。
 
 ## 决策
 

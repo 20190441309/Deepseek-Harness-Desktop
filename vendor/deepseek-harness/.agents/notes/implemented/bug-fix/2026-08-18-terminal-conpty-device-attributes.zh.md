@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`attachConptyDeviceAttributes` 注册 `term.parser.registerCsiHandler({ final: 'c' })`。主 DA（`[]` 或 `[0]`）吞掉该查询，这样 xterm 不会再经 `onData` 发出 `?1;2c`。某个 PTY id 的第一次查询写入 `ESC [?61;4c`；之后同一 id 的解析（包括重挂载缓冲回放）返回 true 且不再写入。其它 `CSI c` 参数继续走默认处理。`TerminalPane` 在回放会话缓冲区之前安装该处理器（以及 `onData`）。不启用 bundled DLL、以及按 id 一次性锁存，见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.md)。
+`attachConptyDeviceAttributes` 注册 `term.parser.registerCsiHandler({ final: 'c' })`。主 DA（`[]` 或 `[0]`）吞掉该查询，这样 xterm 不会再经 `onData` 发出 `?1;2c`。某个 PTY id 的第一次查询写入 `ESC [?61;4c`；之后同一 id 的解析（包括重挂载缓冲回放）返回 true 且不再写入。其它 `CSI c` 参数继续走默认处理。`TerminalPane` 在回放会话缓冲区之前安装该处理器（以及 `onData`）。不启用 bundled DLL、以及按 id 一次性锁存，见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.zh.md)。
 
 ## Alternatives considered
 
@@ -30,4 +30,4 @@ Status: implemented
 
 ## Related
 
-不设 `useConptyDll` 与按 id 锁存见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.md)。FitAddon 与 ConPTY 尺寸见 [终端窗格 fit 与焦点](2026-08-17-terminal-pane-fit-and-focus.md)。PTY 井填充见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md)。
+不设 `useConptyDll` 与按 id 锁存见 [ConPTY 启动与 T3code 对齐；DA1 每个 PTY 只应答一次](2026-08-18-terminal-conpty-oneshot-no-dll.zh.md)。FitAddon 与 ConPTY 尺寸见 [终端窗格 fit 与焦点](2026-08-17-terminal-pane-fit-and-focus.zh.md)。PTY 井填充见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)。

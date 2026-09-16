@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-08-17-titlebar-crowding-density.md) | 中文
 
-> 范围：中间栏被挤窄时，AppFrame 标题栏尾簇与会话栏页头的关系。[桌面 surfaces 与标题栏](../architecture/2026-08-14-desktop-surfaces-and-titlebar.md) 拥有栏几何和窗口控件避让；本笔记拥有标签收起和会话栏页头预留。
+> 范围：中间栏被挤窄时，AppFrame 标题栏尾簇与会话栏页头的关系。[桌面 surfaces 与标题栏](../architecture/2026-08-14-desktop-surfaces-and-titlebar.zh.md) 拥有栏几何和窗口控件避让；本笔记拥有标签收起和会话栏页头预留。
 
 ## Problem
 
@@ -36,4 +36,4 @@ AppFrame 测量 `#dshd-shell-titlebar-trailing`，在尾簇可见（非手机、
 
 ## Related
 
-[桌面 surfaces 栏、标题栏尾簇与窗口控件避让](../architecture/2026-08-14-desktop-surfaces-and-titlebar.md)。[<1024px 隐藏尾簇](../feature/2026-08-14-phone-overlay-shell.md) 由手机覆盖层外壳笔记拥有。[界面设置的 chrome 可见性](../feature/2026-08-19-interface-settings-chrome-visibility.md) 拥有从尾簇省略 Git 和分栏开关的开关。
+[桌面 surfaces 栏、标题栏尾簇与窗口控件避让](../architecture/2026-08-14-desktop-surfaces-and-titlebar.zh.md)。[<1024px 隐藏尾簇](../feature/2026-08-14-phone-overlay-shell.zh.md) 由手机覆盖层外壳笔记拥有。[界面设置的 chrome 可见性](../feature/2026-08-19-interface-settings-chrome-visibility.zh.md) 拥有从尾簇省略 Git 和分栏开关的开关。

@@ -10,7 +10,7 @@ The composer backdrop renders the draft as an array of segments: plain strings, 
 
 Structured references carry an identity — the occurrence table mints an `occurrenceId` that survives every edit — so their chips key by it. Plain-text reference ranges have no such identity: `scanTextRefs` re-derives them from the draft on every render, and nothing outside that scan remembers a range between two keystrokes.
 
-Keying those ranges by their draft offset made the key change whenever earlier text changed length. React then treated the range as a different element, unmounted the mark with its nested spans and inline glyph, and mounted a replacement. Every character typed or deleted ahead of a reference rebuilt every reference after the caret, and the work grew with the reference count. [Directory-syntax ranges](../feature/2026-07-27-web-file-and-session-references.md) made that path routine: they match on `@path/` syntax without a lexicon, and each one renders an icon.
+Keying those ranges by their draft offset made the key change whenever earlier text changed length. React then treated the range as a different element, unmounted the mark with its nested spans and inline glyph, and mounted a replacement. Every character typed or deleted ahead of a reference rebuilt every reference after the caret, and the work grew with the reference count. [Directory-syntax ranges](../../archived/feature/2026-07-27-web-file-and-session-references.md) made that path routine: they match on `@path/` syntax without a lexicon, and each one renders an icon.
 
 ## Decision
 

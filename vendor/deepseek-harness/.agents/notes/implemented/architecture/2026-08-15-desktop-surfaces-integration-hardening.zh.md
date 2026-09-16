@@ -2,9 +2,9 @@
 
 Status: implemented
 
-[English](2026-08-15-desktop-surfaces-integration-hardening.md)
+[English](2026-08-15-desktop-surfaces-integration-hardening.md) | 中文
 
-> 范围：把标题栏 / Git / 终端 / 右边栏 surfaces 整合进桌面壳时做的生产加固。组合结构见 [surfaces note](2026-08-14-desktop-surfaces-and-titlebar.md)；本 note 记录只有真实桌面运行才暴露的缺陷，以及让该功能可以安全交付的信任、生命周期与打包决策。
+> 范围：把标题栏 / Git / 终端 / 右边栏 surfaces 整合进桌面壳时做的生产加固。组合结构见 [surfaces note](2026-08-14-desktop-surfaces-and-titlebar.zh.md)；本 note 记录只有真实桌面运行才暴露的缺陷，以及让该功能可以安全交付的信任、生命周期与打包决策。
 
 ## 问题
 
@@ -44,4 +44,4 @@ surfaces 壳、终端和文件系统控件现在在打包安装中与单元测�
 
 ## 相关
 
-[Slot 系统标准](2026-07-22-slot-type-chain-implementation.md) 拥有组合模型。[桌面 surfaces 与标题栏](2026-08-14-desktop-surfaces-and-titlebar.md) 拥有布局、标题栏尾簇与窗口控件避让。
+[Slot 系统标准](2026-07-22-slot-type-chain-implementation.zh.md) 拥有组合模型。[桌面 surfaces 与标题栏](2026-08-14-desktop-surfaces-and-titlebar.zh.md) 拥有布局、标题栏尾簇与窗口控件避让。

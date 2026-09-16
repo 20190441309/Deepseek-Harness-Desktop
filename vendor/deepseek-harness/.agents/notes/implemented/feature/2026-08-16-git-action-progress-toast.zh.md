@@ -30,8 +30,8 @@ Status: implemented
 
 ## 后果
 
-点击 Commit, push & PR 会立刻看到 `Generating commit message...` 和 `Running for 0s`，随后是 leftover hook 标题。hook 失败把同一张卡片改成 Action failed，而不撑满页面。`git-actions.client.spec.tsx` 钉住立刻出现的 toast、hook 行更新、失败走 toast 不走弹窗、发布对话框提交后关掉只留进度卡且失败再打开、PR 按范围生成且失败即失败、初始化/打开文件 toast 错误、提交对话框文件来自当前 `workingTree`、以及仅在包含提交时继续功能分支。`git-logic.client.spec.ts` 钉住 Create PR 禁用理由只看 `aheadCount`，以及推送后不按 GitHub 过滤的 `Create ${shortLabel}`。`src/main/git.test.js` 钉住解析不了的非 origin `--base`、未跟踪 `gitDiscard` 走 `git clean`、PR 查找走 `gitStatus.refName` 且不 spawn `git status -sb`、以及残留文件走 `gitStatus().workingTree`。`apply.client.spec.ts` 钉住 inject 上没有 `gitChangedFiles`。worktree/线程绑定仍不在范围内；切换/新建见[分支选择器笔记](2026-08-16-titlebar-branch-picker.md)。
+点击 Commit, push & PR 会立刻看到 `Generating commit message...` 和 `Running for 0s`，随后是 leftover hook 标题。hook 失败把同一张卡片改成 Action failed，而不撑满页面。`git-actions.client.spec.tsx` 钉住立刻出现的 toast、hook 行更新、失败走 toast 不走弹窗、发布对话框提交后关掉只留进度卡且失败再打开、PR 按范围生成且失败即失败、初始化/打开文件 toast 错误、提交对话框文件来自当前 `workingTree`、以及仅在包含提交时继续功能分支。`git-logic.client.spec.ts` 钉住 Create PR 禁用理由只看 `aheadCount`，以及推送后不按 GitHub 过滤的 `Create ${shortLabel}`。`src/main/git.test.js` 钉住解析不了的非 origin `--base`、未跟踪 `gitDiscard` 走 `git clean`、PR 查找走 `gitStatus.refName` 且不 spawn `git status -sb`、以及残留文件走 `gitStatus().workingTree`。`apply.client.spec.ts` 钉住 inject 上没有 `gitChangedFiles`。worktree/线程绑定仍不在范围内；切换/新建见[分支选择器笔记](2026-08-16-titlebar-branch-picker.zh.md)。
 
 ## 相关
 
-[标题栏分支选择器](2026-08-16-titlebar-branch-picker.md) 拥有切换/新建与提交核对对话框。
+[标题栏分支选择器](2026-08-16-titlebar-branch-picker.zh.md) 拥有切换/新建与提交核对对话框。

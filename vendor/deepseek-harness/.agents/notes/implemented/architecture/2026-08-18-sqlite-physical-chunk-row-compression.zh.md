@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-标量 [`session-persistence-sqlite`](../../../../packages/session/session-persistence-sqlite/README.zh.md) 后端为每个逻辑 `SessionEvent` 存储一个物理行。提供方流会生成 token 大小的 `assistant/chunk` 事件，并重复轮次、步骤、块、类型和 envelope 字段，因此事务批处理可以减少提交次数，却不能减少行数或重复 JSON payload。逻辑流不能合并，因为分片边界、序列号、时间戳、回放、部分输出、UI 保真度和 `sourceEventSeqs` 仍然可观察。
+标量 [`session-persistence-sqlite`](../../../../packages/session-query/session-query-sqlite/README.zh.md) 后端为每个逻辑 `SessionEvent` 存储一个物理行。提供方流会生成 token 大小的 `assistant/chunk` 事件，并重复轮次、步骤、块、类型和 envelope 字段，因此事务批处理可以减少提交次数，却不能减少行数或重复 JSON payload。逻辑流不能合并，因为分片边界、序列号、时间戳、回放、部分输出、UI 保真度和 `sourceEventSeqs` 仍然可观察。
 
 一个表示多个事件的物理行会影响追加连续性、崩溃修复、后缀定位、schema 所有权、revision 和陈旧写入方。持久解码规则还必须由包版本固定；可配置 codec 集可能导致同一 schema 版本在不同 Cordis 组合下无法读取。
 
@@ -58,7 +58,7 @@ SQLite 在 schema 20 包内拥有分片编码和验证。字段完全匹配的�
 
 **压缩每个 payload。** 不予采用，因为小型独立 Zstandard frame 会增加 header 和同步 CPU 工作，也无法利用整文件流的跨记录字典。在 105 个会话的对比语料上，阈值扫描结果为：4 KiB 生成 75.01 MB，16 KiB 为 93.87 MB，1 KiB 为 60.92 MB。写入方固定使用 level 3，而不是继承库默认值；这与 [Codex 冷 rollout 压缩](https://github.com/openai/codex/blob/main/codex-rs/rollout/src/compression.rs)所用的适中级别一致，同时保留独立行访问。
 
-最终冻结对比包含 105 个会话、2,507,860 个逻辑事件，以 512 个事件为持久批次；每个后端独立构建三次，每次构建执行三轮读取。SQLite 使用 75.01 MB，写入耗时 8.58 秒，完整读取 p50/p95 为 3.95/21.58 毫秒，读取最后 50 个事件为 0.253/0.378 毫秒，对所有会话执行 fork 为 13.10 秒。Zstandard JSONL 使用 30.65 MB，对应指标为 28.21 秒、4.49/23.36 毫秒、10.58/80.90 毫秒和 14.48 秒。此前的标量 SQLite 布局使用 709.57 MB，对应指标为 10.64 秒、9.02/69.16 毫秒、0.189/0.293 毫秒和 19.30 秒。打包布局比此前布局小 89.4%，写入快 19.4%，完整读取 p50/p95 改善 56.2%/68.8%，并把 2,507,860 个物理事件行减少到 65,810 行。标量布局的最后 50 个事件读取与 list 微延迟更低，但打包提供方在这些路径上仍明显快于 JSONL，并改善主要的空间、写入、完整读取和 fork 成本。4 KiB 阈值是接受的平衡点，而不是严格支配所有指标的结论。该对比测量的是 schema 17；其精确数值是原始打包行决策的证据，并非 schema 20 实测。[持久化延迟与 page size 决策](2026-08-25-persistence-latency-and-page-size.zh.md)记录 schema 19 基准与当前编码细节。
+最终冻结对比包含 105 个会话、2,507,860 个逻辑事件，以 512 个事件为持久批次；每个后端独立构建三次，每次构建执行三轮读取。SQLite 使用 75.01 MB，写入耗时 8.58 秒，完整读取 p50/p95 为 3.95/21.58 毫秒，读取最后 50 个事件为 0.253/0.378 毫秒，对所有会话执行 fork 为 13.10 秒。Zstandard JSONL 使用 30.65 MB，对应指标为 28.21 秒、4.49/23.36 毫秒、10.58/80.90 毫秒和 14.48 秒。此前的标量 SQLite 布局使用 709.57 MB，对应指标为 10.64 秒、9.02/69.16 毫秒、0.189/0.293 毫秒和 19.30 秒。打包布局比此前布局小 89.4%，写入快 19.4%，完整读取 p50/p95 改善 56.2%/68.8%，并把 2,507,860 个物理事件行减少到 65,810 行。标量布局的最后 50 个事件读取与 list 微延迟更低，但打包提供方在这些路径上仍明显快于 JSONL，并改善主要的空间、写入、完整读取和 fork 成本。4 KiB 阈值是接受的平衡点，而不是严格支配所有指标的结论。该对比测量的是 schema 17；其精确数值是原始打包行决策的证据，并非 schema 20 实测。[持久化延迟与 page size 决策](../../archived/architecture/2026-08-25-persistence-latency-and-page-size.md)记录 schema 19 基准与当前编码细节。
 
 **把打包 payload 存在逻辑 `assistant/chunk` 类型下。** 不予采用，因为 payload 启发式判断会使畸形行产生歧义，并把物理解码耦合到未来逻辑 payload 字段。显式标签会明确失败。
 
@@ -78,4 +78,4 @@ SQLite 在 schema 20 包内拥有分片编码和验证。字段完全匹配的�
 
 代价是不迁移旧的预发布 SQLite schema，以及取决于时序的物理行数。SQLite 与 Zstandard 都是同步操作：每个连接以配置的 `busyTimeoutMs` 等待竞争锁，该等待期间会阻塞其 JavaScript 线程，大型行的编码与解码也在该线程上执行。冷打开会在 journal-mode 切换立即返回 `SQLITE_BUSY` 后让出执行，并在从打开时计算的重试截止点后不再发起新尝试；正在执行的同步调用可能更晚才完成。外部 SQL 工具必须使用提供方解码器，而不能假定每个物理 `events.type` 都是逻辑事件类型或每个 payload 列都是文本。
 
-[JSONL 打包行决策](2026-07-26-packed-chunk-rows-by-default.zh.md)、[有界持久化批处理](2026-08-08-bounded-session-persistence-write-batching.zh.md)和原始[会话持久化决策](2026-06-14-session-persistence.zh.md)继续保持 active：它们分别负责 JSONL 格式、写入调度以及后端无关的服务语义。
+[JSONL 打包行决策](../../archived/architecture/2026-07-26-packed-chunk-rows-by-default.md)、[有界持久化批处理](../../archived/architecture/2026-08-08-bounded-session-persistence-write-batching.md)和原始[会话持久化决策](2026-06-14-session-persistence.zh.md)继续保持 active：它们分别负责 JSONL 格式、写入调度以及后端无关的服务语义。

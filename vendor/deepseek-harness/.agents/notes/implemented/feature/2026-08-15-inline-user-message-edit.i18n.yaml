@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-inline-user-message-edit.md
-2026-08-15-inline-user-message-edit.md: 4fa0de8816ff9a894e24f5fa9cc765a76a1d5f37
-2026-08-15-inline-user-message-edit.zh.md: f485434d6ef0666a74e7cc1ba6febdafd11fcf15
+2026-08-15-inline-user-message-edit.md: 4057815c242fc30644eac01393cd7f93256f6b2c
+2026-08-15-inline-user-message-edit.zh.md: 4a6e344845cb63520395913586ee400ae1620831

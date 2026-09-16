@@ -147,7 +147,33 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
  *   that live agent is owned by another agent.
  */
 async ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>
+
+/**
+ * Return unresolved durable questions from one Session log.
+ * @param session - the session whose log supplies the questions.
+ * @returns every asked question that has no terminal answer yet.
+ */
+pending(session: QuestionSession): readonly PendingQuestionRecord[]
+
+/**
+ * Idempotently commit one human answer before releasing a live tool call.
+ * @param agent - the agent whose session owns the question.
+ * @param requestId - the pending question identifier.
+ * @param answer - the human's chosen or typed answer.
+ * @returns the claim result: accepted, already-resolved, or not-pending.
+ */
+respond(agent: Agent, requestId: UserQuestionRequestIdType, answer: AskUserQuestionAnswer): UserQuestionClaimResult
+
+/**
+ * Idempotently cancel one pending durable question.
+ * @param agent - the agent whose session owns the question.
+ * @param requestId - the pending question identifier.
+ * @returns the claim result: accepted, already-resolved, or not-pending.
+ */
+cancel(agent: Agent, requestId: UserQuestionRequestIdType): UserQuestionClaimResult
 ```
+
+Types: [Agent](core.md)
 
 Source: [`packages/interaction/user-questions/src/index.ts`](../../packages/interaction/user-questions/src/index.ts)
 

@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-16-hidden-agent-presets.md
 2026-09-16-hidden-agent-presets.md: cd2430fd046b846ebf14bc120152ceff2cf08916
-2026-09-16-hidden-agent-presets.zh.md: 354c9e6d090984a09b8a4129dd790e0ff98e322c
+2026-09-16-hidden-agent-presets.zh.md: dfc36d08ae44064f04a7b816f55b214df3e75cfa

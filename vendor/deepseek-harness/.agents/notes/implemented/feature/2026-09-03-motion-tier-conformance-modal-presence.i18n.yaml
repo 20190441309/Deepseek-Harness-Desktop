@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-03-motion-tier-conformance-modal-presence.md
 2026-09-03-motion-tier-conformance-modal-presence.md: 7e75617becea8ea17a9fe62b46d754ff7bc26ebc
-2026-09-03-motion-tier-conformance-modal-presence.zh.md: a27aea858806c8a4aeca5d572ea39a92ac2487fe
+2026-09-03-motion-tier-conformance-modal-presence.zh.md: e783107b9860ea27f1138021febb7f224479cdee

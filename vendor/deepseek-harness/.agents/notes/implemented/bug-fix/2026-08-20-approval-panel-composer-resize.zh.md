@@ -32,4 +32,4 @@ Status: implemented
 
 ## 相关
 
-[审批接管面板与输入框共用同一文本高度上限](2026-07-30-approval-panel-command-cap.md)。[界面设置的 chrome 可见性](../feature/2026-08-19-interface-settings-chrome-visibility.md)。
+[审批接管面板与输入框共用同一文本高度上限](2026-07-30-approval-panel-command-cap.md)。[界面设置的 chrome 可见性](../feature/2026-08-19-interface-settings-chrome-visibility.zh.md)。

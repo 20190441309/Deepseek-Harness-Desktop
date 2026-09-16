@@ -18,7 +18,7 @@ A settled `user/message` is already in the session log and in the model's contex
 
 `ui-message-edit` occupies both seats. The pencil calls `startEdit` and does not fork. The editor is a textarea in the user-bubble chrome plus Cancel / Send (`Button` `sm` ghost / primary). Escape cancels; Enter sends; Shift+Enter inserts a newline; all three are IME-safe. Confirm runs `sessions.fork({ beforeSeq, increaseTitle: true })`, resolves the child scope, `sessions.open(childId)`, then the child's input `setDraft(text)` and `submit()`. A failed fork or a missing child scope stays on the source session, notifies on that composer, and keeps the editor armed with the draft; the mid-edit guards and the focus-return store are settled in the [production-polish note](2026-08-25-message-edit-production-polish.md).
 
-The log is unchanged: the child is cut before the edited turn, so the model never sees the old prompt twice. [Dropping the dead edit stub](../simplification/2026-07-31-drop-user-message-edit-stub.md) remains in force for `MessageIconActions`; the control lives only in the plugin.
+The log is unchanged: the child is cut before the edited turn, so the model never sees the old prompt twice. [Dropping the dead edit stub](../../archived/simplification/2026-07-31-drop-user-message-edit-stub.md) remains in force for `MessageIconActions`; the control lives only in the plugin.
 
 ## Alternatives considered
 

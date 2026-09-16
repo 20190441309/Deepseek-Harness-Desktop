@@ -16,7 +16,7 @@ Status: implemented
 
 ## 范围更新（2026-09-08）
 
-[设置扩展 Note](2026-09-08-composer-beam-settings-expansion.md) 取代本 Note 当时对任意色标和夜间调暗的暂缓决定。这些能力现在作为有边界、经过校验的视觉设置提供；对聚焦、输入、完成和失败状态灯的否决仍然有效。
+[设置扩展 Note](2026-09-08-composer-beam-settings-expansion.zh.md) 取代本 Note 当时对任意色标和夜间调暗的暂缓决定。这些能力现在作为有边界、经过校验的视觉设置提供；对聚焦、输入、完成和失败状态灯的否决仍然有效。
 
 ## 备选方案
 

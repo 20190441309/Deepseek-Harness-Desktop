@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-18-desktop-marketplace-curated-catalog.md
 2026-08-18-desktop-marketplace-curated-catalog.md: f0b73a3ef3ffd2581c2a4fb202cf6d692291dade
-2026-08-18-desktop-marketplace-curated-catalog.zh.md: 59225b697c8753021ce2d008f035dcb5bc900efb
+2026-08-18-desktop-marketplace-curated-catalog.zh.md: 9a22c589d24ca34b480182084bd531b3afec1512

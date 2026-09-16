@@ -71,4 +71,4 @@ Host 在每次成功的 `ctx.agents.create` / `resume` 上填充 `Map<SessionId,
 
 ## 相关
 
-[会话归档（注册表级全局集合）](2026-07-31-session-archive-global-set.zh.md)。[Workspace 注册删除](2026-07-27-workspace-registration-deletion.zh.md)。[会话持久化 seam](../architecture/2026-06-14-session-persistence.zh.md)。
+[会话归档（注册表级全局集合）](../../archived/feature/2026-07-31-session-archive-global-set.md)。[Workspace 注册删除](2026-07-27-workspace-registration-deletion.zh.md)。[会话持久化 seam](../architecture/2026-06-14-session-persistence.zh.md)。

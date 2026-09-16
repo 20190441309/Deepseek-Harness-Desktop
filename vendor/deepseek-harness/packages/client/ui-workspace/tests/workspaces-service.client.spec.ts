@@ -114,7 +114,7 @@ class FakeSessions {
   readonly open: ReturnType<typeof vi.fn<(id: SessionId) => void>>
   readonly clear: ReturnType<typeof vi.fn<() => void>>
   readonly deleteCalls: SessionId[] = []
-  onDelete: ISessions['delete'] = async (sessionId) => ({
+  onDelete: ISessions['delete'] = async sessionId => ({
     deletedSessionIds: [sessionId],
     archivedSessionIds: [],
   })
@@ -687,6 +687,7 @@ describe('UiWorkspaceService', () => {
 
     b.workspaces.onUnarchive = () => Promise.reject(new Error('unarchive rejected'))
     await expect(b.uiWorkspace.unarchiveSession(idle)).rejects.toThrow('unarchive rejected')
+    expect(b.workspaces.unarchiveCalls).toEqual([idle, idle])
 
     await b.uiWorkspace.deleteSession(idle)
     expect(b.sessions.deleteCalls).toEqual([idle])

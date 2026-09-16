@@ -18,7 +18,7 @@ Status: implemented
 
 **每条持久化路径都按当前窗口比例裁剪。** 本地选图与确认后的图库选图打开同一个裁剪对话框（平移、滚轮／滑杆缩放，遮罩锁定为 `window.innerWidth / innerHeight`）。确认按钮在预览 `load` 给出自然尺寸之前保持禁用；窗口 `resize` 会更新遮罩。确认后经 `cropWallpaper` 烘焙 JPEG，再走 `setWallpaper`；裁剪失败时对话框留下，不写入未裁原图。关闭图库会抬高下载会话令牌，迟到的下载不会打开裁剪。
 
-这是对[主题家族外观系统](2026-08-14-theme-family-appearance-system.md)里 Appearance 附加项的延伸。图库字段与其他 Appearance 附加项同写 Host `ui-theme` 分节（[Host settings 支撑的偏好](../bug-fix/2026-08-06-host-backed-web-preferences.md)）。烘焙出的 JPEG 仍遵守[画布实心度与 data URL 上限](../bug-fix/2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.md)。
+这是对[主题家族外观系统](2026-08-14-theme-family-appearance-system.zh.md)里 Appearance 附加项的延伸。图库字段与其他 Appearance 附加项同写 Host `ui-theme` 分节（[Host settings 支撑的偏好](../bug-fix/2026-08-06-host-backed-web-preferences.zh.md)）。烘焙出的 JPEG 仍遵守[画布实心度与 data URL 上限](../bug-fix/2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.zh.md)。
 
 ## 曾考虑的替代方案
 
@@ -40,6 +40,6 @@ Status: implemented
 
 ## 相关
 
-- [主题家族外观系统](2026-08-14-theme-family-appearance-system.md)
-- [Host settings 支撑的 Web 偏好](../bug-fix/2026-08-06-host-backed-web-preferences.md)
-- [外观导航对比度与壁纸画布上限](../bug-fix/2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.md)
+- [主题家族外观系统](2026-08-14-theme-family-appearance-system.zh.md)
+- [Host settings 支撑的 Web 偏好](../bug-fix/2026-08-06-host-backed-web-preferences.zh.md)
+- [外观导航对比度与壁纸画布上限](../bug-fix/2026-08-15-appearance-nav-contrast-and-wallpaper-canvas-cap.zh.md)

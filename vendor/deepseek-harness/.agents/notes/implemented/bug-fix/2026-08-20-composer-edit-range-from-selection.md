@@ -14,7 +14,7 @@ A reference renders as `@` followed by its label, so typing `@` immediately befo
 
 The draft then still reads correctly to the eye while carrying no structured reference, and submission takes the occurrence-free path that sends the draft verbatim. The host receives the human-facing label instead of the owner's model form and resolves nothing. The serialization guard that exists to prevent exactly this downgrade never runs, because it only fires when an occurrence survives to be serialized.
 
-This became reachable when references [became literal inline text](../feature/2026-07-27-web-file-and-session-references.md). A reference previously occupied one `U+FFFC`, a character no keystroke produces, so the scan had nothing to collide with.
+This became reachable when references [became literal inline text](../../archived/feature/2026-07-27-web-file-and-session-references.md). A reference previously occupied one `U+FFFC`, a character no keystroke produces, so the scan had nothing to collide with.
 
 ## Decision
 

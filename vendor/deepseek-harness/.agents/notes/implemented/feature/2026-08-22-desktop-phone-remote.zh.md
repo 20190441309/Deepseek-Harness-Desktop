@@ -26,4 +26,4 @@ Status: implemented
 
 ## 相关
 
-[远程配对放在设置旁边的手机控件上](2026-08-14-settings-remote-section.md)。[桌面输入框草稿查找与官方触发器](../bug-fix/2026-08-21-desktop-composer-draft-and-official-triggers.md)。
+[远程配对放在设置旁边的手机控件上](2026-08-14-settings-remote-section.zh.md)。[桌面输入框草稿查找与官方触发器](../bug-fix/2026-08-21-desktop-composer-draft-and-official-triggers.zh.md)。

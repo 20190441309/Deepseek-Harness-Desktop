@@ -22,4 +22,4 @@ Status: implemented
 
 ## 后果
 
-GUI 测试覆盖设置 → 远程注册与网关保存；预置测试覆盖拷贝／junction／禁用。升 pin 必须按 `vendor/dsh-im/DESKTOP-FORK.md` 重放 `settings.remote.tab` 改挂。部分收回 [Remote pairing lives on a phone control beside Settings](2026-08-14-settings-remote-section.md) 中「不要 Settings → Remote 页」的立场：配对仍在手机控件；设置只放高级网关与 IM。
+GUI 测试覆盖设置 → 远程注册与网关保存；预置测试覆盖拷贝／junction／禁用。升 pin 必须按 `vendor/dsh-im/DESKTOP-FORK.md` 重放 `settings.remote.tab` 改挂。部分收回 [Remote pairing lives on a phone control beside Settings](2026-08-14-settings-remote-section.zh.md) 中「不要 Settings → Remote 页」的立场：配对仍在手机控件；设置只放高级网关与 IM。

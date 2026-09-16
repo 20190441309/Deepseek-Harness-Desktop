@@ -30,4 +30,4 @@ worktree 多环境与线程↔分支绑定不在范围内：本 harness 没有�
 
 ## 相关
 
-[桌面 surfaces 集成加固](../architecture/2026-08-15-desktop-surfaces-integration-hardening.md) 拥有本选择器路由经过的 workspace-authority 根。
+[桌面 surfaces 集成加固](../architecture/2026-08-15-desktop-surfaces-integration-hardening.zh.md) 拥有本选择器路由经过的 workspace-authority 根。

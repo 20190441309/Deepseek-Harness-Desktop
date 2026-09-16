@@ -7,17 +7,17 @@
  * facts (running/removed/promptError) are self-selected via useSession.
  *
  * The text surface is the shell-owned Lexical editor bound here through
- * ComposerContentEditable; chips render as decorator portals, and the
+ * DraftEditor; chips render as decorator portals, and the
  * keymap registers submit/menu/paste gestures on the editor command layer.
  * The no-session state renders the SAME div inert as the Workspace-picker
  * trigger instead of a parallel tree.
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { ChangeEvent, CSSProperties, KeyboardEvent, MouseEvent } from 'react'
 import clsx from 'clsx'
 import {
-  IconCloseOutline16, IconPaperclipOutline16, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconCloseOutline16, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: the `plan` projection key merge (the TodoDock posture — the
 // composer reads a host-computed value; the domain owns the key).
@@ -31,14 +31,15 @@ import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ComposerBarProps } from '../contract/slots.ts'
 import { ComposerBeam } from '../ComposerBeam.tsx'
 import { TypingFxLayer } from '../TypingFxLayer.tsx'
-import { ComposerContentEditable } from '../input/editor/ComposerContentEditable.tsx'
-import { DecoratorPortals } from '../input/editor/DecoratorPortals.tsx'
-import { registerComposerKeymap } from '../input/editor/keymap.ts'
+import { DraftEditor } from '../input/editor/DraftEditor.tsx'
+import {
+  focusDraftEditor, installDraftFilePicker, installDraftKeymap, installDraftWheel,
+  keepDraftFocus, revealDraftSelection,
+} from '../input/editor/view-binding.ts'
 import { resolveSubmitMode } from '../input/submission-policy.ts'
 import { resolveTypingFxColors } from '../../submission-settings.ts'
 import { attachmentErrorText, imageSizeText } from '../image-labels.ts'
 import { ContextMeter } from './ContextMeter.tsx'
-import { PermissionSelect } from './PermissionSelect.tsx'
 import { ComposerResizeHandles, useComposerResizeDrag } from './ComposerResizeHandles.tsx'
 import css from './InputBar.module.css'
 
@@ -50,7 +51,7 @@ export type InputBarProps = ComposerBarProps
 export const InputBar = memo(function InputBar({
   useSession, useSessions, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
   retryFileUpload,
-  toggleCommandMenu, stop, command, t,
+  toggleCommandMenu, stop, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher,
   useComposerBeam, useComposerBeamStyle, useComposerResize, useComposerResizeHeight, useComposerResizeWidth,
   useTypingFx, useTypingFxStyle,
@@ -140,10 +141,6 @@ export const InputBar = memo(function InputBar({
   const cardRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  // The Access seat's data: the host-computed permissions projection
-  // (undefined = capability absent → the chip renders nothing).
-  const permissions = useProjection('permissions')
-
   // A continuable child without its live parent cannot accept human input,
   // but its independent Stop below stays available while it runs.
   const continuable = subagent?.address.mode === 'continuable'
@@ -195,23 +192,7 @@ export const InputBar = memo(function InputBar({
   // session switches that land the caret off screen). The live DOM selection
   // is the ruler; no mirror layer exists to consult.
   const revealSelection = (): void => {
-    const scrollEl = scrollRef.current
-    if (scrollEl === null || scrollEl.scrollHeight <= scrollEl.clientHeight) return
-    const selection = window.getSelection()
-    if (selection === null || selection.rangeCount === 0) return
-    const range = selection.getRangeAt(0)
-    let rect = range.getBoundingClientRect()
-    if (rect.height === 0 && rect.width === 0) {
-      // A collapsed caret at an empty line reports a zero rect in some
-      // engines; the anchor's element box is the line the caret sits on.
-      const anchor = selection.anchorNode
-      const el = anchor instanceof HTMLElement ? anchor : anchor?.parentElement
-      if (el === undefined || el === null) return
-      rect = el.getBoundingClientRect()
-    }
-    const box = scrollEl.getBoundingClientRect()
-    if (rect.bottom > box.bottom) scrollEl.scrollTop += rect.bottom - box.bottom
-    else if (rect.top < box.top) scrollEl.scrollTop -= box.top - rect.top
+    revealDraftSelection(scrollRef)
   }
 
   // Unlock (mount / session switch) returns focus to the box, and owns the
@@ -221,10 +202,7 @@ export const InputBar = memo(function InputBar({
   // caret (restored at the draft's end) off screen.
   useEffect(() => {
     if (locked || editor === null) return
-    // Lexical's focus() restores the editor selection but never calls the DOM
-    // focus itself; preventScroll keeps the conversation scrollport still.
-    editor.getRootElement()?.focus({ preventScroll: true })
-    editor.focus(() => { revealSelection() })
+    focusDraftEditor(editor, revealSelection)
   }, [locked, sessionId, editor])
 
   // A persisted draft arrives AFTER the unlock effect: ConversationSession
@@ -245,19 +223,7 @@ export const InputBar = memo(function InputBar({
   // a short draft never traps the gesture and a long draft stays scrollable.
   // Hero mounts have no host and keep native wheel scrolling.
   useEffect(() => {
-    const el = scrollRef.current
-    if (el === null) return
-    const onWheel = (e: WheelEvent): void => {
-      const host = el.closest('[data-conversation-scroll]')
-      if (!(host instanceof HTMLElement) || e.deltaY === 0) return
-      const atTop = el.scrollTop <= 0
-      const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-      if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atEnd)) return
-      e.preventDefault()
-      host.scrollTop += e.deltaY
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => { el.removeEventListener('wheel', onWheel) }
+    return installDraftWheel(scrollRef)
   }, [])
 
   // Intake pre-check: an addition that would break a projected image limit is
@@ -342,55 +308,21 @@ export const InputBar = memo(function InputBar({
   // registration survives re-renders without re-arming per keystroke.
   const gate = useRef({
     locked, machineBusy, canSteerQueue, running, steeringAvailable, busyEnter,
-    intakeFiles, uploadsPending, uploadsFailed, showToast, t,
+    intakeFiles, uploadsPending, uploadsFailed, showToast, t, canAcceptDrop,
   })
   gate.current = {
     locked, machineBusy, canSteerQueue, running, steeringAvailable, busyEnter,
-    intakeFiles, uploadsPending, uploadsFailed, showToast, t,
+    intakeFiles, uploadsPending, uploadsFailed, showToast, t, canAcceptDrop,
   }
 
   useEffect(() => {
+    if (keyboard === undefined) return
+    return installDraftFilePicker(keyboard, gate, fileInputRef)
+  }, [keyboard])
+
+  useEffect(() => {
     if (editor === null || keyboard === undefined) return
-    return registerComposerKeymap(editor, {
-      arbitrate: (key, composing) => keyboard.arbitrate(key, composing),
-      space: () => {
-        if (gate.current.machineBusy || gate.current.locked) return false
-        return keyboard.space()
-      },
-      dismissPopup: () => { keyboard.dismissPopup() },
-      canSubmit: () => !gate.current.locked && !gate.current.machineBusy,
-      submit: (accelerated) => {
-        const g = gate.current
-        // Empty-draft accelerated Enter acts on the queue instead of the
-        // (empty) draft: the machine rejects empty drafts, so the gesture
-        // steers every still-pending queued message into the running turn.
-        if (accelerated && g.canSteerQueue) {
-          keyboard.steerQueue()
-          return
-        }
-        if (g.uploadsPending) {
-          g.showToast(g.t(g.uploadsFailed ? 'file.uploadFailed' : 'file.stillUploading'))
-          return
-        }
-        keyboard.submit(resolveSubmitMode(
-          g.busyEnter,
-          g.running,
-          accelerated ? 'accelerated' : 'enter',
-          g.steeringAvailable,
-        ))
-      },
-      intakeFiles: (files, rejected) => { gate.current.intakeFiles(files, rejected) },
-      pasteText: (text) => {
-        if (gate.current.machineBusy || gate.current.locked) return
-        keyboard.paste(text)
-      },
-      cancelEdit: () => {
-        if (gate.current.machineBusy || gate.current.locked) return false
-        if (keyboard.snapshot.edit === undefined) return false
-        keyboard.cancelEdit()
-        return true
-      },
-    })
+    return installDraftKeymap(editor, keyboard, gate)
   }, [editor, keyboard])
 
   // Button presses steal focus from the editor; suppress at mousedown so
@@ -398,8 +330,7 @@ export const InputBar = memo(function InputBar({
   // restores the previous selection, so no reveal is needed: the caret has
   // not moved, and the next keystroke gets the browser's native one.
   const keepFocus = (e: MouseEvent<HTMLButtonElement>): void => {
-    e.preventDefault()
-    editor?.getRootElement()?.focus({ preventScroll: true })
+    keepDraftFocus(e, editor)
   }
 
   const onToggleCommandMenu = (): void => {
@@ -446,13 +377,6 @@ export const InputBar = memo(function InputBar({
     if (!empty && !disabled && !machineBusy && !uploadsPending) keyboard.submit(primarySubmitMode)
   }
 
-  // The Access seat: the projection-fed permission chip (renders nothing
-  // while the permissions key is absent — permission-less host or Draft —
-  // or while the command face is absent with the session).
-  const accessSelect: ReactNode = managed || command === undefined
-    ? null
-    : <PermissionSelect key={sessionId} value={permissions} locked={locked} command={command} t={t} />
-
   // Claim ghost hint: rendered by CSS as generated content after the last
   // paragraph while the claim's args are blank (a hint implies a single-line
   // token draft). The translated per-command hint wins over the claim's own.
@@ -464,8 +388,7 @@ export const InputBar = memo(function InputBar({
     : null
   const hint = ((): string | null => {
     if (rawHint === null) return null
-    // Claim tokens have the `/name ` format (trailing space); trim to the bare name.
-    const commandName = input?.claim?.token.slice(1).trim() ?? ''
+    const commandName = input?.claim?.name ?? ''
     const hintKey = `hint.${commandName === 'goal' && hasGoal ? 'goal.active' : commandName}`
     // Dynamic lookup by claimed command name: unknown commands miss the
     // dictionary and keep the machine's own hint, so the call is wide.
@@ -487,7 +410,6 @@ export const InputBar = memo(function InputBar({
           : planActive ? t('placeholder.plan') : t('placeholder.default'))
 
   const inputVars: Record<string, string> = {}
-  if (hint !== null) inputVars['--dsh-composer-hint'] = JSON.stringify(hint)
   if (typingFxTextColor !== null) inputVars['--dsh-typing-fx-text-color'] = typingFxTextColor
   const inputStyle = Object.keys(inputVars).length === 0 ? undefined : inputVars as CSSProperties
 
@@ -576,40 +498,30 @@ export const InputBar = memo(function InputBar({
             thing that scrolls. Chips are decorator portals inside the same
             surface, so wrapping, caret geometry, and scrolling are the
             browser's own. */}
-          <div ref={scrollRef} className={css.scroll} data-input-scroll>
-            <div className={css.grow}>
-              <ComposerContentEditable
-                editor={workspaceTrigger ? null : editor}
-                editable={editable}
-                className={clsx(css.input, editorDisabled && css.inputDisabled)}
-                data-phase={input?.phase ?? 'inert'}
-                aria-disabled={editorDisabled || undefined}
-                data-placeholder={placeholderText}
-                // The placeholder was the textarea's accessible name; a div's
-                // data attribute is not, so the label restores it.
-                aria-label={workspaceTrigger ? t('hero.chooseWorkspace') : placeholderText}
-                aria-haspopup={workspaceTrigger ? 'menu' : undefined}
-                aria-expanded={workspaceTrigger ? workspacePickerOpen : undefined}
-                tabIndex={workspaceTrigger ? 0 : undefined}
-                onKeyDown={workspaceTrigger ? onWorkspaceKeyDown : undefined}
-                // A custom typing-fx caret replaces the native one; hiding the
-                // real caret is the editor's own attribute, not the overlay's.
-                data-typing-fx-caret={typingFx && typingFxStyle.cursor !== 'native' ? typingFxStyle.cursor : undefined}
-                style={inputStyle}
-              />
-              {draft === '' && attachments.length === 0 && !claimActive && (
-                <div aria-hidden className={css.placeholder} data-composer-placeholder>
-                  {placeholderText}
-                </div>
-              )}
-              <DecoratorPortals editor={workspaceTrigger ? null : editor} />
+          <DraftEditor
+            classNames={css}
+            editor={editor}
+            scrollRef={scrollRef}
+            editable={editable}
+            editorDisabled={editorDisabled}
+            phase={input?.phase ?? 'inert'}
+            placeholderText={placeholderText}
+            ariaLabel={workspaceTrigger ? t('hero.chooseWorkspace') : placeholderText}
+            workspaceTrigger={workspaceTrigger}
+            workspacePickerOpen={workspacePickerOpen}
+            onWorkspaceKeyDown={onWorkspaceKeyDown}
+            hint={hint}
+            showPlaceholder={draft === '' && attachments.length === 0 && !claimActive}
+            inputStyle={inputStyle}
+            typingFxCaret={typingFx && typingFxStyle.cursor !== 'native' ? typingFxStyle.cursor : undefined}
+            layers={(
               <TypingFxLayer
                 editor={workspaceTrigger ? null : editor}
                 enabled={typingFx}
                 style={typingFxStyle}
               />
-            </div>
-          </div>
+            )}
+          />
           <div className={css.row}>
             <div className={css.tools}>
               <Tooltip label={t('input.commands')} side="top" delayMs={500}>
@@ -626,18 +538,6 @@ export const InputBar = memo(function InputBar({
                   <IconPlusOutline16 size={14} />
                 </button>
               </Tooltip>
-              <Tooltip label={t('file.attach')} side="top" delayMs={500}>
-                <button
-                  type="button"
-                  className={css.add}
-                  aria-label={t('file.attach')}
-                  disabled={subagent !== null || locked || machineBusy || addFiles === undefined}
-                  onMouseDown={keepFocus}
-                  onClick={() => { fileInputRef.current?.click() }}
-                >
-                  <IconPaperclipOutline16 size={14} />
-                </button>
-              </Tooltip>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -647,7 +547,9 @@ export const InputBar = memo(function InputBar({
                 onChange={onPickFiles}
               />
               <div className={css.modes}>
-                {accessSelect}
+                {managed || sessionId === undefined
+                  ? null
+                  : renderSlot('conversation.input.permission', { locked })}
                 {!managed && (sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked }))}
               </div>
               {input === undefined || sessionId === undefined

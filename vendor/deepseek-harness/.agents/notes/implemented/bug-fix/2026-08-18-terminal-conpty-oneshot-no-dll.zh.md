@@ -26,7 +26,7 @@ Windows 的 `ptySpawnOptions` 保留 `useConpty: true`，不设 `useConptyDll`�
 
 ## Consequences
 
-新建 Windows PTY 走 T3code 的 ConPTY 后端，不选择 1.22+ 的 DA1 握手。对已应答过的 PTY 隐藏／显示窗格会吞掉回放的 `CSI c`，不会打出 `[?61;4c`。回放缓冲里已经存下的垃圾仍须杀掉该 PTY 才能丢掉；重挂载不是截图恢复。[ConPTY 设备属性不得回显成键盘输入](2026-08-18-terminal-conpty-device-attributes.md) 仍负责解析拦截。
+新建 Windows PTY 走 T3code 的 ConPTY 后端，不选择 1.22+ 的 DA1 握手。对已应答过的 PTY 隐藏／显示窗格会吞掉回放的 `CSI c`，不会打出 `[?61;4c`。回放缓冲里已经存下的垃圾仍须杀掉该 PTY 才能丢掉；重挂载不是截图恢复。[ConPTY 设备属性不得回显成键盘输入](2026-08-18-terminal-conpty-device-attributes.zh.md) 仍负责解析拦截。
 
 ## Testing
 
@@ -34,4 +34,4 @@ Windows 的 `ptySpawnOptions` 保留 `useConpty: true`，不设 `useConptyDll`�
 
 ## Related
 
-CSI 处理器见 [ConPTY 设备属性不得回显成键盘输入](2026-08-18-terminal-conpty-device-attributes.md)。PTY 井填充见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.md)。
+CSI 处理器见 [ConPTY 设备属性不得回显成键盘输入](2026-08-18-terminal-conpty-device-attributes.zh.md)。PTY 井填充见 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)。

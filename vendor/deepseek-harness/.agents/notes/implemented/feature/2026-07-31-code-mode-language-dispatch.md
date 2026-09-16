@@ -8,7 +8,7 @@ English | [中文](2026-07-31-code-mode-language-dispatch.zh.md)
 
 Code Mode generated one SDK flavor: TypeScript. `ToolRuntime` hard-coded `renderToolsSdk` for the `tools:sdk` section and `requireCodeRuntime` rejected any `ctx.codeRuntime.language !== 'typescript'`. Adding a CPython backend means a program's source language is no longer fixed: the same visible tool registry must project a Python SDK when a Python runtime is loaded, and the model-facing `run_code` schema strings ("Execute a Python program …") must match the SDK section's language so the model never sees a TypeScript instruction over a Python runtime.
 
-This is the tool-facing half of the multi-language Code Mode split; the [code-runtime seam](../../../../packages/code-runtime/code-runtime/README.md) already carries `CodeRuntime.language`. This note owns only how `dsh-tools` dispatches on that field. The backend that implements `language: 'python'` is owned by its own note, delivered separately.
+This is the tool-facing half of the multi-language Code Mode split; the [code-runtime seam](../../archived/architecture/2026-07-31-code-runtime-portable-identifier-seam.md) already carries `CodeRuntime.language`. This note owns only how `dsh-tools` dispatches on that field. The backend that implements `language: 'python'` is owned by its own note, delivered separately.
 
 ## Decision
 

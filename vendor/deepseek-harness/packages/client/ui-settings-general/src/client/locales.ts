@@ -104,11 +104,10 @@ export const zh = {
   'update.later': '稍后再说',
   'update.retry': '重试',
   'connection.error': '连接异常',
-  'connection.retry': '立即重连',
   'connection.connecting': '自动重连中',
   'connection.connected': '连接成功',
   'connection.reconnect': '连接异常，点击立即重连',
-  'connection.restart': '连接中断，正在自动重试，点击立即重连',
+  'connection.restart': '连接中断，正在重试，点击立即重连',
 } satisfies Record<string, string>
 
 /** The settings namespace key union. */
@@ -218,9 +217,8 @@ export const en = {
   'update.later': 'Later',
   'update.retry': 'Retry',
   'connection.error': 'Disconnected',
-  'connection.retry': 'Reconnect now',
   'connection.connecting': 'Reconnecting',
   'connection.connected': 'Connected',
   'connection.reconnect': 'Disconnected, reconnect now',
-  'connection.restart': 'Reconnecting automatically, reconnect now',
+  'connection.restart': 'Reconnecting, reconnect now',
 } satisfies Record<SettingsKey, string>

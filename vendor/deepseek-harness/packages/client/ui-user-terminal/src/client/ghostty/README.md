@@ -1,5 +1,7 @@
 # Ghostty web terminal
 
+English | [中文](README.zh.md)
+
 This directory is the browser adapter for the same official `libghostty-vt` C ABI used by Android.
 It is intentionally not an xterm compatibility layer.
 

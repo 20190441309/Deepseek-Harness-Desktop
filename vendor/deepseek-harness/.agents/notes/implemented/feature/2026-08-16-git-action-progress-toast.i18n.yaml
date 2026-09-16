@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-git-action-progress-toast.md
 2026-08-16-git-action-progress-toast.md: c88babcdc8adf63895506a254712ed0dbef4f92b
-2026-08-16-git-action-progress-toast.zh.md: 5e022748a42e1df82120ccbe1ef1606ecb1a2fcf
+2026-08-16-git-action-progress-toast.zh.md: f241cc7305465906a53e74853cf25d1b5711928f

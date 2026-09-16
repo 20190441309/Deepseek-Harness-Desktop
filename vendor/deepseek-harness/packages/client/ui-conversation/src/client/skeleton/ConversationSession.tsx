@@ -1,6 +1,5 @@
 /** Strict per-session header/body content inserted into the resident conversation layout. */
 
-import { useEffect } from 'react'
 import clsx from 'clsx'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -9,6 +8,7 @@ import type {
 } from '../contract/slots.ts'
 import { conversationPhase } from '../contract/snapshot.ts'
 import { resolveActiveView } from '../view-selection.ts'
+import { DefaultConversationViews } from './DefaultConversationViews.tsx'
 import css from './ConversationRoot.module.css'
 
 /** Full props composed from the strict session body contract. */
@@ -118,23 +118,23 @@ export function ConversationSessionHeader({
                       {hideManagedLineage
                         ? title
                         : lineage
-                        ? summary.subagent
-                          ? renderSlot(
-                            'conversation.session.header.lineage',
-                            lineageOwner,
-                            { fallback: title },
-                          )
-                          : (
-                            <>
-                              {title}
-                              {renderSlot(
-                                'conversation.session.header.lineage',
-                                lineageOwner,
-                                { fallback: null },
-                              )}
-                            </>
-                          )
-                        : title}
+                          ? summary.subagent
+                            ? renderSlot(
+                              'conversation.session.header.lineage',
+                              lineageOwner,
+                              { fallback: title },
+                            )
+                            : (
+                              <>
+                                {title}
+                                {renderSlot(
+                                  'conversation.session.header.lineage',
+                                  lineageOwner,
+                                  { fallback: null },
+                                )}
+                              </>
+                            )
+                          : title}
                     </span>
                   )
                 })}
@@ -183,42 +183,6 @@ export function ConversationSessionHeader({
  * @param props - Strict Session input/store, view ledger, and render shares.
  * @returns the active view area, or null while the Session remains blank.
  */
-export function ConversationSession({
-  useSession, useSessions, useConversation, useConversationViews, useInput, inputActions, useStore, actions,
-  renderSlot, renderSlotChain, bindDraftMirror, openView, sessionId,
-}: ConversationSessionProps) {
-  const tabs = useConversationViews(value => value)
-  const selectedId = useStore(s => s.view)
-  const session = useSession(s => s)
-  const presentation = useSessions(s => s.byId[sessionId]?.presentation)
-  const managed = presentation?.composer === 'managed'
-  const active = resolveActiveView(tabs, managed ? null : selectedId)
-  const conversation = useConversation(s => s)
-  const inputState = useInput(s => s)
-  const storedDraft = useStore(s => s.draft)
-  const viewRequest = useStore(s => s.viewRequest ?? null)
-
-  useEffect(() => {
-    if (inputState.draft === '' && storedDraft !== '') inputActions.setDraft(storedDraft)
-    const unmirror = bindDraftMirror(actions.setDraft)
-    return () => { unmirror() }
-    // Mount-only (deps pinned to inputActions): later store writes come from
-    // the machine mirror, not this seed effect.
-  }, [inputActions])
-
-  if (presentation === undefined
-    && session.blank
-    && conversationPhase(session, conversation) === 'blank') return null
-  const resident = active !== undefined
-    ? renderSlot('conversation.view', {
-      viewRequest,
-      openView,
-      completeViewRequest: actions.completeViewRequest,
-    }, { only: active.id })
-    : null
-  return (
-    <div className={css.viewArea}>
-      {renderSlotChain('conversation.session.body', { sessionId, session, presentation }, { fallback: resident })}
-    </div>
-  )
+export function ConversationSession(props: ConversationSessionProps) {
+  return <DefaultConversationViews {...props} />
 }

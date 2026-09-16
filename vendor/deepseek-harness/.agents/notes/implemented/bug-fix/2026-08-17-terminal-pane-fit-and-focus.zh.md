@@ -32,4 +32,4 @@ Status: implemented
 
 ## Related
 
-安置该窗格的工作环见 [右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.md)。
+安置该窗格的工作环见 [右边栏与终端工作环](../feature/2026-08-16-surfaces-terminal-work-loops.zh.md)。
