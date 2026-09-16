@@ -64,7 +64,21 @@ test('applyOfficialDeepSeekSpawnEnv writes official host and key', () => {
     baseUrl: 'https://api.deepseek.com/',
   });
   assert.equal(env.DEEPSEEK_API_KEY, 'sk-official');
-  assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com/');
+  assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com/anthropic');
+});
+
+test('applyOfficialDeepSeekSpawnEnv remaps bare and /v1 official roots onto the Messages endpoint', () => {
+  for (const baseUrl of ['https://api.deepseek.com', 'https://api.deepseek.com/', 'https://api.deepseek.com/v1', 'https://api.deepseek.com/v1/']) {
+    const env = applyOfficialDeepSeekSpawnEnv({}, { apiKey: 'k', baseUrl });
+    assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com/anthropic', baseUrl);
+  }
+});
+
+test('applyOfficialDeepSeekSpawnEnv keeps an explicit /anthropic or other official path', () => {
+  for (const baseUrl of ['https://api.deepseek.com/anthropic', 'https://api.deepseek.com/beta']) {
+    const env = applyOfficialDeepSeekSpawnEnv({}, { apiKey: 'k', baseUrl });
+    assert.equal(env.DEEPSEEK_BASE_URL, baseUrl, baseUrl);
+  }
 });
 
 test('applyOfficialDeepSeekSpawnEnv writes the key without BASE_URL when baseUrl is empty', () => {
