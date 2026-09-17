@@ -97,7 +97,7 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'packages/client/ui-workspace/src/client/WorkspacePicker.tsx': "const NO_DIRECTORY = '::no-directory'\nonPickNoDirectory?.()\n",
       'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx': '<TasksSectionHeader onCreate={() => { connectNoDirectory() }} /><GroupSessionRun open={group.expanded} />\n',
       'packages/client/ui-workspace/src/client/locales.ts': "'menu.noDirectory': 'No workspace folder',\n",
-      'packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx': 'const noDirectorySession = false\nvoid selectNoDirectory()\n',
+      'packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx': 'const noDirectorySession = false\nvoid selectNoDirectory()\n',
       'packages/client/ui-conversation/src/client/apply.ts': "selectNoDirectory: async () => { await workspaceNavigation.connectNoDirectory() }\nimport { TypingFxRow } from './settings/TypingFxRow.tsx'\nctx.slots.inject('settings.appearance.item', () => {})\ntypingFx: submissionPolicy.typingFx\n",
       'packages/client/ui-conversation/src/client/locales.ts': "'hero.noDirectory': 'No workspace folder',\n'settings.typingFx.title': '输入特效',\n",
       'packages/api/workspace-controller/tsconfig.host.json': '{"references":[{"path":"../../util/home-paths"}]}\n',
@@ -124,6 +124,7 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'packages/client/ui-conversation/src/client/TypingFxLayer.tsx': 'data-typing-fx-echo={echo.id}\neditor.registerUpdateListener\n',
       'packages/client/ui-conversation/src/client/TypingFxLayer.module.css': '@keyframes dsh-typing-fx-drop {}\n@media (prefers-reduced-motion: reduce) {}\n',
       'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx': 'import { TypingFxLayer } from "../TypingFxLayer.tsx"\ndata-typing-fx-caret\n',
+      'packages/client/ui-conversation/src/client/input/editor/DraftEditor.tsx': 'data-typing-fx-caret\n',
       'packages/client/ui-conversation/src/client/skeleton/InputBar.module.css': '.input[data-typing-fx-caret] { caret-color: transparent; }\n',
       'packages/client/ui-conversation/src/client/settings/TypingFxRow.tsx': "PropsRuntime<'settings.appearance.item'>\nimport { TypingFxModal } from './TypingFxModal.tsx'\n",
       'packages/client/ui-conversation/src/client/settings/TypingFxModal.tsx': "const TYPING_FX_EXPORT_CORE = 'dsh-typing-fx'\ndata-typing-fx-root\n",
@@ -203,7 +204,7 @@ test('assertDesktopForks throws when copy-ghostty-assets drops out of package.js
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /copy-ghostty-assets/);
 });
 
-test('assertDesktopForks accepts the current vendor tree at rc.2', () => {
+test('assertDesktopForks accepts the current vendor tree at alpha.1', () => {
   const vendor = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
-  assertDesktopForks(vendor, '0.1.5-rc.2');
+  assertDesktopForks(vendor, '0.1.6-alpha.1');
 });

@@ -233,7 +233,10 @@ test('desktop ships dshbot as a built-in vendored plugin', () => {
 // a no-drag hole or they cannot be clicked over the desktop caption band. The
 // 0.1.5-rc.1 merge deleted TurnUsagePanel .panel and MessageFeedbackActions
 // .notePanel; that contract now lives in the shared stat-dialog skin and the
-// ui-dockkit / ui-sidebar-right surfaces.
+// ui-dockkit / ui-sidebar-right surfaces. The v0.1.6-alpha.1 merge refactored
+// JsonTree's copy affordance from a fixed .copyAnchor to an inline-absolute
+// .copySlot — nothing in that file overlays the caption band anymore, so it
+// left this list.
 const NO_DRAG_FILES = [
   'packages/client/ui-attachment/src/DropOverlay.module.css',
   'packages/client/ui-attachment/src/ImageLightbox.module.css',
@@ -246,7 +249,6 @@ const NO_DRAG_FILES = [
   'packages/client/ui-layout/src/client/AppFrame.module.css',
   'packages/client/ui-primitives/src/ConnectionBanner.module.css',
   'packages/client/ui-primitives/src/HoverCard.module.css',
-  'packages/client/ui-primitives/src/JsonTree.module.css',
   'packages/client/ui-primitives/src/Menu.module.css',
   'packages/client/ui-primitives/src/Modal.module.css',
   'packages/client/ui-primitives/src/OnboardingSurface.module.css',
