@@ -50,11 +50,63 @@ describe('terminalThemeFromApp', () => {
     host.style.color = 'rgb(200, 210, 220)'
     const theme = terminalThemeFromApp(host)
     expect(theme.background).toEqual({ r: 10, g: 20, b: 30 })
+    expect(theme.backgroundOpacity).toBe(1)
     expect(theme.foreground).toEqual({ r: 200, g: 210, b: 220 })
     expect(theme.cursor).toEqual({ r: 38, g: 56, b: 78 })
     expect(theme.selectionBackground).toBe('rgba(37, 63, 99, 0.2)')
     host.remove()
     vi.restoreAllMocks()
+  })
+
+  it('reports the pane fill alpha as backgroundOpacity when the pane is translucent', () => {
+    const host = drawerHost()
+    host.style.backgroundColor = 'rgba(10, 20, 30, 0.75)'
+    host.style.color = 'rgb(200, 210, 220)'
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function mock(
+      this: HTMLCanvasElement,
+      type: string,
+    ) {
+      if (type !== '2d') return null
+      return {
+        clearRect() {},
+        fillRect() {},
+        getImageData() {
+          return { data: Uint8ClampedArray.from([10, 20, 30, 191]) }
+        },
+      } as unknown as CanvasRenderingContext2D
+    })
+    const theme = terminalThemeFromApp(host)
+    expect(theme.background).toEqual({ r: 10, g: 20, b: 30 })
+    expect(theme.backgroundOpacity).toBeCloseTo(191 / 255)
+    vi.restoreAllMocks()
+    host.remove()
+  })
+
+  it('falls back when the canvas leaves the sentinel pixel standing', () => {
+    const host = drawerHost()
+    const realStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element) => {
+      const styles = realStyle(el)
+      return new Proxy(styles, {
+        get(target, prop, receiver) {
+          if (prop === 'backgroundColor') return 'bogus-fn(1 2 3)'
+          return Reflect.get(target, prop, receiver)
+        },
+      })
+    })
+    // An unpaintable fillStyle leaves the sentinel pixel from the probe.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      clearRect() {},
+      fillRect() {},
+      getImageData() {
+        return { data: Uint8ClampedArray.from([7, 8, 9, 255]) }
+      },
+    } as unknown as CanvasRenderingContext2D)
+    const theme = terminalThemeFromApp(host)
+    expect(theme.background).toEqual({ r: 255, g: 255, b: 255 })
+    expect(theme.backgroundOpacity).toBe(1)
+    vi.restoreAllMocks()
+    host.remove()
   })
 
   it('uses the dark Ghostty cursor and selection overlay when the desktop dark attribute is set', () => {

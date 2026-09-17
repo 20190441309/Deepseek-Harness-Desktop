@@ -4,13 +4,15 @@ Status: implemented
 
 [English](2026-08-19-terminal-pane-opaque-tui-stage.md) | 中文
 
+> 可读性理由仍然有效，现在拥有 `TERMINAL_PANE_MIN_SOLIDITY` 底线（`terminalOpacity` 滑杆的默认值与提示线）；「从不混色」条款已被 [终端窗格以保底实心度承载壁纸玻璃](../feature/2026-09-17-terminal-pane-glass-floor.zh.md) 取代。
+
 ## 问题
 
 CodeBuddy 斜杠菜单用 Ink 的 `bold` 加 `colors.info` 标记选中行，且 `showIndicator: false`——没有反色、没有单元格背景、没有 `>` 前缀。桌面窗格把这些字形放在 alpha-0 的 xterm 填充上，下面是 12% 壁纸结霜，info 对 secondary 被冲掉，选中态无法分辨。客户端 overlay 用正则和本地方向键索引猜行，会把条画错。`minimumContrastRatio` 对着 alpha-0 画布 RGB 只能让字能读，造不出选中行。
 
 ## 决策
 
-PTY 井是不透明的。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw-alias-bg-base)`；`mixWallpaperSurfaces` 把它保持为不透明的画布回退（浅色 `--dsw-static-neutral-bluish-00`，深色 `--dsw-static-neutral-bluish-950`）或家族的实心 `--dsw-alias-bg-base`，从不对 transparent 做 `color-mix`。`.paneTerminal` 铺该 token，没有 `backdrop-filter`。`readXtermTheme` 把 `theme.background` 设为无 alpha 的画布 RGB。`TerminalPane` 以 `allowTransparency: false` 构造 xterm，避免半透明填充被换成 `#000000`。壁纸仍混合会话画布和侧栏；终端井不参与。窗格仍不重涂 `.xterm-bold`，也不画猜出来的选中条。反色单元格保留 `.xterm-bg-257`／`.xterm-fg-257` token 覆盖。`minimumContrastRatio` 为 1；ANSI 青／蓝为 Pierre，见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。
+PTY 井保持足够不透明以读出 TUI 选中态。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw-alias-bg-base)`；背景生效时 `mixWallpaperSurfaces` 按专属的 `terminalOpacity` 设置混色（40–100，默认 `TERMINAL_PANE_MIN_SOLIDITY` = 75，Appearance 把它当作可读性提示线）——见上方取代说明。`.paneTerminal` 铺该 token，没有 `backdrop-filter`。`terminalThemeFromApp` 把计算填充的 alpha 报为 `backgroundOpacity`，Ghostty 画布因此清回 DOM 填充而不是二次合成。壁纸仍把会话画布与侧栏混得比井更深。窗格仍不画猜出来的选中条，选中态就是 TUI 自己的 SGR。ANSI 青／蓝为 Pierre，见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。
 
 ## 曾考虑的替代方案
 
@@ -24,11 +26,11 @@ PTY 井是不透明的。设计表上 `--dsw-alias-terminal-pane` 为 `var(--dsw
 
 ## 后果
 
-壁纸不再透过会话列底栏抽屉或右边栏 Terminal occupant。CodeBuddy 原生的粗体加 info 高亮落在浅色主题的浅井、深色主题的深井上，选中态就是 TUI 自己的 SGR。会话、侧栏和抬起铬仍走玻璃滑杆。反色单元格仍是 info-fill 覆盖，而不是互换后的默认背景。
+CodeBuddy 原生的粗体加 info 高亮落在永不低于四分之三实心度的井上，选中态仍是 TUI 自己的 SGR 且舞台可读。会话、侧栏和抬起铬仍走完整玻璃滑杆；井只参与到底线为止。
 
 ## 测试
 
-`readXtermTheme` 钉住由 `--dsw-alias-bg-base` 得到的不透明 `rgb(...)` `theme.background`（含 `color-mix` 与 `color(srgb …)` 标记）。抽屉套件钉住 `allowTransparency: false`，以及 `.paneTerminal` 背景 `--dsw-alias-terminal-pane` 且无 `backdrop-filter`。`mixWallpaperSurfaces` 钉住浅色井为 `var(--dsw-static-neutral-bluish-00)`，自定义 hex 画布为该 hex。`theme.client.spec.ts` 钉住壁纸混合后的这些不透明窗格值。`wallpaper.css` 不含 `--dsw-terminal-pane-blur`。
+`terminalThemeFromApp` 钉住从计算窗格填充读出的 `backgroundOpacity`，以及不可绘制颜色的哨兵回落。抽屉套件钉住 `.paneTerminal` 背景 `--dsw-alias-terminal-pane` 且无 `backdrop-filter`。`mixWallpaperSurfaces` 把窗格钉在显式 `terminalSolidity` 入参的底线处、其上与其下（含透明主题 0% 表面输入）；`renderGhosttySnapshot` 在半透明底下清空重绘区。`wallpaper.css` 不含 `--dsw-terminal-pane-blur`。
 
 ## 相关
 

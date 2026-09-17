@@ -20,12 +20,16 @@ import {
   MIN_INTERFACE_FONT_SIZE,
 } from '../theme-family.ts'
 import type { ThemePreference, ThemeSettings } from '../theme-settings.ts'
-import { TRANSPARENT_MIN_BLUR } from '../wallpaper.ts'
+import {
+  MAX_TERMINAL_OPACITY, MIN_TERMINAL_OPACITY, TERMINAL_PANE_MIN_SOLIDITY,
+  TRANSPARENT_MIN_BLUR,
+} from '../wallpaper.ts'
 import type { createAppearanceRowStore } from './settings-store.ts'
 import { ColorSchemeTiles } from './ColorSchemeTiles.tsx'
 import { ThemeLibrary } from './ThemeLibrary.tsx'
 import { BackgroundEffectRow } from './BackgroundEffectRow.tsx'
 import { CursorEffectRow } from './CursorEffectRow.tsx'
+import { MetallicPaintRow } from './MetallicPaintRow.tsx'
 import { WallpaperRow } from './WallpaperRow.tsx'
 import { sliderFillStyle } from './slider.ts'
 import css from './AppearanceSection.module.css'
@@ -62,6 +66,8 @@ export interface AppearanceSectionInjected {
   previewTheme: (family: ThemeFamily | null) => void
   /** Persist glass-surface opacity. */
   setGlassOpacity: (value: number) => void
+  /** Persist the terminal pane's own solidity (终端透明度). */
+  setTerminalOpacity: (value: number) => void
   /** Persist the transparent-theme flag (透明主题). */
   setTransparentTheme: (value: boolean) => void
   /** Persist the sidebar-mask flag (隐藏侧栏遮罩). */
@@ -81,6 +87,8 @@ export interface AppearanceSectionInjected {
       | 'cursorEffectSpeed' | 'cursorEffectSize' | 'cursorEffectPreset'
     >>,
   ) => void
+  /** Persist the button hover-sheen flag (按钮悬停光泽). */
+  setMetallicPaint: (value: boolean) => void
   /** Persist desktop wallpaper source preferences. */
   setWallpaperSources?: (
     patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>,
@@ -115,10 +123,12 @@ export function AppearanceSection({
   setCustomThemes,
   previewTheme,
   setGlassOpacity,
+  setTerminalOpacity,
   setTransparentTheme,
   setSidebarMask,
   setWallpaper,
   setCursorFx,
+  setMetallicPaint,
   setWallpaperSources,
   setWallpaperFavorites,
   setTypography,
@@ -130,6 +140,7 @@ export function AppearanceSection({
   const activeLightThemeId = useStore(s => s.activeLightThemeId)
   const activeDarkThemeId = useStore(s => s.activeDarkThemeId)
   const glassOpacity = useStore(s => s.glassOpacity)
+  const terminalOpacity = useStore(s => s.terminalOpacity)
   const transparentTheme = useStore(s => s.transparentTheme)
   const sidebarMaskHidden = useStore(s => s.sidebarMaskHidden)
   const wallpaperImage = useStore(s => s.wallpaperImage)
@@ -149,6 +160,7 @@ export function AppearanceSection({
   const cursorEffectSpeed = useStore(s => s.cursorEffectSpeed)
   const cursorEffectSize = useStore(s => s.cursorEffectSize)
   const cursorEffectPreset = useStore(s => s.cursorEffectPreset)
+  const metallicPaintEnabled = useStore(s => s.metallicPaintEnabled)
   const fontFamilySans = useStore(s => s.fontFamilySans)
   const fontFamilyCode = useStore(s => s.fontFamilyCode)
   const fontSizeInterface = useStore(s => s.fontSizeInterface)
@@ -219,6 +231,12 @@ export function AppearanceSection({
         setCursorFx={setCursorFx}
       />
 
+      <MetallicPaintRow
+        metallicPaintEnabled={metallicPaintEnabled}
+        t={t}
+        setMetallicPaint={setMetallicPaint}
+      />
+
       <section className={css.block} aria-labelledby="appearance-glass-heading">
         <div className={css.rowHead}>
           <h2 id="appearance-glass-heading" className={css.heading}>{t('glass.title')}</h2>
@@ -243,6 +261,33 @@ export function AppearanceSection({
         <Button type="button" variant="ghost" onClick={() => { setGlassOpacity(DEFAULT_GLASS_OPACITY) }}>
           {t('reset')}
         </Button>
+        <label className={css.field}>
+          <span className={css.rowHead}>
+            <span>{t('glass.terminal')}</span>
+            <span className={css.value}>{terminalOpacity}%</span>
+          </span>
+          <input
+            type="range"
+            className={css.slider}
+            min={MIN_TERMINAL_OPACITY}
+            max={MAX_TERMINAL_OPACITY}
+            step={GLASS_OPACITY_STEP}
+            value={terminalOpacity}
+            style={sliderFillStyle(terminalOpacity, MIN_TERMINAL_OPACITY, MAX_TERMINAL_OPACITY)}
+            aria-valuemin={MIN_TERMINAL_OPACITY}
+            aria-valuemax={MAX_TERMINAL_OPACITY}
+            aria-valuenow={terminalOpacity}
+            aria-label={t('glass.terminal')}
+            onChange={(event) => { setTerminalOpacity(Number(event.currentTarget.value)) }}
+          />
+        </label>
+        <p className={css.hint}>
+          {wallpaperImage === '' && backgroundEffect !== 'gradient'
+            ? t('glass.terminalNeedsBackdrop')
+            : terminalOpacity < TERMINAL_PANE_MIN_SOLIDITY
+              ? t('glass.terminalDeepHint')
+              : t('glass.terminalHint')}
+        </p>
         <label className={css.switchRow}>
           <Switch
             checked={transparentTheme}

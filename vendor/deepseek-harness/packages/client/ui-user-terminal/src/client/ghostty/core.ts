@@ -66,6 +66,12 @@ export interface GhosttyColor {
 export interface GhosttyTheme {
   readonly foreground: GhosttyColor;
   readonly background: GhosttyColor;
+  /**
+   * Opacity (0-1) of the pane fill behind default-background cells; not sent
+   * to Ghostty. Below 1 the renderer clears each repaint region back to the
+   * pane's DOM fill instead of compositing a second translucent mix on top.
+   */
+  readonly backgroundOpacity?: number;
   readonly cursor: GhosttyColor;
   /** CSS color the renderer overlays on selected cells; not sent to Ghostty. */
   readonly selectionBackground?: string;

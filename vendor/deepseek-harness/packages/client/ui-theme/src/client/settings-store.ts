@@ -27,6 +27,8 @@ export interface AppearanceSyncSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Terminal pane solidity percent under a live backdrop. */
+  terminalOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
   /** Sidebar mask flag; the rail paints the canvas fill while on. */
@@ -69,6 +71,8 @@ export interface AppearanceSyncSnapshot {
   cursorEffectSize?: number
   /** Selected pointer scheme: a preset id or `custom`. */
   cursorEffectPreset?: ThemeSettings['cursorEffectPreset']
+  /** Button hover sheen switch (按钮悬停光泽). */
+  metallicPaintEnabled?: boolean
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -99,6 +103,8 @@ export interface AppearanceRowState {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Terminal pane solidity percent under a live backdrop. */
+  terminalOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
   /** Sidebar mask flag; the rail paints the canvas fill while on. */
@@ -141,6 +147,8 @@ export interface AppearanceRowState {
   cursorEffectSize: number
   /** Selected pointer scheme: a preset id or `custom`. */
   cursorEffectPreset: ThemeSettings['cursorEffectPreset']
+  /** Button hover sheen switch (按钮悬停光泽). */
+  metallicPaintEnabled: boolean
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -170,6 +178,7 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   families: [],
   customThemes: [],
   glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+  terminalOpacity: DEFAULT_THEME_SETTINGS.terminalOpacity,
   transparentTheme: DEFAULT_THEME_SETTINGS.transparentTheme,
   sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
   wallpaperImage: '',
@@ -191,6 +200,7 @@ const EMPTY: Omit<AppearanceRowState, 'revision'> = {
   cursorEffectSpeed: DEFAULT_THEME_SETTINGS.cursorEffectSpeed,
   cursorEffectSize: DEFAULT_THEME_SETTINGS.cursorEffectSize,
   cursorEffectPreset: DEFAULT_THEME_SETTINGS.cursorEffectPreset,
+  metallicPaintEnabled: DEFAULT_THEME_SETTINGS.metallicPaintEnabled,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_THEME_SETTINGS.fontSizeInterface,
@@ -216,6 +226,7 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.families = snapshot.families
         d.customThemes = snapshot.customThemes
         d.glassOpacity = snapshot.glassOpacity
+        d.terminalOpacity = snapshot.terminalOpacity
         d.transparentTheme = snapshot.transparentTheme
         d.sidebarMaskHidden = snapshot.sidebarMaskHidden
         d.wallpaperImage = snapshot.wallpaperImage
@@ -237,6 +248,7 @@ export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState
         d.cursorEffectSpeed = snapshot.cursorEffectSpeed ?? DEFAULT_THEME_SETTINGS.cursorEffectSpeed
         d.cursorEffectSize = snapshot.cursorEffectSize ?? DEFAULT_THEME_SETTINGS.cursorEffectSize
         d.cursorEffectPreset = snapshot.cursorEffectPreset ?? DEFAULT_THEME_SETTINGS.cursorEffectPreset
+        d.metallicPaintEnabled = snapshot.metallicPaintEnabled ?? DEFAULT_THEME_SETTINGS.metallicPaintEnabled
         d.fontFamilySans = snapshot.fontFamilySans
         d.fontFamilyCode = snapshot.fontFamilyCode
         d.fontSizeInterface = snapshot.fontSizeInterface

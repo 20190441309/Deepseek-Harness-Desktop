@@ -52,8 +52,9 @@ import {
   THEME_CURSOR_EFFECT_FIELD, THEME_CURSOR_EFFECT_PRESET_FIELD,
   THEME_CURSOR_EFFECT_SIZE_FIELD, THEME_CURSOR_EFFECT_SPEED_FIELD,
   THEME_CUSTOM_THEMES_FIELD, THEME_DARK_FAMILY_FIELD, THEME_GLASS_OPACITY_FIELD,
-  THEME_LIGHT_FAMILY_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, THEME_SIDEBAR_MASK_FIELD,
-  THEME_TRANSPARENT_FIELD,
+  THEME_LIGHT_FAMILY_FIELD, THEME_METALLIC_PAINT_FIELD,
+  THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, THEME_SIDEBAR_MASK_FIELD,
+  THEME_TERMINAL_OPACITY_FIELD, THEME_TRANSPARENT_FIELD,
   THEME_WALLPAPER_BLUR_FIELD, THEME_WALLPAPER_BING_FIELD, THEME_WALLPAPER_CATALOGS_FIELD,
   THEME_WALLPAPER_FAVORITES_FIELD, THEME_WALLPAPER_IMAGE_FIELD, THEME_WALLPAPER_PIXELATE_FIELD,
   THEME_WALLPAPER_SOURCES_FIELD,
@@ -136,6 +137,8 @@ export interface ThemeSnapshot {
   customThemes: readonly ThemeFamily[]
   /** Overlay solidity percent. */
   glassOpacity: number
+  /** Terminal pane solidity percent under a live backdrop. */
+  terminalOpacity: number
   /** Transparent theme flag; effective only while a wallpaper is set. */
   transparentTheme: boolean
   /** Sidebar mask flag; the rail paints the canvas fill while on. */
@@ -178,6 +181,8 @@ export interface ThemeSnapshot {
   cursorEffectSize: number
   /** Selected pointer scheme: a preset id or `custom`. */
   cursorEffectPreset: ThemeSettings['cursorEffectPreset']
+  /** Button hover sheen switch (按钮悬停光泽). */
+  metallicPaintEnabled: boolean
   /** Interface font preference. */
   fontFamilySans: string
   /** Monospace font preference. */
@@ -456,6 +461,21 @@ export class ThemeRuntime {
   }
 
   /**
+   * Persist the terminal pane's own solidity (终端透明度). The pane does not
+   * follow the glass slider: under a live backdrop it keeps this percent of
+   * its fill so the terminal can stay calmer (or more see-through) than the
+   * surrounding chrome. Below {@link TERMINAL_PANE_MIN_SOLIDITY} the UI hints
+   * that bold-plus-color TUI selection may get hard to read.
+   * @param terminalOpacity - integer percent 40–100.
+   */
+  setTerminalOpacity(terminalOpacity: number): void {
+    if (this.settings.terminalOpacity === terminalOpacity) return
+    this.settings = { ...this.settings, terminalOpacity }
+    this.queueWrite(THEME_TERMINAL_OPACITY_FIELD, terminalOpacity)
+    this.publish()
+  }
+
+  /**
    * Persist the transparent-theme flag (透明主题). While on and a wallpaper
    * is set, every chrome surface drops to a 0% fill and the wallpaper dim
    * mask is removed; the glass slider is bypassed. Without a wallpaper the
@@ -481,6 +501,19 @@ export class ThemeRuntime {
     if (this.settings.sidebarMaskHidden === sidebarMaskHidden) return
     this.settings = { ...this.settings, sidebarMaskHidden }
     this.queueWrite(THEME_SIDEBAR_MASK_FIELD, sidebarMaskHidden)
+    this.publish()
+  }
+
+  /**
+   * Persist the button hover-sheen flag (按钮悬停光泽). While off, hovered
+   * buttons keep only their variant hover fill — the attribute the
+   * `metallic-paint.css` rules key on is dropped from the document root.
+   * @param metallicPaintEnabled - next flag value.
+   */
+  setMetallicPaint(metallicPaintEnabled: boolean): void {
+    if (this.settings.metallicPaintEnabled === metallicPaintEnabled) return
+    this.settings = { ...this.settings, metallicPaintEnabled }
+    this.queueWrite(THEME_METALLIC_PAINT_FIELD, metallicPaintEnabled)
     this.publish()
   }
 
@@ -802,6 +835,7 @@ export class ThemeRuntime {
       activeDarkThemeId: this.settings.activeDarkThemeId,
       customThemes: Object.freeze([...this.settings.customThemes]),
       glassOpacity: this.settings.glassOpacity,
+      terminalOpacity: this.settings.terminalOpacity,
       transparentTheme: this.settings.transparentTheme,
       sidebarMaskHidden: this.settings.sidebarMaskHidden,
       wallpaperImage: this.settings.wallpaperImage,
@@ -823,6 +857,7 @@ export class ThemeRuntime {
       cursorEffectSpeed: this.settings.cursorEffectSpeed,
       cursorEffectSize: this.settings.cursorEffectSize,
       cursorEffectPreset: this.settings.cursorEffectPreset,
+      metallicPaintEnabled: this.settings.metallicPaintEnabled,
       fontFamilySans: this.settings.fontFamilySans,
       fontFamilyCode: this.settings.fontFamilyCode,
       fontSizeInterface: this.settings.fontSizeInterface,
@@ -852,7 +887,7 @@ export class ThemeRuntime {
       : this.settings.glassOpacity
     tokens['--dsw-alias-glass-opacity'] = `${solidity}%`
     if (backdropLive) {
-      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, solidity))
+      Object.assign(tokens, mixWallpaperSurfaces(tokens, mode, solidity, this.settings.terminalOpacity))
     }
     for (const layer of [...this.overrides.values()].sort((a, b) => a.seq - b.seq)) {
       for (const [name, modes] of Object.entries(layer.tokens)) {
@@ -881,6 +916,7 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.activeLightThemeId === right.activeLightThemeId
     && left.activeDarkThemeId === right.activeDarkThemeId
     && left.glassOpacity === right.glassOpacity
+    && left.terminalOpacity === right.terminalOpacity
     && left.transparentTheme === right.transparentTheme
     && left.sidebarMaskHidden === right.sidebarMaskHidden
     && left.wallpaperImage === right.wallpaperImage
@@ -902,6 +938,7 @@ function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
     && left.cursorEffectSpeed === right.cursorEffectSpeed
     && left.cursorEffectSize === right.cursorEffectSize
     && left.cursorEffectPreset === right.cursorEffectPreset
+    && left.metallicPaintEnabled === right.metallicPaintEnabled
     && left.fontFamilySans === right.fontFamilySans
     && left.fontFamilyCode === right.fontFamilyCode
     && left.fontSizeInterface === right.fontSizeInterface
@@ -1002,6 +1039,7 @@ export function apply(ctx: ClientContext): void {
       cursorEffectSpeed: snapshot.cursorEffectSpeed,
       cursorEffectSize: snapshot.cursorEffectSize,
       transparentTheme: snapshot.transparentTheme,
+      metallicPaintEnabled: snapshot.metallicPaintEnabled,
     })
   }
   extras(theme.getTheme())
@@ -1027,10 +1065,12 @@ export function apply(ctx: ClientContext): void {
       setCustomThemes: (families) => { theme.setCustomThemes(families) },
       previewTheme: (family) => { theme.setPreviewFamily(family) },
       setGlassOpacity: (value) => { theme.setGlassOpacity(value) },
+      setTerminalOpacity: (value) => { theme.setTerminalOpacity(value) },
       setTransparentTheme: (value) => { theme.setTransparentTheme(value) },
       setSidebarMask: (value) => { theme.setSidebarMask(value) },
       setWallpaper: (patch) => { theme.setWallpaper(patch) },
       setCursorFx: (patch) => { theme.setCursorFx(patch) },
+      setMetallicPaint: (value) => { theme.setMetallicPaint(value) },
       ...(desktopWallpaper ? {
         setWallpaperSources: (patch: Partial<Pick<ThemeSettings, 'wallpaperBingEnabled' | 'wallpaperCatalogUrls' | 'wallpaperSources'>>) => {
           theme.setWallpaperSources(patch)

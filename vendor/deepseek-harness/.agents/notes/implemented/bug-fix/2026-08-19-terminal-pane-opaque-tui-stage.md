@@ -4,13 +4,15 @@ Status: implemented
 
 English | [中文](2026-08-19-terminal-pane-opaque-tui-stage.zh.md)
 
+> The readability rationale remains current and now owns the `TERMINAL_PANE_MIN_SOLIDITY` bound (the `terminalOpacity` slider's default and hint line); the "never mixes" clause is superseded by [Terminal pane carries wallpaper glass at a floored solidity](../feature/2026-09-17-terminal-pane-glass-floor.md).
+
 ## Problem
 
 CodeBuddy's slash menu marks the selected row with Ink `bold` plus `colors.info` and `showIndicator: false` — no inverse, no cell background, no `>` prefix. Desktop panes sat those glyphs on an alpha-0 xterm fill over 12% wallpaper frost, so info versus secondary washed out and selection was indistinguishable. A client-side overlay that guessed the row from regexes and a local arrow index painted the wrong bar. `minimumContrastRatio` against an alpha-0 canvas RGB made letters readable without creating a selected row.
 
 ## Decision
 
-The PTY well is opaque. `--dsw-alias-terminal-pane` is `var(--dsw-alias-bg-base)` on the design sheet; `mixWallpaperSurfaces` keeps it the opaque canvas fallback (`--dsw-static-neutral-bluish-00` light, `--dsw-static-neutral-bluish-950` dark) or a family's solid `--dsw-alias-bg-base`, never a `color-mix` against transparent. `.paneTerminal` paints that token and has no `backdrop-filter`. `readXtermTheme` sets `theme.background` to the canvas RGB with no alpha. `TerminalPane` constructs xterm with `allowTransparency: false` so xterm does not replace a translucent fill with `#000000`. Wallpaper still mixes the chat canvas and sidebar; the terminal well does not participate. The pane still does not restyle `.xterm-bold` or paint a guessed selection bar. Inverse-video cells keep the `.xterm-bg-257` / `.xterm-fg-257` token overrides. `minimumContrastRatio` is 1; ANSI cyan/blue are Pierre, owned by [PTY ANSI colors follow T3code Pierre, not UI state tokens](2026-08-19-terminal-ansi-pierre-palette.md).
+The PTY well is opaque enough to read TUI selection. `--dsw-alias-terminal-pane` is `var(--dsw-alias-bg-base)` on the design sheet; while a backdrop is live `mixWallpaperSurfaces` mixes it at the dedicated `terminalOpacity` setting (40–100, default `TERMINAL_PANE_MIN_SOLIDITY` = 75, which the Appearance hint treats as the readability bound) — see the supersession note above. `.paneTerminal` paints that token and has no `backdrop-filter`. `terminalThemeFromApp` reports the computed fill's alpha as `backgroundOpacity` so the Ghostty canvas clears to the DOM fill instead of compositing a second mix. Wallpaper still mixes the chat canvas and sidebar deeper than the well ever goes. The pane still does not paint a guessed selection bar; TUI selection stays the TUI's own SGR. ANSI cyan/blue are Pierre, owned by [PTY ANSI colors follow T3code Pierre, not UI state tokens](2026-08-19-terminal-ansi-pierre-palette.md).
 
 ## Alternatives considered
 
@@ -24,11 +26,11 @@ The PTY well is opaque. `--dsw-alias-terminal-pane` is `var(--dsw-alias-bg-base)
 
 ## Consequences
 
-Wallpaper no longer shows through the conversation-column drawer or the right-panel Terminal occupant. CodeBuddy's native bold-plus-info highlight sits on a light well in light theme and a dark well in dark theme, so selection is the TUI's own SGR. Chat, sidebar, and raised chrome keep the glass slider. Inverse cells remain the info-fill override rather than a swapped default background.
+CodeBuddy's native bold-plus-info highlight sits on a well that defaults to three quarters solid, so selection stays the TUI's own SGR on a readable stage; dragging the dedicated slider below the bound is the user's explicit trade, flagged by the Appearance hint. Chat, sidebar, and raised chrome keep the full glass slider; the well follows its own setting.
 
 ## Testing
 
-`readXtermTheme` pins an opaque `rgb(...)` `theme.background` from `--dsw-alias-bg-base` (including `color-mix` and `color(srgb …)` tokens). The drawer spec pins `allowTransparency: false` and `.paneTerminal` background `--dsw-alias-terminal-pane` with no `backdrop-filter`. `mixWallpaperSurfaces` pins a light well to `var(--dsw-static-neutral-bluish-00)` and a custom hex canvas to that hex. `theme.client.spec.ts` pins the wallpaper mix to those opaque pane values. `wallpaper.css` has no `--dsw-terminal-pane-blur`.
+`terminalThemeFromApp` pins `backgroundOpacity` from the computed pane fill and the sentinel fallback for unpaintable colors. The drawer spec pins `.paneTerminal` background `--dsw-alias-terminal-pane` with no `backdrop-filter`. `mixWallpaperSurfaces` pins the pane at the explicit `terminalSolidity` argument at, above, and below the bound, including the transparent-theme 0% surface input; `renderGhosttySnapshot` clears repaint regions under a translucent base. `wallpaper.css` has no `--dsw-terminal-pane-blur`.
 
 ## Related
 

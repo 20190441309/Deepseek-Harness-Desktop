@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`TerminalWorkspace` 的 `.root` 保持 `background: transparent`。PTY 井本身是不透明的 `--dsw-alias-terminal-pane` 填充，由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md) 拥有：不做壁纸 mix、没有 `backdrop-filter`、`allowTransparency: false`、`theme.background` 为不透明画布 RGB。`#dsh-wallpaper::after` 铺 `--dsw-alias-bg-mask-1`，对应 T3code 的 0.28 照片压暗。`theme.cursorAccent` 与 ANSI 0（`black`）用该不透明 RGB。鼠标 `selectionBackground` 为 `--dsw-alias-interactive-bg-hover-solid`。井上的 ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。反色单元格 CSS 见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md)。`TerminalPane` 在 `open()` 后再铺一次主题，并观察壁纸／配色突变。工具条与会话列表铬仍用 `--dsw-alias-bg-base`。`.xterm-viewport` 在不透明窗格上保持透明。
+`TerminalWorkspace` 的 `.root` 保持 `background: transparent`。PTY 井本身是 `--dsw-alias-terminal-pane` 填充，由 [终端窗格是不透明的画布井](2026-08-19-terminal-pane-opaque-tui-stage.zh.md) 拥有，现在按专属 `terminalOpacity` 滑杆取值（默认 `TERMINAL_PANE_MIN_SOLIDITY`）向背景混色，见 [终端窗格以保底实心度承载壁纸玻璃](../feature/2026-09-17-terminal-pane-glass-floor.zh.md)：没有 `backdrop-filter`，填充带 alpha 时 Ghostty 画布清回该 DOM 填充。`#dsh-wallpaper::after` 铺 `--dsw-alias-bg-mask-1`，对应 T3code 的 0.28 照片压暗。`theme.cursorAccent` 与 ANSI 0（`black`）用该不透明 RGB。鼠标 `selectionBackground` 为 `--dsw-alias-interactive-bg-hover-solid`。井上的 ANSI 1–15 与对比度重映射见 [PTY 的 ANSI 颜色跟随 T3code Pierre，而不是 UI 状态 token](2026-08-19-terminal-ansi-pierre-palette.zh.md)。反色单元格 CSS 见 [终端窗格以最小对比度如实渲染 TUI](2026-08-19-terminal-verbatim-tui-contrast-and-follow.zh.md)。`TerminalPane` 在 `open()` 后再铺一次主题，并观察壁纸／配色突变。工具条与会话列表铬仍用 `--dsw-alias-bg-base`。`.xterm-viewport` 在不透明窗格上保持透明。
 
 ## Alternatives considered
 

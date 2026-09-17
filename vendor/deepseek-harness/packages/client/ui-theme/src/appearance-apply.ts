@@ -11,6 +11,9 @@ import type { BackgroundEffect } from './theme-settings.ts'
 const DEFAULT_SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 const DEFAULT_CODE_STACK = "'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei'"
 
+/** Root attribute gating the button hover sheen in `metallic-paint.css`. */
+export const METALLIC_PAINT_ATTR = 'data-dsh-metallic-paint'
+
 /**
  * Quote a user-entered family name when it is not a bare CSS ident.
  * @param name - one family token.
@@ -87,6 +90,8 @@ export interface AppearanceDocumentExtras {
   cursorEffectSize?: number
   /** Transparent theme flag; effective only while a wallpaper is live. */
   transparentTheme?: boolean
+  /** Button hover sheen switch (按钮悬停光泽); absent keeps the sheen on. */
+  metallicPaintEnabled?: boolean
 }
 
 /**
@@ -132,4 +137,5 @@ export function applyAppearanceDocumentExtras(extras: AppearanceDocumentExtras):
     TRANSPARENT_ATTR,
     extras.transparentTheme === true && isWallpaperDataUrl(wallpaperImage),
   )
+  root.toggleAttribute(METALLIC_PAINT_ATTR, extras.metallicPaintEnabled !== false)
 }

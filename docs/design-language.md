@@ -1,6 +1,6 @@
 # DSHD 设计语言
 
-中文 · [English](design-language.en.md)
+中文 | [English](design-language.en.md)
 
 DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` CLI，也区别于 `src/main` 里的 dshd 守护进程）的设计语言定义在本文档：它是 DSHD 全部可见界面的唯一视觉权威。语言的基线固定为随仓库钉版的 `vendor/deepseek-harness` Web UI——当前钉 `dsh-v0.1.3-alpha.1`（`d347e703908d0406b7a7ef80e3a0e594d86b2215`），记录在 [`vendor/harness-upstream.json`](../vendor/harness-upstream.json)，由 `npm run sync:harness` 更新。桌面壳、关闭遮罩、标题栏注入、右边栏、手机远程打开的 Web UI 页、以及任何新增前端，都实现同一套语言，不得另起一套皮肤。
 
@@ -98,6 +98,7 @@ Bot 的确定性形状头像沿用 Hermes Bots 的状态化动态脸：空闲时
 | 画布 | `--dsw-alias-bg-base` |
 | 侧栏 | `--dsw-specific-sidebar-fill`；rail 铬面经间接 token `--dsh-sidebar-rail-fill` 解析，外观「隐藏侧栏遮罩」开启时写为 `transparent`：透出 `.frame` 画布底色与工作区完全对齐，只留右缘分割线 |
 | 抬起层 | `--dsw-alias-bg-layer-1`～`3` |
+| 终端井 | `--dsw-alias-terminal-pane`；背景激活时按独立的「终端透明度」滑杆混色（40–100，默认 75），不跟随玻璃滑杆；低于 75 时设置页给 TUI 选中行可读性提示，不钳制 |
 | 主文字 / 次文字 / 说明 | `--dsw-alias-label-primary` / `secondary` / `tertiary` |
 | 用户气泡 | `--dsw-specific-bubble` |
 | 选中行 | `--dsw-specific-sidebar-nav-item-active`（强调用 `*-accent`） |
@@ -119,7 +120,7 @@ Bot 的确定性形状头像沿用 Hermes Bots 的状态化动态脸：空闲时
 
 指针特效是指针划过处的装饰层：全屏固定叠加层（`#dsh-cursor-fx`，pointer-events 全穿透、画在整个 UI 之上）内二选一——「像素拖尾」按网格给指针轨迹盖章淡出（2D canvas，ReactBits `PixelTrail` 等价移植），「流体飞溅」把指针位移注入 WebGL Navier-Stokes 染料模拟（ReactBits `SplashCursor` 移植）。设置侧是同款收束行（标题 + 说明 + 齿轮 + Switch），齿轮开 `Modal`：特效类型卡片 + 画布实时预览 + 预设方案（跟随主题 / 彩虹 / 极光 / 晚霞 / 海洋 / 樱花，预设整包写配色 + 速度 + 大小）+ 常显自定义（6 色槽留空回主题 accent、速度 20–300%、大小 25–300%）+ 重置 / 取消 / 保存。开关只写 enabled 位，特效与滑块值保留；`prefers-reduced-motion` 不挂载，无 Canvas/WebGL 静默不挂、无 DOM 残留。rAF 循环带 4s 闲置停帧与 `document.hidden` 暂停；空配色回退 `--dsw-alias-brand-primary`，控件与卡片只走 `--dsw-alias-*` token，不写颜色字面量、不写明暗分支、不引动画库。
 
-按钮悬停金属漆（`metallic-paint.css`，源自 ayase motion 目录 MetallicPaint 的 CSS 移植）是全局唯一的附加 hover 层：主 Web UI 内非禁用原生 `button` 悬停时，在原有 hover 填充之上叠一层半透明 `linear-gradient` 色带（115deg、320% 尺寸、4.5s ease-in-out 往返扫过），即「原本效果 + 金属漆」叠加而非替换。扫光画在按钮自身 `background-image`：随控件 `border-radius`（含全局 corner-shape）自然裁切，不改 `position` / `overflow`，不占 `::before` / `::after`。色带只经 `color-mix` 取 label alias token 的透明度：亮带 `--dsw-alias-label-primary-foreground`（主按钮文字色，与填充天然对比、保护图标可读性），暗带 `--dsw-alias-label-primary`，过渡带 `--dsw-alias-label-secondary`——不写颜色字面量、不写明暗分支，随主题明暗自动反转并随自定义主题染色。覆盖范围止于原生 `button`：`role='button'` 行（DisclosureRow / ToolRow / 命令卡）、`<select>` / `<input>`、boot 页、启动器、壁纸图库窗与 mobile/web 不扫。`prefers-reduced-motion` 停扫光、保留静态光泽。
+按钮悬停金属漆（`metallic-paint.css`，源自 ayase motion 目录 MetallicPaint 的 CSS 移植）是全局唯一的附加 hover 层：主 Web UI 内非禁用原生 `button` 悬停时，在原有 hover 填充之上叠一层半透明 `linear-gradient` 色带（115deg、320% 尺寸、4.5s ease-in-out 往返扫过），即「原本效果 + 金属漆」叠加而非替换。扫光画在按钮自身 `background-image`：随控件 `border-radius`（含全局 corner-shape）自然裁切，不改 `position` / `overflow`，不占 `::before` / `::after`。色带只经 `color-mix` 取 label alias token 的透明度：亮带 `--dsw-alias-label-primary-foreground`（主按钮文字色，与填充天然对比、保护图标可读性），暗带 `--dsw-alias-label-primary`，过渡带 `--dsw-alias-label-secondary`——不写颜色字面量、不写明暗分支，随主题明暗自动反转并随自定义主题染色。覆盖范围止于原生 `button`：`role='button'` 行（DisclosureRow / ToolRow / 命令卡）、`<select>` / `<input>`、boot 页、启动器、壁纸图库窗与 mobile/web 不扫。`prefers-reduced-motion` 停扫光、保留静态光泽。界面设置「按钮悬停光泽」开关（`metallicPaintEnabled`，默认开）在 document root 增删 `data-dsh-metallic-paint` 属性——关闭后扫光规则整体不命中，按钮只剩原 hover 填充。
 
 ## 允许的例外
 

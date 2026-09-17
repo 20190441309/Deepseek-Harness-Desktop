@@ -103,6 +103,12 @@ export function renderGhosttySnapshot(options: {
   readonly previousCursorY?: number | null;
   readonly focused?: boolean;
   readonly selectionBackground?: string;
+  /**
+   * Opacity of the pane fill behind default-background cells (default 1).
+   * Below 1 the pane's DOM fill already carries the tint, so repaint regions
+   * are cleared back to it rather than filled with a second composited mix.
+   */
+  readonly backgroundOpacity?: number;
   readonly hoveredLinkRange?: GhosttyCellRange | null;
   /** Vertical origin of row 0; defaults to the horizontal padding. */
   readonly originY?: number;
@@ -122,6 +128,7 @@ export function renderGhosttySnapshot(options: {
   const selectionBackground = options.selectionBackground ?? DEFAULT_SELECTION_BACKGROUND;
   const hoveredLinkRange = options.hoveredLinkRange ?? null;
   const originY = options.originY ?? padding;
+  const translucentBackground = (options.backgroundOpacity ?? 1) < 1;
   const rowsToDraw = forceFull
     ? Array.from({ length: snapshot.rows }, (_, index) => index)
     : [...snapshot.dirtyRows];
@@ -140,8 +147,12 @@ export function renderGhosttySnapshot(options: {
   if (forceFull) {
     context.save();
     context.resetTransform();
-    context.fillStyle = cssColor(snapshot.background);
-    context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+    if (translucentBackground) {
+      context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+    } else {
+      context.fillStyle = cssColor(snapshot.background);
+      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+    }
     context.restore();
   }
 
@@ -151,8 +162,12 @@ export function renderGhosttySnapshot(options: {
     if (!row) continue;
     const top = originY + rowIndex * metrics.height;
 
-    context.fillStyle = cssColor(snapshot.background);
-    context.fillRect(padding, top, snapshot.cols * metrics.width, metrics.height);
+    if (translucentBackground) {
+      context.clearRect(padding, top, snapshot.cols * metrics.width, metrics.height);
+    } else {
+      context.fillStyle = cssColor(snapshot.background);
+      context.fillRect(padding, top, snapshot.cols * metrics.width, metrics.height);
+    }
 
     let backgroundStart = 0;
     while (backgroundStart < row.cells.length) {

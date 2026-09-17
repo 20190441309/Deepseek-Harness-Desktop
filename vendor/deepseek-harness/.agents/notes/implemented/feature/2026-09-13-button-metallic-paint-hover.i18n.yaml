@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-button-metallic-paint-hover.md
-2026-09-13-button-metallic-paint-hover.md: 1c3d0aea61b01b1ae383d9ba0a8a1217b616b963
-2026-09-13-button-metallic-paint-hover.zh.md: f5f9c14d4bc157a9aff8b7700b7e1120a3578114
+2026-09-13-button-metallic-paint-hover.md: f5c5c42ca889ad7dca95da2363b8070785a44a58
+2026-09-13-button-metallic-paint-hover.zh.md: 7728e5f647b6060df037e3705a78988d11209e5b

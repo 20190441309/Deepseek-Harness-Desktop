@@ -13,6 +13,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     families: [],
     customThemes: [],
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+    terminalOpacity: DEFAULT_THEME_SETTINGS.terminalOpacity,
     transparentTheme: false,
     sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
     wallpaperImage: '',
@@ -117,6 +118,13 @@ describe('createAppearanceRowStore', () => {
     expect(store.getSnapshot().cursorEffect).toBe('trail')
     store.actions.sync(snap({ cursorEffect: 'splash-cursor' as unknown as NonNullable<AppearanceSyncSnapshot['cursorEffect']> }), 2)
     expect(store.getSnapshot().cursorEffect).toBe('splash')
+  })
+
+  it('mirrors the button-sheen flag', () => {
+    const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().metallicPaintEnabled).toBe(true)
+    store.actions.sync(snap({ metallicPaintEnabled: false }), 0)
+    expect(store.getSnapshot().metallicPaintEnabled).toBe(false)
   })
 
   it('mirrors wallpaperSources and wallpaperFavorites', () => {

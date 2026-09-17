@@ -51,9 +51,26 @@ export const TRANSPARENT_ATTR = 'data-dsh-transparent'
 /**
  * Solidity fed into {@link mixWallpaperSurfaces} while the transparent theme
  * is effective: every chrome surface keeps a 0% fill so only the wallpaper
- * paints behind content. The terminal pane still keeps its solid fallback.
+ * paints behind content. The terminal pane still follows its own
+ * `terminalOpacity` setting, which defaults to
+ * {@link TERMINAL_PANE_MIN_SOLIDITY}.
  */
 export const TRANSPARENT_GLASS_SOLIDITY = 0
+
+/** Lowest terminal pane solidity the Appearance slider offers. */
+export const MIN_TERMINAL_OPACITY = 40
+/** Highest terminal pane solidity the Appearance slider offers. */
+export const MAX_TERMINAL_OPACITY = 100
+/**
+ * Recommended minimum terminal pane solidity while a backdrop is live. TUIs
+ * mark selection with bold plus a foreground color and no cell background,
+ * so deeper translucency leaves a selected row indistinguishable on a busy
+ * wallpaper. The slider defaults here and the UI hints below it, but an
+ * explicit lower value is honored.
+ */
+export const TERMINAL_PANE_MIN_SOLIDITY = 75
+/** Shipped terminal pane solidity: the readability bound. */
+export const DEFAULT_TERMINAL_OPACITY = TERMINAL_PANE_MIN_SOLIDITY
 
 /**
  * Frosted-glass blur percent the runtime raises the wallpaper to when the
@@ -406,14 +423,23 @@ export function wallpaperCanvasSolidity(solidity: number): number {
  * the sidebar sits halfway between the uncapped canvas curve and glass so
  * glass 100% fully opaques the rail, and raised surfaces keep the full
  * glass solidity. A 100% mix stores the solid color, not a color-mix.
- * The terminal pane stays the opaque canvas fallback (or a family's solid
- * `--dsw-alias-bg-base`) so TUI SGR does not sit on wallpaper glass.
+ * The terminal pane does not follow the glass slider: it keeps its own
+ * `terminalSolidity` value so the well can stay calmer (or more
+ * see-through) than the surrounding chrome. Its canvas clears to that DOM
+ * fill instead of repainting a second, double-composited mix.
  * @param tokens - current alias tokens (may be empty for DeepSeek).
  * @param mode - resolved half, picks the sheet fallbacks.
  * @param solidity - percent of the solid fill kept (the user's glass opacity).
+ * @param terminalSolidity - percent of the terminal pane fill kept (the
+ *   user's terminal opacity setting).
  * @returns a new token dictionary.
  */
-export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark', solidity: number): ThemeTokens {
+export function mixWallpaperSurfaces(
+  tokens: ThemeTokens,
+  mode: 'light' | 'dark',
+  solidity: number,
+  terminalSolidity: number,
+): ThemeTokens {
   const next: ThemeTokens = { ...tokens }
   const kept = Math.min(100, Math.max(0, Math.round(solidity)))
   const canvas = wallpaperCanvasSolidity(kept)
@@ -438,8 +464,11 @@ export function mixWallpaperSurfaces(tokens: ThemeTokens, mode: 'light' | 'dark'
       : `color-mix(in srgb, ${solid} ${percent}%, transparent)`
   }
   const pane = tokens['--dsw-alias-bg-base']
-  next['--dsw-alias-terminal-pane'] =
-    pane !== undefined && !pane.includes('color-mix') ? pane : base
+  const paneSolid = pane !== undefined && !pane.includes('color-mix') ? pane : base
+  const paneKept = Math.min(100, Math.max(0, Math.round(terminalSolidity)))
+  next['--dsw-alias-terminal-pane'] = paneKept >= 100
+    ? paneSolid
+    : `color-mix(in srgb, ${paneSolid} ${paneKept}%, transparent)`
   return next
 }
 

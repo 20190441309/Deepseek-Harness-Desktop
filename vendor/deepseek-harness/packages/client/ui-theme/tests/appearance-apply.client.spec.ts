@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  appearanceFontStack, applyAppearanceDocumentExtras, cssFontFamilies, quoteFontFamilyName,
+  appearanceFontStack, applyAppearanceDocumentExtras, cssFontFamilies, METALLIC_PAINT_ATTR,
+  quoteFontFamilyName,
 } from '../src/appearance-apply.ts'
 import {
   GRADIENT_ATTR, GRADIENT_LAYER_ID, TRANSPARENT_ATTR, WALLPAPER_ATTR, WALLPAPER_LAYER_ID,
@@ -10,6 +11,7 @@ import { CURSOR_FX_LAYER_ID } from '../src/cursor-fx.ts'
 
 afterEach(() => {
   document.documentElement.style.fontSize = ''
+  document.documentElement.removeAttribute(METALLIC_PAINT_ATTR)
   document.documentElement.style.removeProperty('--dsw-font-family')
   document.documentElement.style.removeProperty('--ds-font-family-code')
   document.documentElement.style.removeProperty('--dsw-font-size-code')
@@ -130,5 +132,19 @@ describe('applyAppearanceDocumentExtras', () => {
     applyAppearanceDocumentExtras({ ...base, transparentTheme: false, wallpaperImage: png })
     expect(document.documentElement.hasAttribute(TRANSPARENT_ATTR)).toBe(false)
     applyAppearanceDocumentExtras(base)
+  })
+
+  it('flips the metallic-paint attribute from the button-sheen flag', () => {
+    const base = { fontFamilySans: '', fontFamilyCode: '', fontSizeInterface: 16, fontSizeCode: 13 }
+    // Absent flag keeps the shipped default: the sheen stays on.
+    applyAppearanceDocumentExtras(base)
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
+    applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: true })
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
+    // Off drops the attribute the CSS rule keys on.
+    applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: false })
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(false)
+    applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: true })
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
   })
 })

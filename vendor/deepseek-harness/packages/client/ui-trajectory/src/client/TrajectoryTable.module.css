@@ -8,7 +8,7 @@
   width: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--dsw-alias-bg-layer-1);
+  background: transparent;
   container-type: inline-size;
 }
 
@@ -129,7 +129,7 @@
   border-spacing: 0;
   table-layout: fixed;
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-layer-1);
+  background: transparent;
   font: var(--dsw-font-xxs-12);
 }
 

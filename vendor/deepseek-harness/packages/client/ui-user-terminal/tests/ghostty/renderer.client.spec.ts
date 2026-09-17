@@ -231,6 +231,70 @@ describe("renderGhosttySnapshot", () => {
     expect(fillTextCalls).toEqual([["abx", 4, 15, 21.6]]);
   });
 
+  it("clears repaint regions back to the DOM fill when the pane is translucent", () => {
+    const clearedRects: number[][] = [];
+    const fills: number[][] = [];
+    const context = {
+      canvas: { width: 200, height: 80 },
+      beginPath: () => {},
+      clip: () => {},
+      clearRect: (...args: number[]) => clearedRects.push(args),
+      fillRect: (...args: number[]) => fills.push(args),
+      fillText: () => {},
+      rect: () => {},
+      resetTransform: () => {},
+      restore: () => {},
+      save: () => {},
+      set fillStyle(_value: string) {},
+      set font(_value: string) {},
+      set textBaseline(_value: string) {},
+    } as unknown as CanvasRenderingContext2D;
+    const explicitBackground = { ...cell("a"), background: { r: 200, g: 0, b: 0 } };
+    const snapshot: GhosttySnapshot = {
+      cols: 4,
+      rows: 2,
+      foreground: { r: 255, g: 255, b: 255 },
+      background: { r: 0, g: 0, b: 0 },
+      cursor: { r: 255, g: 255, b: 255 },
+      cursorX: -1,
+      cursorY: -1,
+      cursorVisible: false,
+      cursorBlinking: false,
+      cursorStyle: 1,
+      dirtyRows: new Set([0, 1]),
+      rowData: [0, 1].map(() => ({
+        cells: [explicitBackground, cell("b"), cell("c"), cell("d")],
+        text: "abcd",
+        isWrapContinuation: false,
+        wrapsToNext: false,
+      })),
+    };
+
+    renderGhosttySnapshot({
+      context,
+      snapshot,
+      metrics: { width: 10, height: 20, baseline: 15 },
+      fontSize: 12,
+      fontFamily: "monospace",
+      padding: 4,
+      forceFull: true,
+      cursorOn: false,
+      backgroundOpacity: 0.75,
+    });
+
+    // The canvas and each row clear instead of repainting the translucent
+    // base, while an explicit SGR cell background still paints its own fill.
+    expect(clearedRects).toEqual([
+      [0, 0, 200, 80],
+      [4, 4, 40, 20],
+      [4, 24, 40, 20],
+    ]);
+    expect(fills).toEqual([
+      [4, 4, 10, 20],
+      [4, 24, 10, 20],
+    ]);
+  });
+
   it("repaints the previous cursor row after the cursor moves", () => {
     const clearedRows: number[] = [];
     const context = {

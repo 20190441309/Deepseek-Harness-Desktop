@@ -460,15 +460,21 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().wallpaperBlur).toBe(25)
     expect(theme.getTheme().wallpaperPixelate).toBe(40)
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
-    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toContain('var(--dsw-static-neutral-bluish-00)')
+    // The pane keeps its own default (75%), not the 80% glass slider.
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toContain('75%')
+    theme.setTerminalOpacity(50)
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toContain('50%')
     theme.setTheme('dark')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-950)')
-    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-950)')
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toContain('var(--dsw-static-neutral-bluish-950)')
+    expect(theme.getTheme().active.tokens['--dsw-alias-terminal-pane']).toContain('50%')
     theme.setTheme('light')
     theme.setThemeHalf('light', 'celadon')
     expect(theme.getTheme().active.tokens['--dsw-alias-bg-base']).toContain('#f3faf7')
     flushWrites()
     expect(host.set).toHaveBeenCalledWith('wallpaperImage', png)
+    expect(host.set).toHaveBeenCalledWith('terminalOpacity', 50)
     theme.setWallpaper({ wallpaperImage: png, wallpaperBlur: 25, wallpaperPixelate: 40 })
     theme.setWallpaper({ wallpaperImage: 'javascript:alert(1)' })
     expect(theme.getTheme().wallpaperImage).toBe('')
@@ -614,8 +620,9 @@ describe('ThemeRuntime', () => {
     expect(tokens['--dsw-alias-bg-base']).toContain('0%')
     expect(tokens['--dsw-alias-bg-layer-1']).toContain('0%')
     expect(tokens['--dsw-specific-sidebar-fill']).toContain('0%')
-    // TUI SGR must not sit on wallpaper glass: the terminal pane stays solid.
-    expect(tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+    // The terminal pane keeps its own slider value (default 75%) even while
+    // the transparent theme zeroes the other surfaces.
+    expect(tokens['--dsw-alias-terminal-pane']).toContain('75%')
     // Turning the flag off restores the glass slider.
     theme.setTransparentTheme(false)
     expect(theme.getTheme().active.tokens['--dsw-alias-glass-opacity']).toBe('80%')
@@ -654,6 +661,24 @@ describe('ThemeRuntime', () => {
     // Same-value set is a no-op.
     const published = events.length
     theme.setSidebarMask(true)
+    expect(events.length).toBe(published)
+  })
+
+  it('persists the button hover-sheen flag and republishes', () => {
+    const { theme, host, events } = make()
+    // Shipped default: the sheen is on.
+    expect(theme.getTheme().metallicPaintEnabled).toBe(true)
+    theme.setMetallicPaint(false)
+    expect(theme.getTheme().metallicPaintEnabled).toBe(false)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('metallicPaintEnabled', false)
+    theme.setMetallicPaint(true)
+    expect(theme.getTheme().metallicPaintEnabled).toBe(true)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('metallicPaintEnabled', true)
+    // Same-value set is a no-op.
+    const published = events.length
+    theme.setMetallicPaint(true)
     expect(events.length).toBe(published)
   })
 

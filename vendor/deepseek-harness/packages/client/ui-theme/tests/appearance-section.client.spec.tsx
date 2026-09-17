@@ -97,6 +97,7 @@ function snap(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSn
     activeDarkThemeId: 'deepseek',
     customThemes,
     glassOpacity: DEFAULT_THEME_SETTINGS.glassOpacity,
+    terminalOpacity: DEFAULT_THEME_SETTINGS.terminalOpacity,
     transparentTheme: false,
     sidebarMaskHidden: DEFAULT_THEME_SETTINGS.sidebarMaskHidden,
     wallpaperImage: '',
@@ -138,10 +139,12 @@ function mount(
   const setCustomThemes = vi.fn()
   const previewTheme = vi.fn()
   const setGlassOpacity = vi.fn()
+  const setTerminalOpacity = vi.fn()
   const setTransparentTheme = vi.fn()
   const setSidebarMask = vi.fn()
   const setWallpaper = vi.fn()
   const setCursorFx = vi.fn()
+  const setMetallicPaint = vi.fn()
   const setTypography = vi.fn()
   const setWallpaperSources = vi.fn()
   const setWallpaperFavorites = vi.fn()
@@ -161,17 +164,20 @@ function mount(
     setCustomThemes,
     previewTheme,
     setGlassOpacity,
+    setTerminalOpacity,
     setTransparentTheme,
     setSidebarMask,
     setWallpaper,
     setCursorFx,
+    setMetallicPaint,
     setTypography,
     ...(wallpaper !== undefined ? { setWallpaperSources, setWallpaperFavorites } : {}),
   }
   const view = render(<AppearanceSection {...props} />)
   return {
-    store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setTransparentTheme,
-    setSidebarMask, setWallpaper, setCursorFx, setTypography, setWallpaperSources, setWallpaperFavorites, ...view,
+    store, setTheme, setThemeHalf, setCustomThemes, previewTheme, setGlassOpacity, setTerminalOpacity,
+    setTransparentTheme, setSidebarMask, setWallpaper, setCursorFx, setMetallicPaint, setTypography,
+    setWallpaperSources, setWallpaperFavorites, ...view,
   }
 }
 
@@ -395,6 +401,20 @@ describe('AppearanceSection', () => {
     expect(b.setTransparentTheme).toHaveBeenCalledWith(false)
   })
 
+  it('writes terminal opacity independently of the glass slider and hints below the bound', () => {
+    const b = mount('system')
+    const slider = screen.getByRole('slider', { name: COPY['glass.terminal'] }) as HTMLInputElement
+    expect(slider.disabled).toBe(false)
+    // The ambient gradient ships on, so the default copy describes the live rule.
+    expect(screen.getByText(COPY['glass.terminalHint'])).toBeDefined()
+    fireEvent.change(slider, { target: { value: '60' } })
+    expect(b.setTerminalOpacity).toHaveBeenCalledWith(60)
+    act(() => { b.store.actions.sync(snap({ terminalOpacity: 60 }), 1) })
+    expect(screen.getByText(COPY['glass.terminalDeepHint'])).toBeDefined()
+    act(() => { b.store.actions.sync(snap({ terminalOpacity: 60, backgroundEffect: 'none' }), 2) })
+    expect(screen.getByText(COPY['glass.terminalNeedsBackdrop'])).toBeDefined()
+  })
+
   it('toggles the sidebar mask independently of the wallpaper state', () => {
     const b = mount('system')
     expect(screen.getByText(COPY['glass.sidebarMaskHint'])).toBeDefined()
@@ -506,11 +526,12 @@ describe('AppearanceSection', () => {
     expect(screen.getByRole('button', { name: '浏览图库' })).toBeDefined()
     expect(screen.queryByRole('heading', { name: '图源' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '图库来源' })).toBeNull()
-    // Transparent theme, sidebar mask, background effect, and cursor effect are the only switches; no source switches.
-    expect(screen.getAllByRole('switch')).toHaveLength(4)
+    // Transparent theme, sidebar mask, background effect, cursor effect, and button sheen are the only switches; no source switches.
+    expect(screen.getAllByRole('switch')).toHaveLength(5)
     expect(screen.getByRole('switch', { name: COPY['glass.transparent'] })).toBeDefined()
     expect(screen.getByRole('switch', { name: COPY['glass.sidebarMask'] })).toBeDefined()
     expect(screen.getByRole('switch', { name: COPY['cursorFx.title'] })).toBeDefined()
+    expect(screen.getByRole('switch', { name: COPY['metallicPaint.title'] })).toBeDefined()
     expect(screen.queryByText('Bing 每日壁纸')).toBeNull()
     expect(screen.queryByLabelText('壁纸目录地址')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增图源' })).toBeNull()
@@ -741,6 +762,12 @@ describe('AppearanceSection', () => {
     const b = mount('system')
     fireEvent.click(screen.getByRole('switch', { name: COPY['cursorFx.title'] }))
     expect(b.setCursorFx).toHaveBeenCalledWith({ cursorEffectEnabled: true })
+  })
+
+  it('toggles the button sheen through setMetallicPaint', () => {
+    const b = mount('system', { metallicPaintEnabled: true })
+    fireEvent.click(screen.getByRole('switch', { name: COPY['metallicPaint.title'] }))
+    expect(b.setMetallicPaint).toHaveBeenCalledWith(false)
   })
 
   it('saves the chosen effect and preset scheme through the cursor dialog', () => {

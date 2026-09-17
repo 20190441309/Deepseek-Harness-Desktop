@@ -1,13 +1,15 @@
 /* Metallic-paint hover sheen (React Bits MetallicPaint, CSS port): translucent
  * bands sweep across a hovered button, layered on top of the variant's own
- * hover fill. The sheen is the button's own background-image, so it clips to
+ * hover fill. Activated by html[data-dsh-metallic-paint] — the Appearance
+ * 按钮悬停光泽 switch drops the attribute, leaving the plain hover fill.
+ * The sheen is the button's own background-image, so it clips to
  * the control's border-radius (including corner-shape) without touching
  * position, overflow, or the ::before/::after pseudo-elements. Bands derive
  * from the label alias tokens: label-primary-foreground is the on-primary text
  * color (always contrasts button fills, so glyphs keep contrast), label-primary
  * is the theme ink, label-secondary the mid tone — the pair inverts with the
  * theme's light/dark half and tints with custom themes. */
-button:not(:disabled):not([aria-disabled='true']):hover {
+html[data-dsh-metallic-paint] button:not(:disabled):not([aria-disabled='true']):hover {
   background-image: linear-gradient(
     115deg,
     color-mix(in srgb, var(--dsw-alias-label-secondary) 14%, transparent) 0%,
@@ -30,7 +32,7 @@ button:not(:disabled):not([aria-disabled='true']):hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  button:not(:disabled):not([aria-disabled='true']):hover {
+  html[data-dsh-metallic-paint] button:not(:disabled):not([aria-disabled='true']):hover {
     animation: none;
   }
 }

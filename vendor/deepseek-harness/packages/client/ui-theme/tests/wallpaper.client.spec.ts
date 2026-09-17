@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   GRADIENT_ATTR, GRADIENT_BLOBS_ID, GRADIENT_LAYER_ID,
-  MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, TRANSPARENT_ATTR, TRANSPARENT_GLASS_SOLIDITY,
+  MAX_WALLPAPER_DATA_URL_CHARS, MAX_WALLPAPER_CANVAS_SOLIDITY, TERMINAL_PANE_MIN_SOLIDITY,
+  TRANSPARENT_ATTR, TRANSPARENT_GLASS_SOLIDITY,
   WALLPAPER_ATTR, WALLPAPER_INNER_ID, WALLPAPER_LAYER_ID,
   applyWallpaperLayer, clampWallpaperEffect, downscaleWallpaper, encodeWallpaperFile,
   isWallpaperDataUrl, mixWallpaperSurfaces, readFileAsDataUrl, wallpaperBlurPx,
@@ -48,30 +49,34 @@ describe('wallpaper helpers', () => {
   })
 
   it('mixes layered chrome fills at the given solidity and keeps an existing hex', () => {
-    const light = mixWallpaperSurfaces({}, 'light', 80)
+    const light = mixWallpaperSurfaces({}, 'light', 80, TERMINAL_PANE_MIN_SOLIDITY)
     expect(light['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
     // Canvas 45% (capped), sidebar halfway (63%), raised layers at the full 80%.
     expect(light['--dsw-alias-bg-base']).toContain('45%')
     expect(light['--dsw-specific-sidebar-fill']).toContain('63%')
     expect(light['--dsw-alias-bg-layer-1']).toContain('80%')
-    const low = mixWallpaperSurfaces({}, 'light', 40)
+    // The terminal pane keeps its own slider value instead of following glass.
+    expect(light['--dsw-alias-terminal-pane']).toContain('75%')
+    const low = mixWallpaperSurfaces({}, 'light', 40, TERMINAL_PANE_MIN_SOLIDITY)
     expect(low['--dsw-alias-bg-base']).toContain('15%')
     expect(low['--dsw-specific-sidebar-fill']).toContain('28%')
-    const dark = mixWallpaperSurfaces({ '--dsw-alias-bg-base': '#120e18' }, 'dark', 70)
+    const dark = mixWallpaperSurfaces({ '--dsw-alias-bg-base': '#120e18' }, 'dark', 70, 60)
     expect(dark['--dsw-alias-bg-base']).toContain('#120e18')
     expect(dark['--dsw-alias-bg-base']).toContain('color-mix')
     expect(dark['--dsw-alias-bg-layer-1']).toContain('70%')
     const already = mixWallpaperSurfaces({
       '--dsw-alias-bg-base': 'color-mix(in srgb, #fff 58%, transparent)',
-    }, 'light', 120)
+    }, 'light', 120, 120)
     expect(already['--dsw-alias-bg-base']).toContain('var(--dsw-static-neutral-bluish-00)')
     expect(already['--dsw-alias-bg-base']).toContain(`${MAX_WALLPAPER_CANVAS_SOLIDITY}%`)
-    const solid = mixWallpaperSurfaces({}, 'light', 100)
+    const solid = mixWallpaperSurfaces({}, 'light', 100, 100)
     expect(solid['--dsw-alias-bg-base']).toContain(`${MAX_WALLPAPER_CANVAS_SOLIDITY}%`)
     expect(solid['--dsw-specific-sidebar-fill']).toBe('var(--dsw-static-neutral-bluish-00)')
     expect(solid['--dsw-alias-bg-layer-1']).toBe('var(--dsw-static-neutral-bluish-00)')
     expect(solid['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
-    expect(dark['--dsw-alias-terminal-pane']).toBe('#120e18')
+    // An explicit value below the readability bound is honored — the UI only
+    // hints about TUI selection, it does not clamp the user's choice.
+    expect(dark['--dsw-alias-terminal-pane']).toBe('color-mix(in srgb, #120e18 60%, transparent)')
   })
 
   it('dims the wallpaper bitmap with mask-1 and does not blur the terminal pane', () => {
@@ -81,12 +86,12 @@ describe('wallpaper helpers', () => {
   })
 
   it('mixes every chrome surface to 0% at the transparent-theme solidity', () => {
-    const tokens = mixWallpaperSurfaces({}, 'light', TRANSPARENT_GLASS_SOLIDITY)
+    const tokens = mixWallpaperSurfaces({}, 'light', TRANSPARENT_GLASS_SOLIDITY, TERMINAL_PANE_MIN_SOLIDITY)
     expect(tokens['--dsw-alias-bg-base']).toContain('0%')
     expect(tokens['--dsw-alias-bg-layer-1']).toContain('0%')
     expect(tokens['--dsw-alias-bg-layer-2']).toContain('0%')
     expect(tokens['--dsw-specific-sidebar-fill']).toContain('0%')
-    expect(tokens['--dsw-alias-terminal-pane']).toBe('var(--dsw-static-neutral-bluish-00)')
+    expect(tokens['--dsw-alias-terminal-pane']).toContain(`${TERMINAL_PANE_MIN_SOLIDITY}%`)
   })
 
   it('drops the wallpaper dim mask under the transparent-theme attribute', () => {

@@ -10,7 +10,9 @@
   width: 100%;
   box-sizing: border-box;
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-layer-1);
+  /* Canvas view like Chat: the shell's `--dsw-alias-bg-base` canvas shows
+     through so a wallpaper or the ambient gradient reaches this tab. */
+  background: transparent;
 }
 
 .ledger {

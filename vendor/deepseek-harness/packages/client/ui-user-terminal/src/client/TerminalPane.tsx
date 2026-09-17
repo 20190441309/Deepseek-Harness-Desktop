@@ -144,7 +144,10 @@ export function TerminalPane({
       })
       themeObserver.observe(host.ownerDocument.body, {
         attributes: true,
-        attributeFilter: ['data-ds-dark-theme'],
+        // The presenter writes the mixed surface tokens (the pane fill among
+        // them) as inline custom properties on body, so style must be in the
+        // filter for glass-slider and wallpaper changes to reach the canvas.
+        attributeFilter: ['data-ds-dark-theme', 'style'],
       })
       const fitTimer = window.setTimeout(() => {
         const activeTerminal = termRef.current

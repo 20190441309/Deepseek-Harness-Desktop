@@ -1,27 +1,41 @@
 import type { GhosttyColor, GhosttyTheme } from './ghostty/core.ts'
 import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from './ghostty/surface.ts'
 
-/** Copied from ThreadTerminalDrawer `parseTerminalColor`. */
-function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor {
-  if (typeof document === "undefined") return fallback;
+interface TerminalColorProbe {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+  readonly a: number;
+}
+
+/** Paints a color onto a 1x1 canvas and reads the resolved RGBA back. */
+function probeTerminalColor(value: string): TerminalColorProbe | null {
+  if (typeof document === "undefined") return null;
 
   const canvas = document.createElement("canvas");
   canvas.width = 1;
   canvas.height = 1;
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return fallback;
+  if (!context) return null;
 
   context.clearRect(0, 0, 1, 1);
+  // A color string the canvas cannot parse leaves its fillStyle assignment
+  // ignored; the sentinel underneath keeps that case from reading as black.
+  context.fillStyle = "rgb(7, 8, 9)";
   context.fillStyle = value;
   context.fillRect(0, 0, 1, 1);
   const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
-  if (alpha === 0) return fallback;
+  if (red === 7 && green === 8 && blue === 9 && alpha === 255) return null;
 
-  return {
-    r: red ?? fallback.r,
-    g: green ?? fallback.g,
-    b: blue ?? fallback.b,
-  };
+  return { r: red ?? 0, g: green ?? 0, b: blue ?? 0, a: alpha ?? 255 };
+}
+
+/** Copied from ThreadTerminalDrawer `parseTerminalColor`. */
+function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor {
+  const probe = probeTerminalColor(value);
+  if (probe === null || probe.a === 0) return fallback;
+
+  return { r: probe.r, g: probe.g, b: probe.b };
 }
 
 /** Copied from ThreadTerminalDrawer `normalizeComputedColor`. */
@@ -71,11 +85,19 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
     normalizeComputedColor(bodyStyles.color, fallbackForeground),
   );
 
+  const backgroundProbe = probeTerminalColor(background);
+
   return {
-    background: parseTerminalColor(
-      background,
-      isDark ? { r: 14, g: 18, b: 24 } : { r: 255, g: 255, b: 255 },
-    ),
+    background:
+      backgroundProbe === null || backgroundProbe.a === 0
+        ? isDark
+          ? { r: 14, g: 18, b: 24 }
+          : { r: 255, g: 255, b: 255 }
+        : { r: backgroundProbe.r, g: backgroundProbe.g, b: backgroundProbe.b },
+    // The pane fill carries glass alpha while a backdrop is live; the
+    // renderer then clears to the DOM fill instead of compositing a second
+    // mix on top of it.
+    backgroundOpacity: backgroundProbe === null ? 1 : backgroundProbe.a / 255,
     foreground: parseTerminalColor(
       foreground,
       isDark ? { r: 237, g: 241, b: 247 } : { r: 28, g: 33, b: 41 },

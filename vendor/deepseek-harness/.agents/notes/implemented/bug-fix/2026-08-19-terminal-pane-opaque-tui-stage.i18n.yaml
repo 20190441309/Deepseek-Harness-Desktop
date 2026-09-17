@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-19-terminal-pane-opaque-tui-stage.md
-2026-08-19-terminal-pane-opaque-tui-stage.md: 9abe6f1d622ef2d079b703ed123af7064dbcccf7
-2026-08-19-terminal-pane-opaque-tui-stage.zh.md: d32ac1711e1e5116d5fb87e742dba454f496b7e1
+2026-08-19-terminal-pane-opaque-tui-stage.md: e515e5698ec9715cd54ea48a130029448afa919c
+2026-08-19-terminal-pane-opaque-tui-stage.zh.md: 2b09a98314260d6e8347b0dcd97772cc476021f3

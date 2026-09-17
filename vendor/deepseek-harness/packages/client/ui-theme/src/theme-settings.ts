@@ -18,8 +18,9 @@ import {
 import {
   BACKGROUND_EFFECT_VARIANTS, DEFAULT_BACKGROUND_EFFECT_COUNT,
   DEFAULT_BACKGROUND_EFFECT_SPEED, DEFAULT_BACKGROUND_EFFECT_VARIANT,
-  DEFAULT_WALLPAPER_EFFECT, MAX_BACKGROUND_EFFECT_COUNT, MAX_BACKGROUND_EFFECT_SPEED,
-  MAX_WALLPAPER_EFFECT, MIN_BACKGROUND_EFFECT_COUNT, MIN_BACKGROUND_EFFECT_SPEED,
+  DEFAULT_TERMINAL_OPACITY, DEFAULT_WALLPAPER_EFFECT, MAX_BACKGROUND_EFFECT_COUNT,
+  MAX_BACKGROUND_EFFECT_SPEED, MAX_TERMINAL_OPACITY, MAX_WALLPAPER_EFFECT,
+  MIN_BACKGROUND_EFFECT_COUNT, MIN_BACKGROUND_EFFECT_SPEED, MIN_TERMINAL_OPACITY,
   MIN_WALLPAPER_EFFECT, sanitizeBackgroundEffectColors,
 } from './wallpaper.ts'
 import {
@@ -54,6 +55,9 @@ export const THEME_CUSTOM_THEMES_FIELD = 'customThemes'
 
 /** Field carrying glass-surface opacity. */
 export const THEME_GLASS_OPACITY_FIELD = 'glassOpacity'
+
+/** Field carrying the terminal pane's own solidity (终端透明度). */
+export const THEME_TERMINAL_OPACITY_FIELD = 'terminalOpacity'
 
 /** Field toggling the fully transparent chrome (透明主题). */
 export const THEME_TRANSPARENT_FIELD = 'transparentTheme'
@@ -117,6 +121,9 @@ export const THEME_CURSOR_EFFECT_SIZE_FIELD = 'cursorEffectSize'
 
 /** Field naming the selected pointer scheme (a preset id or `custom`). */
 export const THEME_CURSOR_EFFECT_PRESET_FIELD = 'cursorEffectPreset'
+
+/** Field toggling the button hover sheen (按钮悬停光泽). */
+export const THEME_METALLIC_PAINT_FIELD = 'metallicPaintEnabled'
 
 /** Built-in and user catalog kinds accepted in the gallery source list. */
 export type WallpaperSourceKind = 'bing' | 'wallhaven' | 'catalog'
@@ -227,6 +234,12 @@ export interface ThemeSettings {
   /** Overlay / menu / composer solidity, 40–100. */
   glassOpacity: number
   /**
+   * Terminal pane solidity under a live backdrop, 40–100; independent of the
+   * glass slider so the terminal can stay calmer (or more see-through) than
+   * the surrounding chrome. Defaults to the TUI-readability bound (75).
+   */
+  terminalOpacity: number
+  /**
    * Transparent theme (透明主题): with a wallpaper set, every chrome surface
    * drops its fill so the image shows through unmasked. Overrides the glass
    * slider while active; without a wallpaper the flag is stored but inert.
@@ -289,6 +302,12 @@ export interface ThemeSettings {
   cursorEffectSize: number
   /** Selected pointer scheme: a preset id, or `custom` once the user edits. */
   cursorEffectPreset: CursorEffectPreset
+  /**
+   * Button hover sheen (按钮悬停光泽): while on, hovered native buttons get
+   * the metallic-paint sweep on top of their variant hover fill; off leaves
+   * the plain hover fill.
+   */
+  metallicPaintEnabled: boolean
   /** Optional interface font-family override; empty keeps the sheet stack. */
   fontFamilySans: string
   /** Optional monospace font-family override; empty keeps the sheet stack. */
@@ -311,6 +330,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   activeDarkThemeId: DEFAULT_FAMILY_ID,
   customThemes: [],
   glassOpacity: DEFAULT_GLASS_OPACITY,
+  terminalOpacity: DEFAULT_TERMINAL_OPACITY,
   transparentTheme: false,
   sidebarMaskHidden: true,
   wallpaperImage: '',
@@ -332,6 +352,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   cursorEffectSpeed: DEFAULT_CURSOR_EFFECT_SPEED,
   cursorEffectSize: DEFAULT_CURSOR_EFFECT_SIZE,
   cursorEffectPreset: 'default',
+  metallicPaintEnabled: true,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_INTERFACE_FONT_SIZE,
@@ -371,6 +392,8 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [THEME_CUSTOM_THEMES_FIELD]: z.array(ThemeFamilySchema).default([]),
   [THEME_GLASS_OPACITY_FIELD]: z.number().min(MIN_GLASS_OPACITY).max(MAX_GLASS_OPACITY)
     .default(DEFAULT_GLASS_OPACITY),
+  [THEME_TERMINAL_OPACITY_FIELD]: z.number().min(MIN_TERMINAL_OPACITY).max(MAX_TERMINAL_OPACITY)
+    .default(DEFAULT_TERMINAL_OPACITY),
   [THEME_TRANSPARENT_FIELD]: z.boolean().default(false),
   [THEME_SIDEBAR_MASK_FIELD]: z.boolean().default(true),
   [THEME_WALLPAPER_IMAGE_FIELD]: z.string().default(''),
@@ -404,6 +427,7 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
     .min(MIN_CURSOR_EFFECT_SIZE).max(MAX_CURSOR_EFFECT_SIZE)
     .default(DEFAULT_CURSOR_EFFECT_SIZE),
   [THEME_CURSOR_EFFECT_PRESET_FIELD]: z.union([...CURSOR_EFFECT_PRESETS]).default('default'),
+  [THEME_METALLIC_PAINT_FIELD]: z.boolean().default(true),
   fontFamilySans: z.string().default(''),
   fontFamilyCode: z.string().default(''),
   fontSizeInterface: z.number().min(MIN_INTERFACE_FONT_SIZE).max(MAX_INTERFACE_FONT_SIZE)
