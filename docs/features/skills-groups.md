@@ -46,5 +46,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Implementation: `vendor/deepseek-harness/packages/client/ui-settings-skills/src/client/SkillsSection.tsx`（GroupTagPicker）、`packages/host/skill-inventory/src/index.ts`（normalizeMetadataGroups）
 - 邻接卡: [settings-select.md](settings-select.md)（来源筛选下拉）

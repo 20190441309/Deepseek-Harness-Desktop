@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `background-gradient` |
 | **status** | `active` |
-| **last verified** | 2026-09-14 — 安装默认改为开：预设 `aurora` + 极光色板、速度 190%；`DEFAULT_BACKGROUND_EFFECT_SPEED` 归位产品默认，`NEUTRAL_BACKGROUND_EFFECT_SPEED=100` 作 `--dsh-gradient-speed` 除数基准 |
+| **last verified** | 2026-09-17 — 轨迹页画布改透明（`.root` / `.split` / `.table` / 工具栏），壁纸与特效透出到轨迹 tab，与对话画布一致；同日终端 pane 加入混色（保底 `TERMINAL_PANE_MIN_SOLIDITY`=75），Ghostty 画布改 `{alpha:true}` 并清屏回 DOM 填充。此前 2026-09-14 — 安装默认改为开：预设 `aurora` + 极光色板、速度 190%；`DEFAULT_BACKGROUND_EFFECT_SPEED` 归位产品默认，`NEUTRAL_BACKGROUND_EFFECT_SPEED=100` 作 `--dsh-gradient-speed` 除数基准 |
 
 ## User paths
 
@@ -25,6 +25,7 @@
 - 颜色默认值只来自主题表 `--dsw-specific-gradient-*` token（`design-platform.css` 明、暗两半各一份）；用户覆盖写成 `#dsh-gradient` 内联 `--dsh-gradient-*` 变量，功能 CSS 用 `var(--dsh-*, var(--dsw-*))` 回退链，不写颜色字面量、不写明暗分支。速度覆盖是 `--dsh-gradient-speed` 除数。
 - 动效只动 transform：光斑循环位移（20–40s 基准 ÷ 速度系数，设计值不进 token 表，登记在 motion.md 指示器家族）；`prefers-reduced-motion` 下光斑动画全停。
 - 特效生效时 `mixWallpaperSurfaces` 按玻璃透明度混合表层（与壁纸同一套）；透明主题仍只认背景图，特效不算壁纸、不触发 0% 填充。
+- 终端 pane（`--dsw-alias-terminal-pane`）同样参与混色，但保底 `TERMINAL_PANE_MIN_SOLIDITY`（75）实心度——无单元格背景的 TUI 选中行保持可读；Ghostty 画布 `{alpha:true}`，半透明底时重绘区 `clearRect` 回 DOM 填充（不二次合成），显式 SGR 背景仍实心。
 - 设置 UI 是独立「背景特效」行（标题 + 说明 + 齿轮 + Switch），配置收进 `Modal` 弹窗（预览 + 预设卡片 + 自定义编辑器 + 重置/取消/保存），控件不进壁纸行、不在 Appearance 页内联展开。
 - 会话骨架对特效一视同仁：`.composerSeat` 渐变压暗带在 `data-dsh-gradient` 下同样变透明；`.scrollBody` 的 WebKit 滑块默认透明，仅 `:hover`/`:active` 时着色（8px 槽位常留，不挪布局）。
 
@@ -36,6 +37,9 @@
 - `vendor/deepseek-harness/packages/client/ui-theme/src/styles/design-platform.css`（`--dsw-specific-gradient-*` token）、`src/styles/wallpaper.css`
 - `vendor/deepseek-harness/packages/client/ui-theme/src/client/BackgroundEffectRow.tsx`、`effect-presets.ts`、`AppearanceSection.tsx`（仅特效行接线）、`AppearanceSection.module.css`、`locales.ts`
 - `vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css`（`.composerSeat` 特效放开、`.scrollBody` 滑块悬停显示）
+- `vendor/deepseek-harness/packages/client/ui-trajectory/src/client/{views,TrajectoryTable,TrajectoryToolbar}.module.css`（轨迹画布去实底，透出 AppFrame 的 `bg-base` 混色）
+- `vendor/deepseek-harness/packages/client/ui-user-terminal/src/client/terminal-theme.ts`、`src/client/ghostty/{core,renderer,surface}.ts` 及对应 `tests/`（pane 混色 alpha 读取、alpha 画布、清屏渲染）
+- `vendor/deepseek-harness/.agents/notes/implemented/` 终端 pane 混色相关 note
 - `vendor/deepseek-harness/packages/client/ui-theme/tests/` 相关 spec、`ui-layout/tests/theme-presenter.client.spec.ts` 快照字面量
 - 本卡、[.cursor/rules/background-gradient-product.mdc](../../.cursor/rules/background-gradient-product.mdc)、design-language / motion 对应段落
 
@@ -54,6 +58,8 @@
 | Manual / QA | [TC-APP-015](../qa/production-acceptance-test-cases.md)（§9 外观与壁纸图库） |
 
 ## Sources
+
+- Decision: none
 
 - Reference: <https://ayase.cn/motion/#/component/background-gradient-animation>（Aceternity `BackgroundGradientAnimation` 移植；hard-light 循环光斑）
 - Design language: [../design-language.md](../design-language.md)；motion: [../motion.md](../motion.md)

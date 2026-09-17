@@ -47,6 +47,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Agent Note：[vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-29-composer-session-cost.md](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-29-composer-session-cost.md)
 - Implementation entry：`ui-conversation/src/client/chat/price-calculator.ts`、`chat/PeakValleyRow.tsx`、`chat/PriceSettingsPanel.tsx`、`settings/CostSettingsRow.tsx`、`token-meter/src/billed-usage-projection.ts`
 - 相关决策：[composer peak/valley status](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-29-composer-peak-valley-status.md)、[projected token usage](../../vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-07-29-projected-token-usage-and-request-context.md)

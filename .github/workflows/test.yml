@@ -25,6 +25,8 @@ jobs:
         run: npm ci
       - name: Download Electron binary
         run: node node_modules/electron/install.js
+      - name: Documentation governance (decisions, cards, pairing, links)
+        run: npm run doc-sync
       - name: Run desktop unit tests
         run: npm test
 

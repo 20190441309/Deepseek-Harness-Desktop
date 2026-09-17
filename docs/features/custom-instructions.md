@@ -41,5 +41,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Implementation entry：`ui-conversation/src/submission-settings.ts`（字段与上限）、`ui-conversation/src/index.ts`（section/variable 注册）、`ui-conversation/src/client/settings/CustomInstructionsRow.tsx`（设置块）
 - 参考截图：设置卡片形态（标题 + 说明 + textarea + `n / 1500` 计数）

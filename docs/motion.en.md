@@ -1,6 +1,6 @@
 # Motion
 
-[中文](motion.md) · English
+[中文](motion.md) | English
 
 This reference records the product motion contract and which surfaces use which recipe. Visual rules live in the [design language](design-language.en.md). Authoritative duration, easing, and distance values live in the baseline [`base.css`](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/base.css) and [`motion.css`](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/motion.css). Engineering rules: [`web-styling.md`](../vendor/deepseek-harness/docs/web-styling.md). Rationale: [the motion-system Agent Note](../vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.md).
 

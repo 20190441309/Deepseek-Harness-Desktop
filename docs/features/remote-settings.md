@@ -65,6 +65,8 @@
 
 ## Sources
 
+- Decision: none
+
 - [2026-09-08 ayase.cn 远程服务器迁移](../qa/results/2026-09-08/remote-ayase-deployment.md)
 - Plan：gateway_product_redo / fix_qr_pairing / [2026-08-28-remote-epipe-hardening](../superpowers/plans/2026-08-28-remote-epipe-hardening.md)
 - Vendored：`vendor/chisacode-remote/DESKTOP-FORK.md`

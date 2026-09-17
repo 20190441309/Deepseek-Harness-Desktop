@@ -12,6 +12,7 @@
 | [design-language.md](../design-language.md) / [motion.md](../motion.md) | 视觉与动效语言 | 否；卡片只链接 |
 | [superpowers/specs](../superpowers/specs/) / [plans](../superpowers/plans/) | 设计与施工过程 | 否；定稿后把**不变量**收进卡片 |
 | [qa/production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md) | 发版实机验收：每次发布前对 CI windows 安装包走完 | 否；卡片 `gates` 挂用例 ID |
+| [docs/decisions/](../decisions/README.md) | 决策记录：动机、被否方案、代价（含 rejected/archived 生命周期） | 否；卡只写「是什么」，「为什么」链到决策记录 |
 | harness Agent Notes | 上游决策记录 | 否；桌面相关卡可链接 |
 | `.cursor/rules/*.mdc` | 短 always-on 不变量 | 否；文末链到本卡，细节以卡为准 |
 
@@ -20,8 +21,10 @@
 ## 何时新建 / 更新
 
 - **新建：** 产品行为已定且会被反复改（尤其易被 Agent 冲掉）时，从 [_template.md](_template.md) 复制。
+- **status 取值：** `active` 现行契约；`proposed` 方案已定未落地；`killed` 负契约（防复活的死亡名单，文件名带 `_` 前缀）。被否提案不建卡，进 [decisions/rejected/](../decisions/README.md)。
 - **更新：** 不变量或关键路径变了；或改完后刷新 `last verified`。
 - **局部修复不改契约：** 会话写明「无卡 / 不改产品契约」，diff 仍应尽量小。
+- **非琐碎改动**还须同 PR 新增/更新 [docs/decisions/](../decisions/README.md) 决策记录。
 
 ## 会话开场模板
 
@@ -74,3 +77,6 @@ Gate: <卡上 gates>
 | [desktop-live2d-pet](desktop-live2d-pet.md) | 整屏透明 BrowserWindow 的 Live2D 鲸鱼娘伙伴：点击穿透、拖拽/抛掷物理、对话气泡、token 投喂成长与养成状态卡 | `desktop-live2d` / `pet-growth` / `pet-stats` / `pet-live2d.*` | `node --test` focused（101）；TC-DESK-011 |
 | [whale-assistant](whale-assistant.md) | 第一方 `dsh-whale` 插件：常驻 whale-girl 助理会话 + 设置分区 + 侧栏入口 + preset 统筹工具 + pet-outbox 桌宠桥 | `dsh-whale-desktop` / `vendor/dsh-whale` / `pet-dsh-watch` | `dsh-whale-desktop.test.js` + skip-compose 契约 |
 | [directory-picker-drives](directory-picker-drives.md) | 目录选择器 Win32 卷选择层：「此电脑」列出全部盘符，可跨盘选工作区 | vendor `directory-picker` / `directory-picker-browse` | vendor spec + marker 单测 |
+| [custom-instructions](custom-instructions.md) | 设置→通用自定义指令，作为系统提示词末段随每次请求发送 | `ui-conversation.customInstructions` / `SystemPromptProjection` | ui-conversation 定向测试 + 真实模型验证 |
+| [session-cost-display](session-cost-display.md) | 会话累计费用显示与按峰谷分桶计价；开关关闭时整行隐藏 | `PeakValleyRow` / `billedUsage` 投影 / `ui-model-selection` | vendor client specs + 设置开关回归 |
+| [skills-groups](skills-groups.md) | 技能分组多选 tag picker 与分组开关批量切换 | vendor skills 设置（fork） | vendor 51/51 + fork 门禁 |

@@ -47,6 +47,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook: [../handbook/appendix/settings-sections.md](../handbook/appendix/settings-sections.md)
 - Registry: `src/shared/harness-desktop-forks.js` `FORK_FILE_MARKERS`
 - Implementation: `packages/client/ui-primitives/src/SettingsSelect.tsx`

@@ -33,7 +33,7 @@ sequenceDiagram
 ## 门槛
 
 - QA：`TC-APP-002` … `TC-APP-010`
-- Feature card：[../features/wallpaper-gallery.md](../features/wallpaper-gallery.md)
+- Feature card：[../../features/wallpaper-gallery.md](../../features/wallpaper-gallery.md)
 
 ## 入口
 

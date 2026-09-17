@@ -79,4 +79,6 @@
 
 ## Sources
 
+- Decision: none
+
 - Implementation：`src/main/launcher-gate.js`、`src/renderer/launcher.html`、`src/renderer/theme.js`、`src/shared/themes.js`

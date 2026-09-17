@@ -157,6 +157,8 @@
 
 ## Sources
 
+- Decision: none
+
 - 2026-09-08 新域名部署与公网 E2E：[远程服务器迁移记录](../qa/results/2026-09-08/remote-ayase-deployment.md)。
 
 - 2026-09-06 目录一致性复核：公网旧版模块的成员筛选缺失已定向部署修复，缓存版本 `20260906T034605Z`；本地与公网浏览器目录 fixture 均 Pass，三个发布文件的公网哈希一致。未替换桌面安装版，不记双端会话实机全量 Pass。证据见 [归档与目录差异](../../tools/mobile-web-qa/results/2026-09-06-session-catalog.md)；复测命令为 `node tools/mobile-web-qa/run-catalog-parity-qa.mjs <公网 SPA 根 URL>`。

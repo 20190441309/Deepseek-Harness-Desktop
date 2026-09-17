@@ -285,6 +285,6 @@ preload `pet-live2d` 角色只暴露下表面（`window.shell`），主进程对
 ## 延伸阅读
 
 - Feature card：[desktop-live2d-pet](../../features/desktop-live2d-pet.md) / [desktop-pet](../../features/desktop-pet.md)
-- 设计语言宠物节：[../design-language.md#桌面宠物](../design-language.md#桌面宠物)
-- 集成计划：[../superpowers/plans/2026-09-14-pet-indesktop-integration.md](../superpowers/plans/2026-09-14-pet-indesktop-integration.md)
+- 设计语言宠物节：[../../design-language.md#桌面宠物](../../design-language.md#桌面宠物)
+- 集成计划：[../../superpowers/plans/2026-09-14-pet-indesktop-integration.md](../../superpowers/plans/2026-09-14-pet-indesktop-integration.md)
 - 模型管线：`C:\Ai\tha4`（Talking Head Anime 4 蒸馏 → ONNX RGBA）

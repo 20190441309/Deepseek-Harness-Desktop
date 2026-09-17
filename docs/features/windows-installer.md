@@ -49,6 +49,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Design: [design-language.md](../design-language.md)（官方浅色表 / 品牌蓝仅强调 / 鲸标；安装器 chrome 对齐「桌面启动器」一节，不是启动页仪器画布），[dsh-webui-tokens.css](../../src/shared/dsh-webui-tokens.css)，`assets/whale.svg`
 - Spec: electron-builder NSIS 选项（assisted installer 默认无欢迎页、默认 `nsis3-metro.bmp` 侧栏——本卡替换为品牌资产）
 - Implementation entry: `package.json` `build.nsis`、`build/installer.nsh`、`scripts/render-installer-assets.js`

@@ -47,6 +47,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Agent Note：[vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-29-composer-peak-valley-status.md](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-29-composer-peak-valley-status.md)
 - Implementation entry：`ui-conversation/src/client/chat/PeakValleyRow.tsx`、`chat/peak-valley.ts`、`input/model-facts.ts`、`apply.ts`（settings 行 order 75 / dock 条目 order 1）；`ui-chat/src/client/chat/StatsPills.tsx`
 - 相关决策：[interface-settings-chrome-visibility](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-19-interface-settings-chrome-visibility.md)、[projected-token-usage](../../vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-07-29-projected-token-usage-and-request-context.md)

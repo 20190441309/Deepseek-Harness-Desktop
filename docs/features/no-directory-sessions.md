@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `no-directory-sessions` |
 | **status** | `active` |
-| **last verified** | 2026-09-10 — 同步 `dsh-v0.1.5-rc.1` 后无目录会话、Workspace 成员补全与已删工作区语义保留；delete-archived host spec 随上游 API 适配（`personaPrefix`、`AgentSetup` 双参）通过；fork marker 与 Desktop tests 1450 全绿。此前 2026-09-07 — 同步 `dsh-v0.1.3-alpha.1` 后保留无目录会话、Workspace 成员补全与已删工作区语义；Host / Client build、含 ui-workspace 的重点 Client 101 文件 / 1279 项、Desktop fork marker 与全套 Desktop tests 1425 passed / 2 skipped。未执行安装版升级实测。 |
+| **last verified** | 2026-09-17 — 同步 `dsh-v0.1.6-alpha.1`：上游把无目录组合从 `ConversationRoot.tsx` 迁入 `skeleton/ConversationContent.tsx`，fork marker 与卡内路径随改；Desktop tests 1751 全绿。此前 2026-09-10 — 同步 `dsh-v0.1.5-rc.1` 后无目录会话、Workspace 成员补全与已删工作区语义保留；delete-archived host spec 随上游 API 适配（`personaPrefix`、`AgentSetup` 双参）通过；fork marker 与 Desktop tests 1450 全绿。 |
 
 ## User paths
 
@@ -30,7 +30,7 @@
 - `vendor/deepseek-harness/packages/workspace/workspace/src/index.ts`（启动成员补全、`readoptableSessionIds`）
 - `vendor/deepseek-harness/packages/api/workspace-controller/{src/types.ts,src/feed.ts,src/index.ts,src/client/model.ts,package.json,tsconfig.host.json}`
 - `vendor/deepseek-harness/packages/client/ui-workspace/src/client/{navigation.ts,tree.ts,WorkspacePicker.tsx,rows/WorkspaceBrowser.tsx,rows/Rows.tsx,locales.ts,index.ts,contract/slots.ts}`
-- `vendor/deepseek-harness/packages/client/ui-conversation/src/client/{apply.ts,contract/slots.ts,locales.ts,skeleton/ConversationRoot.tsx}`
+- `vendor/deepseek-harness/packages/client/ui-conversation/src/client/{apply.ts,contract/slots.ts,locales.ts,skeleton/ConversationContent.tsx}`
 - 对应 tests；`src/shared/harness-desktop-forks.js` 的 marker 行
 
 ## Do not touch
@@ -47,6 +47,8 @@
 | Manual / QA | Hero 选「无工作目录」→ 直接发消息成功；侧栏出现「无工作目录」节；删除某工作区 → 其会话消失、当前会话回到新会话页；重新添加同一目录 → 会话回来 |
 
 ## Sources
+
+- Decision: none
 
 - Agent Note：[2026-08-15-no-directory-task-sessions.md](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-15-no-directory-task-sessions.md)
 - 合树背景：alpha.1/alpha.2 pin 时该 leftover 被上游覆盖（仅残留 `connectNoDirectory` 桩与 `menu.noDirectory` 文案），本卡在 alpha.4 上重建并加 marker 防再次丢失

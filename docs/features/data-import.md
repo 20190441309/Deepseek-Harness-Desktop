@@ -56,4 +56,6 @@
 
 ## Sources
 
+- Decision: none
+
 - Implementation：`src/main/data-import.js`、`src/renderer/launcher.js`

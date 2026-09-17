@@ -57,6 +57,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook：[../handbook/modules/surfaces.md](../handbook/modules/surfaces.md)
 - Note：`vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-work-loops.md`
 - 悬浮文件预览 Note：`vendor/deepseek-harness/.agents/notes/implemented/feature/2026-09-07-floating-workspace-file-preview.md`

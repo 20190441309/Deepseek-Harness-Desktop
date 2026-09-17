@@ -1,4 +1,10 @@
-# HTTP RemoteGateway kill list (ChisaCode single-stack)
+# Feature: HTTP RemoteGateway kill list (ChisaCode single-stack)
+
+| Field | Value |
+| --- | --- |
+| **id** | `kill-http-remote` |
+| **status** | `killed` |
+| **last verified** | 2026-09-17 — 治理迁移转正：负契约卡，防 HTTP 老栈复活 |
 
 Product pairing is **dshd offer (vendored ChisaCode offer v2) + createChisaCodeDaemon + same-protocol phone**. The old HTTP path is retired as the main path. Dual-stack is **not** in scope unless explicitly re-opened.
 

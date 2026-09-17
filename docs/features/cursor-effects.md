@@ -48,6 +48,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Reference: <https://ayase.cn/motion/#/component/pixel-trail>（ReactBits `PixelTrail`，three.js 网格拖尾 → 2D canvas 等价移植）、<https://ayase.cn/motion/#/component/splash-cursor>（ReactBits `SplashCursor`，WebGL 流体模拟移植）
 - Design language: [../design-language.md](../design-language.md)；motion: [../motion.md](../motion.md)
 - Short rule: [.cursor/rules/cursor-effects-product.mdc](../../.cursor/rules/cursor-effects-product.mdc)

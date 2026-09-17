@@ -32,3 +32,9 @@
 本次复现记录：输入卡先从 y=496 跳到 y=900，随后在 y=900 / y=876 间回弹；修复后各帧单向到达终点，统计行不再导致 24px 跳动。桌面点击、减少动态效果、390px 窄视口 Enter、多行草稿与第二次发送均覆盖。新增过渡逻辑和测试的定向 lint 通过；包含 `InputBar.tsx` 的检查仍报其未改动区域原有缩进问题。本次未生成安装包，未运行全量 Web、覆盖率或 doc-sync。
 
 2026-09-16 丝滑化：`top` 动画每帧要主线程布局，而首次发送的转录挂载、beam 启动与 dock 投影在滑行窗口内抢占主线程，动画按墙钟推进但绘制帧被吞，造成中途突跳。现改为暂停式自适应 hold：卡片钉在草稿位（seat 漂移折回 `--dsh-composer-enter-offset`），待结构性 DOM churn 静默 ~80ms（上限 450ms）后放行滑行；减少动态效果下静默/上限为 0，直接落位。headed 实测滑行段逐帧 ~6ms 单调至终点。
+
+## Sources
+
+- Design: [design-language.md](../design-language.md)、[motion.md](../motion.md)
+- Decision: none
+- Implementation entry: `vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/`

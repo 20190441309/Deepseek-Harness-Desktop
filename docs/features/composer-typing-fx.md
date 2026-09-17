@@ -56,6 +56,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Design: [设计语言](../design-language.md) / [动效规范](../motion.md)
 - Visual reference: [ayase motion typewriter](https://ayase.cn/motion/#/component/typewriter)
 - 模板先例：[composer-beam](composer-beam.md)（BeamRow / BeamSettingsModal / submission-settings）

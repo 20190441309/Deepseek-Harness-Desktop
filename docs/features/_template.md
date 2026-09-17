@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | **id** | `\<kebab-id\>` |
-| **status** | `active` |
+| **status** | `active`（`active` 现行契约 / `proposed` 已定未落地 / `killed` 负契约防复活，killed 卡文件名带 `_` 前缀） |
 | **last verified** | YYYY-MM-DD — \<hand test / command\> |
 
 ## User paths
@@ -36,5 +36,6 @@
 
 - Design: …
 - Spec / plan: …
-- Agent Note (if any): …
+- Decision（如有）: `docs/decisions/...`
+- Upstream Agent Note（如有）: …
 - Implementation entry: …

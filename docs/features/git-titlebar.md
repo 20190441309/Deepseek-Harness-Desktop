@@ -52,5 +52,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook：[../handbook/modules/git-titlebar.md](../handbook/modules/git-titlebar.md)
 - Spec：[../superpowers/specs/2026-08-18-t3-git-tool-verbatim-leftovers-design.md](../superpowers/specs/2026-08-18-t3-git-tool-verbatim-leftovers-design.md)

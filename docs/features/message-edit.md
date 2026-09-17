@@ -62,6 +62,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Agent Note: [2026-08-25-message-edit-composer-edit-session](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-25-message-edit-composer-edit-session.md)（现行）、[2026-08-15-inline-user-message-edit](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-15-inline-user-message-edit.md)、[2026-08-25-message-edit-production-polish](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-25-message-edit-production-polish.md)
 - Implementation entry: `vendor/deepseek-harness/packages/client/ui-message-edit/src/client/` 与 `vendor/deepseek-harness/packages/client/ui-conversation/src/client/input/`
 - Package README: [ui-message-edit README](../../vendor/deepseek-harness/packages/client/ui-message-edit/README.md)

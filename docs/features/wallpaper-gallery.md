@@ -53,6 +53,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook: [../handbook/modules/wallpaper.md](../handbook/modules/wallpaper.md)、[../handbook/flows/wallpaper-set.md](../handbook/flows/wallpaper-set.md)
 - Design language: [docs/design-language.md](../design-language.md)
 - Spec: [docs/superpowers/specs/2026-08-19-wallpaper-gallery-window-design.md](../superpowers/specs/2026-08-19-wallpaper-gallery-window-design.md)

@@ -25,6 +25,14 @@ Surface tabs keep the close control **to the right of the title**. Do not move i
 
 Architecture, flows, and module maps live in [docs/handbook/README.md](docs/handbook/README.md). Read the matching handbook module before editing a product area; keep long current-state explanation there, not in chat.
 
+## Maintenance system（治理）
+
+[docs/maintenance/README.md](docs/maintenance/README.md) 是系统总览：契约层（feature 卡 + rules）、决策层（[docs/decisions/](docs/decisions/README.md)）、叙事层（docs/postmortem/）、语言层（docs/i18n/）、执行层（`scripts/verify-*` + git hooks）。
+
+- 非平凡改动（行为/架构/契约/流程/测试策略/落盘格式）同批写或更新决策记录；纯机械改动不写。操作流见 `.devin/skills/dshd-maintenance`。
+- 配对文档改任一侧后 `verify-translation-pairing --write` 重录 sidecar。
+- 本地门禁：`npm run check:governance`（结构）/ `npm run doc-sync`（全量文档）；选检查见 `.devin/skills/dshd-checks`。外部 PR/issue 开放，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## Feature Spine
 
 Product behavior that ships and will be re-edited lives under [docs/features/](docs/features/README.md): one card per feature binds user paths, invariants, allowed touch, gates, and source links. Specs and plans stay in `docs/superpowers/`; cards hold shipped invariants only. The handbook does not replace cards.

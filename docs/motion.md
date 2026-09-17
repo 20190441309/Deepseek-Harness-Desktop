@@ -1,6 +1,6 @@
 # 动效规范
 
-中文 · [English](motion.en.md)
+中文 | [English](motion.en.md)
 
 本文件记录产品动效合同，以及各 recipe 用在哪些产品面上。视觉规则见 [设计语言](design-language.md)。时长、缓动、位移的权威值在官方 [`base.css`](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/base.css) 与 [`motion.css`](../vendor/deepseek-harness/packages/client/ui-theme/src/styles/motion.css)；工程规则见 [`web-styling.md`](../vendor/deepseek-harness/docs/web-styling.md)；决策依据见 [动效系统 Agent Note](../vendor/deepseek-harness/.agents/notes/implemented/architecture/2026-08-14-web-motion-presence-and-recipes.md)。
 

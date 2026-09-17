@@ -17,7 +17,7 @@
 
 ## 实现入口
 
-- 产品说明：[../../README.md](../../README.md)
+- 产品说明：[../../../README.md](../../../README.md)
 - 壳入口：`src/main/index.js`
 - 上游钉：`vendor/harness-upstream.json`
 

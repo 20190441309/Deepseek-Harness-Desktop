@@ -33,3 +33,8 @@
 
 - 无密钥的真实服务组合：上传/工具图片、文本主模型、原生图片模型、描述重放、取消和失败。
 - 模型设置与 API 图片准入测试；发布前真实 API 与安装包验收另记。
+
+## Sources
+
+- Decision: none
+- Implementation entry: `vendor/deepseek-harness/packages/llm/llm-vision-fallback/`

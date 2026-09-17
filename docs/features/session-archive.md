@@ -51,6 +51,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Spec / plan: [2026-08-23-github-issues-17-18-19.md](../superpowers/plans/2026-08-23-github-issues-17-18-19.md)
 - Agent Note: `vendor/deepseek-harness/.agents/notes/implemented/feature/2026-07-31-session-archive-global-set.md`
 - Delete: `vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-23-archived-session-delete.md`

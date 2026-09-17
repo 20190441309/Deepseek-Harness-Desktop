@@ -29,3 +29,8 @@
 ## Gates
 
 - 核心集合本地通过；桌面 CI 契约测试通过。
+
+## Sources
+
+- Decision: none
+- Implementation entry: `.github/workflows/test.yml`、`src/main/ci-isolation.test.js`

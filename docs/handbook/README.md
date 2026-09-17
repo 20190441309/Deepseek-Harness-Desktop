@@ -23,6 +23,7 @@
 | [docs/design-language.md](../design-language.md) / [motion.md](../motion.md) | 视觉与动效强制规则 | 否；模块只链接 |
 | [docs/superpowers/specs](../superpowers/specs/) | 设计与施工过程 | 否；定稿事实收进手册与 feature 卡 |
 | [docs/qa/…](../qa/production-acceptance-test-cases.md) | 发版验收矩阵：每次发布前对 CI 安装包走完 | 否；章节挂用例 ID |
+| [docs/decisions/](../decisions/README.md) | 决策记录：为什么 + 被否方案 | 否；手册只写当前态 |
 | [vendor/deepseek-harness/docs/architecture.md](../../vendor/deepseek-harness/docs/architecture.md) | Harness 上游 agent-loop / Cordis | 否；不抄上游百科 |
 
 ## 目录

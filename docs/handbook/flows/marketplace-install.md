@@ -37,7 +37,7 @@ sequenceDiagram
 ## 门槛
 
 - QA：`TC-EXT-001` … `TC-EXT-005`
-- Feature card：`marketplace-settings`（[../features/marketplace-settings.md](../features/marketplace-settings.md)）
+- Feature card：`marketplace-settings`（[../../features/marketplace-settings.md](../../features/marketplace-settings.md)）
 
 ## 入口
 

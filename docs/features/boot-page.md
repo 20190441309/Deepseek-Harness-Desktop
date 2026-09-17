@@ -43,6 +43,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook：[../handbook/modules/boot-lifecycle.md](../handbook/modules/boot-lifecycle.md)、[../handbook/flows/boot-to-ready.md](../handbook/flows/boot-to-ready.md)
 - Design：[../design-language.md](../design-language.md#桌面启动页)
 - Spec：[../superpowers/specs/2026-08-18-plugin-startup-recovery-design.md](../superpowers/specs/2026-08-18-plugin-startup-recovery-design.md)

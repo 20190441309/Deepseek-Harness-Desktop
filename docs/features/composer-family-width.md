@@ -47,5 +47,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Agent Note（上游）：[approval-panel-composer-resize](../../vendor/deepseek-harness/.agents/notes/implemented/bug-fix/2026-08-20-approval-panel-composer-resize.md)（座位发布尺寸变量的先例）
 - 上游实现：`ComposerResizeHandles.tsx` / `composer-resize.ts`

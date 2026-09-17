@@ -41,5 +41,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Design: `vendor/deepseek-harness/.agents/notes/archived/architecture/2026-07-28-directory-picker-capability-seam.md`（Win32 卷枚举 = A–Z `stat` 赛跑 300ms）
 - Implementation entry: `vendor/deepseek-harness/packages/host/directory-picker-browse/src/index.ts`（`volumeListing`/`probeDrive`）

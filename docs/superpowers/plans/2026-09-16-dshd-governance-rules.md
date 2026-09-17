@@ -140,3 +140,13 @@ docs/decisions/
 - 不引入 pnpm/vitest/lefthook；全用 npm + node:test + 自写脚本。
 - 不要求外部 PR 自写决策记录/feature 卡（maintainer 职责写进 CONTRIBUTING）。
 - 不做 VitePress 文档站、不做 CI 平台矩阵扩张。
+
+## 决策回填（2026-09-17 定案）
+
+- D1 双语范围：按推荐执行——`docs/decisions/**` 强制三件套，其余登记制（`scripts/i18n-pairs.manifest.json`）；superpowers/vendor/qa-results 排除。
+- D2 决策记录独立成树：已定 `docs/decisions/`，见 [2026-09-17-governance-rules-adoption](../../decisions/implemented/process/2026-09-17-governance-rules-adoption.md)。
+- D3 hooks 零依赖：已定 `core.hooksPath` → `scripts/git-hooks/` + `prepare` 自动装。
+- D4 archived 第一天建：已带 hash manifest 封印（`verify-archived-decisions`）。
+- D5 缓做清单：维持不做；加权审批/GitHub Projects bot 等未引入。
+- 双语配对契约全文：[2026-09-17-bilingual-pairing-contract](../../decisions/implemented/process/2026-09-17-bilingual-pairing-contract.md)。
+- 系统总览（五层 + 回流管线 + 命令表）：[docs/maintenance/README.md](../../maintenance/README.md)。

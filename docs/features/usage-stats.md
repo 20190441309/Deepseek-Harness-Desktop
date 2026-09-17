@@ -50,6 +50,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Handbook：[../handbook/modules/usage-stats.md](../handbook/modules/usage-stats.md)
 - Spec：[../superpowers/specs/2026-08-23-usage-stats-design.md](../superpowers/specs/2026-08-23-usage-stats-design.md)
 - Implementation entry：`src/main/usage-panel-preset.js` `ensureUsagePanelPlugin`

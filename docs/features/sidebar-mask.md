@@ -46,5 +46,7 @@
 
 ## Sources
 
+- Decision: none
+
 - Design language: [docs/design-language.md](../design-language.md)
 - Implementation entry: `ThemeRuntime.setSidebarMask` / `composeActive`（`ui-theme/src/client/index.ts`）、`SIDEBAR_FILL_TOKEN` / `SIDEBAR_UNMASKED_FILL`（`ui-theme/src/theme-family.ts`）

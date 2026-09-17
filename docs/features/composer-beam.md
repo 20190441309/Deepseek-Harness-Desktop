@@ -61,6 +61,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Design: [设计语言](../design-language.md) / [动效规范](../motion.md)
 - Agent Note: [Composer thinking beam must not capture toolbar clicks](../../vendor/deepseek-harness/.agents/notes/implemented/bug-fix/2026-08-28-composer-beam-pointer-events.md)
 - Agent Note: [Composer beam settings](../../vendor/deepseek-harness/.agents/notes/implemented/feature/2026-09-07-composer-beam-settings.md)

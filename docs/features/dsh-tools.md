@@ -46,6 +46,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Root cause: provider adapters previously defaulted absent tool-call ids and names to empty strings.
 - Agent Note: `vendor/deepseek-harness/.agents/notes/implemented/bug-fix/2026-08-27-malformed-tool-call-recovery.md`
 - Implementation entry: `vendor/deepseek-harness/packages/llm/llm/src/assembler.ts`

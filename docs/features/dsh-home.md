@@ -50,6 +50,8 @@
 
 ## Sources
 
+- Decision: none
+
 - Spec：[../superpowers/specs/2026-08-22-desktop-dsh-home-design.md](../superpowers/specs/2026-08-22-desktop-dsh-home-design.md)
 - Handbook：[../handbook/modules/dsh-home.md](../handbook/modules/dsh-home.md)
 - Recovery（不改）：[../superpowers/specs/2026-08-18-plugin-startup-recovery-design.md](../superpowers/specs/2026-08-18-plugin-startup-recovery-design.md)
