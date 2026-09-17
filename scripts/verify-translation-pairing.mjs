@@ -16,9 +16,10 @@ import { repoRoot, runGate, fail, walk, isMain, read, hasFlag, rel } from './lib
 const PAIRS_MANIFEST = 'scripts/i18n-pairs.manifest.json'
 const PENDING_MANIFEST = 'scripts/i18n-pending.manifest.json'
 
-/** git blob hash: sha1("blob <bytes>\0<content>") — stable across line endings? No: byte-exact. */
+/** git blob hash of the EOL-normalized content — the committed blob, stable
+ * across checkout line endings on the Windows/macOS gate matrix. */
 export function blobHash(content) {
-  const buf = Buffer.from(content, 'utf8')
+  const buf = Buffer.from(content.replace(/\r\n/g, '\n'), 'utf8')
   return createHash('sha1').update(`blob ${buf.length}\0`).update(buf).digest('hex')
 }
 

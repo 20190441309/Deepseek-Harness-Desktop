@@ -26,6 +26,18 @@ test('a clean pair passes', (t) => {
   assert.deepEqual(collect(root), [])
 })
 
+test('CRLF working files verify against LF-recorded hashes (checkout eol is platform-dependent)', (t) => {
+  const zhT = ZH.replaceAll('x.en.md', '2026-09-17-x.en.md')
+  const enT = EN.replaceAll('x.md', '2026-09-17-x.md')
+  const root = makeFixture(t, {
+    'scripts/decision-tree.json': DECISION_TREE,
+    [`${DEC}/2026-09-17-x.md`]: zhT.replace(/\n/g, '\r\n'),
+    [`${DEC}/2026-09-17-x.en.md`]: enT.replace(/\n/g, '\r\n'),
+    [`${DEC}/2026-09-17-x.i18n.yaml`]: sc(zhT, enT),
+  })
+  assert.deepEqual(collect(root), [])
+})
+
 test('edited side without re-record is stale → red; pending registration excuses it', (t) => {
   const files = {
     'scripts/decision-tree.json': DECISION_TREE,
