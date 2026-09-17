@@ -854,7 +854,8 @@ test('spawnEnv writes official DeepSeek key and base URL', () => {
       baseUrl: 'https://api.deepseek.com',
     }, null);
     assert.equal(env.DEEPSEEK_API_KEY, 'sk-official');
-    assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com');
+    // dsh 0.1.6+ 官方端点归一到 Messages 协议根 https://api.deepseek.com/anthropic
+    assert.equal(env.DEEPSEEK_BASE_URL, 'https://api.deepseek.com/anthropic');
   } finally {
     clearDesktopDshHome();
     if (previousHome === undefined) delete process.env.DSH_HOME;
