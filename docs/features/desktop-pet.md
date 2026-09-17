@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | **id** | `desktop-pet` |
-| **status** | `hidden` |
+| **status** | `active` |
 | **last verified** | 2026-09-13 — `DESKTOP_PET_FEATURE=false`；Codex 皮肤发现、动画渲染与右键换肤已实现但默认隐藏 |
 
 ## User paths
@@ -45,6 +45,8 @@
 | Manual / QA | `TC-DESK-010` in [production-acceptance-test-cases.md](../qa/production-acceptance-test-cases.md) |
 
 ## Sources
+
+- Decision: none
 
 - Design: [design-language.md](../design-language.md#桌面宠物)
 - Plan: ChatGPT C2C task `c2c_4e7b`, iteration 0

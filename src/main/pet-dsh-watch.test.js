@@ -244,6 +244,24 @@ test('outbox lines emit dshWhale with the text field verbatim', (t) => {
   assert.equal(whale[1].summary, '第二句');
 });
 
+test('outbox kind rides the event so the renderer can pin notify lines', (t) => {
+  const dir = tmpSessions(t);
+  const { watch, events, outbox } = makeOutboxWatch(t, dir);
+  fs.mkdirSync(path.dirname(outbox), { recursive: true });
+  fs.writeFileSync(outbox, [
+    JSON.stringify({ kind: 'notify', text: '任务完成：报告在 ~/out.pdf' }),
+    JSON.stringify({ kind: 'say', text: '随便一句' }),
+    JSON.stringify({ text: '无 kind 的老行' }),
+    '',
+  ].join('\n'), 'utf8');
+  watch.poll();
+  const whale = events.filter((e) => e.type === 'dshWhale');
+  assert.equal(whale.length, 3);
+  assert.equal(whale[0].kind, 'notify');
+  assert.equal(whale[1].kind, 'say');
+  assert.equal(whale[2].kind, '');
+});
+
 test('outbox torn trailing line keeps its offset until complete', (t) => {
   const dir = tmpSessions(t);
   const { watch, events, state, outbox } = makeOutboxWatch(t, dir);

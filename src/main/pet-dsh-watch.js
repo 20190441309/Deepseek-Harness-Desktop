@@ -341,10 +341,13 @@ function createDshWatch({
           continue;
         }
         if (isOutbox) {
-          // One-way bridge: only the text field ever reaches a bubble.
+          // One-way bridge: `text` becomes the bubble line; `kind` rides
+          // along so the renderer can pin whale_notify messages until the
+          // user dismisses them (whale_pet_say stays transient).
           const text = typeof ev?.text === 'string' ? ev.text.slice(0, 512) : '';
           if (text) {
-            emit(EV_WHALE, { summary: text });
+            const kind = typeof ev?.kind === 'string' ? ev.kind.slice(0, 32) : '';
+            emit(EV_WHALE, { summary: text, kind });
             dsh.lastSeenAt = t;
           }
           continue;

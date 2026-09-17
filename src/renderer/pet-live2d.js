@@ -449,10 +449,13 @@ let LINES = {};
 //   bubbles (each pending approval must be seen); lower priority queues
 //   (cap 3, oldest dropped on overflow); an alertId match updates in place
 //   wherever it sits; holdBubbles() blocks only priority-0 chatter.
-let bubble = null; // { text, until, priority, alertId?, buttons? }
+let bubble = null; // { text, until, priority, alertId?, buttons?, pinned? }
 let bubbleQueue = []; // {seq} keeps FIFO inside a priority
 let bubbleQueueSeq = 0;
 let bubbleHoldUntil = 0;
+// Hit rect of the ✕ drawn on a pinned bubble — populated by drawBubble,
+// consumed by the pointerdown handler. Null whenever no pinned bubble is up.
+let bubbleCloseRect = null;
 const BUBBLE_QUEUE_MAX = 3;
 const BUBBLE_ALERT_MIN_MS = 4000;
 let dialogueStore = PetDialogue.emptyStore();
@@ -546,6 +549,14 @@ function pushBubble(entry) {
       return;
     }
   }
+  // A pinned notification (whale_notify) owns the stage until the user
+  // clicks its ✕ — nothing preempts it in place or knocks it off early;
+  // every newcomer queues and surfaces on dismissal. Look pins are handled
+  // above: they still take over and re-queue the pinned copy.
+  if (bubble?.pinned) {
+    enqueueBubble(entry);
+    return;
+  }
   const curPri = bubble ? (bubble.priority || 0) : -1;
   if (!bubble) {
     if ((entry.priority || 0) === 0 && now < bubbleHoldUntil) {
@@ -604,10 +615,12 @@ wireDialogue();
 
 function drawBubble(now) {
   if (!bubble) {
+    bubbleCloseRect = null;
     return;
   }
   const remain = bubble.until - now;
   if (remain <= 0) {
+    bubbleCloseRect = null;
     return;
   }
   const alpha = Math.min(1, remain / 300);
@@ -685,6 +698,25 @@ function drawBubble(now) {
   ctx2d.textBaseline = 'middle';
   const textMidY = by + bh / 2 - ((lines.length - 1) * 16) / 2;
   lines.forEach((l, i) => ctx2d.fillText(l, bx + 9, textMidY + i * 16));
+  // Pinned bubbles (whale_notify) never time out — the ✕ in the top-right
+  // corner is the only way off the stage. It lives inside the bubble's own
+  // ink rect so the dirty-rect sweep clears it with the body.
+  if (bubble.pinned) {
+    const cx = bx + bw - 10;
+    const cy = by + 10;
+    ctx2d.strokeStyle = bubbleStyle.getPropertyValue('--dsw-alias-label-tertiary');
+    ctx2d.lineWidth = 1.2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx - 3, cy - 3);
+    ctx2d.lineTo(cx + 3, cy + 3);
+    ctx2d.moveTo(cx + 3, cy - 3);
+    ctx2d.lineTo(cx - 3, cy + 3);
+    ctx2d.stroke();
+    // Fat-fingered hit box around the glyph; the visible ✕ is 6×6.
+    bubbleCloseRect = { x: cx - 8, y: cy - 8, w: 16, h: 16 };
+  } else {
+    bubbleCloseRect = null;
+  }
   ctx2d.restore();
   const topEdge = below ? by - 8 : by;
   const bottomEdge = below ? by + bh : by + bh + 8;
@@ -1393,13 +1425,13 @@ async function submitLook() {
     // visible pin a normal lifetime instead of an infinite stale bubble.
     lookBusyUntil = 0;
     stopLookAnim();
-    bubbleQueue = bubbleQueue.filter((e) => !e.lookPin);
+    bubbleQueue = bubbleQueue.filter((e) => !e.lookPin && !e.lookResult);
     if (bubble && bubble.lookPin) {
       bubble.until = performance.now() + 6000;
     }
   }
   if (res && res.ok && typeof res.reply === 'string' && res.reply) {
-    pushBubble({ text: res.reply.slice(0, 120), until: performance.now() + 6000, priority: 1 });
+    pushBubble({ text: res.reply.slice(0, 120), until: Infinity, priority: 2, pinned: true, lookResult: true });
     return;
   }
   // Distinct failures get distinct voices — only a real capture/noise
@@ -2502,8 +2534,25 @@ function petBounds() {
   return b;
 }
 
+// Everything clickable: petBounds plus a pinned bubble's own rect. Kept
+// separate from petBounds because drawBubble anchors the bubble above the
+// head FROM that union — folding the bubble into it would self-feed the
+// anchor and the bubble would climb every frame.
+function interactiveBounds() {
+  let b = petBounds();
+  if (bubble?.pinned && lastBubbleRect) {
+    b = {
+      x: Math.min(b.x, lastBubbleRect.x),
+      y: Math.min(b.y, lastBubbleRect.y),
+      right: Math.max(b.right, lastBubbleRect.x + lastBubbleRect.w),
+      bottom: Math.max(b.bottom, lastBubbleRect.y + lastBubbleRect.h),
+    };
+  }
+  return b;
+}
+
 function overPet(clientX, clientY) {
-  const bounds = petBounds();
+  const bounds = interactiveBounds();
   return clientX >= bounds.x && clientX <= bounds.right
     && clientY >= bounds.y && clientY <= bounds.bottom;
 }
@@ -2552,7 +2601,7 @@ function onCursorMove(clientX, clientY, buttons) {
       paint();
     }
   }
-  const bounds = petBounds();
+  const bounds = interactiveBounds();
   const dx = Math.max(bounds.x - clientX, clientX - bounds.right, 0);
   const dy = Math.max(bounds.y - clientY, clientY - bounds.bottom, 0);
   const outside = Math.hypot(dx, dy);
@@ -2637,10 +2686,30 @@ function startRelocatePoll() {
   }, 150);
 }
 
+// The ✕ on a pinned notification is the ONLY way it leaves the stage —
+// closing dequeues the next bubble exactly like an expiry would.
+function bubbleCloseHit(x, y) {
+  const r = bubbleCloseRect;
+  return Boolean(bubble?.pinned && r)
+    && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+function dismissPinnedBubble() {
+  bubble = dequeueBubble(performance.now());
+  bubbleCloseRect = null;
+  paint();
+}
+
 function onCanvasPointerDown(event) {
   // DOM overlays (chat box) own their events — a click on a DOM node is
   // never a drag start or a panel cell.
   if (event.target !== canvas) {
+    return;
+  }
+  // The pinned bubble's ✕ wins over everything — it must take the click
+  // even when the status panel happens to be open beneath it.
+  if (event.button === 0 && bubbleCloseHit(event.clientX, event.clientY)) {
+    console.log('pet: pinned bubble dismissed via ✕');
+    dismissPinnedBubble();
     return;
   }
   // Panel clicks win over the drag gesture: a row dispatch closes the card,
@@ -3088,10 +3157,15 @@ function onDshEvent(ev) {
   if (ev.category === 'dshWhale') {
     const text = String(ev.summary || '').trim();
     if (text) {
+      // whale_notify pins: the message holds the stage with a ✕ until the
+      // user dismisses it — a done line can no longer knock a result off.
+      const pinned = ev.kind === 'notify';
       pushBubble({
         text,
-        until: performance.now() + Math.min(2200 + Array.from(text).length * 90, 8000),
+        until: pinned ? Infinity
+          : performance.now() + Math.min(2200 + Array.from(text).length * 90, 8000),
         priority: 2,
+        pinned,
       });
     }
     return;

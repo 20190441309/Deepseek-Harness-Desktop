@@ -223,8 +223,10 @@ export function apply(ctx) {
     name: 'whale_notify',
     description:
       'Push an important one-line notification onto the desktop pet bubble — for milestones, '
-      + 'rest reminders, or things the user must not miss. Same channel as whale_pet_say; prefer '
-      + 'pet_say for casual lines and reserve notify for items worth interrupting for.',
+      + 'rest reminders, or things the user must not miss. The bubble stays pinned on screen '
+      + 'with a close button until the user dismisses it, so use this for results and answers '
+      + 'the user will want to read. Same channel as whale_pet_say; prefer pet_say for casual '
+      + 'lines and reserve notify for items worth interrupting for.',
     timeoutMs: 10_000,
     parameters: {
       text: { type: 'string', required: true, description: 'One notification line, ≤ 240 chars.' },

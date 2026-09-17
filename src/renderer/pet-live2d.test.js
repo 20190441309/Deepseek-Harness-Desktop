@@ -732,11 +732,14 @@ test('look pins one bubble until settlement, deferring alerts without replaying 
   await request;
   assert.equal(pet.run('bubble.text'), 'look result');
   assert.equal(pet.run('Boolean(bubble.lookPin)'), false);
+  assert.equal(pet.run('bubble.pinned'), true);
   assert.equal(pet.run('lookAnimTimer'), 0);
   pet.setNow(pet.now() + 7000);
   pet.run('tickStill(performance.now())');
-  assert.equal(pet.run('bubble.priority'), 2);
-  assert.equal(pet.run('bubbleQueue.some((e) => e.lookPin)'), false);
+  assert.equal(pet.run('bubble.text'), 'look result', 'pinned result ignores time');
+  pet.run('dismissPinnedBubble()');
+  assert.equal(pet.run('bubble.alertId'), 'old', '✕ dismissal surfaces the queue');
+  assert.equal(pet.run('bubbleQueue.some((e) => e.lookPin || e.lookResult)'), false);
 });
 
 test('panel action icon and label ink are independently centered', () => {
@@ -881,14 +884,17 @@ test('看看 pin: ONE loading bubble the whole call — chatter dropped, alerts 
   assert.equal(pet.run('bubble && bubble.text'), '屏幕上是个编辑器');
   assert.equal(pet.run('bubble.lookPin'), undefined, 'pin flag gone on settle');
   assert.equal(pet.run('lookBusyUntil'), 0, 'guard released');
-  // Late ordinary speech follows the old rules (dropped while chat open).
+  // Late ordinary speech can't knock the pinned reply off — dropped here
+  // only because the chat card is open.
   pet.run(`pushBubble({ text: '迟到闲聊', until: performance.now() + 5000, priority: 1 })`);
-  assert.equal(pet.run('bubble.text'), '屏幕上是个编辑器', 'old arbitration once unpinned');
-  // The reply expiring reveals the deferred whale alert.
+  assert.equal(pet.run('bubble.text'), '屏幕上是个编辑器', 'pinned reply holds the stage');
+  // Time alone never releases it — only the ✕ does, surfacing the queue.
   pet.run('chatOpen = false');
   pet.setNow(pet.now() + 7000);
   pet.run('tickStill(performance.now())');
-  assert.equal(pet.run('bubble && bubble.text'), '鲸鱼留言', 'deferred alert surfaces');
+  assert.equal(pet.run('bubble && bubble.text'), '屏幕上是个编辑器', 'pinned reply ignores time');
+  pet.run('dismissPinnedBubble()');
+  assert.equal(pet.run('bubble && bubble.text'), '鲸鱼留言', '✕ dismissal surfaces the queue');
 });
 
 test('看看 pin: sync throw and rejection clean up, and the request can be retried', async (t) => {
@@ -1037,4 +1043,50 @@ test('panel runs are optically centered on real ink boxes; chip icon+label group
     assert.ok(Number.isFinite(op.x) && Number.isFinite(op.y), `no NaN for ${op.t}`);
     assert.equal(op.baseline, 'middle', 'unmeasurable run falls back to middle');
   }
+});
+
+test('notify bubble pins until the ✕ click — nothing preempts or expires it', () => {
+  const pet = loadPet();
+  pet.run(`drawPos = { x: 280, y: 200 };
+    homeRect = { x: 0, y: 0, width: 800, height: 600 };
+    charRect = { x: 0, y: 0, right: 240, bottom: 260 };
+    bubble = null; bubbleQueue = [];`);
+  pet.run(`onDshEvent({ category: 'dshWhale', summary: '部署成功：v1.2.3 已上线', kind: 'notify' })`);
+  assert.equal(pet.run('bubble.text'), '部署成功：v1.2.3 已上线');
+  assert.equal(pet.run('bubble.pinned'), true);
+  assert.equal(pet.run('bubble.until'), Infinity, 'no timer expiry');
+  // Later lines — another whale line and the done reaction — queue behind
+  // the pin instead of knocking it off.
+  pet.run(`onDshEvent({ category: 'dshWhale', summary: '随便聊聊', kind: 'say' })`);
+  pet.run(`onDshEvent({ category: 'dshDone' })`);
+  assert.equal(pet.run('bubble.text'), '部署成功：v1.2.3 已上线', 'pinned survives equal/lower priority');
+  assert.equal(pet.run('bubbleQueue.length'), 2);
+  // Time alone never releases it — an hour later, a tick, still pinned.
+  pet.setNow(pet.now() + 3600000);
+  pet.run('tickStill(performance.now())');
+  assert.equal(pet.run('bubble.pinned'), true);
+  // The pin paints and registers its ✕ hit box.
+  pet.run('drawBubble(performance.now())');
+  assert.ok(pet.run('bubbleCloseRect && bubbleCloseRect.w > 0'), '✕ hit box registered');
+  // The bubble joins the interactive zone so the ✕ actually takes clicks.
+  const cx = pet.run('bubbleCloseRect.x + bubbleCloseRect.w / 2');
+  const cy = pet.run('bubbleCloseRect.y + bubbleCloseRect.h / 2');
+  assert.equal(pet.run(`overPet(${cx}, ${cy})`), true, '✕ inside the interactive zone');
+  // Click the ✕ — pin dismissed, the queued whale line surfaces.
+  pet.run(`onCanvasPointerDown({ target: canvas, button: 0, clientX: ${cx}, clientY: ${cy} })`);
+  assert.equal(pet.run('bubble.text'), '随便聊聊', 'dismissal surfaces the queue');
+  assert.equal(pet.run('bubble.pinned'), false, 'next bubble is transient again');
+});
+
+test('say-kind whale lines stay transient and keep the old arbitration', () => {
+  const pet = loadPet();
+  pet.run(`drawPos = { x: 280, y: 200 };
+    homeRect = { x: 0, y: 0, width: 800, height: 600 };
+    bubble = null; bubbleQueue = [];`);
+  pet.run(`onDshEvent({ category: 'dshWhale', summary: '随口一句' })`);
+  assert.equal(pet.run('bubble.pinned'), false);
+  assert.ok(pet.run('Number.isFinite(bubble.until)'), 'transient until');
+  // Equal-priority follow-up replaces in place — unchanged behavior.
+  pet.run(`onDshEvent({ category: 'dshWhale', summary: '下一句', kind: 'say' })`);
+  assert.equal(pet.run('bubble.text'), '下一句');
 });
