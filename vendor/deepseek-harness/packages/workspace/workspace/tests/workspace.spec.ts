@@ -1107,7 +1107,7 @@ describe('registry-global session unarchive', () => {
   it('unarchives durably in order, idempotently skips absent ids, and leaves accounting untouched', async () => {
     const dir = await makeDir('unarchive-home')
     const result = await harness({
-      sessions: [header('one', dir, 100), header('two', dir, 200), header('three', dir, 300)],
+      sessions: [header('one', dir, 100), header('two', dir, 200), header('three', dir, 300), header('never-archived', dir, 400)],
     })
     const workspace = result.registry.list()[0]!
     await result.registry.archiveSession(SessionId('one'))

@@ -92,7 +92,7 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<{
       const agentCtx = ownerCtx.extend({ agent })
       Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
       await options.setup?.(agentCtx, agent)
-      ctx.agents.register(agent)
+      await ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }
     },
     resume: () => Promise.reject(new Error('delete test sources are live')),
@@ -112,7 +112,7 @@ const remote = (ctx: Context) => createSessionTestRemote(ctx, {
  * @param turns - completed turns to append.
  * @returns the live Session.
  */
-function liveAgent(ctx: Context, id: string, turns: number): Session {
+async function liveAgent(ctx: Context, id: string, turns: number): Promise<Session> {
   const session = ctx.sessions.create(sid(id), { meta: { cwd: '/proj' } })
   for (let turn = 1; turn <= turns; turn++) {
     session.append('turn/start', { turn })
@@ -122,7 +122,7 @@ function liveAgent(ctx: Context, id: string, turns: number): Session {
     }), { surfaceOp: 'append' })
     session.append('turn/end', { turn, reason: { kind: 'completed' } })
   }
-  ctx.agents.register({ id: session.id, session, status: 'idle', ctx } as Agent)
+  await ctx.agents.register({ id: session.id, session, status: 'idle', ctx } as Agent)
   return session
 }
 
@@ -160,7 +160,7 @@ describe('collectDeletable / persistDeleteOrder', () => {
 describe('sessions.delete', () => {
   it('rejects a live session that is not archived', async () => {
     const { ctx } = await composed()
-    const source = liveAgent(ctx, 'session-live', 1)
+    const source = await liveAgent(ctx, 'session-live', 1)
     const response = await remote(ctx).delete(request({ sessionId: source.id }))
     expect(response).toMatchObject({
       ok: false,
@@ -182,7 +182,7 @@ describe('sessions.delete', () => {
 
   it('rejects an archived live session without a retained handle', async () => {
     const { ctx, registry } = await composed()
-    const source = liveAgent(ctx, 'session-unowned', 1)
+    const source = await liveAgent(ctx, 'session-unowned', 1)
     await registry.archiveSession(source.id)
     const response = await remote(ctx).delete(request({ sessionId: source.id }))
     expect(response).toMatchObject({
@@ -209,7 +209,7 @@ describe('sessions.delete', () => {
     }) as never)
 
     const proxy = remote(ctx)
-    const source = liveAgent(ctx, 'session-archived', 1)
+    const source = await liveAgent(ctx, 'session-archived', 1)
     listed.push(source.header)
     retainLiveHandle(ctx, source.id)
     await registry.archiveSession(source.id)

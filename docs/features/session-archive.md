@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `session-archive` |
 | **status** | `active` |
-| **last verified** | 2026-09-06 — workspace / workspace-controller / ui-workspace 定向 262 项通过；补测设置开关在分组和单列表中的即时显隐、默认折叠及归档行不打开。Host 启动补回仍登记目录遗漏的历史成员，保持归档集合不变（见 no-directory-sessions）。尚未替换安装版验证。 |
+| **last verified** | 2026-09-17 — 核心契约套件 4729 项全绿（workspace 55、session-controller 删除路径 5）；alpha.1 合并吞掉的未知 unarchive id 拒绝已恢复，幂等用例改以已知未归档 id 断言（见 2026-09-17 漂移裁定记录）。尚未替换安装版验证。 |
 
 ## User paths
 
@@ -25,6 +25,7 @@
 - 删除成功：先发 `api-session/deleted`，再 unarchive；unary ok 时装归档回声并 `applyDeleted`；对话框仍仅当归档集不再含该 id 时关闭。
 - 级联半成功：已 gone 的 id 发 `session-deleted`，根仍归档时 RPC 为 `session-delete-partial`（非 ok）。
 - 无摘要的归档 id 可显示「缺失会话」占位行（仍有取消归档/删除）；Host 仅在 persist+live 皆无时修剪幽灵归档成员。
+- `unarchiveSession` 对不在归档集且不可知（非 live、持久层亦无）的 id 拒绝且不写盘；不在归档集但可知的 id 幂等 resolve。上游 alpha.1 的纯幂等语义不采用。
 
 ## Allowed touch
 

@@ -177,9 +177,14 @@ export class ReactLoopAgent implements Agent {
       try {
         return await job(maintenance.abort.signal)
       } finally {
-        this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
-        const cause = maintenance.abort.signal.reason as AgentCancelCause | undefined
-        if (cause?.kind !== 'disposed' && maintenance.wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        // A job that installs its own driver phase (crash-recovered
+        // interaction resume) hands phase ownership to that driver; the
+        // running driver's own drain loop picks up latched wakes.
+        if (this.phase === maintenance) {
+          this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
+          const cause = maintenance.abort.signal.reason as AgentCancelCause | undefined
+          if (cause?.kind !== 'disposed' && maintenance.wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        }
         done.resolve()
       }
     })()
@@ -248,7 +253,11 @@ export class ReactLoopAgent implements Agent {
 
   /** Continue one crash-recovered interactive call inside its original turn. */
   resumePendingInteraction(plan: PendingInteractionResumePlan): void {
-    if (this.phase.kind !== 'idle') throw new Error(`agent "${this.id}" already has active work`)
+    // The publish window runs this inside runMaintenance, so the claim is
+    // valid from either an idle agent or the maintenance phase it hands off.
+    if (this.phase.kind !== 'idle' && this.phase.kind !== 'maintenance') {
+      throw new Error(`agent "${this.id}" already has active work`)
+    }
     const driver = Promise.withResolvers<void>()
     this.activityDone = driver.promise
     this.setPhase({
