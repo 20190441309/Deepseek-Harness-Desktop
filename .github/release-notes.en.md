@@ -1,16 +1,15 @@
-# Deepseek-Harness-Desktop 0.3.1
+# Deepseek-Harness-Desktop 0.3.2
+
+[中文](release-notes.md) | English
 
 DeepSeek Harness on the Windows desktop: conversations, files, web previews, terminal work, and Git in one local application.
 
 ## What's new
 
-- **Browser mini-player**: Move a web preview into an overlay inside the chat area, resize it from any edge or corner, and restore it without losing the current page or history.
-- **Workspace flow**: Files, Browser, Diff, terminal, and Git work around the active workspace. Files and terminal selections can be sent directly to the conversation.
-- **Launcher and recovery**: Improve cold start, plugin troubleshooting, data import, and update flows while keeping the built-in usage, messaging, and marketplace entry points available.
-- **Models and extensions**: Manage model providers, MCP, skills, and plugins from Settings, and browse or install extensions from the built-in marketplace.
-- **Runtime reliability**: Fix tool-call validation, malformed-response retries, session projection recovery, terminal layout, and several desktop interaction edge cases.
-- **Installer reliability**: Preserve dependency runtime files during Windows packaging so the installed app can load the complete Harness runtime.
-- **Harness baseline**: The desktop client and installer use the same pinned DeepSeek Harness baseline.
+- **Terminal opacity**: A dedicated Appearance slider (40–100, default 75) lets the terminal well show the wallpaper or ambient gradient at its own solidity instead of following the glass slider. Below the default, Settings shows a TUI-selection readability hint rather than clamping. Trajectory and similar tabs also switched to a transparent canvas so the backdrop reaches them.
+- **Button sheen toggle**: A new Appearance switch (按钮悬停光泽 / Button sheen, on by default) turns the metallic hover sheen off entirely, leaving each button's own hover fill.
+- **Pinned pet notifications**: Important messages pushed through whale_notify now pin to the desktop pet bubble with a close button and stay until dismissed; new bubbles queue behind the pin instead of replacing it. Successful "看看" (take a look) results stay on screen the same way.
+- **Harness baseline dsh-v0.1.6-alpha.1**: The desktop client and installer moved to the same new pinned baseline. Official DeepSeek endpoints now resolve to the Messages protocol root `https://api.deepseek.com/anthropic`; third-party gateway addresses are unaffected.
 
 ## Technical contract
 
