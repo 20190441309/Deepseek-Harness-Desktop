@@ -35,6 +35,8 @@ async function bench() {
     subagentAddress: (id: SessionId) => id === sid('child')
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
+    // Room detection reads the list snapshot; no stubbed row is a room.
+    list: { getSnapshot: () => ({ byId: {} }) },
   })
   const commandsRemote = { list: () => Promise.resolve({ ok: true as const, value: [] }) }
   // The service subscribes its cache-invalidation events on construction, so

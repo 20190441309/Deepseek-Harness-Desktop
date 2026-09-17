@@ -59,6 +59,14 @@ function trigger(): HTMLButtonElement {
   return screen.getByRole('button', { name: /^访问模式/ }) as HTMLButtonElement
 }
 
+// The desktop flip recipe keeps the outgoing label mounted (aria-hidden)
+// through the animation; textContent alone would read both copies.
+function triggerText(): string {
+  const clone = trigger().cloneNode(true) as HTMLElement
+  clone.querySelectorAll('[aria-hidden="true"]').forEach(node => { node.remove() })
+  return clone.textContent ?? ''
+}
+
 describe('PermissionSelect', () => {
   it('renders only when both the Session selection and process catalog exist', () => {
     const missingSelection = setup({ selection: undefined })
@@ -70,11 +78,11 @@ describe('PermissionSelect', () => {
 
   it('renders process options and submits an ordinary choice optimistically', async () => {
     const submitted = Promise.withResolvers<boolean>()
-    const { select } = setup({
+    const { select, selection } = setup({
       selection: { currentValue: 'read-only' },
       select: () => submitted.promise,
     })
-    expect(trigger().textContent).toBe('仅可查看')
+    expect(triggerText()).toBe('仅可查看')
     expect([...trigger().querySelectorAll('svg')]
       .every(icon => icon.closest('[aria-hidden="true"]') !== null)).toBe(true)
 
@@ -84,10 +92,13 @@ describe('PermissionSelect', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
 
     expect(select).toHaveBeenCalledExactlyOnceWith('workspace-write')
-    expect(trigger().textContent).toBe('工作区内修改')
+    expect(triggerText()).toBe('工作区内修改')
     expect(trigger().disabled).toBe(true)
     submitted.resolve(true)
     await act(async () => { await submitted.promise })
+    // The pick holds until the confirming projection frame lands.
+    expect(trigger().disabled).toBe(true)
+    act(() => { selection.set({ value: { currentValue: 'workspace-write' } }) })
     expect(trigger().disabled).toBe(false)
   })
 
@@ -101,7 +112,7 @@ describe('PermissionSelect', () => {
       ],
     }
     const { select } = setup({ catalog })
-    expect(trigger().textContent).toBe('Project Files')
+    expect(triggerText()).toBe('Project Files')
     fireEvent.click(trigger())
     expect(screen.getAllByRole('menuitem').map(item => item.textContent))
       .toEqual(['Project Files', 'Operator Mode', 'Custom Mode', '__proto__'])
@@ -201,13 +212,13 @@ describe('PermissionSelect', () => {
       fireEvent.click(screen.getByRole('checkbox'))
       fireEvent.click(screen.getByRole('button', { name: '启用 Auto review' }))
       expect(select).toHaveBeenCalledExactlyOnceWith('auto')
-      expect(trigger().textContent).toBe('Auto reviewEXP')
+      expect(triggerText()).toBe('Auto reviewEXP')
 
       act(() => {
         selection.set({ value: { currentValue: 'danger-full-access' } })
         catalog.set({ value: withoutAuto })
       })
-      expect(trigger().textContent).toBe('完全权限')
+      expect(triggerText()).toBe('完全权限')
       expect(trigger().disabled).toBe(true)
     } finally {
       submitted.resolve(false)
@@ -219,15 +230,15 @@ describe('PermissionSelect', () => {
   it('falls back to an unknown current value and clears a rejected optimistic choice', async () => {
     const select = vi.fn(() => Promise.reject(new Error('rejected')))
     const { selection } = setup({ selection: { currentValue: 'custom' }, select })
-    expect(trigger().textContent).toBe('Custom')
+    expect(triggerText()).toBe('Custom')
     expect(trigger().querySelectorAll('svg')).toHaveLength(1)
 
     fireEvent.click(trigger())
     fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
-    expect(trigger().textContent).toBe('工作区内修改')
+    expect(triggerText()).toBe('工作区内修改')
     await act(async () => {})
-    expect(trigger().textContent).toBe('Custom')
+    expect(triggerText()).toBe('Custom')
     act(() => { selection.set({ value: { currentValue: 'workspace-write' } }) })
-    expect(trigger().textContent).toBe('工作区内修改')
+    expect(triggerText()).toBe('工作区内修改')
   })
 })

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
@@ -50,7 +50,10 @@ describe('published PDF.js licenses', () => {
       expect(packed.files.map(file => file.path)).toContain('lib/client.js')
       expect(packed.files.some(file => file.path.endsWith('pdfjs-NOTICES.txt'))).toBe(false)
 
-      const client = run('tar', ['-xOf', resolve(packageRoot, packed.filename), 'package/lib/client.js'], packageRoot, task.timeout)
+      // pnpm may report an absolute tarball path; bsdtar reads a `C:` drive
+      // prefix as a remote host, so extract with a relative name instead.
+      const tarball = resolve(packageRoot, packed.filename)
+      const client = run('tar', ['-xOf', basename(tarball), 'package/lib/client.js'], dirname(tarball), task.timeout)
       expect(client).toContain('//! Bundled PDF.js license notices')
       const pdfRoot = dirname(require.resolve('pdfjs-dist/package.json'))
       for (const name of licenseNames) {

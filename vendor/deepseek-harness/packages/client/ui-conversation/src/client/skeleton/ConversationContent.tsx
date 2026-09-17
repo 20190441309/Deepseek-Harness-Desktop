@@ -322,7 +322,9 @@ export function ConversationContent({
           ? undefined
           : workspaceLabel(cwd)))
 
-  const heroWorkspaceRow = (
+  // Building the row eagerly would still fire the workspace-picker slot for a
+  // presentation-owned session, so the JSX only exists while the hero shows.
+  const heroWorkspaceRow = !hero ? null : (
     <div className={css.heroWorkspaceRow}>
       <WorkspaceChip
         buttonRef={pickerAnchor}
@@ -386,7 +388,7 @@ export function ConversationContent({
   const composerBar = (
     <div ref={stackRef} className={clsx(css.composerStack, hero && css.composerHero)}>
       {hero && <HeroShell t={t} renderSlot={renderSlot} />}
-      {hero && heroWorkspaceRow}
+      {heroWorkspaceRow}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}
     </div>

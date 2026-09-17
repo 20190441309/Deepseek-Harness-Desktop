@@ -441,8 +441,7 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.getByRole('button', { name: 'Managed room' })).toBeTruthy()
     expect(b.view.queryByRole('tablist')).toBeNull()
     expect(b.view.queryByRole('tab', { name: 'Trajectory' })).toBeNull()
-    expect(b.view.getByRole('button', { name: '指令' })).toBeTruthy()
-    expect(b.view.getByRole('button', { name: '添加附件' })).toBeTruthy()
+    expect(b.view.getByRole('button', { name: '添加文件或调用指令' })).toBeTruthy()
     expect(seat('conversation.input.managed')).toEqual({ locked: false })
   })
 

@@ -1783,7 +1783,7 @@ describe('command launcher chrome and control seats', () => {
     expect((beam as HTMLElement).style.getPropertyValue('--dsh-composer-beam-stroke-opacity')).toBe('0.72')
     expect((beam as HTMLElement).style.getPropertyValue('--dsh-composer-beam-bloom-opacity')).toBe('0.3456')
     expect((beam as HTMLElement).style.getPropertyValue('--dsh-composer-beam-hue-offset')).toBe('45deg')
-    const command = view.getByLabelText('指令') as HTMLButtonElement
+    const command = view.getByLabelText('添加文件或调用指令') as HTMLButtonElement
     const access = view.getByLabelText(/^访问模式/) as HTMLButtonElement
     expect(beam!.contains(command)).toBe(false)
     expect(beam!.contains(access)).toBe(false)
@@ -1814,8 +1814,7 @@ describe('command launcher chrome and control seats', () => {
     expect(view.container.querySelector('[data-composer-footer]')?.childElementCount).toBe(0)
     expect(view.queryByLabelText(/^访问模式/)).toBeNull()
     expect(view.queryByLabelText('上下文已用 25%')).toBeNull()
-    expect(view.getByLabelText('指令')).toBeTruthy()
-    expect(view.getByLabelText('添加附件')).toBeTruthy()
+    expect(view.getByLabelText('添加文件或调用指令')).toBeTruthy()
     expect(view.queryByText('发消息或做任务… / 调用指令 @ 文件或对话')).toBeNull()
     expect(view.getByRole('textbox').getAttribute('data-placeholder')).toBe('发送消息')
   })
