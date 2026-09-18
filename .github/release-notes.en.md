@@ -7,8 +7,10 @@ DeepSeek Harness on the Windows desktop: conversations, files, web previews, ter
 ## What's new
 
 - **Terminal opacity**: A dedicated Appearance slider (40–100, default 75) lets the terminal well show the wallpaper or ambient gradient at its own solidity instead of following the glass slider. Below the default, Settings shows a TUI-selection readability hint rather than clamping. Trajectory and similar tabs also switched to a transparent canvas so the backdrop reaches them.
-- **Button sheen toggle**: A new Appearance switch (按钮悬停光泽 / Button sheen, on by default) turns the metallic hover sheen off entirely, leaving each button's own hover fill.
+- **Button sheen toggle**: A new Appearance switch (按钮悬停光泽 / Button sheen, off by default) keeps each button's plain hover fill; turning it on restores the metallic sheen.
 - **Pinned pet notifications**: Important messages pushed through whale_notify now pin to the desktop pet bubble with a close button and stay until dismissed; new bubbles queue behind the pin instead of replacing it. Successful "看看" (take a look) results stay on screen the same way.
+- **Periodic-stutter fix**: The desktop pet's growth-token scan of session logs moved off the main process onto a worker thread. The 60-second rescan used to freeze every window and IPC for seconds on large session corpora; it now costs a background thread only.
+- **Differential updates**: Launcher upgrades now ride electron-updater's NSIS blockmap channel — unchanged chunks are reused locally and only changed blocks travel over HTTP Range, instead of re-pulling the ~636 MB Setup every release. Any updater failure falls back to the verified whole-file download.
 - **Harness baseline dsh-v0.1.6-alpha.1**: The desktop client and installer moved to the same new pinned baseline. Official DeepSeek endpoints now resolve to the Messages protocol root `https://api.deepseek.com/anthropic`; third-party gateway addresses are unaffected.
 
 ## Technical contract
