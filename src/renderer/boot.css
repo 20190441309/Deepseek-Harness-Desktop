@@ -379,8 +379,7 @@ body[data-state="error"] .stage {
     transform: none;
   }
 
-  /* The WebP loader cannot honor reduced-motion itself; swap in the still
-     poster frame instead. */
+  /* Hide the external animated image and show the static brand head. */
   .mark-anim {
     display: none;
   }

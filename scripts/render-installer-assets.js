@@ -3,9 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-// The pet's head crop doubles as the installer mark; rendered by
-// render-pet-head.js from the Live2D source art.
-const petHeadDataUri = `data:image/png;base64,${fs.readFileSync(path.join(root, 'assets', 'pet-head.png')).toString('base64')}`;
+// Installer artwork shares the canonical application brand source.
+const brandHeadDataUri = `data:image/png;base64,${fs.readFileSync(path.join(root, 'assets', 'whale-head.png')).toString('base64')}`;
 
 // NSIS/MUI2 bitmap geometry is fixed: the welcome/finish sidebar is 164x314
 // and the page header strip is 150x57 (classic 96dpi dialog units).
@@ -37,13 +36,12 @@ const HAIRLINE = 'rgba(0, 0, 0, 0.10)';
 
 const FONT_STACK = "-apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif";
 
-function petMark(size, { muted = false } = {}) {
+function brandMark(size, { muted = false } = {}) {
   // `muted` renders the uninstaller variant: same mark pulled toward the
-  // grayscale palette the removal context uses. The head crop carries an
-  // opaque black field; the icon's 22% corner rounding keeps it a tile,
-  // not a sticker with hard corners.
+  // grayscale palette the removal context uses. Preserve source transparency
+  // and full proportions; do not clip the head or add a background tile.
   const filter = muted ? 'filter:grayscale(0.85) opacity(0.75);' : '';
-  return `<div style="width:${size}px;height:${size}px;${filter}"><img src="${petHeadDataUri}" style="width:100%;height:100%;object-fit:cover;border-radius:22%" alt=""></div>`;
+  return `<div style="width:${size}px;height:${size}px;${filter}"><img src="${brandHeadDataUri}" style="width:100%;height:100%;object-fit:contain" alt=""></div>`;
 }
 
 /**
@@ -64,7 +62,7 @@ function sidebarHtml(k, { muted, titleColor, accentColor }) {
     .hairline{position:absolute;top:0;right:0;width:${1 * k}px;height:100%;background:${HAIRLINE}}
   </style></head><body>
     <div class="stack">
-      ${petMark(72 * k, { muted })}
+      ${brandMark(72 * k, { muted })}
       <div class="word">Deepseek-Harness-<br>Desktop</div>
       <div class="rule"></div>
     </div>
@@ -83,7 +81,7 @@ function headerHtml(k) {
     body{background:${CANVAS};position:relative}
     .mark{position:absolute;top:${((HEADER_HEIGHT - 28) / 2) * k}px;right:${16 * k}px}
   </style></head><body>
-    <div class="mark">${petMark(28 * k)}</div>
+    <div class="mark">${brandMark(28 * k)}</div>
   </body></html>`;
 }
 

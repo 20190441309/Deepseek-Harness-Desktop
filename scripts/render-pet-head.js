@@ -1,8 +1,5 @@
-// Composes the whale-girl brand tile from the full-body source art and
-// writes the assets that consume it:
-//   assets/pet-head.png  — white rounded tile + full-body character
-//                          (boot/installer mark, pet button, icon source)
-//   assets/icon.svg      — rounded-square app icon embedding the tile
+// Generates assets/pet-head.png for the desktop-pet fallback only.
+// Application branding is independently sourced from assets/whale-head.png.
 //
 // The source art ships an opaque black field, so the pass keys it out by
 // luminance + saturation (her navy hair keeps saturation even where it is
@@ -17,7 +14,6 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const sourcePath = path.join(root, 'assets', 'whale-girl.jpg');
 const headPngPath = path.join(root, 'assets', 'pet-head.png');
-const iconSvgPath = path.join(root, 'assets', 'icon.svg');
 
 const TILE_PX = 512;
 const ICON_RADIUS = 56;
@@ -135,16 +131,6 @@ app.whenReady().then(async () => {
   fs.writeFileSync(headPngPath, tile.toPNG());
   console.log(`wrote ${headPngPath}`);
 
-  // icon.svg stays a hand-readable file; render-icon.js loads it over
-  // file:// so the sibling pet-head.png resolves. The tile already carries
-  // its rounded corners; the clip guards resampling edges.
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <clipPath id="tile"><rect width="256" height="256" rx="${ICON_RADIUS}"/></clipPath>
-  <image href="pet-head.png" width="256" height="256" preserveAspectRatio="xMidYMid slice" clip-path="url(#tile)"/>
-</svg>
-`;
-  fs.writeFileSync(iconSvgPath, svg);
-  console.log(`wrote ${iconSvgPath}`);
   app.quit();
 }).catch((error) => {
   console.error(error);

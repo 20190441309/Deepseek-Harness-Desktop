@@ -5,11 +5,11 @@
 | **id** | `boot-page` |
 | **status** | `active` |
 | **last verified (restart)** | 2026-09-08 — 105 项 controller/window/IPC 检查通过；延迟 boot 导航回归及隔离 Electron 内置重启恢复可见 Bot 界面通过 |
-| **last verified** | 2026-09-18 — 中区加载徽标换鲸鱼娘奔跑动画：`.mark` 内容改 `<img class="mark-anim" src="../../assets/whale-running.webp">`（8 帧循环 112px）+ `mark-still` 静帧 `assets/poster.png`（`prefers-reduced-motion` 下互换）；旋转准星 `.reticle` 及其 `spin` keyframes 删除；离屏截图两帧对比确认动画在播、112px 可辨。旧记录：中区徽标从 DeepSeek 鲸鱼线稿换成鲸鱼娘大头（`pet-head.png` img、`.mark` 抬扫描线之上）。旧记录：2026-09-01 — `window-harness-cover` 的 showBoot 用例按 `REMOTE_FEATURE_ENABLED` 断言 `--dshd-remote-feature`（停放为 `0`），不再因旧 `=1` 断言在 `showBoot()` 前失败而挂死插件 boot watch。此前 2026-08-26 — D3 双恢复面收敛：错误态新增「回启动器排查」跳板（`shell:open-launcher` 放开 BOOT 角色、boot 发起附带 show-tab home 直达 Recovery Board）；boot 页动作固定为瞬时三件（重试 / 取消自动重启 / 下载日志）+ 跳板，插件级恢复只在 Recovery Board。此前 2026-08-23 — 验收合同改为 CI 安装包全表；`qa:packaged` 仅 rehearsal |
+| **last verified** | 2026-09-18 — 用户提供的 `assets/whale-spin.svg` 原样用作 112px 中区旋转加载动画，减少动态效果时换 `assets/whale-head.png`；Electron 两帧验证旋转/静态切换，32 项定向与全量 1775 项通过（2 跳过）；源码预启动构建受已有 openNoDirectory 类型错误阻塞。 |
 
 ## User paths
 
-1. 冷启动先开启动器（更新 / 导入 / 版本 / 问诊）。启动桌面端后，主窗见仪器画布：鲸鱼娘奔跑加载动画（`assets/whale-running.webp` 8 帧循环 112px，`.mark` 提到扫描线遮罩之上，`prefers-reduced-motion` 换 `assets/poster.png` 静帧）、品牌名、状态戳、等宽日志；插件进度留在此页。
+1. 冷启动先开启动器（更新 / 导入 / 版本 / 问诊）。启动桌面端后，主窗见仪器画布：鲸鱼旋转加载动画（`assets/whale-spin.svg` 2 秒循环 112px，`.mark` 提到扫描线遮罩之上，`prefers-reduced-motion` 换 `assets/whale-head.png` 静态头像）、品牌名、状态戳、等宽日志；插件进度留在此页。
 2. 就绪后露出官方 Web UI；不切到官方「正在加载插件」页代替 boot。
 3. 失败：ERROR 态、重试、导出日志，另有「回启动器排查」跳板打开启动器 home tab（Recovery Board）；用户插件弄挂可跳过插件树后再试完整插件。插件级排查（归因、逐项/批量禁用）在 Recovery Board 做，不在 boot 页。
 
@@ -27,6 +27,7 @@
 
 - `src/renderer/boot.html` / `boot.css` / `boot.js` / `boot-tokens.css` / `boot-recovery.js`
 - `src/main/harness-controller.js`、`harness-extract.js`、`window.js`、`boot-log-dump.js`、`plugin-tree-failure.js`、`plugin-recovery-actions.js`
+- `assets/whale-spin.svg`、`assets/whale-head.png` — 用户指定的加载与品牌资源
 - 本卡与 handbook boot / plugin-recovery 章
 
 ## Do not touch
@@ -43,7 +44,7 @@
 
 ## Sources
 
-- Decision: none
+- Decision: [统一鲸鱼品牌资源](../decisions/implemented/product/2026-09-18-whale-brand-assets.md)
 
 - Handbook：[../handbook/modules/boot-lifecycle.md](../handbook/modules/boot-lifecycle.md)、[../handbook/flows/boot-to-ready.md](../handbook/flows/boot-to-ready.md)
 - Design：[../design-language.md](../design-language.md#桌面启动页)

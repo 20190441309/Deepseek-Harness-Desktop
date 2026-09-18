@@ -35,7 +35,7 @@ function icoFromPngs(entries) {
 
 app.whenReady().then(async () => {
 try {
-  // Relative raster refs inside the svg (pet-head.png) are inlined as
+  // Relative raster refs inside the svg (whale-head.png) are inlined as
   // data URIs — a data: document cannot reach back out to file://.
   const svg = fs.readFileSync(svgPath, 'utf8').replace(
     /href="([^"]+\.png)"/g,
