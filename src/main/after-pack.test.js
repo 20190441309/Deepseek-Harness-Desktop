@@ -768,3 +768,69 @@ test('repairFlattenedCommanderEsm leaves an already-ESM commander in place', asy
     'keep\n',
   );
 });
+
+function writeCliManifest(dir, commanderRange) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
+    name: '@deepseek-ai/dsh-cli',
+    version: '0.1.6',
+    dependencies: commanderRange ? { commander: commanderRange } : {},
+  })}\n`);
+}
+
+test('repairFlattenedCommanderEsm nests declared-range commander under apps/cli', async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-commander-range-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const harnessSrc = path.join(workspace, 'src');
+  const harnessDest = path.join(workspace, 'dest');
+  const storeDir = path.join(harnessSrc, 'node_modules', '.pnpm');
+  writeCliManifest(path.join(harnessSrc, 'apps', 'cli'), '^15.0.0');
+  writeCommanderEsm(path.join(storeDir, 'commander@9.5.0', 'node_modules', 'commander'), '9.5.0');
+  writeCommanderEsm(path.join(storeDir, 'commander@15.0.0', 'node_modules', 'commander'), '15.0.0');
+  writeCommanderEsm(path.join(harnessDest, 'node_modules', 'commander'), '9.5.0');
+  fs.mkdirSync(path.join(harnessDest, 'apps', 'cli'), { recursive: true });
+
+  const copied = await repairFlattenedCommanderEsm(harnessSrc, harnessDest);
+  assert.ok(copied > 0);
+  const nested = JSON.parse(fs.readFileSync(
+    path.join(harnessDest, 'apps', 'cli', 'node_modules', 'commander', 'package.json'),
+    'utf8',
+  ));
+  assert.equal(nested.version, '15.0.0');
+  const top = JSON.parse(fs.readFileSync(
+    path.join(harnessDest, 'node_modules', 'commander', 'package.json'),
+    'utf8',
+  ));
+  assert.equal(top.version, '9.5.0');
+});
+
+test('repairFlattenedCommanderEsm skips nesting when top-level satisfies the CLI range', async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-commander-satisfied-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const harnessSrc = path.join(workspace, 'src');
+  const harnessDest = path.join(workspace, 'dest');
+  writeCliManifest(path.join(harnessSrc, 'apps', 'cli'), '^15.0.0');
+  writeCommanderEsm(path.join(harnessSrc, 'node_modules', '.pnpm', 'commander@15.0.0', 'node_modules', 'commander'), '15.0.0');
+  writeCommanderEsm(path.join(harnessDest, 'node_modules', 'commander'), '15.0.1');
+  fs.mkdirSync(path.join(harnessDest, 'apps', 'cli'), { recursive: true });
+
+  const copied = await repairFlattenedCommanderEsm(harnessSrc, harnessDest);
+  assert.equal(copied, 0);
+  assert.ok(!fs.existsSync(path.join(harnessDest, 'apps', 'cli', 'node_modules', 'commander')));
+});
+
+test('repairFlattenedCommanderEsm throws when the store lacks the declared range', async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'after-pack-commander-missing-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const harnessSrc = path.join(workspace, 'src');
+  const harnessDest = path.join(workspace, 'dest');
+  writeCliManifest(path.join(harnessSrc, 'apps', 'cli'), '^15.0.0');
+  writeCommanderEsm(path.join(harnessSrc, 'node_modules', '.pnpm', 'commander@9.5.0', 'node_modules', 'commander'), '9.5.0');
+  writeCommanderEsm(path.join(harnessDest, 'node_modules', 'commander'), '9.5.0');
+  fs.mkdirSync(path.join(harnessDest, 'apps', 'cli'), { recursive: true });
+
+  await assert.rejects(
+    () => repairFlattenedCommanderEsm(harnessSrc, harnessDest),
+    /commander 不满足 apps\/cli 声明/,
+  );
+});

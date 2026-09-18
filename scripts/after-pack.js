@@ -1,6 +1,7 @@
 const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const semver = require('semver');
 const { pathToFileURL } = require('url');
 const { missingRuntimeFiles, missingDeclaredEntries } = require('../src/main/plugin-runtime-files');
 const { DESKTOP_PACKAGES } = require('../src/shared/harness-desktop-forks');
@@ -602,28 +603,76 @@ function findPnpmStoreCommanders(storeDir) {
 }
 
 /**
+ * apps/cli 声明的 commander 版本范围。全量复制时 harnessSrc 是 workspace
+ * 根（范围在 apps/cli/package.json），deploy 目录本身即 CLI 包根（范围在
+ * deployDir/package.json）。两处都没有声明时返回空串，不做版本门控。
+ */
+function cliCommanderDeclaredRange(harnessSrc) {
+  for (const manifest of [
+    path.join(harnessSrc, 'apps', 'cli', 'package.json'),
+    path.join(harnessSrc, 'package.json'),
+  ]) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+      const range = (pkg.dependencies && pkg.dependencies.commander)
+        || (pkg.devDependencies && pkg.devDependencies.commander);
+      if (typeof range === 'string' && range.trim()) {
+        return range.trim();
+      }
+    } catch {
+      // 下一个候选位置
+    }
+  }
+  return '';
+}
+
+/**
  * apps/cli/lib/bin.js is ESM (`import { Command } from "commander"`).
  * Flatten first-wins can hoist a CJS commander (major < 12) to top-level
  * node_modules, which Node then refuses as a named export. Prefer the
  * highest ESM-capable commander still in the source .pnpm store.
+ * 顶层可 ESM 还不够：拍平胜者可能是满足 ESM 但低于 CLI 声明范围的旧版
+ * （alpha.2 的 helpCommand 需要 ^15）。apps/cli 在 node_modules 树外，
+ * 版本隔离嵌套到不了它——按 Node 解析规则在 apps/cli/node_modules 下
+ * 补声明版本，顶层保持原样不影响其他消费者。
  */
 async function repairFlattenedCommanderEsm(harnessSrc, harnessDest) {
-  const destDir = path.join(harnessDest, 'node_modules', 'commander');
-  if (commanderSupportsNamedEsm(destDir)) {
-    return 0;
-  }
   const storeDir = path.join(harnessSrc, 'node_modules', '.pnpm');
+  const destDir = path.join(harnessDest, 'node_modules', 'commander');
+  let copied = 0;
+  if (!commanderSupportsNamedEsm(destDir)) {
+    const candidates = findPnpmStoreCommanders(storeDir)
+      .filter((row) => commanderSupportsNamedEsm(row.pkgDir))
+      .sort((a, b) => compareDotVersions(b.version, a.version));
+    if (candidates.length === 0) {
+      throw new Error(
+        '安装包的 commander 不支持 CLI 的 ESM named import（拍平后顶层是 CJS，且 .pnpm store 没有 commander@12+）',
+      );
+    }
+    fs.rmSync(longPath(destDir), { recursive: true, force: true });
+    copied += await copyFiles(collectFiles(candidates[0].pkgDir, destDir, false, false), 32);
+  }
+  const declaredRange = cliCommanderDeclaredRange(harnessSrc);
+  if (!declaredRange) {
+    return copied;
+  }
+  const cliRoot = path.join(harnessDest, 'apps', 'cli');
+  const resolved = resolvePackageFrom(cliRoot, 'commander', harnessDest);
+  if (resolved && semver.satisfies(packageJsonVersion(resolved), declaredRange, { includePrerelease: true })) {
+    return copied;
+  }
   const candidates = findPnpmStoreCommanders(storeDir)
-    .filter((row) => commanderSupportsNamedEsm(row.pkgDir))
+    .filter((row) => semver.satisfies(row.version, declaredRange, { includePrerelease: true }))
     .sort((a, b) => compareDotVersions(b.version, a.version));
   if (candidates.length === 0) {
     throw new Error(
-      '安装包的 commander 不支持 CLI 的 ESM named import（拍平后顶层是 CJS，且 .pnpm store 没有 commander@12+）',
+      `安装包的 commander 不满足 apps/cli 声明 ${declaredRange}（解析到 ${resolved ? packageJsonVersion(resolved) : 'missing'}，.pnpm store 无匹配版本）`,
     );
   }
-  fs.rmSync(longPath(destDir), { recursive: true, force: true });
-  const files = collectFiles(candidates[0].pkgDir, destDir, false, false);
-  return copyFiles(files, 32);
+  const cliNest = path.join(cliRoot, 'node_modules', 'commander');
+  fs.rmSync(longPath(cliNest), { recursive: true, force: true });
+  copied += await copyFiles(collectFiles(candidates[0].pkgDir, cliNest, false, false), 32);
+  return copied;
 }
 
 async function repairFlattenedVersionIsolation(harnessSrc, harnessDest) {
