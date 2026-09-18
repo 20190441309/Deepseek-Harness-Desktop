@@ -113,7 +113,13 @@
       "zh-CN"
     ],
     "afterPack": "./scripts/after-pack.js",
-    "publish": null,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ChisaAlter",
+        "repo": "Deepseek-Harness-Desktop"
+      }
+    ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [
@@ -163,5 +169,8 @@
     "dmg": {
       "artifactName": "Deepseek-Harness-Desktop-${version}-mac-${arch}.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   }
 }

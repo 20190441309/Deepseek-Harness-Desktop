@@ -701,3 +701,130 @@ test('M-3: 非 Windows getInstalledAppInfo 不暴露可用卸载入口', () => {
   assert.equal(info.uninstallAvailable, false);
   assert.equal(info.uninstallUsesSettings, false);
 });
+
+// ---------------------------------------------------------------------------
+// electron-updater channel: latest-only seam, fallback, tag-install guard
+// ---------------------------------------------------------------------------
+
+function releaseWithChecksum() {
+  return {
+    draft: false,
+    prerelease: false,
+    tag_name: 'v0.2.6',
+    html_url: 'https://example.test/r',
+    body: '',
+    assets: [
+      { name: 'Deepseek-Harness-Desktop-Setup-0.2.6.exe', browser_download_url: 'https://example.test/setup.exe' },
+      { name: CHECKSUM_ASSET_NAME, browser_download_url: 'https://example.test/SHA512SUMS.txt' },
+    ],
+  };
+}
+
+function fakeUpdaterChannel(overrides = {}) {
+  const updater = new EventEmitter();
+  updater.calls = { checkForUpdates: 0, downloadUpdate: 0, quitAndInstall: [] };
+  updater.checkForUpdates = async () => {
+    updater.calls.checkForUpdates += 1;
+    if (overrides.failCheck) {
+      throw new Error('manifest unreachable');
+    }
+    return { updateInfo: { version: '9.9.9' } };
+  };
+  updater.downloadUpdate = async () => {
+    updater.calls.downloadUpdate += 1;
+    if (overrides.logLine && updater.logger) {
+      updater.logger.info(overrides.logLine);
+    }
+    updater.emit('download-progress', { percent: 42 });
+  };
+  updater.quitAndInstall = (...args) => {
+    updater.calls.quitAndInstall.push(args);
+  };
+  return updater;
+}
+
+test('installUpdate uses the updater channel for the latest release and skips the whole-file download', async () => {
+  const previousFetch = global.fetch;
+  const previousGet = https.get;
+  const fetched = [];
+  const seenGet = [];
+  global.fetch = async (url) => {
+    fetched.push(String(url));
+    return { ok: true, status: 200, json: async () => releaseWithChecksum() };
+  };
+  https.get = (target) => {
+    seenGet.push(String(target));
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    return request;
+  };
+  const fake = fakeUpdaterChannel({ logLine: 'Full: 636.65 MB, To download: 44.59 MB (7%)' });
+  try {
+    const result = await installUpdate(null, {
+      updaterDeps: { isPackaged: true, platform: 'win32', autoUpdater: fake, existsSync: () => true },
+    });
+    assert.equal(result.updater, true);
+    assert.equal(result.launched, true);
+    assert.equal(result.differential, true);
+    assert.equal(result.downloadPercent, 7);
+    assert.equal(fake.calls.downloadUpdate, 1);
+    assert.deepEqual(fake.calls.quitAndInstall, [[true, true]]);
+    assert.equal(seenGet.length, 0, 'legacy downloadFile must not run when the updater channel succeeds');
+    assert.equal(fetched.some((url) => url.includes('setup.exe')), false);
+  } finally {
+    global.fetch = previousFetch;
+    https.get = previousGet;
+  }
+});
+
+test('installUpdate falls back to the verified whole-file path when the updater channel fails', async () => {
+  const previousFetch = global.fetch;
+  const previousGet = https.get;
+  const seenGet = [];
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => releaseWithChecksum() });
+  https.get = (target, _options, onResponse) => {
+    seenGet.push(String(target));
+    const response = new EventEmitter();
+    response.statusCode = 500;
+    response.headers = {};
+    response.resume = () => {};
+    response.pipe = () => {};
+    setImmediate(() => onResponse(response));
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    return request;
+  };
+  const fake = fakeUpdaterChannel({ failCheck: true });
+  try {
+    await assert.rejects(
+      () => installUpdate(null, {
+        updaterDeps: { isPackaged: true, platform: 'win32', autoUpdater: fake },
+        userDataDir: os.tmpdir(),
+      }),
+      /Download 500/,
+      'fallback must surface the legacy download error',
+    );
+    assert.equal(fake.calls.checkForUpdates, 1, 'updater channel was attempted first');
+    assert.equal(fake.calls.downloadUpdate, 0);
+    assert.ok(seenGet.some((url) => url.includes('setup.exe')), 'fallback must reach downloadFile');
+  } finally {
+    global.fetch = previousFetch;
+    https.get = previousGet;
+  }
+});
+
+test('installRelease for a specific tag never touches the updater channel', async () => {
+  const previousFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => releaseWithoutChecksum() });
+  const fake = fakeUpdaterChannel();
+  try {
+    const result = await installRelease('v0.2.6', undefined, {
+      confirmUnverified: async () => false,
+      updaterDeps: { isPackaged: true, platform: 'win32', autoUpdater: fake },
+    });
+    assert.equal(result.declined, true);
+    assert.equal(fake.calls.checkForUpdates, 0, 'tag installs stay on the whole-file path');
+  } finally {
+    global.fetch = previousFetch;
+  }
+});

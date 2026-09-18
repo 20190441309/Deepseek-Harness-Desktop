@@ -110,6 +110,30 @@
 !macroend
 
 !macro customInit
+  # Per-machine elevation comes first. The stock installer.nsi install
+  # section already re-elevates for silent per-machine upgrades
+  # ($hasPerMachineInstallation + ${Silent}), but that check runs after
+  # .onInit — an unelevated init still reads/writes here first, and an
+  # interactive upgrade of a per-machine install would hit the same wall
+  # later. Elevating at the top of customInit lets the elevated copy re-run
+  # this whole init (admin check falls through) with full registry access.
+  ${If} $installMode == "all"
+    ${IfNot} ${UAC_IsAdmin}
+      ShowWindow $HWNDPARENT ${SW_HIDE}
+      !insertmacro UAC_RunElevated
+      ${Switch} $0
+        ${Case} 0
+          ${Break}
+        ${Case} 1223 # user aborted the UAC prompt
+          ${Break}
+        ${Default}
+          MessageBox mb_IconStop|mb_TopMost|mb_SetForeground "Unable to elevate, error $0"
+          ${Break}
+      ${EndSwitch}
+      Quit
+    ${EndIf}
+  ${EndIf}
+
   StrCpy $R1 "0"
   StrCpy $2 ""
 

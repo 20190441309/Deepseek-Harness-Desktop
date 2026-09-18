@@ -70,6 +70,7 @@ jobs:
           path: |
             dist/Deepseek-Harness-Desktop-Setup-*.exe
             dist/Deepseek-Harness-Desktop-Setup-*.exe.blockmap
+            dist/latest.yml
           if-no-files-found: error
 
   macos:

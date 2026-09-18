@@ -97,8 +97,10 @@ jobs:
           shopt -s nullglob
           setups=(dist-out/Deepseek-Harness-Desktop-Setup-*.exe)
           blockmaps=(dist-out/Deepseek-Harness-Desktop-Setup-*.exe.blockmap)
+          manifests=(dist-out/latest.yml)
           (( ${#setups[@]} == 1 )) || { echo "Candidate must contain exactly one Windows Setup executable" >&2; exit 1; }
           (( ${#blockmaps[@]} == 1 )) || { echo "Candidate must contain exactly one Windows blockmap" >&2; exit 1; }
+          (( ${#manifests[@]} == 1 )) || { echo "Candidate must contain exactly one latest.yml update manifest" >&2; exit 1; }
           expected_version="${RELEASE_TAG#v}"
           setup_name=$(basename "${setups[0]}")
           [[ "$setup_name" == "Deepseek-Harness-Desktop-Setup-${expected_version}.exe" ]] || {
@@ -133,7 +135,7 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           cd dist-out
-          files=(Deepseek-Harness-Desktop-Setup-*.exe Deepseek-Harness-Desktop-Setup-*.exe.blockmap Deepseek-Harness-Desktop-*.dmg)
+          files=(Deepseek-Harness-Desktop-Setup-*.exe Deepseek-Harness-Desktop-Setup-*.exe.blockmap Deepseek-Harness-Desktop-*.dmg latest.yml)
           (( ${#files[@]} >= 2 )) || { echo "No complete candidate asset set to checksum" >&2; exit 1; }
           sha512sum "${files[@]}" > SHA512SUMS.txt
           cd ..
@@ -169,8 +171,8 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(dist-out/Deepseek-Harness-Desktop-Setup-*.exe dist-out/Deepseek-Harness-Desktop-Setup-*.exe.blockmap dist-out/Deepseek-Harness-Desktop-*.dmg dist-out/SHA512SUMS.txt)
-          (( ${#assets[@]} >= 3 )) || { echo "Release assets are incomplete" >&2; exit 1; }
+          assets=(dist-out/Deepseek-Harness-Desktop-Setup-*.exe dist-out/Deepseek-Harness-Desktop-Setup-*.exe.blockmap dist-out/Deepseek-Harness-Desktop-*.dmg dist-out/latest.yml dist-out/SHA512SUMS.txt)
+          (( ${#assets[@]} >= 4 )) || { echo "Release assets are incomplete" >&2; exit 1; }
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$CANDIDATE_SHA" \

@@ -4,6 +4,7 @@ const https = require('https');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const { app, shell } = require('electron');
+const { installLatestViaUpdater } = require('./update-updater');
 
 const GITHUB_OWNER = 'ChisaAlter';
 const GITHUB_REPO = 'Deepseek-Harness-Desktop';
@@ -841,10 +842,33 @@ async function installFromAsset(info, onProgress, options = {}) {
       };
     }
   }
+  if (options.preferUpdater) {
+    try {
+      const outcome = await installLatestViaUpdater(
+        { timeoutMs: DOWNLOAD_TIMEOUT_MS },
+        onProgress,
+        options.updaterDeps || {},
+      );
+      if (outcome && outcome.ok) {
+        return {
+          ...info,
+          launched: true,
+          updater: true,
+          differential: Boolean(outcome.differential),
+          downloadPercent: outcome.downloadPercent ?? null,
+        };
+      }
+      console.warn(`electron-updater path unavailable (${outcome && outcome.reason}); falling back to full download${outcome && outcome.message ? `: ${outcome.message}` : ''}`);
+    } catch (error) {
+      // The updater channel is an optimization: any failure falls back to the
+      // verified whole-file download below, which is fully independent.
+      console.warn('electron-updater path failed, falling back to full download:', error && error.message ? error.message : error);
+    }
+  }
   if (typeof onProgress === 'function') {
     onProgress({ phase: 'download', percent: 0 });
   }
-  const dir = path.join(app.getPath('userData'), 'updates');
+  const dir = path.join(options.userDataDir || app.getPath('userData'), 'updates');
   fs.mkdirSync(dir, { recursive: true });
   const safeName = path.basename(info.assetName || 'DeepSeek-Harness-Setup.exe').replace(/[^\w.\-]+/g, '_');
   const dest = path.join(dir, safeName);
@@ -907,7 +931,7 @@ async function installUpdate(onProgress, options = {}) {
     assetName: info.assetName,
     checksumUrl: info.checksumUrl,
     htmlUrl: info.htmlUrl,
-  }, onProgress, options);
+  }, onProgress, { ...options, preferUpdater: true });
 }
 
 module.exports = {

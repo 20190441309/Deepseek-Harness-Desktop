@@ -13,9 +13,9 @@ Two-manual-stage pipeline, both `workflow_dispatch` on `main`:
    - candidate run must be completed/success/workflow_dispatch/from `release.yml`/on `main`
    - tag == package.json version (`check-release-version.mjs`)
    - ≥1 green `test.yml` run for the exact candidate SHA
-   - exactly one Setup exe + one blockmap; filename must be `Deepseek-Harness-Desktop-Setup-<version>.exe`; SHA256 must match operator input
+   - exactly one Setup exe + one blockmap + one `latest.yml`; filename must be `Deepseek-Harness-Desktop-Setup-<version>.exe`; SHA256 must match operator input
    - remote tag must NOT already exist (refuses repoint)
-   - then `gh release create <tag> --target <candidate_sha>` with Setup exe + blockmap + optional dmg + `SHA512SUMS.txt`, body = `release-notes.md` + `release-notes.en.md` + provenance, `--latest`
+   - then `gh release create <tag> --target <candidate_sha>` with Setup exe + blockmap + `latest.yml` + optional dmg + `SHA512SUMS.txt`, body = `release-notes.md` + `release-notes.en.md` + provenance, `--latest`
 
 ## Test Gate
 - `npm test` (`node --test "src/**/*.test.js" "mobile/web/**/*.test.js"`) — runs in `test.yml` job `desktop` (windows+macos matrix) on push to main / PRs
@@ -24,7 +24,7 @@ Two-manual-stage pipeline, both `workflow_dispatch` on `main`:
 - `release.yml` additionally gates on `smoke:packaged` (boots the real win-unpacked tree)
 
 ## Registry / Distribution
-- GitHub Releases only (Windows Setup `.exe` + `.blockmap` + `SHA512SUMS.txt`; optional macOS dmg). No npm publish (`"private": true`, `publish: null` in build config).
+- GitHub Releases only (Windows Setup `.exe` + `.blockmap` + `latest.yml` + `SHA512SUMS.txt`; optional macOS dmg). No npm publish (`"private": true`). `build.publish` is the GitHub provider — it generates `resources/app-update.yml` + `latest.yml` for electron-updater differential updates; it does NOT trigger publishing (`npm run dist` runs without `--publish`).
 - Repo: `ChisaAlter/Deepseek-Harness-Desktop`
 
 ## Release Notes Strategy

@@ -1221,7 +1221,7 @@ function bind() {
     api.onUpdateProgress((payload) => {
       $('update-progress').hidden = false;
       $('update-progress').textContent = payload?.phase === 'download'
-        ? `下载 ${payload.percent || 0}%`
+        ? `${payload.differential ? '增量下载' : '下载'} ${payload.percent || 0}%`
         : (payload?.phase || '处理中');
     });
   }
