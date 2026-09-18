@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `remote-settings` |
 | **status** | `active` |
-| **last verified** | 2026-09-11 — rc.1 后 dsh-im 各 channel 的 caller-scoped webServer 注入已修复；dsh-im check 19 pass / 1 skip、官方 remote specs、真实 source smoke 与 package dry-run 通过。此前：2026-09-08 — 默认服务器切到 `ayase.cn:443` + TLS，公网 SPA 切到 `https://ayase.cn/dshd/`；旧内置 IP 精确迁移、自定义服务器保留。VPS relay 容器 `healthy` / 0 restart，nginx live 与候选配置通过；Node 远程聚焦 92 pass / 0 fail / 1 环境 skip，设置 UI 10/10，公网目录一致性通过，真实 daemon + 公网 relay + 公网 SPA E2E 10/10。未执行真机相机、Android WebView 或正式安装包升级验收。 |
+| **last verified** | 2026-09-18 — 装机「开启远程→未响应」修复：主进程 `loadServerApi` 窄化为 `pairing-offer.js` + `relay-device-credential-store.js`（原 barrel ~3 万模块同步加载冻结主线程）；`DSH_VENDOR_PACKAGES` 改镜像 + parity 测试。`dshd-remote` 36 pass、`dshd-daemon-runner`/`remote-epipe`/`stdio-guard`/`lan`/`ipc` 80 pass、`ui-settings-remote` 45/45、`check:governance` 6/6、`npm run pack`（80.7MiB runtime、sqlite ABI probe、daemon probe、skip compose）、打包布局窄入口 import+铸码 68ms、真实 Electron `qa:remote` 双冷启动 11/11（含 cold.openShowsQr）。此前：2026-09-11 — rc.1 后 dsh-im 各 channel 的 caller-scoped webServer 注入已修复；dsh-im check 19 pass / 1 skip、官方 remote specs、真实 source smoke 与 package dry-run 通过。再前：2026-09-08 — 默认服务器切到 `ayase.cn:443` + TLS，公网 SPA 切到 `https://ayase.cn/dshd/`；旧内置 IP 精确迁移、自定义服务器保留。VPS relay 容器 `healthy` / 0 restart，nginx live 与候选配置通过；Node 远程聚焦 92 pass / 0 fail / 1 环境 skip，设置 UI 10/10，公网目录一致性通过，真实 daemon + 公网 relay + 公网 SPA E2E 10/10。未执行真机相机、Android WebView 或正式安装包升级验收。 |
 
 ## User paths
 
@@ -24,6 +24,7 @@
 
 - **停放开关：** `src/main/config.js` `REMOTE_FEATURE_ENABLED`。false 时 preload 不暴露 `getRemote`/`saveRemote`/`rotateRemoteToken`/`unbindRemoteDevice`/`renameRemoteDevice`，`ui-settings-remote` 不注册侧栏与设置入口；`normalizeRemoteConfig` 把 `remoteEnabled` 钉死为 false；IPC `shell:save-remote` 无法打开。解禁只翻这一处（window argv `--dshd-remote-feature` 跟它走）。
 - **配对协议 = dshd offer**（实现为 vendored ChisaCode offer v2）：全量 `createChisaCodeDaemon` 跑在 `dshd-daemon-runner.mjs` 子进程（**禁止**回迁主进程）；主进程 `DshdRemote` 只是进程管理面 + file-backed 配对/快照；QR `appBaseUrl`：局域网 = `preferredLanIp():3180`，服务器 = `DEFAULT_PUBLIC_APP_BASE_URL`（`https://ayase.cn/dshd/`），**禁止**把中继 `/ws` 当 SPA。用户可见文案称 dshd daemon / dshd 配对，不出现 ChisaCode 品牌名。
+- **主进程窄 import**：`loadServerApi` 只引 `pairing-offer.js` + `relay-device-credential-store.js` 两个兄弟模块并镜像 `DSH_VENDOR_PACKAGES`（parity 测试钉住 vendored 源）；`exports.js` 全量 barrel（数万模块，ESM 同步加载会冻结主线程）只允许经 launch file 进 daemon 子进程。
 - **daemon 子进程契约**：runner 在 `asarUnpack`；stdout 只有 JSON 行（控制行 + pino json）；stdin `stop` 与 stdin 关闭都必须优雅停（孤儿零容忍）；意外退出必须落 `snapshot.error` 并保留弹窗重试；不做自动退避重启循环（对齐上游）。
 - **DSHD_* 命名桥**：桌面对外只有 `DSHD_CHISACODE_HOME`（打包需 `DSHD_ALLOW_ENV_HOME=1`，同 dsh-home 守卫）与 `DSHD_DSH_VENDOR_DIR`；`CHISACODE_*` 只允许出现在 daemon 子进程 env 注入处，主进程自身 env 与 PTY / `dsh web` 子进程永不携带；字面量 `DSHD_HOME` 属 dsh-home 卡，不可占用。DEEPSEEK 凭据只经 `official-deepseek-env` 白名单入子进程 env，launch JSON 永不含密钥。
 - `snapshot.relayConnected` / `relayError` 反映真实 relay control；未连接时弹窗明示且不展示配对码。

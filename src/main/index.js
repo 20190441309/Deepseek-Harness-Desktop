@@ -21,7 +21,7 @@ const { invokeDesktopShell } = require('./remote-shell');
 const git = require('./git');
 const { listDir } = require('./workspace-fs');
 const { buildMenu } = require('./menu');
-const { createTray, invokeTrayAction } = require('./tray');
+const { createTray, invokeTrayAction, refreshTrayMenu } = require('./tray');
 const { DESKTOP_PET_FEATURE, configureDesktopPet, getDesktopPet } = require('./desktop-pet');
 const { LIVE2D_PET_FEATURE, configureLive2dPet, getLive2dPet } = require('./desktop-live2d');
 const { checkUpdate, installUpdate, setGithubTokenProvider, currentVersion } = require('./update');
@@ -478,6 +478,10 @@ if (!gotLock) {
         // carries no settings UI. openHarnessSettings resolves false when
         // the harness page is not up.
         openPetSettings: async () => ({ ok: (await openHarnessSettings('pet')) === true }),
+        // Hide paths that bypass the tray (pet panel 隐藏, settings page)
+        // still funnel through setEnabled — refresh rebuilds the checkbox
+        // snapshot so the tray never shows a stale check.
+        onEnabledChange: () => refreshTrayMenu(),
       });
       getLive2dPet()?.show();
     }

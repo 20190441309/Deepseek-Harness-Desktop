@@ -775,6 +775,9 @@ function createLive2dPetManager(options = {}) {
     } else {
       hide();
     }
+    // Every enabled flip — pet panel 隐藏, settings page, tray — reaches this
+    // funnel; the shell rebuilds its tray checkbox snapshot off the callback.
+    try { options.onEnabledChange?.(state.enabled); } catch {}
     return { ...state };
   }
 

@@ -44,7 +44,9 @@ function eventLog(text = 'hello'): SessionEvent[] {
 }
 
 class TestHandle implements SessionHandle {
-  readonly inheritedEventCount = SessionLogOffset(0)
+  get inheritedEventCount(): SessionLogOffset {
+    return TestPersistence.entries.get(this.id)?.inheritedEventCount ?? SessionLogOffset(0)
+  }
 
   constructor(
     readonly id: SessionIdType,
@@ -100,7 +102,7 @@ function entryRevision(entry: { events: SessionEvent[] }): SessionPersistenceRev
 }
 
 class TestPersistence extends SessionPersistence {
-  static entries = new Map<SessionIdType, { meta: SessionHeader; events: SessionEvent[] }>()
+  static entries = new Map<SessionIdType, { meta: SessionHeader; events: SessionEvent[]; inheritedEventCount?: SessionLogOffset }>()
   static listFailure: unknown
   static listOverride: ((signal?: AbortSignal) => Promise<SessionPersistenceSnapshot[]>) | undefined
   static readFailure: unknown
@@ -115,7 +117,7 @@ class TestPersistence extends SessionPersistence {
   static listSignals: Array<AbortSignal | undefined> = []
   static readSignals: Array<AbortSignal | undefined> = []
 
-  static reset(entries: readonly { meta: SessionHeader; events: SessionEvent[] }[] = []): void {
+  static reset(entries: readonly { meta: SessionHeader; events: SessionEvent[]; inheritedEventCount?: SessionLogOffset }[] = []): void {
     this.entries = new Map(entries.map(entry => [entry.meta.id, structuredClone(entry)]))
     this.listFailure = undefined
     this.listOverride = undefined
@@ -483,6 +485,34 @@ describe('session-query exact reads', () => {
     Object.assign(snapshot.events[0]!, { time: 999 })
     expect(TestPersistence.entries.get(valid.id)?.events[0]?.time).toBe(10)
     await expect(ctx.sessionQuery.readSession(corrupt.id)).rejects.toThrow('seed event at index 0 has seq 1')
+  })
+
+  it('reads a persisted seeded session whose stored log extends past the inherited prefix', async () => {
+    const seeded = header('seeded-log', 2, {
+      isSeeded: true,
+      parentSession: SessionId('parent-log'),
+    })
+    const seededEvents: SessionEvent[] = [
+      {
+        type: 'user/message', seq: SessionSeq(0), time: 10,
+        data: createUserMessage({ content: [{ type: 'text', text: 'inherited' }], source: { kind: 'user' } }),
+        surfaceOp: 'append',
+      },
+      { type: 'session/end-seed', seq: SessionSeq(1), time: 11, data: { inherited: true } },
+      {
+        type: 'user/message', seq: SessionSeq(2), time: 12,
+        data: createUserMessage({ content: [{ type: 'text', text: 'own' }], source: { kind: 'user' } }),
+        surfaceOp: 'append',
+      },
+    ]
+    TestPersistence.reset([{ meta: seeded, events: seededEvents, inheritedEventCount: SessionLogOffset(1) }])
+    const ctx = await liveContext()
+    await ctx.plugin(TestPersistence)
+
+    const snapshot = await ctx.sessionQuery.readSession(seeded.id)
+    expect(snapshot.session.isSeeded).toBe(true)
+    expect(snapshot.inheritedEventCount).toBe(1)
+    expect(snapshot.events.slice(0, seededEvents.length)).toEqual(seededEvents)
   })
 
   it('prefers a live owner that attaches while its persisted prefix is inspected', async () => {

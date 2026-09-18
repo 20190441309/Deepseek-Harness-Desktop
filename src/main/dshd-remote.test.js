@@ -17,6 +17,7 @@ const {
   relayStatusFromLogRecord,
   relayUseTls,
   resolveDesktopChisaCodeHome,
+  DSH_VENDOR_PACKAGES,
   VENDOR_ROOT,
 } = require('./dshd-remote');
 
@@ -602,11 +603,38 @@ test('DshdRemote never uses lan.pairingUrl for product QR', async () => {
   }
 });
 
-test('loadServerApi exposes createChisaCodeDaemon + generateLocalPairingOffer', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, async () => {
+test('loadServerApi exposes the narrow pairing/device-store slice only', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, async () => {
   const api = await loadServerApi();
-  assert.equal(typeof api.createChisaCodeDaemon, 'function');
   assert.equal(typeof api.generateLocalPairingOffer, 'function');
-  assert.equal(typeof api.createRootLogger, 'function');
+  assert.equal(typeof api.RelayDeviceCredentialStore, 'function');
+  assert.ok(Array.isArray(api.DSH_VENDOR_PACKAGES));
+  assert.equal(api.DSH_VENDOR_PACKAGES.length, 12);
+  // The daemon barrel must not be pulled into the main process — importing
+  // exports.js loads tens of thousands of ESM modules synchronously on the
+  // calling thread (observed: 未响应 on the installed app's remote toggle).
+  assert.equal(api.createChisaCodeDaemon, undefined);
+  assert.equal(api.createRootLogger, undefined);
+});
+
+test('daemon runner export ships the full barrel the child needs', { skip: VENDOR_BUILT ? false : VENDOR_BUILD_HINT }, async () => {
+  const { pathToFileURL } = require('url');
+  const barrelPath = path.join(
+    VENDOR_ROOT, 'node_modules', '@chisacode', 'server', 'dist', 'server', 'server', 'exports.js',
+  );
+  const barrel = await import(pathToFileURL(barrelPath).href);
+  assert.equal(typeof barrel.createChisaCodeDaemon, 'function');
+  assert.equal(typeof barrel.createRootLogger, 'function');
+  assert.equal(typeof barrel.generateLocalPairingOffer, 'function');
+});
+
+test('DSH_VENDOR_PACKAGES mirror matches the vendored provider list', () => {
+  const source = fs.readFileSync(path.join(
+    VENDOR_ROOT, 'packages', 'server', 'src', 'server', 'agent', 'providers', 'dsh-agent.ts',
+  ), 'utf8');
+  const match = source.match(/export const DSH_VENDOR_PACKAGES = \[([^\]]+)\]/);
+  assert.ok(match, 'upstream DSH_VENDOR_PACKAGES literal not found — update the mirror');
+  const upstream = [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
+  assert.deepEqual([...DSH_VENDOR_PACKAGES], upstream);
 });
 
 test('loadServerApi fails loud with the vendor-build hint when dist is absent', { skip: VENDOR_BUILT ? 'dist 已构建，缺失路径不可达' : false }, async () => {

@@ -7,9 +7,13 @@ interface SessionEventLike {
 export declare function resolveDshHome(): string;
 /**
  * Locate a session's artifact beneath `<home>/sessions`: dirs are
- * `<project>/<encoded-session-id>` and the file is `session.jsonl.zstd`
- * (or an uncompressed `session.jsonl`). The id may arrive either as the
- * full `session-<uuid>` (coverage failed-ids) or the bare uuid.
+ * `<project>/<encoded-session-id>` and the file is the HIGHEST canonical
+ * generation the backend would read (`session.vN.jsonl.zstd`, with v0's
+ * `session.jsonl.zstd` as the unversioned name) — never an obsolete earlier
+ * generation left behind by a format migration. Compressed candidates win
+ * over uncompressed ones; the uncompressed set is only a graceful fallback
+ * (the rebuild rejects it later). The id may arrive either as the full
+ * `session-<uuid>` (coverage failed-ids) or the bare uuid.
  */
 export declare function locateSessionArtifact(home: string, sessionId: string): Promise<string | null>;
 export interface RebuildResult {

@@ -118,6 +118,44 @@ test('repairSessionLog backs up and atomically replaces the artifact', async () 
   await rm(home, { recursive: true, force: true })
 })
 
+test('locateSessionArtifact selects the highest canonical generation, not a stale v0', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-repair-'))
+  const dir = join(home, 'sessions', '--proj-1--', 'session-x')
+  await mkdir(dir, { recursive: true })
+  const text = HEADER + '\n{"seq":0}\n'
+  const v0 = join(dir, 'session.jsonl.zstd')
+  const v2 = join(dir, 'session.v2.jsonl.zstd')
+  await writeFile(v0, await bytesOf(text))
+  await writeFile(v2, await bytesOf(text))
+  // Noncanonical lookalikes (v0 tag, leading zero, backups, temps) are ignored.
+  await writeFile(join(dir, 'session.v0.jsonl.zstd'), await bytesOf(text))
+  await writeFile(join(dir, 'session.v03.jsonl.zstd'), await bytesOf(text))
+  await writeFile(join(dir, 'session.v9.jsonl.zstd.bak-1'), await bytesOf(text))
+  await writeFile(join(dir, 'session.v9.jsonl.zstd.tmp'), await bytesOf(text))
+  assert.equal(await locateSessionArtifact(home, 'x'), v2)
+  await rm(home, { recursive: true, force: true })
+})
+
+test('repairSessionLog rewrites the authoritative generation and leaves older ones untouched', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-repair-'))
+  const dir = join(home, 'sessions', '--proj-1--', 'session-x')
+  await mkdir(dir, { recursive: true })
+  const healthy = HEADER + '\n' + [0, 1, 2].map((seq) => JSON.stringify({ seq })).join('\n') + '\n'
+  const damaged = HEADER + '\n' + [0, 1, 2, 1, 2].map((seq) => JSON.stringify({ seq })).join('\n') + '\n'
+  const v0 = join(dir, 'session.jsonl.zstd')
+  const v2 = join(dir, 'session.v2.jsonl.zstd')
+  const v0Bytes = await bytesOf(healthy)
+  await writeFile(v0, v0Bytes)
+  await writeFile(v2, await bytesOf(damaged))
+
+  const outcome = await repairSessionLog(home, 'x', fakeDecode)
+  assert.equal(outcome.repaired, 5)
+  assert.ok(outcome.backup.startsWith(v2 + '.bak-'))
+  assert.deepEqual(await readFile(v0), v0Bytes)
+  assert.deepEqual(await decodeStream(await readFile(v2)), [0, 1, 2, 3, 4])
+  await rm(home, { recursive: true, force: true })
+})
+
 test('repairSessionLog rejects missing artifacts and never writes', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-repair-'))
   await assert.rejects(() => repairSessionLog(home, 'nope', fakeDecode), /artifact not found/)

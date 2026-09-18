@@ -48,6 +48,10 @@ const SERVER_EXPORT = path.join(
   'server',
   'exports.js',
 );
+const SERVER_DIR = path.dirname(SERVER_EXPORT);
+// Narrow main-process entries next to the barrel (see loadServerApi).
+const PAIRING_OFFER_EXPORT = path.join(SERVER_DIR, 'pairing-offer.js');
+const DEVICE_STORE_EXPORT = path.join(SERVER_DIR, 'relay-device-credential-store.js');
 
 /**
  * Plain-node children cannot read app.asar; the runner ships via asarUnpack.
@@ -112,8 +116,35 @@ function readDefaults() {
 }
 
 /**
- * Load ESM @chisacode/server exports (full daemon API — not a slice).
- * @returns {Promise<typeof import('@chisacode/server')>}
+ * Mirror of upstream `DSH_VENDOR_PACKAGES` (vendored
+ * `packages/server/src/server/agent/providers/dsh-agent.ts`). Importing that
+ * module pulls the provider graph into the main process; a parity test in
+ * dshd-remote.test.js pins this list to the vendored source.
+ */
+const DSH_VENDOR_PACKAGES = [
+  'dsh-llm-deepseek',
+  'dsh-sandbox-local',
+  'dsh-sandbox-policy',
+  'dsh-subprocess-local',
+  'dsh-bash-sandbox',
+  'dsh-user-approval',
+  'dsh-fs-sandbox',
+  'dsh-fs-observation-policy',
+  'dsh-tool-fs',
+  'dsh-token-meter',
+  'dsh-compaction-basic',
+  'dsh-repeat-tool-reminder',
+];
+
+/**
+ * Load the narrow dshd-remote slice of @chisacode/server: pairing offers and
+ * the device store are file-backed against the same chisacode home (the
+ * upstream `daemon pair` shape). `SERVER_EXPORT` is the whole daemon graph —
+ * tens of thousands of ESM modules loaded synchronously on the calling
+ * thread, which freezes the Electron main process on a cold install. It
+ * stays the completeness canary and the daemon child's entry; never import
+ * it here.
+ * @returns {Promise<{ generateLocalPairingOffer: Function, RelayDeviceCredentialStore: Function, DSH_VENDOR_PACKAGES: readonly string[] }>}
  */
 async function loadServerApi() {
   if (!fs.existsSync(SERVER_EXPORT)) {
@@ -121,7 +152,15 @@ async function loadServerApi() {
       `dshd remote runtime missing at ${SERVER_EXPORT}. Run vendor sync / build packages/server.`,
     );
   }
-  return import(pathToFileURL(SERVER_EXPORT).href);
+  const [pairing, store] = await Promise.all([
+    import(pathToFileURL(PAIRING_OFFER_EXPORT).href),
+    import(pathToFileURL(DEVICE_STORE_EXPORT).href),
+  ]);
+  return {
+    generateLocalPairingOffer: pairing.generateLocalPairingOffer,
+    RelayDeviceCredentialStore: store.RelayDeviceCredentialStore,
+    DSH_VENDOR_PACKAGES,
+  };
 }
 
 function modeIsAway(config) {
@@ -932,6 +971,7 @@ class DshdRemote extends EventEmitter {
 module.exports = {
   DshdRemote,
   loadServerApi,
+  DSH_VENDOR_PACKAGES,
   VENDOR_ROOT,
   RUNNER_PATH,
   desktopDshVendorDir,

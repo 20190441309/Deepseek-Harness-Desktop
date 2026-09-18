@@ -4,7 +4,8 @@ const path = require('path');
 const { assertMacReleaseIcon } = require('./check-mac-icon');
 
 const root = path.join(__dirname, '..');
-const svgPath = path.join(root, 'assets', 'icon.svg');
+const assetsDir = path.join(root, 'assets');
+const svgPath = path.join(assetsDir, 'icon.svg');
 const pngPath = path.join(root, 'assets', 'icon.png');
 const icoPath = path.join(root, 'assets', 'icon.ico');
 const PNG_SIZE = 1024;
@@ -33,7 +34,13 @@ function icoFromPngs(entries) {
 }
 
 app.whenReady().then(async () => {
-  const svg = fs.readFileSync(svgPath, 'utf8');
+try {
+  // Relative raster refs inside the svg (pet-head.png) are inlined as
+  // data URIs — a data: document cannot reach back out to file://.
+  const svg = fs.readFileSync(svgPath, 'utf8').replace(
+    /href="([^"]+\.png)"/g,
+    (match, rel) => `href="data:image/png;base64,${fs.readFileSync(path.join(assetsDir, rel)).toString('base64')}"`
+  );
   const html = `<!DOCTYPE html><html><head><style>
     html,body{margin:0;width:${PNG_SIZE}px;height:${PNG_SIZE}px;background:transparent;overflow:hidden}
     svg{display:block;width:${PNG_SIZE}px;height:${PNG_SIZE}px}
@@ -66,4 +73,8 @@ app.whenReady().then(async () => {
   fs.writeFileSync(icoPath, icoFromPngs(entries));
   process.stdout.write(`wrote ${pngPath}\nwrote ${icoPath}\n`);
   app.quit();
+} catch (err) {
+  console.error(err);
+  app.exit(1);
+}
 });

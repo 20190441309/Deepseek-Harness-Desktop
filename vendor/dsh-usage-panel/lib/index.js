@@ -1272,6 +1272,13 @@ function resolveDshHome() {
   if (env !== void 0 && env.trim() !== "") return resolve(env.trim());
   return join(homedir(), ".dsh");
 }
+var CANONICAL_ZSTD_NAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl\.zstd$/u;
+var CANONICAL_PLAIN_NAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl$/u;
+function generationVersion(name2, pattern) {
+  const match = pattern.exec(name2);
+  if (match === null) return void 0;
+  return match[1] === void 0 ? 0 : Number(match[1]);
+}
 async function locateSessionArtifact(home, sessionId) {
   const needle = sessionId.startsWith("session-") ? sessionId : "session-" + sessionId;
   const sessionsRoot = join(home, "sessions");
@@ -1292,22 +1299,27 @@ async function locateSessionArtifact(home, sessionId) {
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name !== needle) continue;
       const sessionDir = join(projectDir, entry.name);
-      const zstd = join(sessionDir, "session.jsonl.zstd");
-      const plain = join(sessionDir, "session.jsonl");
-      if (await exists(zstd)) return zstd;
-      if (await exists(plain)) return plain;
-      return null;
+      let files = [];
+      try {
+        files = await readdir(sessionDir, { withFileTypes: true });
+      } catch {
+        return null;
+      }
+      let best;
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        const compressedVersion = generationVersion(file.name, CANONICAL_ZSTD_NAME);
+        const version = compressedVersion ?? generationVersion(file.name, CANONICAL_PLAIN_NAME);
+        if (version === void 0) continue;
+        const compressed = compressedVersion !== void 0;
+        if (best === void 0 || compressed && !best.compressed || compressed === best.compressed && version > best.version) {
+          best = { path: join(sessionDir, file.name), version, compressed };
+        }
+      }
+      return best?.path ?? null;
     }
   }
   return null;
-}
-async function exists(path) {
-  try {
-    await readFile(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 async function rebuildSessionLog(bytes, decode) {
   const { frames, tornStart } = scanZstdFrames(bytes);

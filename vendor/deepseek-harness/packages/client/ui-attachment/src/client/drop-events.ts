@@ -55,17 +55,22 @@ export function installDocumentDropEvents(
     // classifier, so entries without one pass through as files.
     const files: File[] = []
     const rejected: File[] = []
-    const classified = new Set<File>()
+    // dataTransfer.files mirrors the file-kind items in order, but every
+    // accessor mints a fresh File object — identity cannot match the two
+    // lists, so the sweep skips one leading entry per item that produced a
+    // File and only takes leftovers an unproductive items list would lose.
+    let productive = 0
     for (const item of dataTransfer.items) {
       if (item.kind !== 'file') continue
       const file = item.getAsFile()
       if (file === null) continue
-      classified.add(file)
+      productive += 1
       if (item.webkitGetAsEntry()?.isDirectory === true) rejected.push(file)
       else files.push(file)
     }
-    for (const file of dataTransfer.files) {
-      if (!classified.has(file)) files.push(file)
+    for (let i = productive; i < dataTransfer.files.length; i += 1) {
+      const file = dataTransfer.files[i]
+      if (file !== undefined) files.push(file)
     }
     onAddFiles(files, rejected)
   }

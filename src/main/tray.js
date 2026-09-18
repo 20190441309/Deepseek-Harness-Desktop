@@ -5,6 +5,7 @@ const { trayMenuTemplate } = require('./tray-menu');
 
 let tray = null;
 let trayActions = null;
+let trayMenuParams = null;
 
 function createTray({ onShow, onOpenLauncher, onRestart, onQuit, onPetToggle, petEnabled }) {
   if (tray) {
@@ -30,7 +31,7 @@ function createTray({ onShow, onOpenLauncher, onRestart, onQuit, onPetToggle, pe
   };
   tray = new Tray(image && !image.isEmpty() ? image : nativeImage.createEmpty());
   tray.setToolTip('Deepseek-Harness-Desktop');
-  tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate({
+  trayMenuParams = {
     onShow: trayActions.show,
     onOpenLauncher: trayActions.openLauncher,
     onSettings: trayActions.settings,
@@ -39,9 +40,20 @@ function createTray({ onShow, onOpenLauncher, onRestart, onQuit, onPetToggle, pe
     onQuit,
     onPetToggle: trayActions.petToggle,
     petEnabled,
-  })));
+  };
+  refreshTrayMenu();
   tray.on('click', () => trayActions.show());
   return tray;
+}
+
+// The template's `checked: petEnabled()` is a build-time snapshot — toggles
+// that bypass this menu (the pet's own 隐藏 row, the settings page) leave a
+// stale check behind, so the pet manager pings us to rebuild on every flip.
+function refreshTrayMenu() {
+  if (!tray || !trayMenuParams) {
+    return;
+  }
+  tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate(trayMenuParams)));
 }
 
 function invokeTrayAction(name) {
@@ -54,6 +66,7 @@ function invokeTrayAction(name) {
 
 module.exports = {
   createTray,
+  refreshTrayMenu,
   showMain,
   trayMenuTemplate,
   invokeTrayAction,

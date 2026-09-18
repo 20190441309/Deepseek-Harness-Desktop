@@ -147,7 +147,7 @@ Android 保持稳定 asset origin 与同一 Web 源码，不平行实现聊天�
 
 启动页是整窗一张仪器画布，不是中间再套卡片，也不是把日志关进带边框的盒子。源文件是 [`boot.html`](../src/renderer/boot.html)、[`boot.css`](../src/renderer/boot.css)、[`boot-tokens.css`](../src/renderer/boot-tokens.css)、[`boot.js`](../src/renderer/boot.js)。
 
-构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是 DeepSeek 标志、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试与下载日志键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，基线客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到基线那张「正在加载插件」页。
+构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是鲸鱼娘奔跑加载动画（[`assets/whale-running.webp`](../assets/whale-running.webp)，8 帧循环、112px、`.mark` 抬到扫描线遮罩之上，`prefers-reduced-motion` 换 [`assets/poster.png`](../assets/poster.png) 静帧）、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试与下载日志键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，基线客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到基线那张「正在加载插件」页。
 
 色与主题：[`boot-tokens.css`](../src/renderer/boot-tokens.css) 是唯一色表。浅色是纸面近黑，深色是 CRT 近白；`--boot-accent` 与正文同色，失败用 `--boot-alert`。`html[data-boot-theme]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把用户主题的 `bg` / `accent` 写进启动页。[`boot.css`](../src/renderer/boot.css) 只引用 `--boot-*` 与基线字体、动效 token，不写 `[data-ds-dark-theme]` 分支，也不写颜色字面量。
 

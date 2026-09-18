@@ -4,6 +4,8 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  /* Renders inside the AppFrame caption band: hole for hover-open and clicks. */
+  -webkit-app-region: no-drag;
 }
 
 .switcherRoot {

@@ -183,11 +183,14 @@ export abstract class SessionQueryEngine extends Service {
    */
   async readSession(sessionId: SessionId): Promise<SessionLogSnapshot> {
     const loaded = await this._corpus.load(sessionId)
-    Session.create(
+    // Replay-validates as a restore: create()'s seeded-session invariant
+    // (seed === inherited prefix) rejects every stored seeded log outright.
+    Session.fromRestore(
       sessionId,
       loaded.events,
       loaded.header,
       loaded.inheritedEventCount,
+      'detached',
       currentSessionMessageProjections,
     )
     return {

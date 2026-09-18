@@ -81,7 +81,7 @@ test('branded installer bitmaps are classic 24-bit BMPs at MUI2 geometry', () =>
   }
 });
 
-test('installer and uninstaller icons stay on the product whale icon', () => {
+test('installer and uninstaller icons stay on the product pet-head icon', () => {
   assert.equal(pkg.build.win.icon, 'assets/icon.ico');
   assert.equal(nsis.installerIcon, 'assets/icon.ico');
   assert.equal(nsis.uninstallerIcon, 'assets/icon.ico');

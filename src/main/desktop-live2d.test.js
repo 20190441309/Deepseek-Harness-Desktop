@@ -651,6 +651,17 @@ test('live2d-hide disables the pet like the old menu item did', (t) => {
   assert.equal(manager.isEnabled(), false);
 });
 
+test('setEnabled reports every flip through onEnabledChange so the tray can resync', (t) => {
+  const flips = [];
+  const { deps } = growthDeps(t, { onEnabledChange: (enabled) => flips.push(enabled) });
+  const manager = createLive2dPetManager(deps);
+  t.after(() => manager.dispose());
+  manager.show();
+  deps.electron.ipcMain.handlers.get('shell:live2d-hide')(authorizedEvent(deps));
+  manager.setEnabled(true);
+  assert.deepEqual(flips, [false, true]);
+});
+
 test('growth state survives through config normalization and persist', (t) => {
   const saved = [];
   const existing = {

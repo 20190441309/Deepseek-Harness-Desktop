@@ -128,6 +128,10 @@ npm pack --dry-run   # 发布前人工确认清单
 
 **为什么所有门禁都没拦住**：本仓库 tests/ 全是纯函数测试（无服务 mock），typecheck 走 npm rc.6 d.ts——签名漂移在这两条车道上不可见；桌面 `qa:source`/`test:gui` 只验面板能挂载渲染，全 0 + 修复提示照样「渲染正常」。教训：跨包签名漂移要靠**针对 vendored 运行时的契约测试**或桌面装配走查盯数字，不能只信面板自身门禁。
 
+### 6.6 vendored `readSession` 用错 Session 构造器（2026-09-18 真实事故）
+
+**症状**：面板「Updated at {time} · UTC」冻结在一个旧时刻；覆盖度固定报 N 个会话「读取失败」且永不减少。**机理**：vendored `sessionQuery.readSession` 读完全量日志后用 `Session.create`（fork 快照构造器）做 replay 校验——它要求 `seed.length === inheritedEventCount`（seed 只能是继承前缀）；而持久化的 seeded 日志 = 前缀 + `session/end-seed` + 自身事件，**任何 fork 过的会话落盘后即不可读**，必抛 `seeded session constructor seed must equal its inherited prefix`。这些会话每轮扫描都失败、永不成为 `deltaScan` 的 changed → `changed.length===0` 时直接返回旧 payload → `updatedAt` 冻结（日志完全健康）。**修复**（vendored 侧，Agent Note `2026-09-18-session-query-seeded-restore`）：replay 校验改 `Session.fromRestore`（完整存储日志恢复构造器，detached + 持久化 `inheritedEventCount`）；真实 25 会话语料 4 失败全为 seeded，修复后 25/25。**同坑另一处**：`locateSessionArtifact` 曾只认 `session.jsonl.zstd`/`session.jsonl`——持久化层早已代际化（`session.vN.jsonl.zstd`，后端取最高 canonical 代），修复按钮会去重写迁移遗留的 v0 旧代而非实读工件；现按后端语法解析目录选最高代（`.v0`/前导零/`.bak-*`/`.tmp` 均非 canonical）。**规则**：面板依赖 vendored 读路径的任何「全部/固定子集读取失败」，先用真实持久化层直放语料分辨「日志坏了」还是「读路径坏了」——后者绝不能进修复流程。
+
 ## 7. 文档同步义务
 
 - 改功能必同步 README.md + README.zh-CN.md（双语等价、口径声明、安装方式不变）。

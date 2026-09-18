@@ -33,11 +33,28 @@ export function resolveDshHome(): string {
   return join(homedir(), '.dsh')
 }
 
+// Canonical generation filenames, mirroring the backend grammar
+// (`parseGenerationLogFilename`): v0 keeps `session.jsonl`, later generations
+// carry `.vN` (N ≥ 1, no leading zeros); `.zstd` marks the compressed
+// encoding. Backups (`*.bak-*`) and temps (`*.tmp`) never match.
+const CANONICAL_ZSTD_NAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl\.zstd$/u
+const CANONICAL_PLAIN_NAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl$/u
+
+function generationVersion(name: string, pattern: RegExp): number | undefined {
+  const match = pattern.exec(name)
+  if (match === null) return undefined
+  return match[1] === undefined ? 0 : Number(match[1])
+}
+
 /**
  * Locate a session's artifact beneath `<home>/sessions`: dirs are
- * `<project>/<encoded-session-id>` and the file is `session.jsonl.zstd`
- * (or an uncompressed `session.jsonl`). The id may arrive either as the
- * full `session-<uuid>` (coverage failed-ids) or the bare uuid.
+ * `<project>/<encoded-session-id>` and the file is the HIGHEST canonical
+ * generation the backend would read (`session.vN.jsonl.zstd`, with v0's
+ * `session.jsonl.zstd` as the unversioned name) — never an obsolete earlier
+ * generation left behind by a format migration. Compressed candidates win
+ * over uncompressed ones; the uncompressed set is only a graceful fallback
+ * (the rebuild rejects it later). The id may arrive either as the full
+ * `session-<uuid>` (coverage failed-ids) or the bare uuid.
  */
 export async function locateSessionArtifact(home: string, sessionId: string): Promise<string | null> {
   const needle = sessionId.startsWith('session-') ? sessionId : 'session-' + sessionId
@@ -59,23 +76,31 @@ export async function locateSessionArtifact(home: string, sessionId: string): Pr
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name !== needle) continue
       const sessionDir = join(projectDir, entry.name)
-      const zstd = join(sessionDir, 'session.jsonl.zstd')
-      const plain = join(sessionDir, 'session.jsonl')
-      if (await exists(zstd)) return zstd
-      if (await exists(plain)) return plain
-      return null
+      let files: import('node:fs').Dirent[] = []
+      try {
+        files = await readdir(sessionDir, { withFileTypes: true })
+      } catch {
+        return null
+      }
+      let best: { path: string; version: number; compressed: boolean } | undefined
+      for (const file of files) {
+        if (!file.isFile()) continue
+        const compressedVersion = generationVersion(file.name, CANONICAL_ZSTD_NAME)
+        const version = compressedVersion ?? generationVersion(file.name, CANONICAL_PLAIN_NAME)
+        if (version === undefined) continue
+        const compressed = compressedVersion !== undefined
+        if (
+          best === undefined ||
+          (compressed && !best.compressed) ||
+          (compressed === best.compressed && version > best.version)
+        ) {
+          best = { path: join(sessionDir, file.name), version, compressed }
+        }
+      }
+      return best?.path ?? null
     }
   }
   return null
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await readFile(path)
-    return true
-  } catch {
-    return false
-  }
 }
 
 export interface RebuildResult {

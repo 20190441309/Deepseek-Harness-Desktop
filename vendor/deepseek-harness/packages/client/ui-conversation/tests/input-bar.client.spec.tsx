@@ -373,6 +373,26 @@ describe('image draft rail', () => {
     await vi.waitFor(() => { expect(shell.snapshot.draft).toBe('同时粘贴的文字') })
   })
 
+  it('collects each pasted file once when items and files expose distinct File objects', () => {
+    const addFiles = vi.fn<(files: readonly File[]) => string | null>()
+    const { textarea } = bench({ addFiles })
+    // Real clipboard transfers mint a fresh File at every accessor: an item's
+    // getAsFile() never shares identity with the files entry for the same
+    // clipboard file, so the intake cannot dedupe by object identity.
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          { kind: 'file', type: 'image/png', getAsFile: () => new File([Uint8Array.of(1)], 'shot.png', { type: 'image/png' }), webkitGetAsEntry: () => null },
+        ],
+        files: [new File([Uint8Array.of(1)], 'shot.png', { type: 'image/png' })],
+        getData: () => '',
+      },
+    })
+    expect(addFiles).toHaveBeenCalledTimes(1)
+    const batch = addFiles.mock.calls[0]?.[0] as File[] | undefined
+    expect(batch?.map(file => file.name)).toEqual(['shot.png'])
+  })
+
   it('pre-checks projected limits at intake: whole-batch refusal with product copy, none added', () => {
     const limits = {
       maxImageBytes: 1024 * 1024,

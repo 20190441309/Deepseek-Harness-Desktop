@@ -162,17 +162,22 @@ export function registerComposerKeymap(editor: LexicalEditor, handlers: Composer
       // the item's FileSystem entry is the only in-band classifier.
       const files: File[] = []
       const rejected: File[] = []
-      const classified = new Set<File>()
+      // clipboardData.files mirrors the file-kind items in order, but every
+      // accessor mints a fresh File object — identity cannot match the two
+      // lists, so the sweep skips one leading entry per item that produced a
+      // File and only takes leftovers an unproductive items list would lose.
+      let productive = 0
       for (const item of clipboardData.items) {
         if (item.kind !== 'file') continue
         const file = item.getAsFile()
         if (file === null) continue
-        classified.add(file)
+        productive += 1
         if (item.webkitGetAsEntry()?.isDirectory === true) rejected.push(file)
         else files.push(file)
       }
-      for (const file of clipboardData.files) {
-        if (!classified.has(file)) files.push(file)
+      for (let i = productive; i < clipboardData.files.length; i += 1) {
+        const file = clipboardData.files[i]
+        if (file !== undefined) files.push(file)
       }
       if (files.length > 0 || rejected.length > 0) handlers.intakeFiles(files, rejected)
       const text = clipboardData.getData('text/plain')

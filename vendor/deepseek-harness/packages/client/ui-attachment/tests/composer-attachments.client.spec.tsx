@@ -145,6 +145,31 @@ describe('ComposerAttachments', () => {
     view.unmount()
   })
 
+  it('collects each dropped file once when items and files expose distinct File objects', () => {
+    const onAddFiles = vi.fn()
+    render(<ComposerAttachments {...props({ onAddFiles })} />)
+    // Real drag transfers mint a fresh File at every accessor: an item's
+    // getAsFile() never shares identity with the files entry for the same
+    // dragged file, so the intake cannot dedupe by object identity.
+    const dataTransfer = {
+      types: ['Files'],
+      files: [
+        new File([Uint8Array.of(1)], 'a.png'),
+        new File([Uint8Array.of(2)], 'b.png'),
+      ],
+      dropEffect: 'none',
+      items: [
+        { kind: 'file', getAsFile: () => new File([Uint8Array.of(1)], 'a.png'), webkitGetAsEntry: () => null },
+        { kind: 'file', getAsFile: () => new File([Uint8Array.of(2)], 'b.png'), webkitGetAsEntry: () => null },
+      ],
+    }
+    expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
+    expect(onAddFiles).toHaveBeenCalledTimes(1)
+    const [accepted, rejected] = onAddFiles.mock.calls[0] ?? []
+    expect(accepted?.map((file: File) => file.name)).toEqual(['a.png', 'b.png'])
+    expect(rejected).toEqual([])
+  })
+
   it('tracks nested file drags and clears an aborted drag', () => {
     const view = render(<ComposerAttachments {...props()} />)
     const dataTransfer = { types: ['Files'], files: [], dropEffect: 'none' }

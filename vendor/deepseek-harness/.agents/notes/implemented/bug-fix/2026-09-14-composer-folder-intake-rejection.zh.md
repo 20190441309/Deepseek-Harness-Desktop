@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-目录判定放在入口侧进行，因为 `DataTransferItem` 的 FileSystem entry 只在那里可用：`item.webkitGetAsEntry()?.isDirectory === true` 把占位项标记为拒收而非起稿。`ui-attachment` 的 drop 监听和输入区 keymap 的粘贴命令都通过 `onAddFiles`/`intakeFiles` 把已接受的 `files` 与 `rejected` 两个列表交给宿主；宿主用本地化 toast 通告被拒收的条目，只为真实文件起稿。drop 还会兜底扫描 `dataTransfer.files` 中未被任何 item 认领的条目，使无产出的 `items` 列表（string 类型或 `getAsFile` 返回 `null`）不会静默丢文件；没有 item 列表的入口（文件选择器）保持原有 `dataTransfer.files` 路径。选择器不可能产出文件夹，无 entry 的条目按文件处理。失败卡片的 `title` 提示现在携带记录下的上传 `message`，发送门槛对失败上传也报告失败而非「还在上传」。
+目录判定放在入口侧进行，因为 `DataTransferItem` 的 FileSystem entry 只在那里可用：`item.webkitGetAsEntry()?.isDirectory === true` 把占位项标记为拒收而非起稿。`ui-attachment` 的 drop 监听和输入区 keymap 的粘贴命令都通过 `onAddFiles`/`intakeFiles` 把已接受的 `files` 与 `rejected` 两个列表交给宿主；宿主用本地化 toast 通告被拒收的条目，只为真实文件起稿。drop 还会兜底扫描 `dataTransfer.files` 中未被任何 item 认领的条目，使无产出的 `items` 列表（string 类型或 `getAsFile` 返回 `null`）不会静默丢文件——兜底按位置去重，因为每次访问都会生成不同的 `File` 对象（[按位置去重](2026-09-18-composer-file-intake-positional-dedup.zh.md)）；没有 item 列表的入口（文件选择器）保持原有 `dataTransfer.files` 路径。选择器不可能产出文件夹，无 entry 的条目按文件处理。失败卡片的 `title` 提示现在携带记录下的上传 `message`，发送门槛对失败上传也报告失败而非「还在上传」。
 
 ## Alternatives considered
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `desktop-pet` |
 | **status** | `active` |
-| **last verified** | 2026-09-13 — `DESKTOP_PET_FEATURE=false`；Codex 皮肤发现、动画渲染与右键换肤已实现但默认隐藏 |
+| **last verified** | 2026-09-18 — fallback 图换鲸鱼娘大头：`pet.html` 的 `pet__image` 由 `assets/whale.svg` 改 `assets/pet-head.png`（`pet.css` 加 `object-fit:cover`+`border-radius:50%` 贴进圆形按钮）；`whale.svg` 无引用已删。旧记录：2026-09-13 — `DESKTOP_PET_FEATURE=false`；Codex 皮肤发现、动画渲染与右键换肤已实现但默认隐藏 |
 
 ## User paths
 
@@ -28,7 +28,7 @@
 
 - `docs/design-language.md`, `docs/handbook/modules/window-chrome.md`, `docs/qa/production-acceptance-test-cases.md` — 记录 shell overlay 契约与验收。
 - `src/main/desktop-pet.js`, `src/main/desktop-pets.js`, `src/main/window.js`, `src/main/config.js`, `src/main/ipc-authorization.js`, `src/main/tray*.js`, `src/main/chrome.js`, `src/main/index.js` — 生命周期、Codex 皮肤发现、持久化、窄 IPC、托盘和主题装配。
-- `src/preload/index.js`, `src/renderer/pet.*`, `assets/whale.svg` — 最小 pet bridge、Codex 图集渲染与 fallback 资产。
+- `src/preload/index.js`, `src/renderer/pet.*`, `assets/pet-head.png` — 最小 pet bridge、Codex 图集渲染与 fallback 资产（鲸鱼娘大头，`pet__image` 圆形裁切）。
 - 宠物管理器只读取 Codex pets 根目录并向 renderer 传递已校验的本地图集 URL，不向 renderer 暴露通用文件系统 API。
 - 对应 focused tests。
 

@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const whaleSvg = fs.readFileSync(path.join(root, 'assets', 'whale.svg'), 'utf8');
+// The pet's head crop doubles as the installer mark; rendered by
+// render-pet-head.js from the Live2D source art.
+const petHeadDataUri = `data:image/png;base64,${fs.readFileSync(path.join(root, 'assets', 'pet-head.png')).toString('base64')}`;
 
 // NSIS/MUI2 bitmap geometry is fixed: the welcome/finish sidebar is 164x314
 // and the page header strip is 150x57 (classic 96dpi dialog units).
@@ -35,21 +37,24 @@ const HAIRLINE = 'rgba(0, 0, 0, 0.10)';
 
 const FONT_STACK = "-apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif";
 
-function whaleMark(size, color) {
-  // whale.svg fills with currentColor; wrap it so the color applies.
-  return `<div style="width:${size}px;height:${size}px;color:${color}">${whaleSvg
-    .replace('<svg ', `<svg width="${size}" height="${size}" `)}</div>`;
+function petMark(size, { muted = false } = {}) {
+  // `muted` renders the uninstaller variant: same mark pulled toward the
+  // grayscale palette the removal context uses. The head crop carries an
+  // opaque black field; the icon's 22% corner rounding keeps it a tile,
+  // not a sticker with hard corners.
+  const filter = muted ? 'filter:grayscale(0.85) opacity(0.75);' : '';
+  return `<div style="width:${size}px;height:${size}px;${filter}"><img src="${petHeadDataUri}" style="width:100%;height:100%;object-fit:cover;border-radius:22%" alt=""></div>`;
 }
 
 /**
  * Welcome/finish sidebar: official light sidebar fill (same as the launcher
- * rail), outline whale in label ink, the product name
+ * rail), the whale-girl head mark, the product name
  * `Deepseek-Harness-Desktop` wrapped for the 164px column, and a thin
  * DeepSeek-blue accent rule. A right hairline separates it from the white
  * dialog canvas. Chinese copy stays in the localized MUI strings, not baked
  * into bitmaps.
  */
-function sidebarHtml(k, { markColor, titleColor, accentColor }) {
+function sidebarHtml(k, { muted, titleColor, accentColor }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;width:${SIDEBAR_WIDTH * k}px;height:${SIDEBAR_HEIGHT * k}px;overflow:hidden}
     body{background:${SIDEBAR_FILL};font-family:${FONT_STACK};position:relative}
@@ -59,7 +64,7 @@ function sidebarHtml(k, { markColor, titleColor, accentColor }) {
     .hairline{position:absolute;top:0;right:0;width:${1 * k}px;height:100%;background:${HAIRLINE}}
   </style></head><body>
     <div class="stack">
-      ${whaleMark(72 * k, markColor)}
+      ${petMark(72 * k, { muted })}
       <div class="word">Deepseek-Harness-<br>Desktop</div>
       <div class="rule"></div>
     </div>
@@ -68,9 +73,9 @@ function sidebarHtml(k, { markColor, titleColor, accentColor }) {
 }
 
 /**
- * Page header strip (shown at the right of the white MUI header): whale mark
- * in label ink on the bg-base white so it reads as part of the light header
- * chrome, not a sticker.
+ * Page header strip (shown at the right of the white MUI header): the
+ * whale-girl head mark on the bg-base white so it reads as part of the
+ * light header chrome, not a sticker.
  */
 function headerHtml(k) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -78,7 +83,7 @@ function headerHtml(k) {
     body{background:${CANVAS};position:relative}
     .mark{position:absolute;top:${((HEADER_HEIGHT - 28) / 2) * k}px;right:${16 * k}px}
   </style></head><body>
-    <div class="mark">${whaleMark(28 * k, LABEL_1)}</div>
+    <div class="mark">${petMark(28 * k)}</div>
   </body></html>`;
 }
 
@@ -161,7 +166,7 @@ app.whenReady().then(async () => {
   });
   await renderBmp(
     win,
-    sidebarHtml(SCALE, { markColor: LABEL_1, titleColor: LABEL_1, accentColor: BLUE }),
+    sidebarHtml(SCALE, { muted: false, titleColor: LABEL_1, accentColor: BLUE }),
     SIDEBAR_WIDTH,
     SIDEBAR_HEIGHT,
     path.join(buildDir, 'installerSidebar.bmp'),
@@ -170,7 +175,7 @@ app.whenReady().then(async () => {
   // no brand accent (removal context) — never a dark marketing panel.
   await renderBmp(
     win,
-    sidebarHtml(SCALE, { markColor: LABEL_3, titleColor: LABEL_2, accentColor: LABEL_3 }),
+    sidebarHtml(SCALE, { muted: true, titleColor: LABEL_2, accentColor: LABEL_3 }),
     SIDEBAR_WIDTH,
     SIDEBAR_HEIGHT,
     path.join(buildDir, 'uninstallerSidebar.bmp'),
