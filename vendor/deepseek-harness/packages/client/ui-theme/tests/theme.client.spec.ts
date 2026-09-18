@@ -666,19 +666,19 @@ describe('ThemeRuntime', () => {
 
   it('persists the button hover-sheen flag and republishes', () => {
     const { theme, host, events } = make()
-    // Shipped default: the sheen is on.
-    expect(theme.getTheme().metallicPaintEnabled).toBe(true)
-    theme.setMetallicPaint(false)
+    // Shipped default: the sheen is off.
     expect(theme.getTheme().metallicPaintEnabled).toBe(false)
-    flushWrites()
-    expect(host.set).toHaveBeenCalledWith('metallicPaintEnabled', false)
     theme.setMetallicPaint(true)
     expect(theme.getTheme().metallicPaintEnabled).toBe(true)
     flushWrites()
     expect(host.set).toHaveBeenCalledWith('metallicPaintEnabled', true)
+    theme.setMetallicPaint(false)
+    expect(theme.getTheme().metallicPaintEnabled).toBe(false)
+    flushWrites()
+    expect(host.set).toHaveBeenCalledWith('metallicPaintEnabled', false)
     // Same-value set is a no-op.
     const published = events.length
-    theme.setMetallicPaint(true)
+    theme.setMetallicPaint(false)
     expect(events.length).toBe(published)
   })
 

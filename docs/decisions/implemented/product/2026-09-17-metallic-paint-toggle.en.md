@@ -4,6 +4,8 @@ Status: implemented
 
 [中文](2026-09-17-metallic-paint-toggle.md) | English
 
+> The `true` factory default was flipped to `false` by [2026-09-18-metallic-paint-default-off](2026-09-18-metallic-paint-default-off.en.md); the rest of the switch chain still stands.
+
 ## Problem
 
 The metallic-paint sheen shipped always-on across the main Web UI, and the feature card listed "add a settings toggle for the sheen" under Do not touch. The user explicitly asked to be able to turn the hover sheen off — additive motion is personal preference, so the earlier always-on product constraint needed reversing.

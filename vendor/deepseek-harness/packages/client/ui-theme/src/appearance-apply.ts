@@ -90,7 +90,7 @@ export interface AppearanceDocumentExtras {
   cursorEffectSize?: number
   /** Transparent theme flag; effective only while a wallpaper is live. */
   transparentTheme?: boolean
-  /** Button hover sheen switch (按钮悬停光泽); absent keeps the sheen on. */
+  /** Button hover sheen switch (按钮悬停光泽); absent means off. */
   metallicPaintEnabled?: boolean
 }
 
@@ -137,5 +137,5 @@ export function applyAppearanceDocumentExtras(extras: AppearanceDocumentExtras):
     TRANSPARENT_ATTR,
     extras.transparentTheme === true && isWallpaperDataUrl(wallpaperImage),
   )
-  root.toggleAttribute(METALLIC_PAINT_ATTR, extras.metallicPaintEnabled !== false)
+  root.toggleAttribute(METALLIC_PAINT_ATTR, extras.metallicPaintEnabled === true)
 }

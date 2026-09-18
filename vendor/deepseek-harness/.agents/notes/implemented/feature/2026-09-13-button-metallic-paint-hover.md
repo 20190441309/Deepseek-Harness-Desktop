@@ -14,7 +14,7 @@ A new global sheet `packages/client/ui-theme/src/styles/metallic-paint.css`, mou
 
 Painting the image on the button itself clips it to the control's `border-radius` (including the global corner-shape) and keeps each variant's hover `background-color` visible underneath, because the cascade resolves `background-image` and `background-color` as separate longhands and `html[data-dsh-metallic-paint] button:not(:disabled):not([aria-disabled='true']):hover` out-specifies single-class module hover rules. Scope stays native `<button>` in the main Web UI document: `role='button'` rows, `<select>`/`<input>`, the boot page, launcher, wallpaper gallery window, and mobile/web are excluded.
 
-The Appearance "Button sheen" switch persists `metallicPaintEnabled` in the `ui-theme` settings namespace (default `true`, preserving the shipped always-on behavior); `applyAppearanceDocumentExtras` mirrors the flag into the `data-dsh-metallic-paint` attribute on the document root that both rules key on, so disabling makes the rules stop matching and leaves only each variant's own hover fill. The sheet stays mounted either way — the switch flips the attribute, not the stylesheet.
+The Appearance "Button sheen" switch persists `metallicPaintEnabled` in the `ui-theme` settings namespace (default `false` since [2026-09-18-button-sheen-default-off](2026-09-18-button-sheen-default-off.md) — the sheen is opt-in); `applyAppearanceDocumentExtras` mirrors the flag into the `data-dsh-metallic-paint` attribute on the document root that both rules key on, so disabling makes the rules stop matching and leaves only each variant's own hover fill. The sheet stays mounted either way — the switch flips the attribute, not the stylesheet.
 
 ## Alternatives considered
 

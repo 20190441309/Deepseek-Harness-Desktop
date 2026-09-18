@@ -122,8 +122,10 @@ describe('createAppearanceRowStore', () => {
 
   it('mirrors the button-sheen flag', () => {
     const store = createAppearanceRowStore().create()
+    expect(store.getSnapshot().metallicPaintEnabled).toBe(false)
+    store.actions.sync(snap({ metallicPaintEnabled: true }), 0)
     expect(store.getSnapshot().metallicPaintEnabled).toBe(true)
-    store.actions.sync(snap({ metallicPaintEnabled: false }), 0)
+    store.actions.sync(snap({ metallicPaintEnabled: false }), 1)
     expect(store.getSnapshot().metallicPaintEnabled).toBe(false)
   })
 

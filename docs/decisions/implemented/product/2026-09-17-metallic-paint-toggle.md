@@ -4,6 +4,8 @@ Status: implemented
 
 中文 | [English](2026-09-17-metallic-paint-toggle.en.md)
 
+> 默认 `true` 的出厂值已由 [2026-09-18-metallic-paint-default-off](2026-09-18-metallic-paint-default-off.md) 翻转为 `false`；其余开关链路仍然有效。
+
 ## Problem
 
 金属漆扫光自上线起在主 Web UI 全局常开，feature 卡曾把「为扫光新增设置开关」列入 Do not touch。用户明确要求能关掉悬停扫光——附加动效属于个人偏好，原先「常开」的产品约束需要反转。

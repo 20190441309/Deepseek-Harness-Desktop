@@ -4,13 +4,13 @@
 | --- | --- |
 | **id** | `metallic-paint` |
 | **status** | `active` |
-| **last verified** | 2026-09-17 — ui-theme 客户端 specs + tsc client face + 源码审查 |
+| **last verified** | 2026-09-18 — 默认翻转为关：`metallicPaintEnabled` schema/DEFAULT 默认 `false`，缺席即关；ui-theme 5 个客户端 spec 138 项全绿。此前：2026-09-17 — ui-theme 客户端 specs + tsc client face + 源码审查 |
 
 ## User paths
 
 1. 主 Web UI 内任意原生 `button` 悬停：原有 hover 效果保留，其上叠加半透明银灰金属光泽，4.5s ease-in-out 往返扫过（「原本效果 + 金属漆」叠加而非替换）。
 2. `:disabled` 与 `aria-disabled='true'` 按钮、未悬停按钮无扫光；`prefers-reduced-motion` 下动画停止、悬停时保留静态光泽。
-3. 界面设置「按钮悬停光泽 / Button sheen」开关（`metallicPaintEnabled`，默认开）：关闭后扫光整体停用，按钮只剩变体自身 hover 填充；改动即时生效并持久化。
+3. 界面设置「按钮悬停光泽 / Button sheen」开关（`metallicPaintEnabled`，默认关）：开启后扫光叠加在按钮 hover 填充上；关闭时按钮只剩变体自身 hover 填充；改动即时生效并持久化。
 
 ## Invariants
 
@@ -19,7 +19,7 @@
 - 颜色只经 `color-mix` 取 label alias token 透明度：亮带 `--dsw-alias-label-primary-foreground`（与填充天然对比、保住白色字形如发送箭头）、暗带 `--dsw-alias-label-primary`、过渡带 `--dsw-alias-label-secondary`；不写颜色字面量、不写明暗主题分支，随主题反转并随自定义主题染色。
 - 4.5s 周期是设计值不进 token 表（登记于 motion.md 指示器家族）；reduced-motion 只停 `animation`，不移除图像层。
 - 全局样式只经 `installThemeStyles` 的 `metallic-paint.css` 注入，随 ui-theme 插件生命周期挂载/卸载；spec 断言挂载顺序。
-- 扫光的两条规则以 `html[data-dsh-metallic-paint]` 门控：持久化设置 `metallicPaintEnabled`（`ui-theme` 命名空间，默认 `true`）由 `applyAppearanceDocumentExtras` 翻转到 document root 属性；属性缺席即规则不命中，sheet 本身始终挂载。
+- 扫光的两条规则以 `html[data-dsh-metallic-paint]` 门控：持久化设置 `metallicPaintEnabled`（`ui-theme` 命名空间，默认 `false`）由 `applyAppearanceDocumentExtras` 翻转到 document root 属性；属性缺席即规则不命中，sheet 本身始终挂载。
 
 ## Allowed touch
 
@@ -44,7 +44,7 @@
 
 ## Sources
 
-- Decision: [2026-09-17-metallic-paint-toggle](../decisions/implemented/product/2026-09-17-metallic-paint-toggle.md)
+- Decision: [2026-09-17-metallic-paint-toggle](../decisions/implemented/product/2026-09-17-metallic-paint-toggle.md)（默认值由 [2026-09-18-metallic-paint-default-off](../decisions/implemented/product/2026-09-18-metallic-paint-default-off.md) 翻转为关）
 
 - Reference: <https://ayase.cn/motion/#/component/metallic-paint>（React Bits `MetallicPaint`；本站 demo 为 CSS 渐变扫光版）
 - Design language: [../design-language.md](../design-language.md)；motion: [../motion.md](../motion.md)

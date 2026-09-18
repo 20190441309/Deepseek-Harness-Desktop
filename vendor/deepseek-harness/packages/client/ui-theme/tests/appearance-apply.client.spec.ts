@@ -136,15 +136,15 @@ describe('applyAppearanceDocumentExtras', () => {
 
   it('flips the metallic-paint attribute from the button-sheen flag', () => {
     const base = { fontFamilySans: '', fontFamilyCode: '', fontSizeInterface: 16, fontSizeCode: 13 }
-    // Absent flag keeps the shipped default: the sheen stays on.
+    // Absent flag matches the shipped default: the sheen stays off.
     applyAppearanceDocumentExtras(base)
-    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
-    applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: true })
-    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
-    // Off drops the attribute the CSS rule keys on.
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(false)
     applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: false })
     expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(false)
+    // On sets the attribute the CSS rule keys on.
     applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: true })
     expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(true)
+    applyAppearanceDocumentExtras({ ...base, metallicPaintEnabled: false })
+    expect(document.documentElement.hasAttribute(METALLIC_PAINT_ATTR)).toBe(false)
   })
 })

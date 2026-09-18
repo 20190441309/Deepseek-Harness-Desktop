@@ -352,7 +352,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   cursorEffectSpeed: DEFAULT_CURSOR_EFFECT_SPEED,
   cursorEffectSize: DEFAULT_CURSOR_EFFECT_SIZE,
   cursorEffectPreset: 'default',
-  metallicPaintEnabled: true,
+  metallicPaintEnabled: false,
   fontFamilySans: '',
   fontFamilyCode: '',
   fontSizeInterface: DEFAULT_INTERFACE_FONT_SIZE,
@@ -427,7 +427,7 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
     .min(MIN_CURSOR_EFFECT_SIZE).max(MAX_CURSOR_EFFECT_SIZE)
     .default(DEFAULT_CURSOR_EFFECT_SIZE),
   [THEME_CURSOR_EFFECT_PRESET_FIELD]: z.union([...CURSOR_EFFECT_PRESETS]).default('default'),
-  [THEME_METALLIC_PAINT_FIELD]: z.boolean().default(true),
+  [THEME_METALLIC_PAINT_FIELD]: z.boolean().default(false),
   fontFamilySans: z.string().default(''),
   fontFamilyCode: z.string().default(''),
   fontSizeInterface: z.number().min(MIN_INTERFACE_FONT_SIZE).max(MAX_INTERFACE_FONT_SIZE)

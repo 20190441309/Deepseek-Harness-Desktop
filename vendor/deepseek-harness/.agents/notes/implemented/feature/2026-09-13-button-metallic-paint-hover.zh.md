@@ -14,7 +14,7 @@ Status: implemented
 
 图像画在按钮自身背景上，因此随控件 `border-radius`（含全局 corner-shape）自然裁切，且各变体 hover 的 `background-color` 仍在下层可见——级联按 longhand 分别裁决，`html[data-dsh-metallic-paint] button:not(:disabled):not([aria-disabled='true']):hover` 的优先级高于单类名模块 hover 规则。覆盖范围止于主 Web UI document 内原生 `button`：`role='button'` 行、`<select>`/`<input>`、boot 页、启动器、壁纸图库窗与 mobile/web 均不在内。
 
-界面设置「按钮悬停光泽」开关把 `metallicPaintEnabled` 持久化进 `ui-theme` 设置命名空间（默认 `true`，保持出厂常开行为）；`applyAppearanceDocumentExtras` 把该标志镜像为 document root 上两条规则共同依赖的 `data-dsh-metallic-paint` 属性——关闭后规则不再命中，按钮只剩各变体自身 hover 填充。无论开关状态，样式表保持挂载——开关翻转的是属性，不是样式表。
+界面设置「按钮悬停光泽」开关把 `metallicPaintEnabled` 持久化进 `ui-theme` 设置命名空间（自 [2026-09-18-button-sheen-default-off](2026-09-18-button-sheen-default-off.zh.md) 起默认 `false`——扫光为主动开启项）；`applyAppearanceDocumentExtras` 把该标志镜像为 document root 上两条规则共同依赖的 `data-dsh-metallic-paint` 属性——关闭后规则不再命中，按钮只剩各变体自身 hover 填充。无论开关状态，样式表保持挂载——开关翻转的是属性，不是样式表。
 
 ## Alternatives considered
 
