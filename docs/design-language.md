@@ -19,7 +19,7 @@ DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` 
 - 工程规则：[web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
 - 动效规范与使用对照：[motion.md](motion.md)
 
-桌面应用品牌使用用户提供的透明头像 [`assets/whale-head.png`](../assets/whale-head.png)，保留完整比例，不另裁托盘图。窗口、任务栏、托盘和安装器共享此源；`assets/icon.svg` 包装此图，`npm run icon` 生成 `assets/icon.png` 与多尺寸 `assets/icon.ico`。宠物立绘生成器不再拥有应用图标。
+桌面应用品牌使用用户提供的透明头像 [`assets/whale-head.png`](../assets/whale-head.png)，保留完整比例，不另裁托盘图。应用图标使用白色圆角方形底板（圆角半径为边长 22%），头像居中并在四边各内缩 4%；安装器读取相同的生成图标 `assets/icon.png`。窗口、任务栏、托盘和安装器共享此源；`assets/icon.svg` 包装此图，`npm run icon` 生成 `assets/icon.png` 与多尺寸 `assets/icon.ico`。宠物立绘生成器不再拥有应用图标。
 
 ## 适用范围
 

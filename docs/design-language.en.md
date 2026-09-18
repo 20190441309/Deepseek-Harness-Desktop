@@ -19,7 +19,7 @@ Read this before changing UI, layout, or frontend. Engineering mechanics (CSS Mo
 - Engineering rules: [web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
 - Motion contract and inventory: [motion.en.md](motion.en.md)
 
-Desktop application branding uses the supplied transparent head [`assets/whale-head.png`](../assets/whale-head.png), preserving its full proportions without a separate tray crop. Windows, taskbar, tray, and installer share this source; `assets/icon.svg` wraps it, and `npm run icon` generates `assets/icon.png` and multi-size `assets/icon.ico`. The pet-art generator no longer owns application icons.
+Desktop application branding uses the supplied transparent head [`assets/whale-head.png`](../assets/whale-head.png), preserving its full proportions without a separate tray crop. Application icons use a white rounded-square background (radius 22% of the side), with the head centered and inset 4% on each edge; the installer reads the same generated `assets/icon.png`. Windows, taskbar, tray, and installer share this source; `assets/icon.svg` wraps it, and `npm run icon` generates `assets/icon.png` and multi-size `assets/icon.ico`. The pet-art generator no longer owns application icons.
 
 ## Scope
 

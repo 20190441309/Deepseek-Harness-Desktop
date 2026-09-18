@@ -3,8 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-// Installer artwork shares the canonical application brand source.
-const brandHeadDataUri = `data:image/png;base64,${fs.readFileSync(path.join(root, 'assets', 'whale-head.png')).toString('base64')}`;
+// Reuse the generated application tile, including its white rounded background.
+// Run npm run icon before regenerating installer artwork.
+const brandHeadDataUri = `data:image/png;base64,${fs.readFileSync(path.join(root, 'assets', 'icon.png')).toString('base64')}`;
 
 // NSIS/MUI2 bitmap geometry is fixed: the welcome/finish sidebar is 164x314
 // and the page header strip is 150x57 (classic 96dpi dialog units).
@@ -38,8 +39,8 @@ const FONT_STACK = "-apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC',
 
 function brandMark(size, { muted = false } = {}) {
   // `muted` renders the uninstaller variant: same mark pulled toward the
-  // grayscale palette the removal context uses. Preserve source transparency
-  // and full proportions; do not clip the head or add a background tile.
+  // grayscale palette the removal context uses. The shared icon already
+  // contains the white rounded tile and inset head; preserve its proportions.
   const filter = muted ? 'filter:grayscale(0.85) opacity(0.75);' : '';
   return `<div style="width:${size}px;height:${size}px;${filter}"><img src="${brandHeadDataUri}" style="width:100%;height:100%;object-fit:contain" alt=""></div>`;
 }
