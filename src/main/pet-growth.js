@@ -9,6 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { Worker } = require('node:worker_threads');
 
 // 1 fed token = 1 growth point. Thresholds are cumulative points.
 // Growth ladder — each tier carries a theme color used across the status
@@ -302,15 +303,112 @@ function normalizeGrowthState(value) {
   };
 }
 
+// Plain-node worker threads cannot read inside app.asar; the scan worker
+// entry and this module ship via asarUnpack, same convention as
+// dshd-daemon-runner.
+function unpackedPath(file) {
+  return file.replace(`${path.sep}app.asar${path.sep}`, `${path.sep}app.asar.unpacked${path.sep}`);
+}
+
+// Main-thread handle to pet-growth-scan-worker.js. The worker owns the
+// per-file decode cache; requests are serialized by the worker's message
+// loop. A crashed worker is respawned on the next scan; close() is terminal.
+function createScanWorker({ workerFile } = {}) {
+  const file = workerFile || unpackedPath(path.join(__dirname, 'pet-growth-scan-worker.js'));
+  let worker = null;
+  let closed = false;
+  let seq = 0;
+  const pending = new Map();
+
+  function drop(err) {
+    for (const p of pending.values()) {
+      p.reject(err);
+    }
+    pending.clear();
+    worker = null;
+  }
+
+  function ensure() {
+    if (worker) {
+      return worker;
+    }
+    const w = new Worker(file);
+    // Idle worker must not keep the app alive; dispose() terminates it.
+    w.unref?.();
+    w.on('message', (msg) => {
+      const p = pending.get(msg && msg.id);
+      if (!p) {
+        return;
+      }
+      pending.delete(msg.id);
+      if (msg.ok) {
+        p.resolve({ total: msg.total, sessions: msg.sessions });
+      } else {
+        p.reject(new Error(msg.error || 'session scan failed'));
+      }
+    });
+    w.on('error', (err) => drop(err));
+    w.on('exit', (code) => {
+      if (code === 0) {
+        worker = null;
+      } else {
+        drop(new Error(`pet scan worker exited with code ${code}`));
+      }
+    });
+    worker = w;
+    return w;
+  }
+
+  return {
+    scan(sessionsDir) {
+      if (closed) {
+        return Promise.reject(new Error('pet scan worker closed'));
+      }
+      return new Promise((resolve, reject) => {
+        let w;
+        try {
+          w = ensure();
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        const id = ++seq;
+        pending.set(id, { resolve, reject });
+        try {
+          w.postMessage({ type: 'scan', id, sessionsDir: sessionsDir || '' });
+        } catch (err) {
+          pending.delete(id);
+          reject(err);
+        }
+      });
+    },
+    async close() {
+      closed = true;
+      const w = worker;
+      drop(new Error('pet scan worker closed'));
+      if (w) {
+        try {
+          await w.terminate();
+        } catch {}
+      }
+    },
+  };
+}
+
 // Owns growth bookkeeping: `tokensSeen` tracks the scan's cumulative total,
 // `baseline` the food watermark planted at first scan, and `tokensFed` how
 // much above that watermark she has already eaten. Only tokens burned AFTER
 // the feature first scanned are food — the historical backlog is not feed
 // stock. Idempotent across restarts and rescan-safe.
-function createGrowthTracker({ sessionsDir, getGrowth, saveGrowth }) {
-  // Per-file decode cache shared across refreshes — unchanged logs replay
-  // their folded usage map, so the 60s rescan is stat-only on a cold corpus.
-  const scanCache = new Map();
+//
+// `scanTokens` (optional) injects the corpus scan — sync or Promise of
+// {total, sessions}. Production default is the worker-backed scanner so the
+// Electron main thread never pays the decode; tests inject the in-process
+// scan for determinism.
+function createGrowthTracker({ sessionsDir, getGrowth, saveGrowth, scanTokens }) {
+  const scanner = scanTokens
+    ? { scan: (dir) => scanTokens(dir) }
+    : createScanWorker();
   function read() {
     return normalizeGrowthState(getGrowth?.());
   }
@@ -319,29 +417,42 @@ function createGrowthTracker({ sessionsDir, getGrowth, saveGrowth }) {
     saveGrowth?.(normalizeGrowthState(next));
   }
 
+  // refresh() is async now that the scan lives off-thread; concurrent
+  // callers (60s tick vs feed/status IPCs) share one in-flight scan instead
+  // of queueing duplicate corpus reads.
+  let inFlight = null;
   function refresh() {
-    const { total } = scanSessionTokens(sessionsDir, scanCache);
-    const g = read();
-    // First scan plants the watermark at corpus-minus-eaten so already-fed
-    // credit survives the upgrade; later the watermark only follows the
-    // corpus DOWN (logs deleted → that ceiling is gone for good).
-    const baseline = g.baseline === null
-      ? Math.max(0, total - g.tokensFed)
-      : Math.min(g.baseline, total);
-    // tokensFed deliberately stays put when the corpus shrinks: feedable
-    // clamps at zero below, and keeping the fed credit prevents re-feeding
-    // the same tokens if the logs ever come back.
-    const delta = Math.max(0, total - g.tokensSeen);
-    const day = dayKey();
-    const today = g.baseline === null
-      ? { day, used: 0 }
-      : { day, used: (g.today && g.today.day === day ? g.today.used : 0) + delta };
-    const next = { ...g, tokensSeen: total, baseline, today };
-    if (next.tokensSeen !== g.tokensSeen || next.baseline !== g.baseline
-        || !g.today || next.today.used !== g.today.used || next.today.day !== g.today.day) {
-      write(next);
+    if (!inFlight) {
+      inFlight = (async () => {
+        const { total } = await scanner.scan(sessionsDir);
+        const g = read();
+        // First scan plants the watermark at corpus-minus-eaten so already-fed
+        // credit survives the upgrade; later the watermark only follows the
+        // corpus DOWN (logs deleted → that ceiling is gone for good).
+        const baseline = g.baseline === null
+          ? Math.max(0, total - g.tokensFed)
+          : Math.min(g.baseline, total);
+        // tokensFed deliberately stays put when the corpus shrinks: feedable
+        // clamps at zero below, and keeping the fed credit prevents re-feeding
+        // the same tokens if the logs ever come back.
+        const delta = Math.max(0, total - g.tokensSeen);
+        const day = dayKey();
+        const today = g.baseline === null
+          ? { day, used: 0 }
+          : { day, used: (g.today && g.today.day === day ? g.today.used : 0) + delta };
+        const next = { ...g, tokensSeen: total, baseline, today };
+        if (next.tokensSeen !== g.tokensSeen || next.baseline !== g.baseline
+            || !g.today || next.today.used !== g.today.used || next.today.day !== g.today.day) {
+          write(next);
+        }
+        return next;
+      })().finally(() => { inFlight = null; });
     }
-    return next;
+    return inFlight;
+  }
+
+  function close() {
+    return scanner.close?.();
   }
 
   function feedable(state) {
@@ -406,7 +517,7 @@ function createGrowthTracker({ sessionsDir, getGrowth, saveGrowth }) {
     return { ...snap, fed, leveledUp: snap.level > was };
   }
 
-  return { refresh, feedable, snapshot, feed };
+  return { refresh, feedable, snapshot, feed, close };
 }
 
 module.exports = {
@@ -420,6 +531,7 @@ module.exports = {
   scanSessionTokens,
   normalizeGrowthState,
   createGrowthTracker,
+  createScanWorker,
   dayKey,
   zstdDecompressAll,
   zstdFrameSize,

@@ -156,6 +156,7 @@ function createLive2dPetManager(options = {}) {
       state.growth = next;
       persist();
     },
+    scanTokens: options.scanTokens,
   });
   let growthTimer = 0;
 
@@ -499,9 +500,16 @@ function createLive2dPetManager(options = {}) {
     pushGrowth(growth.snapshot());
     return { ate: true, count: clean.length, satietyGranted, total: eaten.total };
   }
-  function rescanGrowth() {
+  // The scan itself runs off the main thread inside the growth tracker —
+  // a failed scan keeps the last snapshot and retries next tick.
+  async function rescanGrowth() {
     const before = state.growth?.tokensSeen ?? 0;
-    const next = growth.refresh();
+    let next;
+    try {
+      next = await growth.refresh();
+    } catch {
+      return;
+    }
     const s = readStats();
     const statsMoved = state.stats
       && (s.satiety !== state.stats.satiety || s.mood !== state.stats.mood);
@@ -514,9 +522,9 @@ function createLive2dPetManager(options = {}) {
   }
   // Feed `amount` tokens (default: all feedable) and tell the renderer to
   // play the token-eat sequence; a level-up rides the same push.
-  function feedTokens(amount) {
+  async function feedTokens(amount) {
     try {
-      growth.refresh();
+      await growth.refresh();
     } catch {}
     const res = growth.feed(amount);
     if (res.fed > 0) {
@@ -727,8 +735,9 @@ function createLive2dPetManager(options = {}) {
       return null;
     }
     if (!growthTimer) {
-      // Usage rescan cadence: session logs are small (KB-scale), a minute
-      // tick keeps「可喂」fresh without measurable cost.
+      // Usage rescan cadence: the scan itself runs on a worker thread (a
+      // growing session log can be tens of MB), so a minute tick keeps
+      //「可喂」fresh without stalling the main process.
       growthTimer = setInterval(rescanGrowth, 60000);
       growthTimer.unref?.();
     }
@@ -806,9 +815,9 @@ function createLive2dPetManager(options = {}) {
 
   // A fresh growth snapshot for the renderer's status panel — feeding and
   // level state live on the canvas now, no native menu.
-  function growthSnapshot() {
+  async function growthSnapshot() {
     try {
-      growth.refresh();
+      await growth.refresh();
     } catch {}
     return { ...growth.snapshot(), stats: petStats.statsSnapshot(readStats()) };
   }
@@ -1096,6 +1105,7 @@ function createLive2dPetManager(options = {}) {
   function dispose() {
     clearInterval(growthTimer);
     growthTimer = 0;
+    Promise.resolve(growth.close?.()).catch(() => {});
     clearTimeout(mirrorTimer);
     mirrorTimer = 0;
     stopCursorPump();

@@ -100,6 +100,7 @@ function authorizedEvent(deps, url = PET_PAGE_URL) {
 }
 
 const petSettings = require('./pet-settings');
+const petGrowth = require('./pet-growth');
 
 const DEFAULT_PET_SETTINGS = petSettings.defaultSettings();
 const DEFAULT_DSH = petSettings.defaultDshState();
@@ -250,10 +251,14 @@ function growthDeps(t, overrides = {}) {
   fs.writeFileSync(path.join(sessionDir, 'session.jsonl.zstd'),
     zlib.zstdCompressSync(Buffer.from(body, 'utf8')));
   const templates = [];
+  const scanCache = new Map();
   return {
     templates,
     deps: live2dDeps({
       sessionsDir,
+      // In-process scan keeps these tests deterministic and worker-free;
+      // the default worker path is covered in pet-growth.test.js.
+      scanTokens: (dir) => petGrowth.scanSessionTokens(dir, scanCache),
       // Pre-planted watermark: the fixture corpus counts as post-baseline
       // food — the backlog-exclusion path is covered in pet-growth.test.js.
       loadConfig: () => ({ live2dPet: { growth: { baseline: 0 } } }),
@@ -280,10 +285,10 @@ test('live2d-growth returns a snapshot and live2d-feed pushes it', async (t) => 
   t.after(() => manager.dispose());
   manager.show();
   const event = authorizedEvent(deps);
-  const snap = deps.electron.ipcMain.handlers.get('shell:live2d-growth')(event);
+  const snap = await deps.electron.ipcMain.handlers.get('shell:live2d-growth')(event);
   assert.equal(snap.level, 1);
   assert.equal(snap.levelName, '幼鲸');
-  const res = deps.electron.ipcMain.handlers.get('shell:live2d-feed')(event, {});
+  const res = await deps.electron.ipcMain.handlers.get('shell:live2d-feed')(event, {});
   assert.equal(res.fed, 25500); // eats all feedable — the 1亿 meal cap is not hit
   assert.equal(res.points, 25500);
   assert.equal(res.leveledUp, false);
@@ -292,7 +297,7 @@ test('live2d-growth returns a snapshot and live2d-feed pushes it', async (t) => 
   assert.equal(push[0], 'shell:live2d-growth');
   assert.equal(push[1].fed, 25500);
   // The bowl is empty now.
-  const res2 = deps.electron.ipcMain.handlers.get('shell:live2d-feed')(event, {});
+  const res2 = await deps.electron.ipcMain.handlers.get('shell:live2d-feed')(event, {});
   assert.equal(res2.fed, 0);
 });
 

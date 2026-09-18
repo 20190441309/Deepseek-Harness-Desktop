@@ -17,6 +17,7 @@ const {
   scanSessionTokens,
   normalizeGrowthState,
   createGrowthTracker,
+  createScanWorker,
 } = require('./pet-growth');
 
 // ── levels ──
@@ -242,50 +243,54 @@ test('normalizeGrowthState floors values and rejects negatives/NaN', () => {
 
 // ── tracker ──
 
-function trackerWith(root, initial) {
+function trackerWith(root, initial, scanTokens) {
   let stored = initial;
   const writes = [];
+  const scanCache = new Map();
   const tracker = createGrowthTracker({
     sessionsDir: root,
     getGrowth: () => stored,
     saveGrowth: (next) => { writes.push(next); stored = next; },
+    // Bookkeeping tests inject the in-process scan so no worker spawns;
+    // the default worker path has its own coverage below.
+    scanTokens: scanTokens || ((dir) => scanSessionTokens(dir, scanCache)),
   });
   return { tracker, writes, read: () => stored };
 }
 
-test('refresh folds cumulative scan totals into state monotonically', (t) => {
+test('refresh folds cumulative scan totals into state monotonically', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 700 } } },
   ]);
   const { tracker, read } = trackerWith(root, undefined);
-  let g = tracker.refresh();
+  let g = await tracker.refresh();
   assert.equal(g.tokensSeen, 700);
   assert.equal(g.points, 0);
   // Rescanning the same corpus is a no-op — no double counting.
-  g = tracker.refresh();
+  g = await tracker.refresh();
   assert.equal(g.tokensSeen, 700);
   assert.equal(read().tokensSeen, 700);
   // Corpus growth lifts the ceiling.
   writeLog(root, 'a', 'session.v2.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 1, step: 0, usage: { inputTokens: 300 } } },
   ]);
-  g = tracker.refresh();
+  g = await tracker.refresh();
   assert.equal(g.tokensSeen, 1000);
 });
 
-test('refresh keeps the fed credit when the corpus shrank', (t) => {
+test('refresh keeps the fed credit when the corpus shrank', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 500 } } },
   ]);
   const { tracker } = trackerWith(root, { points: 400, tokensFed: 400, tokensSeen: 0 });
-  tracker.refresh();
+  await tracker.refresh();
   // Delete the corpus → feedable can never go negative.
   fs.rmSync(path.join(root, 'a'), { recursive: true });
-  const g = tracker.refresh();
+  const g = await tracker.refresh();
   assert.equal(g.tokensSeen, 0);
   assert.equal(g.tokensFed, 400); // credit kept — a restored corpus can't re-feed
   assert.equal(g.points, 400); // earned growth is never revoked
@@ -294,19 +299,19 @@ test('refresh keeps the fed credit when the corpus shrank', (t) => {
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 500 } } },
   ]);
-  const back = tracker.refresh();
+  const back = await tracker.refresh();
   assert.equal(back.tokensSeen, 500);
   assert.equal(tracker.feedable(back), 100);
 });
 
-test('feed consumes feedable tokens idempotently and detects level-ups', (t) => {
+test('feed consumes feedable tokens idempotently and detects level-ups', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 250_000_000 } } },
   ]);
   const { tracker } = trackerWith(root, { points: 0, tokensFed: 0, tokensSeen: 0, baseline: 0 });
-  tracker.refresh();
+  await tracker.refresh();
   // One meal fills at most the current level — 2.5亿 feedable caps at the
   // 小鲸 threshold (1亿), leaving 1.5亿 for the next feeding.
   const res = tracker.feed();
@@ -325,14 +330,14 @@ test('feed consumes feedable tokens idempotently and detects level-ups', (t) => 
   assert.equal(tracker.feed().fed, 0); // bowl empty
 });
 
-test('feed(amount) clamps to what is actually feedable', (t) => {
+test('feed(amount) clamps to what is actually feedable', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 100 } } },
   ]);
   const { tracker, read } = trackerWith(root, { baseline: 0 });
-  tracker.refresh();
+  await tracker.refresh();
   const res = tracker.feed(5000);
   assert.equal(res.fed, 100);
   assert.equal(read().tokensFed, 100);
@@ -340,14 +345,14 @@ test('feed(amount) clamps to what is actually feedable', (t) => {
   assert.equal(tracker.feed(-5).fed, 0);
 });
 
-test('a mid-level feed reports progress without a level-up', (t) => {
+test('a mid-level feed reports progress without a level-up', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 500 } } },
   ]);
   const { tracker } = trackerWith(root, { points: 100, tokensFed: 0, tokensSeen: 0, baseline: 0 });
-  tracker.refresh();
+  await tracker.refresh();
   const res = tracker.feed();
   assert.equal(res.fed, 500);
   assert.equal(res.level, 1);
@@ -355,14 +360,14 @@ test('a mid-level feed reports progress without a level-up', (t) => {
   assert.equal(res.nextAt, 100_000_000);
 });
 
-test('first scan plants the watermark — backlog is never food', (t) => {
+test('first scan plants the watermark — backlog is never food', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 12000 } } },
   ]);
   const { tracker } = trackerWith(root, { points: 0, tokensFed: 0, tokensSeen: 0 });
-  const g = tracker.refresh();
+  const g = await tracker.refresh();
   assert.equal(g.baseline, 12000);
   assert.equal(tracker.feedable(g), 0);
   assert.equal(tracker.feed().fed, 0);
@@ -370,13 +375,13 @@ test('first scan plants the watermark — backlog is never food', (t) => {
   writeLog(root, 'b', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 3000 } } },
   ]);
-  const g2 = tracker.refresh();
+  const g2 = await tracker.refresh();
   assert.equal(g2.tokensSeen, 15000);
   assert.equal(tracker.feedable(g2), 3000);
   assert.equal(tracker.feed().fed, 3000);
 });
 
-test('upgrade: pre-watermark fed credit folds into baseline, no food debt', (t) => {
+test('upgrade: pre-watermark fed credit folds into baseline, no food debt', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeLog(root, 'a', 'session.jsonl.zstd', [
@@ -384,13 +389,141 @@ test('upgrade: pre-watermark fed credit folds into baseline, no food debt', (t) 
   ]);
   // Backlog-era state: she already ate 400 of the 500-token corpus.
   const { tracker } = trackerWith(root, { points: 400, tokensFed: 400, tokensSeen: 0 });
-  const g = tracker.refresh();
+  const g = await tracker.refresh();
   assert.equal(g.baseline, 100); // corpus 500 − eaten 400
   assert.equal(tracker.feedable(g), 0);
   // Her old fed credit does NOT bill against tokens burned post-upgrade.
   writeLog(root, 'b', 'session.jsonl.zstd', [
     { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 200 } } },
   ]);
-  const g2 = tracker.refresh();
+  const g2 = await tracker.refresh();
   assert.equal(tracker.feedable(g2), 200);
+});
+
+// ── off-thread scan (regression: 60s rescan used to decode whole logs on
+// the Electron main thread — every changed session log froze all windows) ──
+
+test('the scan worker reports the same totals as scanSessionTokens', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  writeLog(root, 'a', 'session.jsonl.zstd', [
+    { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 50, outputTokens: 50 } } },
+  ]);
+  writeLog(root, 'b', 'session.v2.jsonl.zstd', [
+    { type: 'assistant/message', data: { turn: 1, step: 0, usage: { outputTokens: 30 } } },
+  ]);
+  const worker = createScanWorker();
+  t.after(() => worker.close());
+  const expected = scanSessionTokens(root);
+  assert.deepEqual(await worker.scan(root), expected);
+  // The unchanged-file cache lives inside the worker across scans.
+  assert.deepEqual(await worker.scan(root), expected);
+  // A grown file re-decodes and re-totals.
+  writeLog(root, 'b', 'session.jsonl.zstd', [
+    { type: 'assistant/message', data: { turn: 2, step: 0, usage: { inputTokens: 5 } } },
+  ]);
+  assert.deepEqual(await worker.scan(root), scanSessionTokens(root));
+});
+
+test('a closed scan worker rejects instead of hanging', async (t) => {
+  const worker = createScanWorker();
+  await worker.close();
+  await assert.rejects(worker.scan(os.tmpdir()), /closed/);
+  // close() is idempotent and safe on an already-dead worker.
+  await worker.close();
+});
+
+test('refresh runs the corpus scan off the main thread', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  writeLog(root, 'a', 'session.jsonl.zstd', [
+    { type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: 42 } } },
+  ]);
+  let stored;
+  const tracker = createGrowthTracker({
+    sessionsDir: root,
+    getGrowth: () => stored,
+    saveGrowth: (next) => { stored = next; },
+  });
+  t.after(() => tracker.close());
+  // A synchronous main-thread scan starves the event loop for the whole
+  // decode — this pump can only tick while the main thread is free. One
+  // worker round-trip always crosses at least one loop turn, so >0 proves
+  // the scan did not block here.
+  let pumped = 0;
+  let done = false;
+  const pump = (async () => {
+    while (!done) {
+      await new Promise((resolve) => setImmediate(resolve));
+      pumped += 1;
+    }
+  })();
+  const g = await tracker.refresh();
+  done = true;
+  await pump;
+  assert.equal(g.tokensSeen, 42);
+  assert.ok(pumped > 0, 'main thread stayed responsive while the log decoded');
+});
+
+test('concurrent refreshes share one scan', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let calls = 0;
+  const scanTokens = async () => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return { total: 7, sessions: 1 };
+  };
+  const { tracker } = trackerWith(root, { baseline: 0 }, scanTokens);
+  const [a, b] = await Promise.all([tracker.refresh(), tracker.refresh()]);
+  assert.equal(calls, 1, 'overlapping refresh calls coalesce');
+  assert.equal(a.tokensSeen, 7);
+  assert.equal(b.tokensSeen, 7);
+});
+
+test('a failed scan rejects refresh and the tracker recovers', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-growth-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let fail = true;
+  const scanTokens = async () => {
+    if (fail) {
+      throw new Error('disk gone');
+    }
+    return { total: 3, sessions: 1 };
+  };
+  const { tracker, read } = trackerWith(root, { baseline: 0 }, scanTokens);
+  await assert.rejects(tracker.refresh(), /disk gone/);
+  assert.equal(read()?.tokensSeen ?? 0, 0, 'a failed scan writes no state');
+  fail = false;
+  const g = await tracker.refresh();
+  assert.equal(g.tokensSeen, 3);
+});
+
+test('asarUnpack ships the whole scan worker import chain', () => {
+  // The worker thread reads its entry through real fs — anything left inside
+  // app.asar makes the packaged scan die silently and growth goes stale.
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+  const unpacked = new Set(pkg.build.asarUnpack);
+  const root = path.join(__dirname, '..', '..');
+  const seen = new Set();
+  const queue = [path.join(__dirname, 'pet-growth-scan-worker.js')];
+  while (queue.length) {
+    let file = queue.pop();
+    if (!fs.existsSync(file) && fs.existsSync(`${file}.js`)) {
+      file = `${file}.js`; // require('./pet-growth') resolves the extension
+    }
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    if (seen.has(rel) || !fs.existsSync(file)) {
+      continue;
+    }
+    seen.add(rel);
+    for (const match of fs.readFileSync(file, 'utf8')
+      .matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
+      queue.push(path.resolve(path.dirname(file), match[1]));
+    }
+  }
+  assert.ok(seen.has('src/main/pet-growth.js'));
+  for (const rel of seen) {
+    assert.ok(unpacked.has(rel), `${rel} is imported by the pet scan worker but missing from build.asarUnpack`);
+  }
 });
