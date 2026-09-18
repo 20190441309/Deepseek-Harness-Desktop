@@ -11,8 +11,9 @@ DeepSeek Harness on the Windows desktop: conversations, files, web previews, ter
 - **Pinned pet notifications**: Important messages pushed through whale_notify now pin to the desktop pet bubble with a close button and stay until dismissed; new bubbles queue behind the pin instead of replacing it. Successful "看看" (take a look) results stay on screen the same way.
 - **Periodic-stutter fix**: The desktop pet's growth-token scan of session logs moved off the main process onto a worker thread. The 60-second rescan used to freeze every window and IPC for seconds on large session corpora; it now costs a background thread only.
 - **Differential updates**: Launcher upgrades now ride electron-updater's NSIS blockmap channel — unchanged chunks are reused locally and only changed blocks travel over HTTP Range, instead of re-pulling the ~636 MB Setup every release. Any updater failure falls back to the verified whole-file download.
-- **New brand mark**: The app icon, tray icon, and installer marks are now the whale-girl's head — a centered crop of her portrait on a rounded dark tile, replacing the black-tile whale glyph; the boot page loader is now her running animation (a still frame shows under reduced motion).
-- **Harness baseline dsh-v0.1.6-alpha.1**: The desktop client and installer moved to the same new pinned baseline. Official DeepSeek endpoints now resolve to the Messages protocol root `https://api.deepseek.com/anthropic`; third-party gateway addresses are unaffected.
+- **New brand mark**: The app icon, window/taskbar, tray, and installer marks now share the whale-girl's transparent head portrait, replacing the black-tile whale glyph; the boot page loader is now her spinning animation (a static head shows under reduced motion).
+- **Harness baseline dsh-v0.1.6-alpha.2**: The desktop client and installer moved to the same new pinned baseline. Official DeepSeek endpoints now resolve to the Messages protocol root `https://api.deepseek.com/anthropic`; third-party gateway addresses are unaffected.
+- **New Session no longer takes over old identities**: New Session reuses only blank drafts with no history at all — sessions once managed by a plugin, containing messages, or pinned by a user title keep their identity, stay explicitly openable, and are never repurposed as fresh drafts.
 
 ## Technical contract
 
