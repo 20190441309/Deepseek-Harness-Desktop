@@ -28,9 +28,11 @@ Two-stage manual pipeline on `main`:
 ## First-Time Setup Gaps
 - none
 
-## Current state (2026-09-18, third pass)
+## Current state (2026-09-18, third pass — candidate green)
 - `package.json` = 0.3.2; tag v0.3.2 not yet created; latest released tag v0.3.1.
-- Candidate `35358649476` (commit `38e812d584d`) FAILED: afterPack skip compose contract — flatten put commander@9.5 at top-level while apps/cli requires `^15` (`helpCommand` missing). Fixed by nesting the declared version under `apps/cli/node_modules` (`repairFlattenedCommanderEsm`); local `npm run pack` + `smoke:packaged` green.
-- Also in flight: white rounded-tile brand icon iteration (uncommitted at candidate time) now included.
-- test.yml run `35356442016` on 38e812d584d green; new release.yml candidate must be dispatched on the fix commit once it lands and its own test run goes green.
-- Superseded earlier state: candidate `35292210832` (commit `bb61a265e69`, SHA256 `C0FD40C1…437D`, artifacts in `tmp/rc-v032-updater/`) predates the alpha.2 merge — do not promote it.
+- Candidate `35368373929` (commit `dbed98a77be`, workflow_dispatch on main): SUCCESS — Windows job 22m35s incl. afterPack skip compose contract + packaged smoke gate. Artifacts in `tmp/rc-v032-candidate2/DeepSeek-Harness-windows-x64/` (Setup 735,223,430 B, SHA256 `7efaed2fb13a35cd47862888a40da1146d3a9392d464b29b26a311388e43e695`, latest.yml sha512 `iNlwWCK/E+/…GV2w==`).
+- Green test.yml for dbed98a77be: `35363979832` (attempt 2; attempt 1 hit a flaky 5s timeout in session-projection-cache fixtures — local run 511ms all-pass).
+- Fix shipped in the candidate: `repairFlattenedCommanderEsm` nests the CLI-declared commander under `apps/cli/node_modules` when the flattened top level misses the range (was commander@9.5 vs required ^15 → dump-config exit 1 in candidate `35358649476`).
+- Also shipped: white rounded-tile brand icon iteration (`abb9f784cec`).
+- Awaiting user confirmation to dispatch publish.yml with run `35368373929`, tag `v0.3.2`, SHA256 `7efaed2f…e695`.
+- Superseded earlier state: candidate `35292210832` (commit `bb61a265e69`, SHA256 `C0FD40C1…437D`, artifacts in `tmp/rc-v032-updater/`) predates the alpha.2 merge — do not promote it; candidate `35358649476` failed the packaged contract — do not promote it.
