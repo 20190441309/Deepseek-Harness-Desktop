@@ -22,6 +22,7 @@ function sessionList(opts: {
       [PARENT]: {
         id: PARENT,
         displayTitle: 'root',
+        retainedBy: {},
         running: true,
         blank: false,
         updatedAt: 1,
@@ -31,6 +32,7 @@ function sessionList(opts: {
           [CHILD]: {
             id: CHILD,
             displayTitle: 'writer',
+            retainedBy: {},
             running: true,
             blank: false,
             updatedAt: 2,
@@ -40,11 +42,11 @@ function sessionList(opts: {
         }
         : {}),
     },
-    current: PARENT,
+
     phase: 'ready',
     subagentsByParent: opts.catalog === undefined ? {} : { [PARENT]: opts.catalog },
     jobsBySession: {},
-    currentAddress: undefined,
+
   }
 }
 
@@ -202,7 +204,7 @@ describe('AgentsPanel', () => {
 
   it('lists no jobs when the session id cannot be resolved', () => {
     const state = sessionList({})
-    state.current = undefined
+    for (const row of Object.values(state.byId)) state.byId[row.id] = { ...row, retainedBy: {} }
     render(
       <AgentsPanel {...({
         sessionId: undefined,

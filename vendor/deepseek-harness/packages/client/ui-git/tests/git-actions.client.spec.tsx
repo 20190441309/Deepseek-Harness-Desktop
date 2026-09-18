@@ -23,7 +23,9 @@ const t: GitActionsProps['t'] = (key, params) => {
 }
 const neverWorkspaces = (() => { throw new Error('git actions must not read useWorkspaces') }) as never
 
-function sessionList(cwd: string | undefined): SessionListState {
+type RetainedBy = SessionListState['byId'][SessionId]['retainedBy']
+
+function sessionList(cwd: string | undefined, retainedBy: RetainedBy = cwd === undefined ? {} : { mainView: 1 }): SessionListState {
   const current = cwd === undefined ? undefined : SID
   const byId = current === undefined
     ? {}
@@ -34,17 +36,16 @@ function sessionList(cwd: string | undefined): SessionListState {
         running: false,
         blank: false,
         updatedAt: 1,
+        retainedBy,
         ...(cwd ? { cwd } : {}),
       },
     }
   return {
     ids: current === undefined ? [] : [SID],
     byId,
-    current,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
@@ -103,6 +104,7 @@ function mount(opts: {
   managedSession?: boolean
   titlebarGit?: boolean
   useTitlebarGit?: GitActionsProps['useTitlebarGit']
+  sessionState?: SessionListState
 } = {}) {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => opts.git ?? null)
   const gitFetchForStatus = opts.gitFetchForStatus ?? vi.fn(async () => opts.git ?? null)
@@ -131,8 +133,9 @@ function mount(opts: {
       terminalDrawer={0}
       managedSession={opts.managedSession ?? false}
       {...(opts.density === undefined ? {} : { density: opts.density })}
-      useSessions={useSessionsStub(sessionList(opts.cwd))}
-      useSessionPendingInteraction={sel => sel(new Map())}
+      useSessions={useSessionsStub(opts.sessionState ?? sessionList(opts.cwd))}
+      useSessionStatus={sel => sel(new Map())}
+      useSessionRetainInfo={() => undefined}
       useWorkspaces={neverWorkspaces}
       gitStatus={gitStatus}
       gitFetchForStatus={gitFetchForStatus}
@@ -180,6 +183,24 @@ describe('GitActionsControl', () => {
     const main = screen.getByRole<HTMLButtonElement>('button', { name: 'Commit' })
     expect(main.disabled).toBe(true)
     expect(b.gitStatus).not.toHaveBeenCalled()
+  })
+
+  it('uses the main-view retained cwd when a background session is also retained', async () => {
+    const backgroundId = 'session-background' as SessionId
+    const state = sessionList('/main')
+    state.ids.push(backgroundId)
+    state.byId[backgroundId] = {
+      id: backgroundId,
+      displayTitle: 'background',
+      running: true,
+      blank: false,
+      updatedAt: 2,
+      cwd: '/background',
+      retainedBy: { gateway: 1 },
+    }
+    const b = mount({ sessionState: state, git: status() })
+    await waitFor(() => { expect(b.gitStatus).toHaveBeenCalledWith('/main') })
+    expect(b.gitStatus).not.toHaveBeenCalledWith('/background')
   })
 
   it('disables the main button and shows the unavailable hint when status is null', async () => {
@@ -306,7 +327,8 @@ describe('GitActionsControl', () => {
       usePanelInfo: panelInfoStub,
       useResource: resourceStub,
       useWorkspaces: neverWorkspaces,
-      useSessionPendingInteraction: sel => sel(new Map()),
+      useSessionStatus: sel => sel(new Map()),
+      useSessionRetainInfo: () => undefined,
       gitStatus,
       gitFetchForStatus: vi.fn(async () => status({ aheadCount: 2 })),
       gitReadPullRequest: vi.fn(async () => ({ ok: true, pr: null })),
@@ -441,7 +463,8 @@ describe('GitActionsControl', () => {
         terminalDrawer={0}
         managedSession={false}
         useSessions={useSessionsStub(sessionList(undefined))}
-        useSessionPendingInteraction={sel => sel(new Map())}
+        useSessionStatus={sel => sel(new Map())}
+        useSessionRetainInfo={() => undefined}
         useWorkspaces={neverWorkspaces}
         gitStatus={b.gitStatus}
         gitFetchForStatus={b.gitFetchForStatus}

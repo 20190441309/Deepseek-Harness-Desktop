@@ -40,6 +40,9 @@
     },
     {
       "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../ui-workspace"
     }
   ]
 }

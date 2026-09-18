@@ -20,7 +20,8 @@ function mount() {
     usePanelInfo: panelInfoStub,
     useResource: resourceStub,
     useSessions: unusedHook,
-    useSessionPendingInteraction: unusedHook,
+    useSessionStatus: unusedHook,
+    useSessionRetainInfo: () => undefined,
     useWorkspaces: unusedHook,
     t: key => (en as Record<string, string>)[key] ?? key,
   }
@@ -100,7 +101,8 @@ describe('CloseBehaviorRow', () => {
     }
     const view = render(<CloseBehaviorRow
       useSessions={unusedHook}
-      useSessionPendingInteraction={unusedHook}
+      useSessionStatus={unusedHook}
+      useSessionRetainInfo={() => undefined}
       useWorkspaces={unusedHook}
       usePanelInfo={panelInfoStub}
       useResource={resourceStub}

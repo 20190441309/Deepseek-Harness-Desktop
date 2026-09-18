@@ -698,6 +698,7 @@ describe('ModelsSection', () => {
     fireEvent.change(names[2] as HTMLInputElement, { target: { value: 'Private Preview' } })
     // Only row 3 is open, so its capacity is addressed by its own label.
     fireEvent.change(screen.getByLabelText(`${en.contextWindow} 3`), { target: { value: '131072' } })
+    fireEvent.click(within(screen.getByRole('group', { name: `${en.modelInputTypes} 3` })).getByRole('checkbox', { name: en.modelInputImage }))
     fireEvent.click(screen.getByText(en.apply))
 
     await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
@@ -708,7 +709,7 @@ describe('ModelsSection', () => {
         path: ['models'],
         value: [
           ...DEFAULT_DEEPSEEK_MODELS,
-          { id: 'private-preview', name: 'Private Preview', contextWindow: 131_072 },
+          { id: 'private-preview', name: 'Private Preview', contextWindow: 131_072, inputModalities: ['text', 'image'] },
         ],
       }],
       0,
@@ -1639,9 +1640,12 @@ describe('input types', () => {
     fireEvent.click(screen.getByText(en.addModel))
     const ids = screen.getAllByLabelText(new RegExp(en.modelId))
     fireEvent.change(ids[0] as HTMLInputElement, { target: { value: 'vision-model' } })
-    // Input types stay on the row � no advanced fold required.
-    expect(screen.getByText(en.inputInherited)).toBeTruthy()
-    fireEvent.click(screen.getByLabelText(`${en.inputImage} 1`))
+    fireEvent.click(screen.getByRole('button', { name: `${en.modelAdvanced} 1` }))
+    const inputs = screen.getByRole('group', { name: `${en.modelInputTypes} 1` })
+    const image = within(inputs).getByRole('checkbox', { name: en.modelInputImage })
+    await waitFor(() => { expect(image.hasAttribute('disabled')).toBe(false) })
+    expect(within(inputs).getByRole<HTMLInputElement>('checkbox', { name: en.modelInputText }).checked).toBe(true)
+    fireEvent.click(image)
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
     expect(mutate.mock.calls[0]).toEqual([
@@ -1649,13 +1653,13 @@ describe('input types', () => {
       [{
         op: 'set',
         path: ['providers', 'openai', 'models'],
-        value: [{ id: 'vision-model', input: ['image'] }],
+        value: [{ id: 'vision-model', input: ['text', 'image'] }],
       }],
       0,
     ])
   })
 
-  it('declares and clears input types on a directly rendered row', () => {
+  it('edits input types and keeps the final declared type on a directly rendered row', () => {
     const onChange = vi.fn()
     const probe: ProbeTarget = { settingsNs: 'llm-pi-ai' }
     function StatefulListEditor(): ReactNode {
@@ -1679,14 +1683,17 @@ describe('input types', () => {
       )
     }
     render(<StatefulListEditor />)
-    const image = screen.getByLabelText(`${en.inputImage} 1`) as HTMLInputElement
+    fireEvent.click(screen.getByRole('button', { name: `${en.modelAdvanced} 1` }))
+    const inputs = screen.getByRole('group', { name: `${en.modelInputTypes} 1` })
+    const image = within(inputs).getByRole('checkbox', { name: en.modelInputImage }) as HTMLInputElement
     expect(image.checked).toBe(true)
     fireEvent.click(image)
     expect(onChange).toHaveBeenNthCalledWith(1, [{ id: 'm', input: ['text'] }])
-    fireEvent.click(screen.getByLabelText(`${en.inputText} 1`))
-    // Clearing the last declared type removes the field: inherit.
-    expect(onChange).toHaveBeenNthCalledWith(2, [{ id: 'm' }])
-    expect(screen.getByText(en.inputInherited)).toBeTruthy()
+    const text = within(inputs).getByRole<HTMLInputElement>('checkbox', { name: en.modelInputText })
+    expect(text.disabled).toBe(true)
+    text.click()
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(text.checked).toBe(true)
   })
 })
 

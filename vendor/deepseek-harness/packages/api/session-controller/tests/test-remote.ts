@@ -34,6 +34,8 @@ import type {
   ModelCatalog,
   SessionAttachmentRequest,
   SessionAttachmentValue,
+  SessionBlankReuseRequest,
+  SessionBlankReuseValue,
   SessionCancelRequest,
   SessionCancelValue,
   SessionControlFrame,
@@ -70,6 +72,7 @@ export interface TestSessionRemote {
   canOpenWorkspacePath(): Promise<RemoteResult<boolean>>
   list(request: SessionListRequest, signal?: AbortSignal): Promise<RemoteResult<SessionListValue>>
   search(request: SessionSearchRequest, signal?: AbortSignal): Promise<RemoteResult<SessionSearchValue>>
+  blankReuse(request: SessionBlankReuseRequest, signal?: AbortSignal): Promise<RemoteResult<SessionBlankReuseValue>>
   create(request: SessionCreateRequest): Promise<RemoteResult<SessionCreateValue>>
   setPresentation(request: SessionPresentationRequest): Promise<RemoteResult<SessionPresentationValue>>
   selectModel(request: SessionSelectModelRequest): Promise<RemoteResult<SessionSelectModelValue>>
@@ -115,6 +118,7 @@ const TEST_IMAGE_LIMITS: ImageAttachmentLimits = Object.freeze({
 /** Compact header-and-events point read a persistence double declares per session. */
 interface TestSessionInspection {
   readonly meta: SessionHeader
+  readonly inheritedEventCount?: SessionLogOffset
   readonly events: readonly SessionEvent[]
 }
 
@@ -144,7 +148,7 @@ function testReadHandle(
   return {
     id: sessionId,
     header: inspection.meta,
-    inheritedEventCount: SessionLogOffset(0),
+    inheritedEventCount: inspection.inheritedEventCount ?? SessionLogOffset(0),
     access: 'read',
     read: (offset = 0, length?: number, options?: SessionHandleReadOptions) => {
       options?.signal?.throwIfAborted()
@@ -344,6 +348,10 @@ export function createSessionTestRemote(
     ),
     search: (request, signal = new AbortController().signal) => remoteResult(
       () => direct.search(request, signal),
+      signal,
+    ),
+    blankReuse: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.blankReuse(request, signal),
       signal,
     ),
     create: request => remoteResult(() => direct.create(request)),

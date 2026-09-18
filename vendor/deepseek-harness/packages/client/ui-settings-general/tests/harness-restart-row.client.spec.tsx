@@ -22,7 +22,8 @@ function mount() {
     usePanelInfo: panelInfoStub,
     useResource: resourceStub,
     useSessions: unusedHook,
-    useSessionPendingInteraction: unusedHook,
+    useSessionStatus: unusedHook,
+    useSessionRetainInfo: () => undefined,
     useWorkspaces: unusedHook,
     t,
   }

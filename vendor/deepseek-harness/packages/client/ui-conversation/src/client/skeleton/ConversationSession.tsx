@@ -57,7 +57,7 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
 /**
  * Renders Session header chrome above the resident conversation scrollport.
  * @param props - Strict Session store, view ledger, navigation, render, and locale shares.
- * @returns the blank caption in the titlebar row, or the visible title and tabs.
+ * @returns Session navigation controls, with title and tabs after conversation starts.
  */
 export function ConversationSessionHeader({
   sessionId, useSession, useSessions, useConversation, useConversationViews, useViewTabs,
@@ -82,11 +82,14 @@ export function ConversationSessionHeader({
       className={clsx(css.header, hideChrome && css.headerBlank, !showTabStrip && css.headerNoTabs)}
       aria-hidden={hideChrome || undefined}
     >
-      {hideChrome ? (
-        <div className={css.blankCaption} data-dshd-caption="blank" />
-      ) : (
-        <>
-          <div className={css.titleRow} data-dshd-caption="title">
+      <div className={css.titleRow} data-dshd-caption={hideChrome ? undefined : 'title'}>
+        <div className={css.headerLeading} data-conversation-header-leading="">
+          {renderSlot('conversation.session.header.leading', {})}
+        </div>
+        {hideChrome ? (
+          <div className={css.blankCaption} data-dshd-caption="blank" />
+        ) : (
+          <>
             <div className={css.titleCluster}>
               <nav className={css.crumbs} aria-label={t('session.hierarchy')}>
                 {ancestry.map((summary, index) => {
@@ -151,27 +154,27 @@ export function ConversationSessionHeader({
                 {renderSlot('conversation.session.header.utilities', {})}
               </div>
             )}
-            <div className={css.headerCorner} data-conversation-header-corner="">
-              {renderSlot('conversation.session.header.corner', {})}
-            </div>
-          </div>
-          {showTabStrip && (
-            <div className={css.tabs} role="tablist">
-              {tabs.map(viewTab => (
-                <button
-                  key={viewTab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={viewTab.id === active?.id}
-                  className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
-                  onClick={() => { selectView(viewTab.id) }}
-                >
-                  {viewTab.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+          </>
+        )}
+        <div className={css.headerCorner} data-conversation-header-corner="">
+          {renderSlot('conversation.session.header.corner', {})}
+        </div>
+      </div>
+      {!hideChrome && showTabStrip && (
+        <div className={css.tabs} role="tablist">
+          {tabs.map(viewTab => (
+            <button
+              key={viewTab.id}
+              type="button"
+              role="tab"
+              aria-selected={viewTab.id === active?.id}
+              className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
+              onClick={() => { selectView(viewTab.id) }}
+            >
+              {viewTab.label}
+            </button>
+          ))}
+        </div>
       )}
     </header>
   )

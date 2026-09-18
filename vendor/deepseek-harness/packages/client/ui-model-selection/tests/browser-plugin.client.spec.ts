@@ -14,7 +14,7 @@ import { createScope } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
+import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ModelSelection, ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
 import type { CommandContribution, PopupSelectSpec, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
@@ -85,6 +85,7 @@ async function bench(
   // Whether the Host reports an adapter for the current route; the composer
   // block follows this, never catalog membership.
   let routable = true
+  let selectionFailure: RemoteError<'session/writer-held'> | undefined
   const sessionRemote = {
     modelCatalog: () => {
       calls.models += 1
@@ -100,6 +101,7 @@ async function bench(
     },
     selectModel: (payload: { sessionId: SessionId; provider: string; model: string; reasoningEffort?: string }) => {
       calls.select += 1
+      if (selectionFailure !== undefined) return Promise.resolve({ ok: false as const, error: selectionFailure })
       selected = {
         provider: payload.provider,
         model: payload.model,
@@ -151,20 +153,15 @@ async function bench(
   localeRuntime.setLocale(locale)
   ctx.provide('locale', localeRuntime)
   const scopes = new Map<SessionId, Context>()
+  const bindings = new Map<SessionId, {
+    sessionId: SessionId
+    session: { sessionId: SessionId; projections: { faceOf: () => SnapshotStore<ModelSelectionProjection | undefined> } }
+    ctx: Context
+  }>()
   const addressed = new Set<SessionId>()
   ctx.provide('sessions', {
     scope: (id: SessionId) => scopes.get(id),
-    binding: (id: SessionId) => {
-      const scope = scopes.get(id)
-      const projection = projections.get(id)
-      return scope === undefined || projection === undefined
-        ? undefined
-        : {
-          sessionId: id,
-          session: { projections: { faceOf: () => projection } },
-          ctx: scope,
-        }
-    },
+    binding: (id: SessionId) => bindings.get(id),
     subagentAddress: (id: SessionId) => addressed.has(id)
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
@@ -176,10 +173,20 @@ async function bench(
     const id = sid(key)
     const handle = createScope(ctx, id)
     scopes.set(id, handle.ctx)
-    projections.set(id, createSnapshotStore<ModelSelectionProjection | undefined>({
+    const projection = createSnapshotStore<ModelSelectionProjection | undefined>({
       lastUsed: null,
       next: null,
-    }))
+    })
+    projections.set(id, projection)
+    const binding = {
+      sessionId: id,
+      session: { sessionId: id, projections: { faceOf: () => projection } },
+      ctx: handle.ctx,
+    }
+    bindings.set(id, binding)
+    handle.ctx.effect(() => () => {
+      if (bindings.get(id) === binding) bindings.delete(id)
+    })
     return handle
   }
   return {
@@ -192,6 +199,9 @@ async function bench(
     },
     seat: () => seats.get('conversation.input.model')!,
     hostCurrent: () => selected,
+    rejectSelection: () => {
+      selectionFailure = new RemoteError('session/writer-held', 'writer held', { sessionId: sid('owned') })
+    },
     setHostCurrent: (selection: ModelSelection) => { defaultSelection = selection },
     setProjected: (id: SessionId, value: ModelSelectionProjection) => { projections.get(id)?.set(value) },
     address: (id: SessionId) => { addressed.add(id) },
@@ -206,6 +216,18 @@ async function bench(
 const projection = (id: string) => ({ sessionId: sid(id) })
 
 describe('ui-model-selection dual entry', () => {
+  it('carries writer contention to the model seat and localizes the command failure', async () => {
+    const b = await bench()
+    b.mint('owned')
+    const input = projection('owned')
+    const options = await b.popup().options(input, new AbortController().signal)
+    b.rejectSelection()
+    await expect(b.popup().onSelect(options[0]!, input)).rejects.toThrow(zh['error.sessionInUse'])
+    expect(b.ctx.modelDirectories.directoryFor(sid('owned')).store.getSnapshot()).toMatchObject({
+      status: 'error', error: 'session/writer-held: writer held',
+    })
+  })
+
   it('registers the /model contribution and the composer model seat', async () => {
     const b = await bench()
     expect(b.contribution().name).toBe('model')
@@ -251,7 +273,7 @@ describe('ui-model-selection dual entry', () => {
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
       reasoningEffort: 'max',
-    })).toBe(true)
+    })).toEqual({ ok: true, value: undefined })
     expect(b.hostCurrent()).toEqual({
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
@@ -526,7 +548,7 @@ describe('ui-model-selection dual entry', () => {
     const face = b.seat().inject!(sid('child'))
     expect(face.available).toBe(false)
     face.load()
-    await expect(face.select({ provider: 'deepseek', model: 'deepseek-v4-pro' })).resolves.toBe(false)
+    await expect(face.select({ provider: 'deepseek', model: 'deepseek-v4-pro' })).resolves.toBeUndefined()
     await expect(b.ctx.modelDirectories.directoryFor(sid('child')).load())
       .rejects.toThrow(/unavailable for addressed subagent/)
     await expect(b.ctx.modelDirectories.directoryFor(sid('child')).select({

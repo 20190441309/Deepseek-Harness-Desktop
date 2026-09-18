@@ -13,11 +13,11 @@ function emptyState(overrides: Partial<SessionListState> = {}): SessionListState
   return {
     ids: [],
     byId: {},
-    current: undefined,
+
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
+
     ...overrides,
   }
 }
@@ -27,13 +27,15 @@ describe('listSessionAgents', () => {
     expect(listSessionAgents(emptyState(), undefined)).toEqual([])
   })
 
-  it('uses the list current id when sessionId is omitted', () => {
+  it('uses the main-view retained session when sessionId is omitted', () => {
     const state = emptyState({
-      current: PARENT,
+
       byId: {
+        [PARENT]: { id: PARENT, displayTitle: 'parent', retainedBy: { mainView: 1 }, running: false, blank: false, updatedAt: 0 },
         [CHILD]: {
           id: CHILD,
           displayTitle: 'writer',
+          retainedBy: {},
           running: false,
           blank: false,
           updatedAt: 1,

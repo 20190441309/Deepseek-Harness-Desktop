@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { CommandContribution, CommandUiContract } from '@deepseek-ai/dsh-client-ui-commands/client'
-import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISession, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import {
@@ -50,13 +50,39 @@ async function bench() {
   runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
   const connectWorkspace = vi.fn(async () => ROOT)
   const connectNoDirectory = vi.fn(async () => ROOT)
+  const references = new Map<SessionId, SessionReference>()
+  const opened = vi.fn<(id: SessionId) => void>()
+  const transferOrder: string[] = []
+  let mainReference: SessionReference | undefined
+  const replaceMain = (id: SessionId, beforeOpen?: (id: SessionId) => void): void => {
+    const next = runtime.sessions.retain(id, { source: 'mainView' })
+    transferOrder.push('target-retained')
+    if (runtime.sessions.binding(id) !== undefined) transferOrder.push('target-bound')
+    try {
+      beforeOpen?.(id)
+    } catch (error: unknown) {
+      next.release()
+      throw error
+    }
+    transferOrder.push('draft-transferred')
+    mainReference?.release()
+    transferOrder.push('old-released')
+    mainReference = next
+    opened(id)
+    transferOrder.push('opened')
+  }
+  const openSession = vi.fn((id: SessionId) => { replaceMain(id) })
+  const openNoDirectory = vi.fn(async (beforeOpen?: (id: SessionId) => void) => {
+    const id = await connectNoDirectory()
+    replaceMain(id, beforeOpen)
+  })
   runtime.ctx.provide('uiWorkspace', {
     openWorkspace: async (_workspaceId: WorkspaceId, beforeOpen: (id: SessionId) => void) => {
       const id = await connectWorkspace()
-      beforeOpen(id)
-      runtime.sessions.open(id)
+      replaceMain(id, beforeOpen)
     },
-    openSession: (id: SessionId) => { runtime.sessions.open(id) },
+    openSession,
+    openNoDirectory,
     connectNoDirectory,
   } as never)
   const sessionFake = sessionFakeFor()
@@ -64,7 +90,9 @@ async function bench() {
     id: ROOT,
     summary: { title: 'R', displayTitle: 'R', cwd: '/proj' },
     session: sessionFake,
-  }, { current: false })
+  })
+  const rootReference = runtime.sessions.retain(ROOT)
+  references.set(ROOT, rootReference)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
@@ -78,25 +106,27 @@ async function bench() {
     runtime.slots.entries(key)[0]!
   const conversationApi = (id: SessionId) => {
     const entry = entryOf('conversation.session')
-    const instance = runtime.storeOf('conversation.session', id) as ConversationInstance
+    const instance = runtime.storeOf('conversation.session', references.get(id)) as ConversationInstance
     const injected = (entry.inject as unknown as (
       sessionId: SessionId,
       actions: ConversationActions,
     ) => ConversationSessionInjected)(id, instance.actions)
     return { instance, injected }
   }
-  const conversationHeaderApi = (id: SessionId) => {
+  const residentApi = (id: SessionId | undefined) => {
+    const definition = runtime.factoryOf('conversation.content')
+    return (definition.inject as unknown as (
+      sessionId: SessionId | undefined,
+    ) => ConversationInjected)(id)
+  }
+  const headerApi = (id: SessionId) => {
     const entry = entryOf('conversation.session.header')
-    const instance = runtime.storeOf('conversation.session.header', id) as ConversationInstance
+    const instance = runtime.storeOf('conversation.session.header', references.get(id)) as ConversationInstance
     const injected = (entry.inject as unknown as (
       sessionId: SessionId,
       actions: ConversationActions,
     ) => ConversationSessionHeaderInjected)(id, instance.actions)
     return { instance, injected }
-  }
-  const residentApi = (id: SessionId | undefined) => {
-    const entry = entryOf('main.conversation')
-    return (entry.inject as unknown as (sessionId: SessionId | undefined) => ConversationInjected)(id)
   }
   const composerApi = (id: SessionId | undefined) => {
     const entry = entryOf('conversation.composer.bar')
@@ -110,9 +140,9 @@ async function bench() {
     conversationApi(id).injected.hooks.conversationViews
   return {
     runtime, feature, slots: runtime.slots, entryOf, conversationApi,
-    conversationHeaderApi, residentApi, composerApi,
-    inputApi, viewSource, sessionFake, connectWorkspace, connectNoDirectory,
-    rootUpload, uploads,
+    headerApi, conversationHeaderApi: headerApi, residentApi, composerApi,
+    inputApi, viewSource, sessionFake, connectWorkspace, connectNoDirectory, openNoDirectory,
+    rootUpload, uploads, rootReference, references, opened, transferOrder,
   }
 }
 
@@ -203,7 +233,7 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('restores the selected View when a cached Session becomes current', async () => {
+  it('restores the selected View when a cached Session becomes Provider-bound', async () => {
     const b = await bench()
     const binding = b.runtime.ctx.uiConversation.binding(ROOT)
     const activate = vi.spyOn(binding, 'activate')
@@ -218,7 +248,7 @@ describe('Conversation inject API', () => {
         draft: '', view: 'custom', viewRequest: null,
       }))
 
-      b.runtime.ctx.uiSession.adapter.resolve(ROOT)
+      b.runtime.ctx.uiSession.adapter.bindingSource(b.rootReference).getSnapshot()
       expect(activate).toHaveBeenLastCalledWith('chat')
       activate.mockClear()
 
@@ -227,10 +257,13 @@ describe('Conversation inject API', () => {
         (() => null) as never,
       )
       await b.runtime.flush()
-      expect(activate).not.toHaveBeenCalled()
-
-      await b.runtime.sessions.setCurrent(ROOT)
       expect(activate).toHaveBeenLastCalledWith('custom')
+      activate.mockClear()
+
+      using mainReference = b.runtime.sessions.retain(ROOT, { source: 'mainView' })
+      await b.runtime.flush()
+      expect(mainReference.sessionId).toBe(ROOT)
+      expect(activate).not.toHaveBeenCalled()
     } finally {
       removeCustom?.()
       removeChat()
@@ -349,7 +382,7 @@ describe('Conversation inject API', () => {
 
     b.connectWorkspace.mockResolvedValueOnce(ROOT)
     await resident.selectWorkspace('workspace-1' as WorkspaceId)
-    expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [ROOT] })
+    expect(b.opened).toHaveBeenCalledWith(ROOT)
     expect(state.getSnapshot().draft).toBe('carry me')
 
     const other = 'other-1' as SessionId
@@ -361,10 +394,10 @@ describe('Conversation inject API', () => {
       },
     }))
     b.uploads.set(other, targetUpload)
-    await b.runtime.sessions.add({ id: other, session: {} }, { current: false })
+    await b.runtime.sessions.add({ id: other, session: {} })
     b.connectWorkspace.mockResolvedValueOnce(other)
     await resident.selectWorkspace('workspace-2' as WorkspaceId)
-    expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [other] })
+    expect(b.opened).toHaveBeenCalledWith(other)
     expect(state.getSnapshot().draft).toBe('')
     expect(b.inputApi(other).state.getSnapshot().draft).toBe('carry me')
     await vi.waitFor(() => { expect(targetUpload).toHaveBeenCalledOnce() })
@@ -379,19 +412,25 @@ describe('Conversation inject API', () => {
     actions.setDraft('task draft')
 
     const task = 'task-1' as SessionId
-    await b.runtime.sessions.add({ id: task }, { current: false })
+    await b.runtime.sessions.add({ id: task })
     b.connectNoDirectory.mockResolvedValueOnce(task)
     await resident.selectNoDirectory()
     expect(b.connectNoDirectory).toHaveBeenCalledTimes(1)
+    expect(b.openNoDirectory).toHaveBeenCalledTimes(1)
     expect(b.connectWorkspace).not.toHaveBeenCalled()
-    expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [task] })
+    expect(b.opened).toHaveBeenCalledWith(task)
+    expect(b.runtime.sessions.binding(task)).toBeDefined()
+    expect(b.transferOrder.slice(-5)).toEqual([
+      'target-retained', 'target-bound', 'draft-transferred', 'old-released',
+      'opened',
+    ])
     expect(state.getSnapshot().draft).toBe('')
     expect(b.inputApi(task).state.getSnapshot().draft).toBe('task draft')
 
-    const opens = b.runtime.sessions.calls.filter(call => call.method === 'open').length
+    const opens = b.opened.mock.calls.length
     b.connectNoDirectory.mockRejectedValueOnce(new Error('offline'))
     await expect(b.residentApi(undefined).selectNoDirectory()).rejects.toThrow('offline')
-    expect(b.runtime.sessions.calls.filter(call => call.method === 'open')).toHaveLength(opens)
+    expect(b.opened.mock.calls).toHaveLength(opens)
     await b.runtime.dispose()
   })
 
@@ -399,13 +438,13 @@ describe('Conversation inject API', () => {
     const b = await bench()
     b.connectWorkspace.mockResolvedValueOnce(ROOT)
     await b.residentApi(undefined).selectWorkspace('workspace-0' as WorkspaceId)
-    expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [ROOT] })
+    expect(b.opened).toHaveBeenCalledWith(ROOT)
 
-    const opens = b.runtime.sessions.calls.filter(call => call.method === 'open').length
+    const opens = b.opened.mock.calls.length
     b.connectWorkspace.mockRejectedValueOnce(new Error('offline'))
     await expect(b.residentApi(ROOT).selectWorkspace('workspace-4' as WorkspaceId))
       .rejects.toThrow('offline')
-    expect(b.runtime.sessions.calls.filter(call => call.method === 'open')).toHaveLength(opens)
+    expect(b.opened).toHaveBeenCalledTimes(opens)
     await b.runtime.dispose()
   })
 

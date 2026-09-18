@@ -42,8 +42,8 @@ export type PreviewPanelProps =
 
 function currentCwd(useSessions: PreviewPanelProps['useSessions']): string | undefined {
   return useSessions((s) => {
-    const id = s.current
-    /* v8 ignore next -- the Browser occupant is mounted with a current session id. */
+    const id = Object.values(s.byId)
+      .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
     if (id === undefined) return undefined
     const next = s.byId[id]?.cwd
     return next ? next : undefined
@@ -176,7 +176,8 @@ export function PreviewPanel({
 }: PreviewPanelProps): ReactNode {
   const hostRef = useRef<HTMLDivElement>(null)
   const cwd = currentCwd(useSessions)
-  const sessionId = useSessions(s => s.current)
+  const sessionId = useSessions(s => Object.values(s.byId)
+    .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id)
   const [url, setUrl] = useState('')
   const [draft, setDraft] = useState('')
   const [previewId, setPreviewId] = useState<string | null>(null)

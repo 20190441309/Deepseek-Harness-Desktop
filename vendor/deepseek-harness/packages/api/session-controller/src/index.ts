@@ -12,9 +12,11 @@ import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   ApiSessionAgentController,
+  ApiSessionNotFound,
   inspectApiSession,
   type ApiSessionAgentResult,
 } from './agent.ts'
+import { canReuseBlankInspection, inspectAttachedSession } from './blank-reuse.ts'
 import { SessionCommandController } from './commands.ts'
 import { SessionControlController } from './control.ts'
 import { ArchivedSessionDelete } from './delete-archived.ts'
@@ -31,6 +33,8 @@ import type {
   ModelCatalog,
   SessionAttachmentRequest,
   SessionAttachmentValue,
+  SessionBlankReuseRequest,
+  SessionBlankReuseValue,
   SessionCancelRequest,
   SessionCancelValue,
   SessionControlFrame,
@@ -228,6 +232,45 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
+   * Check one complete Session log for the narrow identity-reuse contract.
+   * This is advisory and never reserves, activates, or mutates the Session.
+   * @param request - durable Session identity to inspect.
+   * @param signal - caller cancellation for the cold read.
+   * @returns whether the identity remains an ordinary blank Session.
+   * @throws {RemoteError} for cancellation and storage/inspection failures.
+   */
+  @Remote('blankReuse')
+  async blankReuse(
+    request: SessionBlankReuseRequest,
+    signal: AbortSignal,
+  ): Promise<SessionBlankReuseValue> {
+    try {
+      signal.throwIfAborted()
+      let inspection = await this.inspect(request.sessionId, signal)
+      signal.throwIfAborted()
+      // A cold read can race a caller attaching the Session. Prefer the live
+      // snapshot at the decision point so a stale persisted prefix cannot make
+      // a newly attached, non-blank Session reusable.
+      const attached = this.ctx.sessions.get(request.sessionId)
+      if (attached !== undefined) inspection = inspectAttachedSession(attached)
+      signal.throwIfAborted()
+      return { reusable: canReuseBlankInspection(inspection) }
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        throw new RemoteError('gateway/cancelled', 'session blank reuse was aborted', {}, { cause: error })
+      }
+      if (error instanceof ApiSessionNotFound) return { reusable: false }
+      if (error instanceof RemoteError) throw error
+      throw new RemoteError(
+        'gateway/internal',
+        `session blank reuse inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+        {},
+        { cause: error },
+      )
+    }
+  }
+
+  /**
    * Read all visible Session rows without resuming an Agent.
    * @param _request - reserved empty list request.
    * @param signal - cancellation for persistence reads.
@@ -393,12 +436,12 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Mutate one still-pending queue occurrence on a live Agent.
+   * Mutate one still-pending queue occurrence, resuming a cold Agent first.
    * @param request - Session, queue item, and requested mutation.
    * @returns acknowledgement that the queue mutation was applied.
    */
   @Remote('updateQueue')
-  updateQueue(request: SessionUpdateQueueRequest): SessionUpdateQueueValue {
+  updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> {
     return this.commands.updateQueue(request)
   }
 

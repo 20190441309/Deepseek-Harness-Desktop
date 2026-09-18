@@ -248,7 +248,8 @@ export function apply(ctx: Context): void {
     })
     const disposeIntercept = wrapOpenPath(workspaces, {
       takeoverEnabled: desktopListingAvailable,
-      currentSessionId: () => ctx.sessions.list.getSnapshot().current,
+      currentSessionId: () => Object.values(ctx.sessions.list.getSnapshot().byId)
+        .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id,
       openInSurfaces: async (path, sessionId, options) => {
         const cwd = ctx.sessions.list.getSnapshot().byId[sessionId as SessionId]?.cwd
         if (typeof cwd !== 'string' || cwd.length === 0) return false

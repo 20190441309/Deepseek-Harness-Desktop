@@ -77,8 +77,8 @@ function renderOccupant(
 
 function currentCwd(useSessions: SurfacesRootProps['useSessions']): string | undefined {
   return useSessions((s) => {
-    const id = s.current
-    const next = id === undefined ? undefined : s.byId[id]?.cwd
+    const mainView = Object.values(s.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)
+    const next = mainView?.cwd
     return next ? next : undefined
   })
 }

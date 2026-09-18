@@ -5,13 +5,17 @@
  * each drilling into its own list — the provider-grouped model list over
  * the shared directory, and the effort levels. The trigger (313:14108's
  * ToggleButton) shows both: model name + effort in the caption tone.
- * Data and submission ride the SAME per-session ModelDirectory as the
- * /model popup; exact-model reasoning metadata and the selected effort come
- * from the Host rather than a client-owned vocabulary. The menu closes on
- * the pick (the same contract every Menu consumer keeps) and the settlement
- * lands in the background — a rejected selection announces through the
- * shared transient Toast anchored to the composer card; the in-menu strip
- * with Retry remains the catalog-load surface.
+ * While open, ↑/↓ move focus across the rows of the shown pane (wrapping; a
+ * step taken while the trigger still holds focus enters at the near end), Tab
+ * settles like Enter, and Escape and Shift+Tab leave a drilled pane first and
+ * otherwise close back to the trigger. A drilled pane hands focus to the row
+ * of the value in use, and returning to the root pane hands it back to the
+ * cell that opened it. Data and submission ride the SAME per-session
+ * ModelDirectory as the /model popup; exact-model reasoning metadata and the
+ * selected effort come from the Host rather than a client-owned vocabulary. A
+ * rejected selection announces through the shared transient Toast anchored to
+ * the composer card; the in-menu strip with Retry remains the catalog-load
+ * surface.
  */
 import {
   useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
@@ -69,7 +73,9 @@ export function ModelSelect(
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [menuPos, setMenuPos] = useState<CSSProperties | null>(null)
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const menuItems = (): HTMLButtonElement[] => Array.from(
+    menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]') ?? [],
+  )
   const id = useId()
 
   useEffect(() => {
@@ -142,6 +148,30 @@ export function ModelSelect(
     if (!mounted) setPane('root')
   }, [mounted])
 
+  // A pane switch unmounts the row that had focus, which drops focus onto the
+  // page body — outside the card's subtree, where its key handling no longer
+  // sees a keystroke. Every switch therefore names where the keyboard lands:
+  // drilling on the pane's current value, coming back on the cell that opened
+  // the pane left.
+  const paneFocus = useRef<'drill' | 'model' | 'effort' | null>(null)
+  useEffect(() => {
+    const intent = paneFocus.current
+    paneFocus.current = null
+    if (!open || intent === null) return
+    if (intent === 'drill') {
+      // The checked row is the value in use; a pane without one opens on its
+      // first row.
+      const checked = menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]:not([disabled])')
+      const target = checked ?? menuItems().find(item => !item.disabled)
+      // Rows a selection in flight disabled cannot take the keyboard; the
+      // trigger does, so the card's keys still reach the menu.
+      ;(target ?? triggerRef.current)?.focus()
+      return
+    }
+    const cell = menuItems()[intent === 'effort' ? 1 : 0]
+    ;(cell !== null && cell !== undefined && !cell.disabled ? cell : triggerRef.current)?.focus()
+  }, [open, pane])
+
   // Portaled placement (the Menu primitive's portal rules: fixed from the
   // anchor rect, measured before paint, clamped inside the viewport): above
   // the trigger, right edges aligned. Depends on pane and directory state
@@ -193,23 +223,66 @@ export function ModelSelect(
     if (restoreFocus) queueMicrotask(() => { triggerRef.current?.focus() })
   }
 
+  const drill = (next: Pane): void => {
+    paneFocus.current = 'drill'
+    setPane(next)
+  }
+
+  /** Leave a drilled pane for the root one, handing the keyboard back to its cell. */
+  const back = (from: Exclude<Pane, 'root'>): void => {
+    paneFocus.current = from
+    setPane('root')
+  }
+
   const moveFocus = (offset: number): void => {
-    const items = itemRefs.current.filter(item => item !== null)
+    const items = menuItems()
     if (items.length === 0) return
     const active = items.findIndex(item => item === document.activeElement)
-    const next = (Math.max(active, 0) + offset + items.length) % items.length
+    // Focus outside the rows (the trigger, which keeps it while the menu
+    // opens) enters at the end the step comes from: the first row forward,
+    // the last row backward.
+    const next = active === -1
+      ? (offset > 0 ? 0 : items.length - 1)
+      : (active + offset + items.length) % items.length
     items[next]?.focus()
   }
 
-  const onRootKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+  const onRootKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key === 'Escape' && open) {
       event.preventDefault()
       // Escape backs out of a drilled pane first, then closes.
-      if (pane !== 'root') setPane('root')
+      if (pane !== 'root') back(pane)
       else close(true)
       return
     }
     if (!open) return
+    // Tab settles like Enter and Shift+Tab leaves like Escape, so the menu's
+    // keys mean what they mean in the composer. Both are consumed: the card
+    // keeps the browser's focus traversal out while it is open.
+    if (event.key === 'Tab') {
+      if (event.shiftKey) {
+        event.preventDefault()
+        if (pane !== 'root') back(pane)
+        else close(true)
+        return
+      }
+      // Settling activates the row the keyboard is on; with focus still on the
+      // trigger, Tab enters the menu at the value in use instead. Any other
+      // control inside the card (a retry button) keeps the browser's traversal,
+      // so the keystroke stays unconsumed there.
+      const focused = document.activeElement
+      const rows = menuItems()
+      if (focused instanceof HTMLButtonElement && rows.includes(focused)) {
+        event.preventDefault()
+        focused.click()
+        return
+      }
+      if (focused !== triggerRef.current) return
+      event.preventDefault()
+      const checked = menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]:not([disabled])')
+      ;(checked ?? rows.find(item => !item.disabled))?.focus()
+      return
+    }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       moveFocus(event.key === 'ArrowDown' ? 1 : -1)
@@ -224,15 +297,27 @@ export function ModelSelect(
     close()
   }
 
-  // A rejected selection reports on the toast; the card itself already left
-  // on the pick, so settling only announces.
-  const settleSelection = (accepted: boolean): void => {
-    if (accepted) return
-    const message = directory.getSnapshot().error
-    if (message !== null) {
-      toastSeq.current += 1
-      setToast({ seq: toastSeq.current, text: t('error.action', { message }) })
+  const announceSelectionFailure = (error: { code: string; message: string }): void => {
+    toastSeq.current += 1
+    setToast({
+      seq: toastSeq.current,
+      text: error.code === 'session/writer-held'
+        ? t('error.sessionInUse')
+        : t('error.action', { message: `${error.code}: ${error.message}` }),
+    })
+  }
+
+  const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
+    if (result === undefined) return
+    if (result.ok) {
+      return
     }
+    announceSelectionFailure(result.error)
+  }
+
+  const rejectSelection = (): void => {
+    const message = directory.getSnapshot().error
+    if (message !== null) announceSelectionFailure({ code: 'selection/rejected', message })
   }
 
   const choose = (selection: ModelSelection): void => {
@@ -241,7 +326,7 @@ export function ModelSelect(
       return
     }
     lastActionRef.current = 'select'
-    void select(selection).then(settleSelection, () => { settleSelection(false) })
+    void select(selection).then(settleSelection, rejectSelection)
     close(true)
   }
 
@@ -257,7 +342,7 @@ export function ModelSelect(
       ...effort === undefined ? {} : { reasoningEffort: effort },
     }
     lastActionRef.current = 'select'
-    void select(selection).then(settleSelection, () => { settleSelection(false) })
+    void select(selection).then(settleSelection, rejectSelection)
     close(true)
   }
 
@@ -274,12 +359,6 @@ export function ModelSelect(
       : effortLabel === undefined
         ? t('trigger.aria', { model: modelLabel })
         : t('trigger.ariaEffort', { model: modelLabel, effort: effortLabel })
-  itemRefs.current = []
-  let itemIndex = 0
-  const itemRef = () => {
-    const at = itemIndex++
-    return (node: HTMLButtonElement | null) => { itemRefs.current[at] = node }
-  }
 
   return (
     <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
@@ -325,13 +404,13 @@ export function ModelSelect(
         >
           {pane === 'root' && (
             <>
-              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('model') }}>
+              <button type="button" role="menuitem" className={css.cell} onClick={() => { drill('model') }}>
                 <span className={css.cellLabel}>{t('menu.model')}</span>
                 <span className={css.cellValue}>{modelLabel}</span>
                 <IconChevronRightOutline14 className={css.cellChevron} />
               </button>
               {reasoning !== undefined && (
-                <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
+                <button type="button" role="menuitem" className={css.cell} onClick={() => { drill('effort') }}>
                   <span className={css.cellLabel}>{t('menu.effort')}</span>
                   <span className={css.cellValue}>{effortLabel}</span>
                   <IconChevronRightOutline14 className={css.cellChevron} />
@@ -367,7 +446,6 @@ export function ModelSelect(
                         const selected = view.state.current?.provider === group.id && view.state.current.model === model.id
                         return (
                           <button
-                            ref={itemRef()}
                             type="button"
                             role="menuitemradio"
                             aria-checked={selected}
@@ -408,7 +486,6 @@ export function ModelSelect(
                 ? <div className={css.empty}>{t('empty.efforts')}</div>
                 : view.effortChoices.map(level => (
                   <button
-                    ref={itemRef()}
                     type="button"
                     role="menuitemradio"
                     aria-checked={view.effort === level.effort}

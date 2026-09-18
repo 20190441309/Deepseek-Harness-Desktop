@@ -18,9 +18,9 @@ const iconNames = Object.keys(icons)
 
 describe('ic_ds_ icon set', () => {
   it('exports the full icon set (46 deepsuite + 21 figma extracts + product glyphs outside those sets)', () => {
-    expect(iconNames.length).toBe(90)
+    expect(iconNames.length).toBe(92)
     // The composer menu's own glyphs, pinned by name.
-    expect(iconNames).toEqual(expect.arrayContaining(['IconPlanOutline14', 'IconCompactOutline16', 'IconShieldOutline16']))
+    expect(iconNames).toEqual(expect.arrayContaining(['IconPlanOutline14', 'IconCompactOutline16', 'IconShieldOutline16', 'IconInfoOutline14', 'IconPluginPinwheelOutline16']))
   })
 
   it('the permission selector composes its marks over the shield contour exported here', () => {

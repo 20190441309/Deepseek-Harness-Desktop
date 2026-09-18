@@ -8,6 +8,8 @@ import type {
   WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
+  SessionBlankReuseRequest,
+  SessionBlankReuseValue,
   SessionAddress,
   SessionAssistantStreamBaseline,
   SessionControlBaseline,
@@ -125,6 +127,8 @@ export class FakeApiClient {
   onList: (payload: unknown) => Promise<RemoteResult<{ items: never[] }>> = () => Promise.resolve(ok({ items: [] }))
   onSearch: (payload: unknown) => Promise<RemoteResult<{ items: SessionSearchItem[]; hasMore: boolean }>> =
     () => Promise.resolve(ok({ items: [], hasMore: false }))
+  onBlankReuse: (payload: SessionBlankReuseRequest) => Promise<RemoteResult<SessionBlankReuseValue>> =
+    () => Promise.resolve(ok({ reusable: false }))
   onCreate: (payload: unknown) => Promise<RemoteResult<{ sessionId: SessionId }>> = () => Promise.resolve(ok({ sessionId: 'fk-new' as SessionId }))
   onSelectModel: (payload: SessionSelectModelRequest) => Promise<RemoteResult<SessionSelectModelValue>> =
     payload => Promise.resolve(ok({
@@ -163,7 +167,6 @@ export class FakeApiClient {
   /** Optional Host opening cursor override for stale-page and reconnect tests. */
   followCursor: number | undefined
   controlBaseline: SessionControlBaseline = {
-    queues: {},
     jobs: {},
     projections: {},
   }
@@ -176,6 +179,7 @@ export class FakeApiClient {
     scratchCwd: '/fk-home/no-workspace',
   }
   lastSearchSignal: AbortSignal | undefined
+  lastBlankReuseSignal: AbortSignal | undefined
 
   onSubagentList: (payload: unknown) => Promise<RemoteResult<SubagentCatalog>>
     = () => Promise.resolve(ok({ entries: [], parentAvailable: true }))
@@ -230,6 +234,10 @@ export class FakeApiClient {
         search: (payload, signal) => {
           this.lastSearchSignal = signal
           return this.record('session.search', payload, this.onSearch(payload))
+        },
+        blankReuse: (payload, signal) => {
+          this.lastBlankReuseSignal = signal
+          return this.record('session.blankReuse', payload, this.onBlankReuse(payload))
         },
         create: payload => this.record('session.create', payload, this.onCreate(payload)),
         setPresentation: payload => this.record('session.setPresentation', payload,

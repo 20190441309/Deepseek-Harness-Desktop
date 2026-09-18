@@ -18,20 +18,44 @@ function declare(slots: SlotRegistry): () => void {
   } as never, () => null)
 }
 
-function sessionsStub(opts: { current?: string; cwd?: string } = {}) {
-  const current = opts.current
+function sessionsStub(opts: { mainView?: string; cwd?: string; background?: { id: string; cwd: string } } = {}) {
   const cwd = opts.cwd ?? '/tmp/proj'
   return {
     list: {
-      getSnapshot: () => ({
-        current,
-        byId: current === undefined ? {} : { [current]: { cwd } },
-      }),
+      getSnapshot: () => {
+        const mainView = opts.mainView
+        return {
+          byId: {
+            ...(mainView === undefined ? {} : {
+              [mainView]: {
+                id: mainView,
+                displayTitle: mainView,
+                running: false,
+                blank: false,
+                updatedAt: 1,
+                cwd,
+                retainedBy: { mainView: 1 },
+              },
+            }),
+            ...(opts.background === undefined ? {} : {
+              [opts.background.id]: {
+                id: opts.background.id,
+                displayTitle: opts.background.id,
+                running: true,
+                blank: false,
+                updatedAt: 2,
+                cwd: opts.background.cwd,
+                retainedBy: { gateway: 1 },
+              },
+            }),
+          },
+        }
+      },
     },
   }
 }
 
-async function bench(opts: { current?: string; cwd?: string } = {}) {
+async function bench(opts: { mainView?: string; cwd?: string; background?: { id: string; cwd: string } } = {}) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const slots = ctx.get('slots') as SlotRegistry
@@ -156,8 +180,32 @@ describe('ui-surfaces apply', () => {
     expect(desktopListingAvailable()).toBe(true)
   })
 
+  it('routes workspace paths through the main-view session and releases cleanly', async () => {
+    const sessions: { mainView?: string; cwd: string; background: { id: string; cwd: string } } = {
+      mainView: 'sess-main',
+      cwd: '/tmp/main',
+      background: { id: 'sess-background', cwd: '/tmp/proj' },
+    }
+    const b = await bench(sessions)
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('/tmp/main/src/a.ts')
+    expect(openFile).toHaveBeenCalledWith('sess-main', 'src/a.ts')
+    expect(openFile).not.toHaveBeenCalledWith('sess-background', expect.any(String))
+
+    delete sessions.mainView
+    b.originalOpen.mockClear()
+    await b.workspaces.openPath('/tmp/proj/background.ts')
+    expect(b.originalOpen).toHaveBeenCalledWith('/tmp/proj/background.ts')
+    expect(openFile).not.toHaveBeenCalledWith('sess-background', 'background.ts')
+    await b.fiber.dispose()
+  })
+
   it('intercepts desktop openPath into surfaces', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
       listDir: async () => ({ ok: true }),
@@ -170,7 +218,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('forwards openPath line into openFile revealLine', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
       listDir: async () => ({ ok: true }),
@@ -182,7 +230,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('falls through when the path is outside cwd or listing is absent', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     await b.workspaces.openPath('/tmp/proj/a.ts')
     expect(openFile).not.toHaveBeenCalled()
@@ -200,7 +248,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('opens the Files explorer for the workspace root', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const open = vi.fn()
     const openFile = bindOpenFile(b.slots, vi.fn(), open)
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
@@ -215,7 +263,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('falls through when the session has an empty cwd', async () => {
-    const b = await bench({ current: 'sess-1', cwd: '' })
+    const b = await bench({ mainView: 'sess-1', cwd: '' })
     bindOpenFile(b.slots)
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
       listDir: async () => ({ ok: true }),
@@ -226,7 +274,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('falls through when inject has not bound openFile yet', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
       listDir: async () => ({ ok: true }),
     }
@@ -236,7 +284,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('opens Browser for html after Files when previewWorkspaceFile succeeds', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     const previewWorkspaceFile = vi.fn(async () => ({
       ok: true as const, url: 'http://127.0.0.1:9/tok/site/index.html',
@@ -266,7 +314,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('opens Browser for pdf after Files when previewWorkspaceFile succeeds', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     const previewWorkspaceFile = vi.fn(async () => ({
       ok: true as const, url: 'http://127.0.0.1:9/tok/doc.pdf',
@@ -296,7 +344,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('keeps text, extensionless files, and SVG in Files', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     const previewWorkspaceFile = vi.fn(async () => ({ ok: true as const, url: 'http://127.0.0.1:9/tok/a.ts' }))
     ;(window as Window & { shell?: unknown }).shell = {
@@ -314,7 +362,7 @@ describe('ui-surfaces apply', () => {
   })
 
   it('keeps Files when previewWorkspaceFile is missing or refuses', async () => {
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
     ;(window as Window & { shell?: unknown }).shell = {
       listDir: async () => ({ ok: true }),
@@ -358,7 +406,7 @@ describe('ui-surfaces apply', () => {
         return () => { listener = undefined }
       },
     }
-    const b = await bench({ current: 'sess-1' })
+    const b = await bench({ mainView: 'sess-1' })
     const events: unknown[] = []
     const onOpen = (event: Event) => { events.push((event as CustomEvent).detail) }
     window.addEventListener('dshd-open-surface', onOpen)

@@ -26,6 +26,7 @@ import type { ConnectionIndicatorState, PresenceState } from '@deepseek-ai/dsh-c
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
 import { UpdateAction } from './UpdateAction.tsx'
 import css from './SettingsRoot.module.css'
+import { DesktopUpdateIndicator } from './DesktopUpdateIndicator.tsx'
 
 const RECOVERY_CONFIRMATION_MS = 2_000
 
@@ -148,6 +149,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   const {
     wide, reconnect, openSettings, closeSettings, useConnectionState, useNavigation,
     useSections, useOnboardingSteps, useSessions, renderSlot, t,
+    useDesktopUpdate, openDesktopUpdate,
   } = props
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
   const [showRecovery, setShowRecovery] = useState(false)
@@ -172,12 +174,15 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   // freshly localized text on locale change, and the trigger/header/close
   // seats re-render through their own outlets' subscriptions.
   const rows = useSections(s => s)
+  const desktopUpdate = useDesktopUpdate(state => state)
   const connectionState = useConnectionState(state => state)
   const previousConnectionState = useRef(connectionState)
   const onboardingSteps = useOnboardingSteps(s => s)
-  const onboardingActive = useSessions(state =>
-    state.phase === 'ready'
-    && (state.current === undefined || state.byId[state.current]?.blank === true))
+  const onboardingActive = useSessions((state) => {
+    const main = Object.values(state.byId)
+      .find(session => (session.retainedBy.mainView ?? 0) > 0)
+    return state.phase === 'ready' && (main === undefined || main.blank)
+  })
   const onboardingStep = onboardingActive
     ? onboardingSteps.find(step => !completedOnboarding.has(step.id))
     : undefined
@@ -257,7 +262,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
         </button>
         <UpdateAction wide={wide} t={t} />
         <ConnectionIndicator
-          state={wide ? connectionIndicator : undefined}
+          state={wide && desktopUpdate.presentation?.phase !== 'installing' ? connectionIndicator : undefined}
           disconnectedLabel={t('connection.error')}
           connectingLabel={t('connection.connecting')}
           recoveredLabel={t('connection.connected')}
@@ -265,6 +270,8 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
           restartActionLabel={t('connection.restart')}
           onReconnect={reconnect}
         />
+        <DesktopUpdateIndicator wide={wide} hidden={connectionIndicator !== undefined && desktopUpdate.presentation?.phase !== 'installing'}
+          t={t} view={desktopUpdate} onOpen={openDesktopUpdate} />
       </div>
       {mounted && (
         <SettingsPanel

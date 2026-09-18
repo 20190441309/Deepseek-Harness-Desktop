@@ -36,13 +36,11 @@ function sessionState(cwd?: string, rawId = 'session-1'): SessionListState {
   return {
     ids: cwd === undefined ? [] : [id],
     byId: cwd === undefined ? {} : {
-      [id]: { id, displayTitle: 'project', cwd, running: false, blank: false, updatedAt: 0 },
+      [id]: { id, displayTitle: 'project', cwd, running: false, retainedBy: { mainView: 1 }, blank: false, updatedAt: 0 },
     },
-    current: cwd === undefined ? undefined : id,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 

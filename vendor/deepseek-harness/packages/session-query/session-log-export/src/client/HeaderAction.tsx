@@ -18,7 +18,8 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogPr
     t,
     managedSession,
   } = props
-  const listedId = useSessions(state => state.current)
+  const listedId = useSessions(state => Object.values(state.byId)
+    .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id)
   const sessionId = listedId ?? props.sessionId
   const showChrome = typeof useTitlebarAction === 'function' ? useTitlebarAction(value => value) : true
   const downloadEntry = useSessionLogDownload(state => (

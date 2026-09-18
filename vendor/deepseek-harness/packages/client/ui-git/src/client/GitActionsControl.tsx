@@ -199,8 +199,8 @@ export function GitActionsControl({
   t,
 }: GitActionsProps): ReactNode {
   const cwd = useSessions((s) => {
-    const id = s.current
-    const next = id === undefined ? undefined : s.byId[id]?.cwd
+    const mainView = Object.values(s.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)
+    const next = mainView?.cwd
     return next ? next : undefined
   })
   const showChrome = useTitlebarGit(value => value)

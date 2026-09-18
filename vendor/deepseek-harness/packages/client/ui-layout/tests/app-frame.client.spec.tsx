@@ -29,9 +29,9 @@ const selectedSessionBlank = { current: false }
 const selectedSessionTitle = { current: undefined as string | undefined }
 const selectedSessionManaged = { current: false }
 const workspacesReady = { current: true }
-type AttentionSnapshot = Parameters<Parameters<AppFrameProps['useSessionPendingInteraction']>[0]>[0]
+type AttentionSnapshot = Parameters<Parameters<AppFrameProps['useSessionStatus']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
-const useSessionPendingInteraction: AppFrameProps['useSessionPendingInteraction'] = selector => selector(noAttention)
+const useSessionStatus: AppFrameProps['useSessionStatus'] = selector => selector(noAttention)
 
 let observers: ResizeObserverStub[]
 class ResizeObserverStub {
@@ -99,6 +99,7 @@ function mountFrame(windowWidth = initialWindowWidth ?? frameWidth) {
         id: selectedSession.current,
         displayTitle: 'Test',
         running: false,
+        retainedBy: { mainView: 1 },
         blank: selectedSessionBlank.current,
         updatedAt: 1,
         ...(selectedSessionTitle.current === undefined ? {} : { title: selectedSessionTitle.current }),
@@ -107,11 +108,9 @@ function mountFrame(windowWidth = initialWindowWidth ?? frameWidth) {
           : {}),
       },
     },
-    current: selectedSession.current,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   } as unknown as SessionListState)
   const workspaceState: WorkspaceSnapshot = {
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
@@ -124,12 +123,14 @@ function mountFrame(windowWidth = initialWindowWidth ?? frameWidth) {
   })
   const element = () => (
     <AppFrame
+      SessionProvider={({ children }) => children}
       useStore={useStore}
       actions={instance.actions}
       renderSlot={renderSlot}
       useSessions={useSessions}
       usePanelInfo={usePanelInfo}
-      useSessionPendingInteraction={useSessionPendingInteraction}
+      useSessionStatus={useSessionStatus}
+      useSessionRetainInfo={() => undefined}
       useResource={useResource}
       useWorkspaces={sel => sel(workspaceState)}
       t={key => key === 'brand.localBuild' ? 'DSH Local Build' : key}
@@ -296,6 +297,19 @@ describe('AppFrame', () => {
     expect(getByTestId('main-content').getAttribute('data-entry-key')).toBe('conversation')
     expect(getByTestId('rightbar-content')).toBeTruthy()
     expect(getByTestId('surfaces-content')).toBeTruthy()
+  })
+
+  it('keeps Windows caption controls mounted with a zero-width collapsed column', () => {
+    document.documentElement.setAttribute('data-windows-titlebar', '')
+    try {
+      const { frame, instance, sidebarOwner, getByTestId } = mountFrame()
+      act(() => { instance.actions.toggleSidebar() })
+      expect(tracks(frame)[0]).toBe(0)
+      expect(sidebarOwner()).toMatchObject({ collapsed: true, width: 0 })
+      expect(getByTestId('sidebar-content')).toBeTruthy()
+    } finally {
+      document.documentElement.removeAttribute('data-windows-titlebar')
+    }
   })
 
   it('keeps the closed sidebar mounted at its 56px rail without a handle', () => {

@@ -61,13 +61,11 @@ function sessionState(cwd?: string, rawId = 'session-1'): SessionListState {
   return {
     ids: cwd === undefined ? [] : [id],
     byId: cwd === undefined ? {} : {
-      [id]: { id, displayTitle: 'project', cwd, running: false, blank: false, updatedAt: 0 },
+      [id]: { id, displayTitle: 'project', cwd, running: false, retainedBy: { mainView: 1 }, blank: false, updatedAt: 0 },
     },
-    current: cwd === undefined ? undefined : id,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
@@ -650,20 +648,37 @@ describe('SkillsSection', () => {
     })
   })
 
-  it('keeps the last known cwd when the sessions store rebuilds without the entry', async () => {
+  it('keeps the last known cwd when a retained fallback row has no cwd', async () => {
     const projectSkill = { ...writableSkill, name: 'flicker-project', source: 'project-dsh' as const }
     const list = vi.fn(async (scope: { cwd?: string }) => ({ skills: scope.cwd === undefined ? [] : [projectSkill] }))
     const settled = sessionHook(sessionState('/work/x'))
     const { rerender } = render(<SkillsSection {...props({ list, useSessions: settled })} />)
     expect(await screen.findByText(projectSkill.name)).toBeTruthy()
 
-    // Same current session id, but the store entry (and its cwd) reads absent
-    // for this render: the catalog must stay scoped to the remembered cwd.
-    const rebuilt = { ...sessionState('/work/x'), byId: {} }
+    // alpha.2 preserves a local row for retained references even when the
+    // Host catalog entry is absent; its cwd can be temporarily unavailable.
+    const rebuilt = sessionState('/work/x')
+    delete rebuilt.byId['session-1' as SessionId]!.cwd
     rerender(<SkillsSection {...props({ list, useSessions: sessionHook(rebuilt) })} />)
     await waitFor(() => { expect(list).toHaveBeenLastCalledWith({ sessionId: 'session-1', cwd: '/work/x' }) })
     expect(screen.getByText(projectSkill.name)).toBeTruthy()
     expect(screen.queryByText(en.projectCatalogUnavailable)).toBeNull()
+  })
+
+  it('ignores catalog rows not retained by the main view and clears released scope', async () => {
+    const list = vi.fn(async () => ({ skills: [] }))
+    const state = sessionState('/work/main')
+    const backgroundId = 'background' as SessionId
+    state.byId = {
+      [backgroundId]: { id: backgroundId, displayTitle: 'background', cwd: '/work/other', retainedBy: {}, running: true, blank: false, updatedAt: 2 },
+      ...state.byId,
+    }
+    const { rerender } = render(<SkillsSection {...props({ list, useSessions: sessionHook(state) })} />)
+    await waitFor(() => { expect(list).toHaveBeenLastCalledWith({ sessionId: 'session-1', cwd: '/work/main' }) })
+    const released = sessionState('/work/main')
+    released.byId['session-1' as SessionId] = { ...released.byId['session-1' as SessionId]!, retainedBy: {} }
+    rerender(<SkillsSection {...props({ list, useSessions: sessionHook(released) })} />)
+    await waitFor(() => { expect(list).toHaveBeenLastCalledWith({}) })
   })
 
   it('reloads when the active session changes without changing cwd', async () => {

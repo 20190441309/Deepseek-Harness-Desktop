@@ -19,7 +19,6 @@ const neverHook = (() => { throw new Error('surfaces must not read this hook') }
 function sessions(cwd?: string): SurfacesRootProps['useSessions'] {
   const current = 'session-1' as SessionId
   const state = {
-    current,
     ids: [current],
     byId: cwd === undefined
       ? {}
@@ -30,13 +29,13 @@ function sessions(cwd?: string): SurfacesRootProps['useSessions'] {
           running: false,
           blank: false,
           updatedAt: 1,
+          retainedBy: { mainView: 1 },
           cwd,
         },
       },
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   } as SessionListState
   return sel => sel(state)
 }
@@ -58,6 +57,7 @@ function bindStore(instance: ReturnType<ReturnType<typeof createSurfacesStore>['
 function mount(opts: {
   store?: ReturnType<ReturnType<typeof createSurfacesStore>['create']>
   cwd?: string
+  useSessions?: SurfacesRootProps['useSessions']
   gitStatus?: SurfacesRootProps['gitStatus']
 } = {}) {
   const instance = opts.store ?? createSurfacesStore().create()
@@ -66,15 +66,17 @@ function mount(opts: {
   const gitStatus = opts.gitStatus ?? vi.fn(async () => null)
   render(
     <SurfacesRoot
+        SessionProvider={({ children }) => children}
       usePanelInfo={panelInfoStub}
       useResource={resourceStub}
       sessionId={'session-1' as SessionId}
       useSession={neverHook}
-      useSessions={sessions(opts.cwd)}
+      useSessions={opts.useSessions ?? sessions(opts.cwd)}
       useWorkspaces={neverHook}
       useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
       useInput={neverHook}
       inputActions={undefined}
       {...bindStore(instance)}
@@ -185,6 +187,7 @@ describe('SurfacesRoot', () => {
     const openSurfaces = vi.fn()
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -193,7 +196,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -227,6 +231,41 @@ describe('SurfacesRoot', () => {
     expect(present.instance.getSnapshot().bySession['session-1']?.surfaces).toEqual([
       { id: 'diff', kind: 'diff' },
     ])
+  })
+
+  it('probes Git with the main-view cwd when a background session is retained', async () => {
+    const main = 'session-main' as SessionId
+    const background = 'session-background' as SessionId
+    const state = {
+      ids: [main, background],
+      byId: {
+        [main]: {
+          id: main,
+          displayTitle: 'main',
+          running: false,
+          blank: false,
+          updatedAt: 1,
+          retainedBy: { mainView: 1 },
+          cwd: '/tmp/main',
+        },
+        [background]: {
+          id: background,
+          displayTitle: 'background',
+          running: true,
+          blank: false,
+          updatedAt: 2,
+          retainedBy: { gateway: 1 },
+          cwd: '/tmp/background',
+        },
+      },
+      phase: 'ready' as const,
+      subagentsByParent: {},
+      jobsBySession: {},
+    } as SessionListState
+    const gitStatus = vi.fn(async () => ({ refName: 'main' }))
+    mount({ useSessions: sel => sel(state), gitStatus })
+    await waitFor(() => { expect(gitStatus).toHaveBeenCalledWith('/tmp/main') })
+    expect(gitStatus).not.toHaveBeenCalledWith('/tmp/background')
   })
 
   it('re-probes the Diff gate when ui-git broadcasts a successful init', async () => {
@@ -307,6 +346,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -315,7 +355,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -357,6 +398,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -365,7 +407,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -417,6 +460,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -425,7 +469,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -505,7 +550,6 @@ describe('SurfacesRoot', () => {
     const other = 'session-2' as SessionId
     const listFor = (id: SessionId): SurfacesRootProps['useSessions'] => {
       const state = {
-        current: id,
         ids: [current, other],
         byId: {
           [current]: {
@@ -514,6 +558,7 @@ describe('SurfacesRoot', () => {
             running: false,
             blank: false,
             updatedAt: 1,
+            retainedBy: id === current ? { mainView: 1 } : {},
             cwd: '/tmp/proj',
           },
           [other]: {
@@ -522,18 +567,19 @@ describe('SurfacesRoot', () => {
             running: false,
             blank: false,
             updatedAt: 1,
+            retainedBy: id === other ? { mainView: 1 } : {},
             cwd: '/tmp/other',
           },
         },
         phase: 'ready',
         subagentsByParent: {},
         jobsBySession: {},
-        currentAddress: undefined,
       } as SessionListState
       return sel => sel(state)
     }
     const view = render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={current}
@@ -542,7 +588,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -559,6 +606,7 @@ describe('SurfacesRoot', () => {
     expect((screen.getByLabelText('file draft') as HTMLTextAreaElement).value).toBe('unsaved edit')
     view.rerender(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={other}
@@ -567,7 +615,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -581,6 +630,7 @@ describe('SurfacesRoot', () => {
     expect(screen.queryByLabelText('file draft')).toBeNull()
     view.rerender(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={current}
@@ -589,7 +639,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -612,6 +663,7 @@ describe('SurfacesRoot', () => {
     const renderSlot = vi.fn(() => <div data-occupant="stub" />)
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={undefined}
@@ -620,7 +672,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -642,6 +695,7 @@ describe('SurfacesRoot', () => {
     const instance = createSurfacesStore().create()
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={undefined}
@@ -650,7 +704,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -677,16 +732,17 @@ describe('SurfacesRoot', () => {
           running: false,
           blank: false,
           updatedAt: 1,
+          retainedBy: { mainView: 1 },
           cwd: '',
         },
       },
       phase: 'ready',
       subagentsByParent: {},
       jobsBySession: {},
-      currentAddress: undefined,
     } as SessionListState
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={current}
@@ -695,7 +751,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(createSurfacesStore().create())}
@@ -709,18 +766,27 @@ describe('SurfacesRoot', () => {
     expect(screen.getByRole('button', { name: /Diff/ })).toHaveProperty('disabled', true)
   })
 
-  it('treats a session list without a current id as having no cwd', () => {
+  it('treats a session list without a main-view retain as having no cwd', () => {
     const state = {
-      current: undefined,
-      ids: [],
-      byId: {},
+      ids: ['background' as SessionId],
+      byId: {
+        ['background' as SessionId]: {
+          id: 'background' as SessionId,
+          displayTitle: 'background',
+          running: true,
+          blank: false,
+          updatedAt: 1,
+          retainedBy: { gateway: 1 },
+          cwd: '/tmp/background',
+        },
+      },
       phase: 'ready',
       subagentsByParent: {},
       jobsBySession: {},
-      currentAddress: undefined,
     } as SessionListState
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -729,7 +795,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(createSurfacesStore().create())}
@@ -817,7 +884,6 @@ describe('SurfacesRoot', () => {
     const other = 'session-2' as SessionId
     const listFor = (id: SessionId): SurfacesRootProps['useSessions'] => {
       const state = {
-        current: id,
         ids: [current, other],
         byId: {
           [current]: {
@@ -826,6 +892,7 @@ describe('SurfacesRoot', () => {
             running: false,
             blank: false,
             updatedAt: 1,
+            retainedBy: id === current ? { mainView: 1 } : {},
             cwd: '/tmp/proj',
           },
           [other]: {
@@ -834,18 +901,19 @@ describe('SurfacesRoot', () => {
             running: false,
             blank: false,
             updatedAt: 1,
+            retainedBy: id === other ? { mainView: 1 } : {},
             cwd: '/tmp/other',
           },
         },
         phase: 'ready',
         subagentsByParent: {},
         jobsBySession: {},
-        currentAddress: undefined,
       } as SessionListState
       return sel => sel(state)
     }
     const view = render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={current}
@@ -854,7 +922,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -870,6 +939,7 @@ describe('SurfacesRoot', () => {
     fireEvent.change(await screen.findByLabelText('file draft'), { target: { value: 'session-one' } })
     view.rerender(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={other}
@@ -878,7 +948,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -894,6 +965,7 @@ describe('SurfacesRoot', () => {
     fireEvent.change(await screen.findByLabelText('file draft'), { target: { value: 'session-two' } })
     view.rerender(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={current}
@@ -902,7 +974,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -916,6 +989,7 @@ describe('SurfacesRoot', () => {
     expect((await screen.findByLabelText('file draft') as HTMLTextAreaElement).value).toBe('session-one')
     view.rerender(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={other}
@@ -924,7 +998,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -990,6 +1065,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -998,7 +1074,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -1058,6 +1135,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -1066,7 +1144,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -1136,6 +1215,7 @@ describe('SurfacesRoot', () => {
     const instance = createSurfacesStore().create()
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -1144,7 +1224,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}
@@ -1167,6 +1248,7 @@ describe('SurfacesRoot', () => {
     const restored = createSurfacesStore().create()
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -1175,7 +1257,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(restored)}
@@ -1224,6 +1307,7 @@ describe('SurfacesRoot', () => {
     }
     render(
       <SurfacesRoot
+        SessionProvider={({ children }) => children}
         usePanelInfo={panelInfoStub}
         useResource={resourceStub}
         sessionId={'session-1' as SessionId}
@@ -1232,7 +1316,8 @@ describe('SurfacesRoot', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
       useConversation={neverHook}
-      useSessionPendingInteraction={neverHook}
+      useSessionStatus={neverHook}
+      useSessionRetainInfo={neverHook}
         useInput={neverHook}
         inputActions={undefined}
         {...bindStore(instance)}

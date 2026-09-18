@@ -1,10 +1,12 @@
 /**
  * The summary blank bit means "conversation not started" (no turn has run),
  * not "log empty": standalone plugin events — command lifecycle records,
- * plan/mode, permission knob events, session titles — never flip it, so running /plan or /goal on a
- * fresh session keeps it list-hidden and reusable, while the first accepted
- * prompt's turn/start clears it. The host/session-added frame shares the
- * same predicate function (covered by the workspace spec's frame assertion).
+ * plan/mode, permission knob events, session titles — never flip it. That
+ * list projection remains independent from the session.blankReuse Host check:
+ * a title or presentation history can keep a row blank while making its
+ * identity ineligible for reuse. The first accepted prompt's turn/start
+ * clears the list bit. The host/session-added frame shares the same summary
+ * predicate (covered by the workspace spec's frame assertion).
  */
 
 import { describe, expect, it } from 'vitest'

@@ -13,9 +13,9 @@
     - button "模型":
       - img
       - text: 模型
-    - button "插件":
+    - button "内置插件":
       - img
-      - text: 插件
+      - text: 内置插件
     - button "技能":
       - img
       - text: 技能
@@ -77,7 +77,22 @@
             - text: acme-large
           - textbox "显示名称 1":
             - /placeholder: 显示名称
-          - button "删除模型 1"
+          - button "模型选项 1" [expanded]:
+            - img
+          - button "删除模型 1":
+            - img
+          - text: 上下文窗口
+          - textbox "上下文窗口 1":
+            - /placeholder: 256K
+          - text: 最大输出 token 数
+          - textbox "最大输出 token 数 1":
+            - /placeholder: 32K
+          - group "输入类型 1":
+            - text: 输入类型
+            - checkbox "文本" [checked]
+            - text: 文本
+            - checkbox "图片" [checked]
+            - text: 图片
           - group "Supported thinking intensity":
             - text: Supported thinking intensity
             - checkbox "Off 1"
@@ -94,20 +109,9 @@
             - text: Extra High
             - checkbox "Max 1"
             - text: Max
-          - group "输入类型":
-            - text: 输入类型
-            - checkbox "文本 1"
-            - text: 文本
-            - checkbox "图像 1"
-            - text: 图像
-            - paragraph: 未设置——继承提供方默认值。
-          - text: 上下文窗口
-          - textbox "上下文窗口 1":
-            - /placeholder: 256K
-          - text: 最大输出 token
-          - textbox "最大输出 token 1":
-            - /placeholder: 32K
-          - button "添加模型"
+          - button "添加模型":
+            - img
+            - text: 添加模型
       - button "取消"
       - button "保存"
   - button "添加提供方":

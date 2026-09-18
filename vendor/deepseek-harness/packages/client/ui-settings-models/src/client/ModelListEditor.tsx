@@ -14,9 +14,10 @@
  * rows the user can still fill in by hand.
  */
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
+import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
 import type { ModelsOperations } from './operations.ts'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
@@ -26,6 +27,7 @@ import {
 } from './models-dev-metadata.ts'
 import { discoveredModelsOf } from './operations.ts'
 import type { en } from './locales.ts'
+import { ModelRow } from './ModelRow.tsx'
 import styles from './ModelsSection.module.css'
 
 function messageOf(error: unknown): string {
@@ -72,6 +74,10 @@ export interface ProbeTarget {
 export interface ModelListEditorProps {
   /** The rows as currently drafted. */
   models: readonly ModelDraft[]
+  /** Installed provider whose catalog supplies defaults without endpoint I/O. */
+  catalogProvider?: string | undefined
+  /** Route input types for models absent from the installed catalog. */
+  defaultInput?: readonly string[] | undefined
   /** Whether the user layer currently owns the whole array; absent on a create. */
   overridden?: boolean
   /** Replace the drafted rows. */
@@ -93,18 +99,6 @@ export interface ModelListEditorProps {
   t: (key: keyof typeof en) => string
   /** Disable every control (read-only deployment or a pending write). */
   disabled: boolean
-}
-
-/** Removal glyph for one model row. */
-function IconTrash(): ReactNode {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4"
-        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
-      />
-    </svg>
-  )
 }
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
@@ -139,31 +133,6 @@ function effortsOf(model: ModelDraft): Record<string, string | null> {
 }
 
 /**
- * Input types this form can declare, in the canonical pi-ai order (text
- * first). The wire spelling is the same string (`text: text`); audio and
- * other modalities wait for pi-ai upstream support.
- */
-const INPUT_CHOICES = [
-  { id: 'text', key: 'inputText' },
-  { id: 'image', key: 'inputImage' },
-] as const satisfies readonly { id: string; key: keyof typeof en }[]
-
-type InputId = (typeof INPUT_CHOICES)[number]['id']
-
-/** One model's declared input types, or `undefined` when it declares none. */
-function inputOf(model: ModelDraft): readonly InputId[] | undefined {
-  const value = model['input']
-  if (!Array.isArray(value)) return undefined
-  const declared = value.filter((id): id is InputId => id === 'text' || id === 'image')
-  return declared.length === 0 ? undefined : declared
-}
-
-/** Reorder a declared set into the canonical choice order. */
-function orderedInput(selected: readonly InputId[]): InputId[] {
-  return INPUT_CHOICES.filter(choice => selected.includes(choice.id)).map(choice => choice.id)
-}
-
-/**
  * What an empty capacity field is worth, shown as its placeholder so a row left
  * blank does not read as a model with no capacity at all.
  *
@@ -192,7 +161,8 @@ function capacitySpelling(value: number | undefined): string {
 
 /**
  * Adopt a candidate, keeping disclosed capacities plus any models.dev fills
- * (missing context/maxTokens and declared reasoning efforts).
+ * (missing context/maxTokens and declared reasoning efforts), plus the input
+ * modalities disclosed by the provider.
  */
 function adopt(candidate: EnrichedDiscoveredModel): ModelDraft {
   return {
@@ -201,6 +171,7 @@ function adopt(candidate: EnrichedDiscoveredModel): ModelDraft {
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
     ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: candidate.reasoningEfforts },
+    ...candidate.inputModalities === undefined ? {} : { input: [...candidate.inputModalities] },
   }
 }
 
@@ -211,11 +182,29 @@ function adopt(candidate: EnrichedDiscoveredModel): ModelDraft {
  */
 export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const { models, onChange, probe, operations, t, disabled } = props
+  const { catalogProvider } = props
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  const [inheritedCatalog, setInheritedCatalog] = useState<{
+    provider: string
+    models: readonly LlmDiscoveredModel[]
+  } | undefined>(undefined)
+  useEffect(() => {
+    if (catalogProvider === undefined) return
+    let current = true
+    void operations.discoverModels(probe.settingsNs, { provider: catalogProvider }).then((answer) => {
+      if (!current) return
+      setInheritedCatalog({ provider: catalogProvider, models: answer.kind === 'found' ? answer.models : [] })
+      setFailure(answer.kind === 'refused' ? answer.message : undefined)
+    })
+    return () => { current = false }
+  }, [catalogProvider, operations, probe.settingsNs])
+  const catalog = inheritedCatalog?.provider === catalogProvider ? inheritedCatalog?.models : undefined
+  const inputDefaults = useMemo(() => new Map(catalog?.map(model => [model.id, model.inputModalities])), [catalog])
   const [candidates, setCandidates] = useState<readonly EnrichedDiscoveredModel[] | undefined>(undefined)
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
   const [candidateQuery, setCandidateQuery] = useState('')
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
   // Capacities are edited as text, so a field's keystrokes are held here rather
   // than re-derived from the parsed count on every change — that would rewrite
   // `1000` to `1K` mid-word. Unreadable text is kept past blur so the refusal
@@ -251,6 +240,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     return next
   }
 
+  const toggleExpanded = (index: number): void => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (!next.delete(index)) next.add(index)
+      return next
+    })
+  }
+
   const patch = (index: number, next: Record<string, unknown>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
@@ -276,13 +273,6 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     patch(index, { reasoningEfforts: stillOffers ? dict : undefined })
   }
 
-  /** Toggle one declared input type; an empty set removes the field (inherit). */
-  const toggleInput = (index: number, model: ModelDraft, id: InputId): void => {
-    const current = inputOf(model) ?? []
-    const next = current.includes(id) ? current.filter(existing => existing !== id) : [...current, id]
-    patch(index, { input: next.length === 0 ? undefined : orderedInput(next) })
-  }
-
   const fetchModels = async (): Promise<void> => {
     setBusy(true)
     setFailure(undefined)
@@ -298,6 +288,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         return
       }
       const found = discoveredModelsOf(answer.models)
+      if (catalogProvider !== undefined) setInheritedCatalog({ provider: catalogProvider, models: found })
       if (found.length === 0) {
         setFailure(t('fetchEmpty'))
         return
@@ -411,122 +402,75 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         </button>
       </div>
       {models.length === 0 ? <p className={styles['modelEmpty']}>{t('modelsEmpty')}</p> : null}
-      {models.map((model, index) => (
-        <div key={index} className={styles['modelEntry']}>
-          <div className={styles['modelRow']}>
-            <input
-              className={styles['input']}
-              type="text"
-              value={textOf(model, 'id')}
-              placeholder={t('modelId')}
-              aria-label={`${t('modelId')} ${index + 1}`}
-              disabled={disabled}
-              onChange={(event) => { patch(index, { id: event.target.value }) }}
-            />
-            <input
-              className={styles['input']}
-              type="text"
-              value={textOf(model, 'name')}
-              placeholder={t('modelName')}
-              aria-label={`${t('modelName')} ${index + 1}`}
-              disabled={disabled}
-              onChange={(event) => { patch(index, { name: event.target.value === '' ? undefined : event.target.value }) }}
-            />
-            <button
-              type="button"
-              className={`${styles['iconButton']} ${styles['iconButtonDanger']}`}
-              aria-label={`${t('removeModel')} ${index + 1}`}
-              title={t('removeModel')}
-              disabled={disabled}
-              onClick={() => {
-                onChange(models.filter((_model, at) => at !== index))
-                setEditing(current => reindexOnRemove(current, index))
-              }}
-            >
-              <IconTrash />
-            </button>
-          </div>
-          <fieldset className={styles['effortGroup']}>
-            <legend className={styles['modelFieldLabel']}>{t('effortTitle')}</legend>
-            <div className={styles['effortOptions']}>
-              {EFFORT_CHOICES.map((choice) => {
-                const checked = Object.prototype.hasOwnProperty.call(effortsOf(model), choice.id)
-                return (
-                  <label className={styles['effortOption']} key={choice.id}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={disabled}
-                      aria-label={`${t(choice.key)} ${index + 1}`}
-                      onChange={() => { toggleEffort(index, model, choice.id) }}
-                    />
-                    <span>{t(choice.key)}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-          <fieldset className={`${styles['effortGroup']} ${styles['inputGroup']}`}>
-            <legend className={styles['modelFieldLabel']}>{t('inputTitle')}</legend>
-            <div className={styles['inputGroupBody']}>
-              <div className={styles['inputOptions']}>
-                {INPUT_CHOICES.map((choice) => {
-                  const checked = (inputOf(model) ?? []).includes(choice.id)
-                  return (
-                    <label className={styles['effortOption']} key={choice.id}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        aria-label={`${t(choice.key)} ${index + 1}`}
-                        onChange={() => { toggleInput(index, model, choice.id) }}
-                      />
-                      <span>{t(choice.key)}</span>
-                    </label>
-                  )
-                })}
-              </div>
-              {inputOf(model) === undefined
-                ? <p className={styles['inputHint']}>{t('inputInherited')}</p>
-                : null}
-            </div>
-          </fieldset>
-          <div className={styles['modelAdvanced']}>
-            <label className={styles['modelField']}>
-              <span className={styles['modelFieldLabel']}>{t('modelContextWindow')}</span>
-              <input
-                className={styles['input']}
-                type="text"
-                inputMode="numeric"
-                value={capacityText(model, index, 'contextWindow')}
-                placeholder={CAPACITY_HINT.contextWindow}
-                aria-label={`${t('modelContextWindow')} ${index + 1}`}
-                disabled={disabled}
-                onChange={(event) => { editCapacity(index, 'contextWindow', event.target.value) }}
-              />
-            </label>
-            <label className={styles['modelField']}>
-              <span className={styles['modelFieldLabel']}>{t('modelMaxTokens')}</span>
-              <input
-                className={styles['input']}
-                type="text"
-                inputMode="numeric"
-                value={capacityText(model, index, 'maxTokens')}
-                placeholder={CAPACITY_HINT.maxTokens}
-                aria-label={`${t('modelMaxTokens')} ${index + 1}`}
-                disabled={disabled}
-                onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
-              />
-            </label>
-          </div>
-        </div>
-      ))}
+      <div className={styles['modelList']}>
+        {models.map((model, index) => (
+          <ModelRow
+            key={index}
+            model={model}
+            position={index + 1}
+            inputField="input"
+            inputFallback={inputDefaults.get(textOf(model, 'id')) ?? props.defaultInput}
+            inputLoading={catalogProvider !== undefined && catalog === undefined}
+            expanded={expanded.has(index)}
+            disabled={disabled}
+            t={t}
+            contextWindow={{
+              value: capacityText(model, index, 'contextWindow'),
+              placeholder: CAPACITY_HINT.contextWindow,
+              onChange: (text) => { editCapacity(index, 'contextWindow', text) },
+            }}
+            maxTokens={{
+              value: capacityText(model, index, 'maxTokens'),
+              placeholder: CAPACITY_HINT.maxTokens,
+              onChange: (text) => { editCapacity(index, 'maxTokens', text) },
+            }}
+            extra={(
+              <fieldset className={styles['effortGroup']}>
+                <legend className={styles['modelFieldLabel']}>{t('effortTitle')}</legend>
+                <div className={styles['effortOptions']}>
+                  {EFFORT_CHOICES.map((choice) => {
+                    const checked = Object.prototype.hasOwnProperty.call(effortsOf(model), choice.id)
+                    return (
+                      <label className={styles['effortOption']} key={choice.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          aria-label={`${t(choice.key)} ${index + 1}`}
+                          onChange={() => { toggleEffort(index, model, choice.id) }}
+                        />
+                        <span>{t(choice.key)}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+            )}
+            onFieldChange={(field, value) => { patch(index, { [field]: value }) }}
+            onChange={(next) => { onChange(models.map((row, at) => at === index ? next : row)) }}
+            onToggle={() => { toggleExpanded(index) }}
+            onRemove={() => {
+              onChange(models.filter((_model, at) => at !== index))
+              setExpanded((current) => {
+                const next = new Set<number>()
+                for (const at of current) {
+                  if (at < index) next.add(at)
+                  else if (at > index) next.add(at - 1)
+                }
+                return next
+              })
+              setEditing(current => reindexOnRemove(current, index))
+            }}
+          />
+        ))}
+      </div>
       <button
         type="button"
         className={styles['addModelButton']}
         disabled={disabled}
         onClick={() => { onChange([...models, { id: '' }]) }}
       >
+        <IconPlusOutline16 size={14} />
         {t('addModel')}
       </button>
       {failure !== undefined ? <p className={styles['error']}>{failure}</p> : null}

@@ -1,9 +1,10 @@
 /**
  * Theme bootstrap row for the browser's pre-plugin interval. Each index
  * render embeds the current durable built-in preference, content font size,
- * derived alias tokens, and glass solidity; the browser resolves only
- * `system`, then writes the same DOM fields ui-layout's ThemePresenter owns
- * after the client plugin tree activates.
+ * derived alias tokens, and glass solidity. Head CSS colors the document
+ * canvas before script execution; the body script resolves only `system`, then
+ * writes the same DOM fields ui-layout's ThemePresenter owns after the client
+ * plugin tree activates.
  */
 
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
@@ -75,6 +76,18 @@ function resolveBootPayload(
   return preferenceOrPayload
 }
 
+const LIGHT_BACKGROUND = '#fff'
+const DARK_BACKGROUND = '#151517'
+
+/** CSS that colors the document canvas before any script executes. */
+function bootThemeStyle(preference: ThemePreference): string {
+  const light = `:root{color-scheme:light}body{background-color:${LIGHT_BACKGROUND};--dsh-boot-bg:${LIGHT_BACKGROUND}}`
+  const dark = `:root{color-scheme:dark}body{background-color:${DARK_BACKGROUND};--dsh-boot-bg:${DARK_BACKGROUND}}`
+  if (preference === 'light') return light
+  if (preference === 'dark') return dark
+  return `${light}@media(prefers-color-scheme:dark){${dark}}`
+}
+
 /** Build the inline script body for one schema-validated boot payload. */
 function bootThemeScript(payload: ThemeBootPayload): string {
   return `(() => {
@@ -89,6 +102,7 @@ function bootThemeScript(payload: ThemeBootPayload): string {
   const dark = preference === 'dark' || systemDark
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   document.documentElement.style.fontSize = fontSizeInterface + 'px'
+  document.documentElement.dataset.dsThemeSource = preference
   document.body.toggleAttribute('data-ds-dark-theme', dark)
   const tokens = dark ? darkTokens : lightTokens
   for (const [name, value] of Object.entries(tokens)) {
@@ -137,4 +151,23 @@ export function bootThemeInjection(
     placement: 'body',
     text: bootThemeScript(resolveBootPayload(preferenceOrPayload, fontSize)),
   }
+}
+
+/**
+ * Theme bootstrap rows: head CSS colors the document canvas before
+ * first paint, then the body script installs the palette selector and font
+ * size before the shell mount and module script.
+ * @param preference - Current Host-backed built-in preference.
+ * @param fontSize - Current Host-backed content font size in px.
+ * @returns head and body script rows in execution order.
+ */
+export function bootThemeInjections(
+  preferenceOrPayload: ThemePreference | ThemeBootPayload = DEFAULT_PREFERENCE,
+  fontSize: number = DEFAULT_FONT_SIZE,
+): IndexInjection[] {
+  const payload = resolveBootPayload(preferenceOrPayload, fontSize)
+  return [
+    { kind: 'style', text: bootThemeStyle(payload.preference) },
+    { kind: 'script', placement: 'body', text: bootThemeScript(payload) },
+  ]
 }

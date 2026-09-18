@@ -1,13 +1,20 @@
 // Cloning the anchor preserves its layout context. Fixed positioning lets the
 // bubble escape ancestor overflow clipping without a portal.
 
-import { cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { cloneElement, createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FocusEventHandler, MouseEventHandler, MutableRefObject, ReactElement, Ref } from 'react'
 import { usePresence } from './usePresence.ts'
 import css from './Tooltip.module.css'
 
 /** Bubble placement relative to the anchor. */
 export type TooltipSide = 'right' | 'left' | 'bottom' | 'top'
+
+/**
+ * Suppression channel from a tooltip to the tooltips above it: a tooltip hands
+ * this setter to its own descendants, and a visible descendant bubble calls it
+ * so the ancestor withdraws its bubble for as long as the descendant shows one.
+ */
+const TooltipSuppression = createContext<((suppressed: boolean) => void) | null>(null)
 
 /** Props Tooltip injects into its anchor child; the child's own handlers are chained ahead of the tooltip's. */
 interface AnchorProps {
@@ -45,8 +52,8 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
   // The anchor's edges rather than final coordinates: a vertical flip has to
   // re-derive the bubble's own top from the opposite edge.
   const [pos, setPos] = useState<{ x: number; top: number; bottom: number } | null>(null)
-  const [visible, setVisible] = useState(false)
-  const { mounted, state } = usePresence(visible)
+  const [requestedVisible, setRequestedVisible] = useState(false)
+  const { mounted, state } = usePresence(requestedVisible)
   // Where the bubble actually sits, which is the requested side until the
   // viewport refuses it.
   const [placement, setPlacement] = useState<TooltipSide>(side)
@@ -98,9 +105,23 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
     return () => { window.removeEventListener('resize', fit) }
   }, [mounted, placement, pos, resolvedLabel, side])
   const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Hover and focus are independent triggers: the bubble hides only after
-  // BOTH clear (hovering away from a focused anchor must not drop it).
+  // Blur preserves a hovered bubble; pointer leave always withdraws it so
+  // clicking an anchor cannot leave its tooltip stuck on screen.
   const triggers = useRef({ hover: false, focus: false })
+
+  // A nested tooltip's bubble owns the pointer position, so this tooltip
+  // withdraws its own while a descendant shows one; the state below is set by
+  // the descendants this tooltip wraps. Announcing on every visibility change
+  // covers hide, disable, and unmount; show() also announces synchronously so
+  // a nested pair shown in one commit never paints both bubbles.
+  const suppressAncestors = useContext(TooltipSuppression)
+  const [suppressed, setSuppressed] = useState(false)
+  const announce = useCallback((active: boolean) => { suppressAncestors?.(active) }, [suppressAncestors])
+  const visible = requestedVisible && pos !== null && !disabled
+  useEffect(() => {
+    announce(visible)
+    return () => { announce(false) }
+  }, [announce, visible])
 
   // Disabling mid-hover (e.g. clicking a rail control expands the sidebar)
   // must drop an already-visible bubble: no mouseleave fires.
@@ -113,7 +134,7 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
     if (disabled) {
       cancelShow()
       triggers.current = { hover: false, focus: false }
-      setVisible(false)
+      setRequestedVisible(false)
     }
     return cancelShow
   }, [cancelShow, disabled])
@@ -132,7 +153,8 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
     // where this anchor's position demands it.
     setPlacement(side)
     setPos({ x: side === 'right' ? r.right + 10 : side === 'left' ? r.left : r.left + r.width / 2, top: r.top, bottom: r.bottom })
-    setVisible(true)
+    announce(true)
+    setRequestedVisible(true)
   }
   const showAfterHoverDelay = () => {
     cancelShow()
@@ -145,21 +167,25 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
       show()
     }, delayMs)
   }
+  const withdraw = () => {
+    setRequestedVisible(false)
+    announce(false)
+  }
   const hide = () => {
     cancelShow()
-    if (!triggers.current.hover && !triggers.current.focus) setVisible(false)
+    if (!triggers.current.hover && !triggers.current.focus) withdraw()
   }
 
   return (
-    <>
+    <TooltipSuppression.Provider value={setSuppressed}>
       {cloneElement(children, {
         ref: mergedRef,
         onMouseEnter: (e) => { children.props.onMouseEnter?.(e); triggers.current.hover = true; showAfterHoverDelay() },
-        onMouseLeave: (e) => { children.props.onMouseLeave?.(e); triggers.current.hover = false; cancelShow(); setVisible(false) },
+        onMouseLeave: (e) => { children.props.onMouseLeave?.(e); triggers.current.hover = false; cancelShow(); withdraw() },
         onFocus: (e) => { children.props.onFocus?.(e); triggers.current.focus = true; cancelShow(); show() },
         onBlur: (e) => { children.props.onBlur?.(e); triggers.current.focus = false; hide() },
       })}
-      {mounted && pos !== null && (
+      {mounted && pos !== null && !suppressed && (
         <span
           ref={bubble}
           className={css.bubble}
@@ -173,6 +199,6 @@ export function Tooltip({ label, side = 'right', delayMs = 0, disabled = false, 
           {resolvedLabel}
         </span>
       )}
-    </>
+    </TooltipSuppression.Provider>
   )
 }

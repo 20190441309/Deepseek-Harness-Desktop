@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-settings'
-import { bootThemeInjection, buildThemeBootPayload } from './boot-theme.ts'
+import { bootThemeInjections, buildThemeBootPayload } from './boot-theme.ts'
 import {
   THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, type ThemeSettings,
 } from './theme-settings.ts'
@@ -13,7 +13,7 @@ export {
   FONT_SIZE_MIN, THEME_PREFERENCE_FIELD, THEME_PREFERENCES, THEME_SETTINGS_NAMESPACE,
   type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
-export { bootThemeInjection, buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
+export { bootThemeInjection, bootThemeInjections, buildThemeBootPayload, injectBootTheme } from './boot-theme.ts'
 export type { ThemeBootPayload } from './boot-theme.ts'
 
 const THEME_NAMESPACE = THEME_SETTINGS_NAMESPACE
@@ -36,6 +36,7 @@ export function apply(ctx: Context): void {
     settingsCtx.settings.register(THEME_NAMESPACE, ThemeSettingsSchema)
   })
   ctx.on('webserver/index-inject', (table) => {
-    table.push(bootThemeInjection(buildThemeBootPayload(readSection(ctx))))
-  })
+    const payload = buildThemeBootPayload(readSection(ctx))
+    table.push(...bootThemeInjections(payload))
+  }, { prepend: true })
 }

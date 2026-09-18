@@ -13,9 +13,9 @@
     - button "Models":
       - img
       - text: Models
-    - button "Plugins":
+    - button "Built-in plugins":
       - img
-      - text: Plugins
+      - text: Built-in plugins
     - button "Skills":
       - img
       - text: Skills

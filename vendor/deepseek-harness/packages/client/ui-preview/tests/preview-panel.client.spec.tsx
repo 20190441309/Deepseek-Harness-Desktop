@@ -10,12 +10,28 @@ import type { PreviewBounds, PreviewNavState, PreviewPickScreenshot, PreviewResu
 const t: PreviewPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('preview must not read this hook') }) as never
 const SID = 'session-preview' as SessionId
+const BACKGROUND_SID = 'session-preview-background' as SessionId
+type SessionState = {
+  byId: Record<string, {
+    id: SessionId
+    cwd?: string
+    retainedBy: { mainView?: number }
+  }>
+}
 
-function sessionList(cwd?: string) {
+function sessionList(cwd?: string, mainView = true): SessionState {
   return {
-    current: SID,
     byId: {
-      [SID]: cwd ? { cwd } : {},
+      [SID]: {
+        id: SID,
+        retainedBy: mainView ? { mainView: 1 } : {},
+        ...(cwd ? { cwd } : {}),
+      },
+      [BACKGROUND_SID]: {
+        id: BACKGROUND_SID,
+        retainedBy: {},
+        cwd: '/tmp/background',
+      },
     },
   }
 }
@@ -103,12 +119,10 @@ function mount(opts: {
     <PreviewPanel {...({
       sessionId: SID,
       useSession: neverHook,
-      useSessions: (sel: (s: { current: typeof SID | undefined; byId: Record<string, { cwd?: string }> }) => unknown) => sel({
-        current: Object.prototype.hasOwnProperty.call(opts, 'sessionCurrent') ? opts.sessionCurrent : SID,
-        byId: {
-          [SID]: opts.cwd ? { cwd: opts.cwd } : {},
-        },
-      }),
+      useSessions: (sel: (s: SessionState) => unknown) => sel(sessionList(
+        opts.cwd,
+        Object.prototype.hasOwnProperty.call(opts, 'sessionCurrent') ? opts.sessionCurrent !== undefined : true,
+      )),
       useWorkspaces: neverHook,
       useProjection: neverHook,
       active: true,
@@ -340,7 +354,7 @@ describe('PreviewPanel', () => {
       <PreviewPanel {...({
         sessionId: SID,
         useSession: neverHook,
-        useSessions: (sel: (s: { current: typeof SID; byId: Record<string, { cwd?: string }> }) => unknown) => sel(sessionList()),
+        useSessions: (sel: (s: SessionState) => unknown) => sel(sessionList()),
         useWorkspaces: neverHook,
         useProjection: neverHook,
         active: true,
@@ -602,7 +616,7 @@ describe('PreviewPanel', () => {
     const base = {
       sessionId: SID,
       useSession: neverHook,
-      useSessions: (sel: (s: { current: typeof SID; byId: Record<string, { cwd?: string }> }) => unknown) => sel(sessionList()),
+      useSessions: (sel: (s: SessionState) => unknown) => sel(sessionList()),
       useWorkspaces: neverHook,
       useProjection: neverHook,
       previewAvailable: true,

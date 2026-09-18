@@ -8,6 +8,7 @@ import type { AgentsPanelInjected } from './AgentsPanel.tsx'
 import { en, NS, zh, type AgentsKey } from './locales.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 
 export type { AgentsPanelProps, AgentsPanelInjected } from './AgentsPanel.tsx'
 export type { AgentRow } from './agents.ts'
@@ -21,7 +22,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services required by the agents-panel plugin. */
-export const inject = ['slots', 'locale', 'sessions']
+export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
 
 /**
  * Register dictionaries and inject the Agents occupant.
@@ -36,8 +37,7 @@ export function apply(ctx: Context): void {
     inject: (): AgentsPanelInjected => ({
       openAgent: (id: SessionId) => {
         const address = ctx.sessions.subagentAddress(id)
-        if (address !== undefined) ctx.sessions.openSubagent(address)
-        else ctx.sessions.open(id)
+        ctx.uiWorkspace.openSession(address ?? id)
       },
     }),
   }, AgentsPanel))

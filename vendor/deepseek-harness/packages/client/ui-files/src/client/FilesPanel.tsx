@@ -16,7 +16,8 @@ export type FilesPanelProps =
 
 function currentCwd(useSessions: FilesPanelProps['useSessions']): string | undefined {
   return useSessions((s) => {
-    const id = s.current
+    const id = Object.values(s.byId)
+      .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
     const next = id === undefined ? undefined : s.byId[id]?.cwd
     return next ? next : undefined
   })

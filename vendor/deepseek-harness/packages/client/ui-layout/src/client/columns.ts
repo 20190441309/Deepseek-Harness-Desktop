@@ -88,16 +88,24 @@ export function surfacesMaxForViewport(viewport: number): number {
  * (`surfacesMaxForViewport`); an open rightbar preference clamps to
  * RIGHTBAR_MAX_RATIO of it. Only the final fallback may let center drop below
  * CENTER_MIN, and only after both right columns have been derived closed.
- * @param viewport - available frame width in px.
- * @param sidebar - sidebar width preference in px (0 = closed).
- * @param rightbar - rightbar width preference in px (0 = closed).
- * @param surfaces - surfaces width preference in px (0 = closed).
- * @returns resolved widths; a closed sidebar keeps its compact rail while
- *   closed rightbar and surfaces resolve to zero width (never unmounted).
+  * @param viewport - available frame width in px.
+  * @param sidebar - sidebar width preference in px (0 = closed).
+  * @param rightbar - rightbar width preference in px (0 = closed).
+  * @param surfaces - surfaces width preference in px (0 = closed).
+ * @param collapsedWidth - track width of the closed sidebar; the default keeps
+ *   the icon rail, while 0 hides the column for native caption controls.
+  * @returns resolved widths; a closed sidebar keeps its compact rail while
+  *   closed rightbar and surfaces resolve to zero width (never unmounted).
  */
-export function computeColumns(viewport: number, sidebar: number, rightbar: number, surfaces = 0): Columns {
+export function computeColumns(
+  viewport: number,
+  sidebar: number,
+  rightbar: number,
+  surfaces = 0,
+  collapsedWidth = SIDEBAR_COLLAPSED,
+): Columns {
   // The sidebar is fixed at its preference (or the rail) — it never concedes.
-  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
+  const s = sidebar === 0 ? collapsedWidth : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
   const r0 = rightbar === 0
     ? 0
     : clampWidth(rightbar, RIGHTBAR_MIN, Math.max(RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO))

@@ -8,6 +8,7 @@
 // root listener routes them through the keymap commands); draft writes drive
 // the shell (jsdom's beforeinput lacks the ranges Lexical needs).
 
+import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -35,7 +36,7 @@ import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
 import {
   DEFAULT_COMPOSER_BEAM_STYLE, DEFAULT_TYPING_FX_STYLE, type ComposerBeamStyle, type TypingFxStyle,
 } from '../src/submission-settings.ts'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
@@ -94,7 +95,8 @@ interface BenchOptions {
   onRequestWorkspace?: () => void
   promptError?: SessionSnapshot['promptError']
   /** Authoritative queue rows served to the machine overlay (empty = none). */
-  queue?: SessionSnapshot['queue']
+  queue?: InboxState['next-turn']
+  nextStep?: InboxState['next-step']
   /** The hub's steer-all face (empty-draft accelerated Enter). */
   steerQueue?: () => void
   variant?: 'hero' | 'composer'
@@ -122,10 +124,10 @@ interface BenchOptions {
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
-function row(id: string): SessionSnapshot['queue'][number] {
+function row(id: string): InboxState['next-turn'][number] {
   return {
-    id: id as never, messageId: `message-${id}` as never, placement: 'queued',
-    content: [{ type: 'text', text: id }], preview: id, text: id,
+    id: id as never, role: 'user', source: { kind: 'user' },
+    content: [{ type: 'text', text: id }],
   }
 }
 
@@ -143,17 +145,16 @@ function bench(over?: BenchOptions) {
     subagent: over?.subagent ?? null,
     removed: over?.disabled ?? false,
     promptError: over?.promptError ?? null,
-    queue: over?.queue ?? [],
   }))
   type ShellDeps = ConstructorParameters<typeof SessionInputShell>[0]
   const shell = new SessionInputShell({
     actx: SCTX,
     defaultSink: sink,
     commandAttachments: { serialize: () => Promise.resolve([]), release: () => {}, unsupportedNotice: (token: string) => `${token.trim()} attachments-unsupported` },
-    queue: {
-      getSnapshot: () => session.getSnapshot().queue,
-      subscribe: fn => session.subscribe(fn),
-    },
+    inbox: createSnapshotStore<InboxState>({
+      'next-turn': over?.queue ?? [],
+      'next-step': over?.nextStep ?? [],
+    }),
     ...(over?.steerQueue !== undefined ? { steerQueue: over.steerQueue } : {}),
     // Lexicon-only stub: adjudication untouched (undefined slash methods are
     // never reached — these benches drive plain-draft flows only).
@@ -191,7 +192,8 @@ function bench(over?: BenchOptions) {
     SessionProvider: ({ children }) => children,
     useSession: bindSnapshotSelector(session),
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationFixture())),
-    useSessionPendingInteraction: bindSnapshotSelector(createSnapshotStore(new Map())),
+    useSessionStatus: bindSnapshotSelector(createSnapshotStore(new Map())),
+    useSessionRetainInfo: () => undefined,
     useResource,
     useSessions: bindSnapshotSelector(createSnapshotStore<SessionListState>({
       ids: [SID],
@@ -202,11 +204,12 @@ function bench(over?: BenchOptions) {
           running: over?.running ?? false,
           blank: false,
           updatedAt: 1,
+          retainedBy: { mainView: 1 },
           ...(over?.presentation === undefined ? {} : { presentation: over.presentation }),
         },
       },
-      current: SID, phase: 'ready',
-      subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+      phase: 'ready',
+      subagentsByParent: {}, jobsBySession: {},
     })),
     useWorkspaces: bindSnapshotSelector(createSnapshotStore({
       items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
@@ -309,6 +312,23 @@ function editableOf(input: HTMLElement): boolean {
 function writeDraft(shell: SessionInputShell, text: string): void {
   act(() => { shell.setDraft(text) })
 }
+
+describe('composer focus handoff', () => {
+  it('focus() returns the keyboard to the editor through Lexical, not a bare DOM focus', () => {
+    const { shell, textarea } = bench()
+    writeDraft(shell, 'draft text')
+    textarea.blur()
+    expect(document.activeElement).not.toBe(textarea)
+
+    const lexicalFocus = vi.spyOn(shell.editor, 'focus')
+    act(() => { shell.focus() })
+    expect(document.activeElement).toBe(textarea)
+    // Lexical's own focus restores its stored selection; a bare DOM focus would
+    // land the caret at the start of the draft. jsdom carries no caret, so the
+    // selection itself is asserted in the browser lane.
+    expect(lexicalFocus).toHaveBeenCalled()
+  })
+})
 
 describe('composer placeholder visibility', () => {
   it.each([' ', '   ', '\t', '\n'])('hides for whitespace %j and returns after deletion', async (draft) => {
@@ -816,7 +836,7 @@ describe('Enter semantics', () => {
     // Pending steering rows are not the queue: nothing to flush.
     const steering = bench({
       running: true,
-      queue: [{ ...row('s-1'), placement: 'steering' }],
+      nextStep: [row('s-1')],
       steerQueue: vi.fn(),
     })
     fireEvent.keyDown(steering.textarea, { key: 'Enter', metaKey: true })
@@ -1662,6 +1682,17 @@ describe('insertText (scoped event body)', () => {
 })
 
 describe('strips and variants', () => {
+  it.each([zh, en])('shows localized guidance when another writer owns the Session', (dictionary) => {
+    const send = bench({
+      promptError: {
+        op: 'send',
+        error: new RemoteError('session/writer-held', 'internal writer diagnostic', { sessionId: SID }),
+      },
+      t: makeTranslate(dictionary, commonZh),
+    })
+    expect(send.view.getByRole('alert').textContent).toBe(dictionary['error.sessionInUse'])
+  })
+
   it('announces promptError as a fading toast (ordinary failure — no transaction UI, no Retry)', () => {
     vi.useFakeTimers()
     try {
@@ -1748,6 +1779,18 @@ describe('command launcher chrome and control seats', () => {
     expect(toggleCommandMenu).toHaveBeenCalledExactlyOnceWith({ start: 2, end: 7 })
     act(() => { menuLauncher.set('command') })
     expect(launcher.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opening the command menu from the button puts the keyboard in the editor first', () => {
+    const toggleCommandMenu = vi.fn()
+    const { view, textarea } = bench({ toggleCommandMenu })
+    // Tab to the button and activate it: the keyboard is on the button, and the
+    // menu is a combobox whose arrows live on the editor.
+    textarea.blur()
+    expect(document.activeElement).not.toBe(textarea)
+    fireEvent.click(view.getByLabelText('添加文件或调用指令'))
+    expect(document.activeElement).toBe(textarea)
+    expect(toggleCommandMenu).toHaveBeenCalledTimes(1)
   })
 
   it('a registered entry fills its seat and receives the locked owner prop', () => {

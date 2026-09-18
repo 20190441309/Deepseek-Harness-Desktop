@@ -1,14 +1,17 @@
-/** Composer context-occupancy meter: a ring beside the send button fed by the
+/** Composer context-occupancy meter: a ring and percentage below the card fed by the
  * `contextPressure` projection, with a click-open panel of the heuristic
  * `contextBreakdown` composition (system prompt, tools, conversation).
  * Renders nothing until a provider reports both pressure and a route
  * capacity. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: the `contextPressure` / `contextBreakdown` projection key merges.
 import type {} from '@deepseek-ai/dsh-token-meter/client'
-import { Tooltip, usePresence } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Tooltip, useAnchoredPosition, useDismissOnOutsidePointer, usePresence,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ComposerBarProps } from '../contract/slots.ts'
 import { contextOccupancy } from '../context-occupancy.ts'
 import css from './ContextMeter.module.css'
@@ -56,46 +59,72 @@ interface ContextMeterControlProps {
   context: NonNullable<ReturnType<typeof contextOccupancy>>
   breakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | undefined
   t: ComposerBarProps['t']
+  open: boolean
+  setOpen: (open: boolean) => void
+  mounted: boolean
+  state: 'open' | 'closed'
+  rootRef: RefObject<HTMLSpanElement>
+  panelRef: RefObject<HTMLDivElement>
+  position: CSSProperties | null
 }
 
 export function ContextMeter({ useProjection, t }: ContextMeterProps) {
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLSpanElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const context = contextOccupancy(pressure)
+  const available = context !== null
+  const { mounted, state } = usePresence(open)
+  const position = useAnchoredPosition({
+    open: mounted && available,
+    anchorRef: rootRef,
+    panelRef,
+    side: 'top',
+    gap: 8,
+    margin: 12,
+  })
+  useDismissOnOutsidePointer(rootRef, open && available, setOpen, panelRef)
   // A model switch can temporarily remove capacity while this component stays
-  // mounted. Drop the control (and its Presence hold) instead of resurrecting
-  // a closing panel when capacity returns.
+  // mounted. Close the now-unavailable panel instead of preserving stale UI.
+  useEffect(() => {
+    if (!available && open) setOpen(false)
+  }, [available, open])
   if (context === null) return null
-  return <ContextMeterControl context={context} breakdown={breakdown} t={t} />
+  return (
+    <ContextMeterControl
+      context={context}
+      breakdown={breakdown}
+      t={t}
+      open={open}
+      setOpen={setOpen}
+      mounted={mounted}
+      state={state}
+      rootRef={rootRef}
+      panelRef={panelRef}
+      position={position}
+    />
+  )
 }
 
-function ContextMeterControl({ context, breakdown, t }: ContextMeterControlProps) {
-  const [open, setOpen] = useState(false)
-  const { mounted, state } = usePresence(open)
-  const rootRef = useRef<HTMLSpanElement | null>(null)
+function ContextMeterControl({
+  context, breakdown, t, open, setOpen, mounted, state, rootRef, panelRef, position,
+}: ContextMeterControlProps) {
   const percent = context.percent
   const reading = `${percent}%`
   const [headBefore = '', headAfter = ''] = t('context.aria', { percent: READING_SLOT })
     .split(READING_SLOT)
     .map(part => part.trim())
 
-  // Outside click / Escape close, one document listener while open (Menu's pattern).
   useEffect(() => {
     if (!open) return
-    const onPointerDown = (e: PointerEvent): void => {
-      if (e.target instanceof Node && rootRef.current?.contains(e.target) === true) return
-      setOpen(false)
-    }
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false)
     }
-    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
+    return () => { document.removeEventListener('keydown', onKeyDown) }
+  }, [open, setOpen])
 
   // The bar's overall length stays the provider-exact percent; the heuristic
   // breakdown only proportions its colored parts. A zero-width part is dropped
@@ -131,11 +160,14 @@ function ContextMeterControl({ context, breakdown, t }: ContextMeterControlProps
               transform="rotate(-90 7 7)"
             />
           </svg>
+          <span>{reading}</span>
         </button>
       </Tooltip>
-      {mounted && (
+      {mounted && createPortal(
         <div
+          ref={panelRef}
           className={css.panel}
+          style={position ?? { visibility: 'hidden', left: 0, top: 0 }}
           role="dialog"
           aria-label={t('context.used')}
           data-dsh-motion="popover"
@@ -176,7 +208,8 @@ function ContextMeterControl({ context, breakdown, t }: ContextMeterControlProps
               ))}
             </dl>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   )

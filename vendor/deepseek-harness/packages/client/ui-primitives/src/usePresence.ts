@@ -62,5 +62,7 @@ export function usePresence(open: boolean, durationMs: number = PRESENCE_EXIT_MS
     return () => { clearTimeout(timer) }
   }, [open, mounted, durationMs])
 
-  return { mounted, state }
+  // Mount in the opening render itself: consumer focus/placement effects run
+  // in that commit and must see the new refs, even before this hook's state update.
+  return { mounted: open || mounted, state }
 }

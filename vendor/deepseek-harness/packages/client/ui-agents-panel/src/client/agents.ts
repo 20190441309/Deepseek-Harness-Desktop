@@ -41,11 +41,11 @@ function fromLineage(parent: SessionId, state: SessionListState): AgentRow[] {
  * List current-session subagents from the existing session snapshot.
  * Prefers `subagentsByParent`; falls back to `byId` children of the parent.
  * @param state - live session list snapshot.
- * @param sessionId - surfaces session, or the list's current id.
+ * @param sessionId - surfaces session, or the session retained by the main view.
  * @returns rows in catalog / list order; empty when none.
  */
 export function listSessionAgents(state: SessionListState, sessionId: SessionId | undefined): AgentRow[] {
-  const parent = sessionId ?? state.current
+  const parent = sessionId ?? Object.values(state.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
   if (parent === undefined) return []
   const catalog = state.subagentsByParent[parent]
   if (catalog !== undefined) return fromCatalog(catalog, state.byId)

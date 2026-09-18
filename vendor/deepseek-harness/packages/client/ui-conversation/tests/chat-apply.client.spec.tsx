@@ -28,11 +28,11 @@ async function bench() {
   await runtime.sessions.add({
     id: ROOT,
     summary: { title: 'R', displayTitle: 'R', cwd: '/proj' },
-  }, { current: false })
+  })
   await runtime.sessions.add({
     id: CHILD,
     summary: { title: 'C', displayTitle: 'C', cwd: '/proj', parentId: ROOT },
-  }, { current: false })
+  })
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)

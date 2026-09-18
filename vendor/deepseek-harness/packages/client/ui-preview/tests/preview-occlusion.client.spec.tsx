@@ -8,6 +8,9 @@ import { en } from '../src/client/locales.ts'
 
 const t: PreviewPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('preview must not read this hook') }) as never
+type SessionState = {
+  byId: Record<string, { id: SessionId; retainedBy: { mainView?: number }; cwd?: string }>
+}
 
 function stubHostRect(): void {
   const host = document.querySelector('[data-preview-host]') as HTMLElement
@@ -36,8 +39,15 @@ function mount(): {
   const props = {
     sessionId,
     useSession: neverHook,
-    useSessions: (sel: (s: { current: SessionId; byId: Record<string, { cwd?: string }> }) => unknown) =>
-      sel({ current: sessionId, byId: { [sessionId]: {} } }),
+    useSessions: (sel: (s: SessionState) => unknown) =>
+      sel({
+        byId: {
+          [sessionId]: {
+            id: sessionId,
+            retainedBy: {},
+          },
+        },
+      }),
     useWorkspaces: neverHook,
     useProjection: neverHook,
     active: true,

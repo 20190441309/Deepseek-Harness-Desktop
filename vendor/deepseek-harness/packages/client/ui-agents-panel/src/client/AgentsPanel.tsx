@@ -34,7 +34,7 @@ const JOB_STATUS_KEY = {
 export function AgentsPanel({ sessionId, useSessions, openAgent, t }: AgentsPanelProps): ReactNode {
   const agents = useSessions(state => listSessionAgents(state, sessionId))
   const jobs = useSessions((state) => {
-    const id = sessionId ?? state.current
+    const id = sessionId ?? Object.values(state.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
     if (id === undefined) return []
     return state.jobsBySession[id] ?? []
   })

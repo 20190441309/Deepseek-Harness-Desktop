@@ -14,8 +14,9 @@
  */
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
 
@@ -28,8 +29,10 @@ declare module '@deepseek-ai/cordis' {
 /** Live mutable state in one holder (service methods run behind the caller-ctx tracker). */
 interface LiveState {
   /** Per-session directories; entries are deleted by their scope disposer. */
-  readonly directories: Map<SessionId, ModelDirectory>
-}/** The catalog entries one directory snapshot advertises: every group model,
+  readonly directories: WeakMapWithValues<SessionBinding, ModelDirectory>
+}
+
+/** The catalog entries one directory snapshot advertises: every group model,
  * plus the current selection's model when its (provider, id) is absent (a
  * custom or relay provider whose catalog lookup failed still serves the model
  * the user picked, and it must remain listable and priceable even when another
@@ -56,7 +59,7 @@ function catalogKey(provider: string, id: string): string {
 export class ModelDirectoryResolver extends Service {
   static inject = ['sessions', 'remote', 'remote.session']
 
-  private readonly live: LiveState = { directories: new Map() }
+  private readonly live: LiveState = { directories: new WeakMapWithValues() }
   private readonly catalog: ModelCatalogDirectory
 
   /**
@@ -87,11 +90,11 @@ export class ModelDirectoryResolver extends Service {
     void this.catalog.load().catch(() => { /* selectors expose the shared error */ })
     ctx.on('connection/reset', () => {
       this.catalog.resetGeneration()
-      for (const directory of this.live.directories.values()) directory.resetConnected()
+      for (const directory of this.live.directories.values) directory.resetConnected()
     })
     const refresh = (): void => {
       this.catalog.refresh()
-      for (const directory of this.live.directories.values()) {
+      for (const directory of this.live.directories.values) {
         directory.load().catch(() => undefined)
       }
       void this.rememberHostCatalog()
@@ -138,7 +141,7 @@ export class ModelDirectoryResolver extends Service {
    */
   catalogModelIds(): readonly { provider: string; id: string }[] {
     const models: { provider: string; id: string }[] = [...this.catalogUnion.values()]
-    for (const directory of this.live.directories.values()) {
+    for (const directory of this.live.directories.values) {
       for (const group of directory.store.getSnapshot().groups) {
         for (const entry of group.models) {
           const duplicate = models.some(model => model.provider === group.id && model.id === entry.id)
@@ -180,13 +183,13 @@ export class ModelDirectoryResolver extends Service {
    */
   directoryFor(sessionId: SessionId): ModelDirectory {
     const { live } = this
-    const existing = live.directories.get(sessionId)
-    if (existing !== undefined) return existing
     const sessions = this.ctx.sessions
     const actx = sessions.scope(sessionId)
     if (actx === undefined) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no scope`)
     const binding = sessions.binding(sessionId)
     if (binding === undefined) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no binding`)
+    const existing = live.directories.get(binding)
+    if (existing !== undefined) return existing
     const directory = new ModelDirectory(
       this.ctx.remote.session,
       sessionId,
@@ -194,7 +197,7 @@ export class ModelDirectoryResolver extends Service {
       this.catalog,
       binding.session.projections.faceOf('modelSelection'),
     )
-    live.directories.set(sessionId, directory)
+    live.directories.set(binding, directory)
     // The composer cannot read this plugin (the dependency runs one way), so
     // the block is pushed: the Host says whether an adapter serves the
     // session's route, and only a definite `false` makes the input inert.
@@ -231,7 +234,7 @@ export class ModelDirectoryResolver extends Service {
     }
     actx.effect(() => () => {
       directory.dispose()
-      live.directories.delete(sessionId)
+      live.directories.delete(binding)
     }, 'ui-model-selection: session directory')
     return directory
   }

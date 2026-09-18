@@ -146,6 +146,7 @@ function sessionList(cwd: string | undefined): SessionListState {
           displayTitle: 'proj',
           running: false,
           blank: false,
+          retainedBy: { mainView: 1 },
           updatedAt: 1,
           ...(cwd ? { cwd } : {}),
         },
@@ -153,11 +154,9 @@ function sessionList(cwd: string | undefined): SessionListState {
   return {
     ids: current === undefined ? [] : [SID],
     byId,
-    current,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
@@ -219,7 +218,8 @@ function mount(opts: {
     useWorkspaces: neverHook,
     useProjection: neverHook,
     useConversation: neverHook,
-    useSessionPendingInteraction: neverHook,
+    useSessionStatus: neverHook,
+    useSessionRetainInfo: () => undefined,
     useInput: neverHook,
     usePanelInfo: panelInfoStub,
     useResource: resourceStub,

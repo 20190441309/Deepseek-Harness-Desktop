@@ -42,9 +42,10 @@ export class AppWebEntry {
   /**
    * Load and activate every client entry, then hand the mount point to the
    * UI renderer. Plugin failures remain visible on the boot page.
-   * @returns Resolves after application mount or failure rendering.
+   * @param onFailure - Optional carrier-owned fatal presentation; keeps the boot page visible.
+   * @returns Resolves after application mount or failure reporting.
    */
-  async run(): Promise<void> {
+  async run(onFailure?: (reason: unknown) => void): Promise<void> {
     // __DSH_BOOT_GATE__ holds the connection stream loop until every client
     // factory is registered (cross-package synchronous require edges need the
     // full immediately tier before any materialization); it releases even
@@ -93,12 +94,15 @@ export class AppWebEntry {
         ctx,
         modules: this.modules,
         manifest: this.manifest,
-        onEntryState: (name, state) => { this.page.setState(name, state) },
+        onEntryState: (name, state) => {
+          if (onFailure === undefined || state !== 'failed') this.page.setState(name, state)
+        },
       })
       await mountClient(ctx, this.container)
     } catch (reason) {
       console.error(reason)
-      this.page.fail(reason instanceof Error ? reason.message : String(reason))
+      if (onFailure !== undefined) onFailure(reason)
+      else this.page.fail(reason instanceof Error ? reason.message : String(reason))
     } finally {
       releaseBootGate()
     }

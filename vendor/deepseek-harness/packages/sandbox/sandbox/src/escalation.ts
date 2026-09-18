@@ -134,44 +134,29 @@ export interface EscalationRequest {
   requestedMode: string
   /** The model's one-sentence reason, shown verbatim to the user inside the audit reason. */
   justification: string
-  /** The call's effective mode (session override ?? composition default) the request must strictly widen. */
+  /** The call's effective mode (session override ?? composition default); repeating it needs no approval. */
   effectiveMode: SandboxMode
   /** The family's noun for the escalated action in user-facing texts (`command` for bash, `operation` for fs). */
   subject: string
 }
 
 /**
- * Resolve a sandbox-escalation request BEFORE anything executes: check strict
- * widening against the call's effective mode, then resolve the approval
- * channel, then map every outcome — the ordered fail-closed sequence both
- * enforcing families share. A request naming a real target that does not
- * widen is not an escalation: it resolves to the effective mode the call
- * already runs under, and nobody is asked. Otherwise returns the granted
- * mode to stamp onto exactly this call; throws the distinct verbatim text
- * for every other path (a target outside the closed vocabulary, an
- * unrecognized effective mode, a missing approval service, an agent-less
- * execution, a rejection, a cancellation, an unanswerable ask) — the tool
- * registry turns the throw into the call's isError result, and nothing has
- * run.
+ * Resolve a sandbox permission request before execution. Repeating the call's
+ * effective mode returns it without approval. A strictly wider mode requires
+ * approval and applies only to this call. Narrower or unsupported targets,
+ * missing approval services or agents for widening, and non-grant outcomes
+ * throw before execution.
  * @param request - the escalation to judge (see {@link EscalationRequest}).
  * @param approval - the approval ingredients the tool holds (see {@link EscalationApproval}).
  * @returns the granted mode, consumed by the one call that asked.
  */
 export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
   const { requestedMode: mode, effectiveMode, justification, subject } = request
+  if (mode === effectiveMode) return effectiveMode
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target
   // vocabulary; the effective mode is per-call truth).
   if (!(WIDER_MODES[effectiveMode] ?? []).includes(mode as SandboxMode)) {
-    // A request naming a real target that cannot widen is not an escalation:
-    // the call's mode is unchanged either way, so it proceeds under the mode
-    // it already has and no approval is asked. A target outside the closed
-    // vocabulary — or an effective mode the session log should never have
-    // produced — still fails closed.
-    const effectiveKnown = effectiveMode === 'danger-full-access' || WIDER_MODES[effectiveMode] !== undefined
-    if (effectiveKnown && (ESCALATION_TARGETS as readonly string[]).includes(mode)) {
-      return effectiveMode
-    }
     throw new Error(`sandbox escalation to "${mode}" is not strictly wider than this call's current "${effectiveMode}" mode`)
   }
   if (approval.approver === undefined) {

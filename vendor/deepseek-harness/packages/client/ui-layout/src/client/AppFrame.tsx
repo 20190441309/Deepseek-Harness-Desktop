@@ -28,7 +28,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   computeColumns, PHONE_DRAWER, PHONE_MAX, RIGHTBAR_DEFAULT_RATIO,
-  SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MIN,
+  SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
 } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
@@ -207,11 +207,13 @@ export function AppFrame({
 }: AppFrameProps) {
   const layoutInfo = useStore(state => state.layoutInfo)
   const managedSession = useSessions((s) => {
-    const current = s.current
+    const current = Object.values(s.byId)
+      .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
     return current !== undefined && s.byId[current]?.presentation?.composer === 'managed'
   })
   const activeSession = useSessions((s) => {
-    const current = s.current
+    const current = Object.values(s.byId)
+      .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
@@ -334,6 +336,9 @@ export function AppFrame({
     ? 0
     : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
   const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
+  // Desktop reopen controls occupy the macOS session header or Windows caption row.
+  const collapsedWidth = document.documentElement.dataset.platform === 'darwin'
+    || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(
@@ -341,12 +346,14 @@ export function AppFrame({
     !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference,
     rightbarPreference,
     layoutInfo.surfaces,
+    collapsedWidth,
   )
   const cols = computeColumns(
     viewport,
     sidebarPreference,
     layoutInfo.rightbarTrack ? rightbarPreference : 0,
     layoutInfo.surfaces,
+    collapsedWidth,
   )
   const colsRef = useRef(cols)
   colsRef.current = cols
@@ -396,6 +403,8 @@ export function AppFrame({
       ref={frameRef}
       className={css.frame}
       style={{
+        ...(document.documentElement.hasAttribute('data-windows-titlebar')
+          ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),
         gridTemplateColumns: phone
           ? `0px minmax(0, 1fr) ${cols.rightbar}px ${cols.surfaces}px`
           : `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px ${cols.surfaces}px`,

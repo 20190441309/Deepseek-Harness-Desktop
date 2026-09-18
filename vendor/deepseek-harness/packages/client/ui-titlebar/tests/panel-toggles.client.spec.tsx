@@ -42,7 +42,8 @@ function mount(opts: {
       terminalDrawer={opts.terminalDrawer ?? 0}
       managedSession={false}
       useSessions={neverHook}
-      useSessionPendingInteraction={sel => sel(new Map())}
+      useSessionStatus={sel => sel(new Map())}
+      useSessionRetainInfo={() => undefined}
       useWorkspaces={workspaces(opts.workspaceCount ?? 1)}
       useTerminalToggle={sel => sel(opts.terminalToggle !== false)}
       useSurfacesToggle={sel => sel(opts.surfacesToggle !== false)}

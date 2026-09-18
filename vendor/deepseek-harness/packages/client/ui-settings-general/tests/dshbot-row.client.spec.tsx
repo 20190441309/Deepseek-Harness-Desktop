@@ -20,7 +20,8 @@ function mount(dict: Record<string, string> = en) {
     usePanelInfo: panelInfoStub,
     useResource: resourceStub,
     useSessions: unusedHook,
-    useSessionPendingInteraction: unusedHook,
+    useSessionStatus: unusedHook,
+    useSessionRetainInfo: () => undefined,
     useWorkspaces: unusedHook,
     t: key => dict[key] ?? key,
   }

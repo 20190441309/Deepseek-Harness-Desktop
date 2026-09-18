@@ -1,6 +1,8 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Inline code links" [disabled]
+  - button "More actions":
+    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"

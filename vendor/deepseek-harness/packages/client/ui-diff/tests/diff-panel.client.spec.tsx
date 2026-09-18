@@ -11,29 +11,39 @@ import { isStaged, isUnstaged, type GitBranchListResult, type GitDiffOptions, ty
 const t: DiffPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('diff must not read this hook') }) as never
 const SID = 'session-diff' as SessionId
+const BACKGROUND_SID = 'session-diff-background' as SessionId
 
-function sessionList(cwd: string | undefined): SessionListState {
-  const current = cwd === undefined ? undefined : SID
-  const byId = current === undefined
-    ? {}
-    : {
+function sessionList(cwd: string | undefined, mainView = true): SessionListState {
+  const byId = {
+    ...(cwd === undefined
+      ? {}
+      : {
       [SID]: {
         id: SID,
         displayTitle: 'proj',
         running: false,
         blank: false,
+        retainedBy: mainView ? { mainView: 1 } : {},
         updatedAt: 1,
         ...(cwd ? { cwd } : {}),
       },
-    }
+      }),
+    [BACKGROUND_SID]: {
+      id: BACKGROUND_SID,
+      displayTitle: 'background',
+      running: false,
+      blank: false,
+      retainedBy: {},
+      updatedAt: 1,
+      cwd: '/tmp/background',
+    },
+  }
   return {
-    ids: current === undefined ? [] : [SID],
+    ids: Object.keys(byId) as SessionId[],
     byId,
-    current,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
@@ -103,6 +113,28 @@ describe('porcelain helpers', () => {
 })
 
 describe('DiffPanel', () => {
+  it('ignores a background workspace after the main-view session is released', () => {
+    render(
+      <DiffPanel {...({
+        sessionId: undefined,
+        useSession: neverHook,
+        useSessions: (sel: (s: SessionListState) => unknown) => sel(sessionList('/tmp/main', false)),
+        useWorkspaces: neverHook,
+        useProjection: neverHook,
+        openFile: vi.fn(),
+        gitStatus: vi.fn(async () => ({ refName: 'main' })),
+        gitDiff: vi.fn(async () => SAMPLE),
+        gitStatusEntries: vi.fn(async () => null),
+        gitStage: vi.fn(async () => ({ ok: true })),
+        gitUnstage: vi.fn(async () => ({ ok: true })),
+        gitDiscard: vi.fn(async () => ({ ok: true })),
+        gitBranchList: vi.fn(async () => null),
+        t,
+      } as unknown as DiffPanelProps)} />,
+    )
+    expect(screen.getByText('A workspace is required to review diffs.')).toBeTruthy()
+  })
+
   it('shows the disabled reason when the workspace is not a git repository', async () => {
     mount({ cwd: '/tmp/plain', status: null, diff: null })
     await waitFor(() => {

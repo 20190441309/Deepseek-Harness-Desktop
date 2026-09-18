@@ -24,29 +24,39 @@ const resourceStub = (() => ({ status: 'none' as const, value: undefined, failur
 const t: FilesPanelProps['t'] = key => (en as Record<string, string>)[key] ?? key
 const neverHook = (() => { throw new Error('files must not read this hook') }) as never
 const SID = 'session-files' as SessionId
+const BACKGROUND_SID = 'session-files-background' as SessionId
 
-function sessionList(cwd: string | undefined): SessionListState {
-  const current = cwd === undefined ? undefined : SID
-  const byId = current === undefined
-    ? {}
-    : {
+function sessionList(cwd: string | undefined, mainView = true): SessionListState {
+  const byId = {
+    ...(cwd === undefined
+      ? {}
+      : {
       [SID]: {
         id: SID,
         displayTitle: 'proj',
         running: false,
         blank: false,
+        retainedBy: mainView ? { mainView: 1 } : {},
         updatedAt: 1,
         ...(cwd ? { cwd } : {}),
       },
-    }
+      }),
+    [BACKGROUND_SID]: {
+      id: BACKGROUND_SID,
+      displayTitle: 'background',
+      running: false,
+      blank: false,
+      retainedBy: {},
+      updatedAt: 1,
+      cwd: '/tmp/background',
+    },
+  }
   return {
-    ids: current === undefined ? [] : [SID],
+    ids: Object.keys(byId) as SessionId[],
     byId,
-    current,
     phase: 'ready',
     subagentsByParent: {},
     jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
@@ -205,6 +215,33 @@ describe('FileTree', () => {
 })
 
 describe('FilesPanel', () => {
+  it('ignores a background workspace after the main-view session is released', () => {
+    render(
+      <FilesPanel
+        usePanelInfo={panelInfoStub}
+        useResource={resourceStub}
+        sessionId={undefined}
+        useSession={neverHook}
+        useSessions={sel => sel(sessionList('/tmp/main', false))}
+        useWorkspaces={neverHook}
+        useProjection={neverHook}
+        useConversation={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
+        useInput={neverHook}
+        inputActions={undefined}
+        openFile={() => {}}
+        listDir={async () => ({ ok: true, entries: FAKE_ROOT })}
+        readFile={async () => ({ ok: false })}
+        readFileMedia={async () => ({ ok: false })}
+        mentionFile={() => {}}
+        writeFile={async () => ({ ok: true })}
+        t={t}
+      />,
+    )
+    expect(screen.getByText('A workspace is required to browse files.')).toBeTruthy()
+  })
+
   it('lists a fake workspace and calls openFile for a file click', async () => {
     const openFile = vi.fn()
     const listDir = vi.fn(listDirFake)
@@ -218,7 +255,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={openFile}
@@ -261,7 +299,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -289,7 +328,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -325,7 +365,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -377,7 +418,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -410,7 +452,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -438,7 +481,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -470,7 +514,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -494,7 +539,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -520,7 +566,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -548,7 +595,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -584,7 +632,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -619,7 +668,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -645,7 +695,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -669,7 +720,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -697,7 +749,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -731,7 +784,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -772,7 +826,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -809,7 +864,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -856,7 +912,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={() => {}}
@@ -897,7 +954,8 @@ describe('FilesPanel', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         openFile={openFile}
@@ -937,7 +995,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -968,7 +1027,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -997,7 +1057,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1029,7 +1090,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1060,7 +1122,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1092,7 +1155,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1120,7 +1184,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1155,7 +1220,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1184,7 +1250,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1212,7 +1279,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1242,7 +1310,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1270,7 +1339,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1301,7 +1371,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1336,7 +1407,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1367,7 +1439,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1398,7 +1471,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1427,7 +1501,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1455,7 +1530,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1489,7 +1565,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1535,7 +1612,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1581,7 +1659,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1628,7 +1707,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1673,7 +1753,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -1704,7 +1785,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -1734,7 +1816,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -1766,7 +1849,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1801,7 +1885,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1836,7 +1921,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1867,7 +1953,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1911,7 +1998,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1950,7 +2038,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -1985,7 +2074,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2031,7 +2121,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2067,7 +2158,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2105,7 +2197,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2138,7 +2231,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2175,7 +2269,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2208,7 +2303,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2245,7 +2341,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2279,7 +2376,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2320,7 +2418,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2372,7 +2471,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2418,7 +2518,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2454,7 +2555,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2495,7 +2597,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2538,7 +2641,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2580,7 +2684,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2612,7 +2717,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2649,7 +2755,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2683,7 +2790,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2726,7 +2834,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -2773,7 +2882,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -2819,7 +2929,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -2899,7 +3010,8 @@ describe('FilePreview', () => {
           useWorkspaces={neverHook}
           useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
           useInput={neverHook}
           inputActions={undefined}
           listDir={async () => ({ ok: false })}
@@ -2980,7 +3092,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -3045,7 +3158,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}
@@ -3079,7 +3193,8 @@ describe('FilePreview', () => {
         useWorkspaces={neverHook}
         useProjection={neverHook}
         useConversation={neverHook}
-        useSessionPendingInteraction={neverHook}
+        useSessionStatus={neverHook}
+        useSessionRetainInfo={() => undefined}
         useInput={neverHook}
         inputActions={undefined}
         listDir={async () => ({ ok: false })}

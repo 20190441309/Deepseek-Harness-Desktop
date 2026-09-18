@@ -123,11 +123,10 @@ type EditorState =
 /** Render the Skills settings page. */
 export function SkillsSection(props: SkillsSectionProps) {
   const t = props.t
-  const sessionId = props.useSessions(sessions => sessions.current)
-  const rawCwd = props.useSessions((sessions) => {
-    const current = sessions.current
-    return current === undefined ? undefined : sessions.byId[current]?.cwd
-  })
+  const sessionId = props.useSessions(sessions =>
+    Object.values(sessions.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id)
+  const rawCwd = props.useSessions(sessions =>
+    sessionId === undefined ? undefined : sessions.byId[sessionId]?.cwd)
   const observedCwd = rawCwd === undefined || rawCwd.trim().length === 0 ? undefined : rawCwd
   // A session's cwd never changes once set, but a sessions-store rebuild can
   // make the current entry read undefined for one render. Keep the last known
