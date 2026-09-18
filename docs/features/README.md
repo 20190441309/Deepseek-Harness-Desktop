@@ -6,6 +6,7 @@
 
 ## 与其他文档的分工
 
+
 | 层 | 职责 | 本树是否替代 |
 | --- | --- | --- |
 | [docs/handbook/](../handbook/README.md) | 蓝图、流程、模块当前态 | 否；卡片挂手册章 |
@@ -73,6 +74,7 @@ Gate: <卡上 gates>
 | [composer-draft-transition](composer-draft-transition.md) | 草稿首次发送时输入框连续落位、不贴底回弹 | vendor `ui-conversation` | 组件回归 + keyless 逐帧几何 |
 | [windows-installer](windows-installer.md) | NSIS 品牌化安装器；`/S` 静默与 artifact 名不变 | `build.nsis` / `build/installer.nsh` | installer-branding 单测；TC-INST-001、009、010 |
 | [dsh-tools](dsh-tools.md) | 工具调用名/ID 校验、失败重试与旧会话投影修复 | vendor llm / agent-loop / session / tools | focused Harness specs |
+| [harness-upstream-sync](harness-upstream-sync.md) | 上游三方合并、桌面特性保真与集成验收 | `harness-sync` / `harness-desktop-forks` | sync/forks、构建、GUI/核心契约与源码冒烟 |
 | [desktop-pet](desktop-pet.md) | Desktop shell 内受限宠物浮层：Codex 皮肤、点击/拖拽动画、右键换肤、托盘开关与位置持久化 | `desktop-pet` / `desktop-pets` / `window` / `tray` | TC-DESK-010；focused tests |
 | [desktop-live2d-pet](desktop-live2d-pet.md) | 整屏透明 BrowserWindow 的 Live2D 鲸鱼娘伙伴：点击穿透、拖拽/抛掷物理、对话气泡、token 投喂成长与养成状态卡 | `desktop-live2d` / `pet-growth` / `pet-stats` / `pet-live2d.*` | `node --test` focused（101）；TC-DESK-011 |
 | [whale-assistant](whale-assistant.md) | 第一方 `dsh-whale` 插件：常驻 whale-girl 助理会话 + 设置分区 + 侧栏入口 + preset 统筹工具 + pet-outbox 桌宠桥 | `dsh-whale-desktop` / `vendor/dsh-whale` / `pet-dsh-watch` | `dsh-whale-desktop.test.js` + skip-compose 契约 |

@@ -100,7 +100,7 @@ const FORK_FILE_MARKERS = [
   { file: 'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx', includes: ['TasksSectionHeader', 'connectNoDirectory', 'GroupSessionRun'] },
   { file: 'packages/client/ui-workspace/src/client/locales.ts', includes: ['menu.noDirectory'], excludes: ['Ungrouped'] },
   { file: 'packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx', includes: ['selectNoDirectory', 'noDirectorySession'] },
-  { file: 'packages/client/ui-conversation/src/client/apply.ts', includes: ['selectNoDirectory', 'connectNoDirectory'] },
+  { file: 'packages/client/ui-conversation/src/client/apply.ts', includes: ['selectNoDirectory', 'openNoDirectory'] },
   { file: 'packages/client/ui-conversation/src/client/locales.ts', includes: ['hero.noDirectory'] },
   // Desktop launcher recovery flag on the upstream CLI args parser.
   { file: 'apps/cli/src/args.ts', includes: ['skip-user-plugins'] },

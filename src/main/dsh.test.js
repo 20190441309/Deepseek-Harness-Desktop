@@ -505,7 +505,7 @@ test('launcher recovery flags stay before host and port', () => {
 });
 
 /**
- * Launcher-owned flag set of the vendored args.ts web subcommand:
+ * Launcher-owned flag set of the vendored args.ts profile launcher:
  * flag → whether it declares a value. Fail-loud extraction — the walk in the
  * contract tests would silently pass on an empty set.
  */
@@ -514,16 +514,17 @@ function extractWebLauncherFlags() {
     path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness', 'apps', 'cli', 'src', 'args.ts'),
     'utf8',
   );
-  const webStart = argsTs.indexOf("program.command('web')");
-  const webEnd = argsTs.indexOf("program.command('plugin')");
-  assert.ok(webStart !== -1 && webEnd > webStart, 'args.ts web subcommand block not found');
+  const webStart = argsTs.indexOf('const program: Command');
+  const webEnd = argsTs.indexOf("if (first === 'plugin')");
+  assert.ok(webStart !== -1 && webEnd > webStart, 'args.ts profile launcher block not found');
+  assert.match(argsTs, /\['--profile', \.\.\.argv\]/, 'named profile shorthand was removed');
   const webBlock = argsTs.slice(webStart, webEnd);
   const launcherFlags = new Map();
   const optionPattern = /\.option\('(--[a-z-]+)( <[^>]+>)?'/g;
   for (let match = optionPattern.exec(webBlock); match; match = optionPattern.exec(webBlock)) {
     launcherFlags.set(match[1], Boolean(match[2]));
   }
-  // The web alias must still declare the two flags every desktop start
+  // The profile launcher must still declare the two flags every desktop start
   // relies on (a silent empty set would turn the walk into a no-op).
   assert.equal(launcherFlags.get('--skip-user-plugins'), false, 'web alias lost --skip-user-plugins');
   assert.equal(launcherFlags.get('--patch'), true, 'web alias lost --patch <path>');
@@ -547,7 +548,7 @@ test('skip argv keeps launcher-owned flags inside the CLI grammar prefix (args.t
   // recognize; everything from there on is app args (passThroughOptions). A
   // skip flag that drifts behind `--host` would be silently swallowed by the
   // app — a start WITH user plugins the desktop believes is skipped. Derive
-  // the launcher-owned flag set from the vendored args.ts web subcommand so
+  // the launcher-owned flag set from the vendored args.ts profile launcher so
   // this test tracks the real grammar instead of a copy of today's argv.
   const launcherFlags = extractWebLauncherFlags();
   const manager = new DshManager({

@@ -2,7 +2,7 @@
 
 [中文](design-language.md) | English
 
-DSHD (Deepseek-Harness-Desktop — the desktop application in this repository; distinct from the `dsh` CLI and from the dshd daemon in `src/main`) defines its design language in this document: it is the sole visual authority for every visible surface of DSHD. The language's baseline is pinned to the vendored `vendor/deepseek-harness` Web UI — currently `dsh-v0.1.3-alpha.1` (`d347e703908d0406b7a7ef80e3a0e594d86b2215`), recorded in [`vendor/harness-upstream.json`](../vendor/harness-upstream.json) and updated by `npm run sync:harness`. The desktop chrome, closing overlay, title-bar injection, right-hand surfaces, the Web UI page opened by phone remote, and any new frontend all implement the same language. Do not invent a second skin.
+DSHD (Deepseek-Harness-Desktop — the desktop application in this repository; distinct from the `dsh` CLI and from the dshd daemon in `src/main`) defines its design language in this document: it is the sole visual authority for every visible surface of DSHD. The language's baseline is pinned to the vendored `vendor/deepseek-harness` Web UI — currently `dsh-v0.1.6-alpha.2` (`ddefc45fbc7f8e46dd73185e68295696d1297887`), recorded in [`vendor/harness-upstream.json`](../vendor/harness-upstream.json) and updated by `npm run sync:harness`. The desktop chrome, closing overlay, title-bar injection, right-hand surfaces, the Web UI page opened by phone remote, and any new frontend all implement the same language. Do not invent a second skin.
 
 "Matching the baseline" is not a judgement call. It is three hard criteria, all anchored in real artifacts:
 
@@ -19,6 +19,8 @@ Read this before changing UI, layout, or frontend. Engineering mechanics (CSS Mo
 - Engineering rules: [web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
 - Motion contract and inventory: [motion.en.md](motion.en.md)
 
+Desktop application branding uses the supplied transparent head [`assets/whale-head.png`](../assets/whale-head.png), preserving its full proportions without a separate tray crop. Windows, taskbar, tray, and installer share this source; `assets/icon.svg` wraps it, and `npm run icon` generates `assets/icon.png` and multi-size `assets/icon.ico`. The pet-art generator no longer owns application icons.
+
 ## Scope
 
 Any change to a visible surface is in scope, including:
@@ -29,6 +31,10 @@ Any change to a visible surface is in scope, including:
 Terminal, diff, and code blocks keep the baseline monospace / no-wrap rules. That is content typography, not a second chrome language.
 
 ## Hard rules
+
+New Session keeps the existing entry points, draft canvas, and composer, and reuses only ordinary blank drafts without a prior identity. Titled sessions, sessions previously managed by a plugin, and forks retain their identity and are not opened as new drafts. No controls or visual styling are added.
+
+The Harness alpha.2 integration retains this document's visual contract. New upstream components reuse the same tokens and primitives; migrations of layout services, slots, or props must preserve the desktop title bar, work surfaces, transparent wallpaper, linked composer width, and typing effects. Surface tab close controls remain to the right of the title; the boot-page exception keeps its existing scope.
 
 The model control automatically loads the current selection when entering or returning to an existing conversation, without requiring the model menu to open. Sending a message or remounting the control must not turn a saved model into "Select model". Initial synchronization reuses the loading label; a missing catalog display name uses the provider/model id. Controls, styling, and draft-page behavior stay unchanged.
 
@@ -277,7 +283,7 @@ passing results for the new delivery.
 
 The boot page is one instrument canvas for the whole window. It is not a centered card, and the log is not locked in a bordered box. Sources: [`boot.html`](../src/renderer/boot.html), [`boot.css`](../src/renderer/boot.css), [`boot-tokens.css`](../src/renderer/boot-tokens.css), [`boot.js`](../src/renderer/boot.js).
 
-Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the whale-girl running loader ([`assets/whale-running.webp`](../assets/whale-running.webp), an 8-frame loop at 112px with `.mark` lifted above the scanline overlay; `prefers-reduced-motion` swaps in the [`assets/poster.png`](../assets/poster.png) still), the brand `Deepseek-Harness-Desktop`, status and hint, and square retry and download-log buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. Lines stack upward from the bottom; `--boot-log-inset` clears the corner rails on the bottom and left. Overflow clips older lines at the top so the newest line stays fully visible. After the runtime is ready, baseline client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the baseline's “正在加载插件” page is not shown.
+Layout: L-shaped targeting rails sit on the viewport corners. The center stack is the whale spinning loader ([`assets/whale-spin.svg`](../assets/whale-spin.svg), a 2-second loop at 112px with `.mark` lifted above the scanline overlay; `prefers-reduced-motion` swaps in the static [`assets/whale-head.png`](../assets/whale-head.png) head), the brand `Deepseek-Harness-Desktop`, status and hint, and square retry and download-log buttons on failure. The top bar shows `DSH-DESKTOP` on the left and a stamp on the right that follows `body[data-state]`: 启动中 / 就绪 / 停止中 / 异常, coded BOOT / READY / HALT / ERROR. The bottom-left monospace log sits on the canvas with no border or fill; long lines wrap. Type is 14/22. Lines stack upward from the bottom; `--boot-log-inset` clears the corner rails on the bottom and left. Overflow clips older lines at the top so the newest line stays fully visible. After the runtime is ready, baseline client-plugin loading stays on this canvas (the status line reads `正在加载插件 n/m`). A background BrowserView finishes loading, then the Web UI is revealed; the baseline's “正在加载插件” page is not shown.
 
 Color and theme: [`boot-tokens.css`](../src/renderer/boot-tokens.css) is the only color table. Light is paper near-black; dark is CRT near-white. `--boot-accent` matches body ink; failure uses `--boot-alert`. `html[data-boot-theme]` makes [`theme.js`](../src/renderer/theme.js) apply only the light/dark half of `theme.scheme` and skip the user's `bg` / `accent`. [`boot.css`](../src/renderer/boot.css) consumes `--boot-*` plus baseline font and motion tokens; it does not branch on `[data-ds-dark-theme]` and does not contain color literals.
 

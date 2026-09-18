@@ -2,7 +2,7 @@
 
 中文 | [English](design-language.en.md)
 
-DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` CLI，也区别于 `src/main` 里的 dshd 守护进程）的设计语言定义在本文档：它是 DSHD 全部可见界面的唯一视觉权威。语言的基线固定为随仓库钉版的 `vendor/deepseek-harness` Web UI——当前钉 `dsh-v0.1.3-alpha.1`（`d347e703908d0406b7a7ef80e3a0e594d86b2215`），记录在 [`vendor/harness-upstream.json`](../vendor/harness-upstream.json)，由 `npm run sync:harness` 更新。桌面壳、关闭遮罩、标题栏注入、右边栏、手机远程打开的 Web UI 页、以及任何新增前端，都实现同一套语言，不得另起一套皮肤。
+DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` CLI，也区别于 `src/main` 里的 dshd 守护进程）的设计语言定义在本文档：它是 DSHD 全部可见界面的唯一视觉权威。语言的基线固定为随仓库钉版的 `vendor/deepseek-harness` Web UI——当前钉 `dsh-v0.1.6-alpha.2`（`ddefc45fbc7f8e46dd73185e68295696d1297887`），记录在 [`vendor/harness-upstream.json`](../vendor/harness-upstream.json)，由 `npm run sync:harness` 更新。桌面壳、关闭遮罩、标题栏注入、右边栏、手机远程打开的 Web UI 页、以及任何新增前端，都实现同一套语言，不得另起一套皮肤。
 
 「与基线一致」不靠主观印象，按三条硬标准判定，全部落在实物上：
 
@@ -19,6 +19,8 @@ DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` 
 - 工程规则：[web-styling.md](../vendor/deepseek-harness/docs/web-styling.md)
 - 动效规范与使用对照：[motion.md](motion.md)
 
+桌面应用品牌使用用户提供的透明头像 [`assets/whale-head.png`](../assets/whale-head.png)，保留完整比例，不另裁托盘图。窗口、任务栏、托盘和安装器共享此源；`assets/icon.svg` 包装此图，`npm run icon` 生成 `assets/icon.png` 与多尺寸 `assets/icon.ico`。宠物立绘生成器不再拥有应用图标。
+
 ## 适用范围
 
 凡改动可见界面，都受约束，包括但不限于：
@@ -29,6 +31,10 @@ DSHD（Deepseek-Harness-Desktop，本仓库的桌面端应用；区别于 `dsh` 
 终端、diff、代码块按基线约定保留等宽、不换行；那是内容排版，不是另做一套 chrome。
 
 ## 强制规则
+
+「新会话」沿用现有入口、草稿画布和输入框，只复用没有历史身份的普通空草稿；已有标题、曾由插件管理或属于分叉的会话保留原身份，不作为新草稿打开。不新增控件或改变视觉样式。
+
+Harness alpha.2 同步保留本页既有视觉合同。新增上游组件复用同一 token 与原语；布局服务、slot 或属性接口迁移不得移除桌面标题栏、工作表面、透明壁纸、输入框宽度联动及键入特效。Surface 页签关闭按钮仍在标题右侧；启动页例外范围不变。
 
 已有会话的模型控件在进入或返回会话时自动加载当前选择，不要求先打开模型菜单。发送消息与控件重新挂载不得把已保存的模型显示为「选择模型」；首次同步沿用既有加载文案，目录缺少显示名时沿用 provider/model 标识，不新增控件或改变样式。草稿页行为不变。
 
@@ -147,7 +153,7 @@ Android 保持稳定 asset origin 与同一 Web 源码，不平行实现聊天�
 
 启动页是整窗一张仪器画布，不是中间再套卡片，也不是把日志关进带边框的盒子。源文件是 [`boot.html`](../src/renderer/boot.html)、[`boot.css`](../src/renderer/boot.css)、[`boot-tokens.css`](../src/renderer/boot-tokens.css)、[`boot.js`](../src/renderer/boot.js)。
 
-构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是鲸鱼娘奔跑加载动画（[`assets/whale-running.webp`](../assets/whale-running.webp)，8 帧循环、112px、`.mark` 抬到扫描线遮罩之上，`prefers-reduced-motion` 换 [`assets/poster.png`](../assets/poster.png) 静帧）、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试与下载日志键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，基线客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到基线那张「正在加载插件」页。
+构图：四角 L 形瞄准轨画在视口上；中区垂直居中，依次是鲸鱼旋转加载动画（[`assets/whale-spin.svg`](../assets/whale-spin.svg)，2 秒循环、112px、`.mark` 抬到扫描线遮罩之上，`prefers-reduced-motion` 换 [`assets/whale-head.png`](../assets/whale-head.png) 静态头像）、品牌名 `Deepseek-Harness-Desktop`、状态与说明，失败时出现直角重试与下载日志键。顶栏左侧技术码 `DSH-DESKTOP`，右侧盖章随 `body[data-state]` 切换：启动中 / 就绪 / 停止中 / 异常，对应 BOOT / READY / HALT / ERROR。左下等宽日志铺在画布上，无边框、无底色，长行换行；字号行高 14/22。日志贴底向上堆，底与左侧让开角轨（`--boot-log-inset`），超出高度时裁掉上方旧行，最新行始终完整可见。运行时就绪后，基线客户端插件装载仍留在这张画布上（状态行写 `正在加载插件 n/m`），后台 BrowserView 装完再露出 Web UI，不再切到基线那张「正在加载插件」页。
 
 色与主题：[`boot-tokens.css`](../src/renderer/boot-tokens.css) 是唯一色表。浅色是纸面近黑，深色是 CRT 近白；`--boot-accent` 与正文同色，失败用 `--boot-alert`。`html[data-boot-theme]` 让 [`theme.js`](../src/renderer/theme.js) 只切 `theme.scheme` 的明暗半，不把用户主题的 `bg` / `accent` 写进启动页。[`boot.css`](../src/renderer/boot.css) 只引用 `--boot-*` 与基线字体、动效 token，不写 `[data-ds-dark-theme]` 分支，也不写颜色字面量。
 

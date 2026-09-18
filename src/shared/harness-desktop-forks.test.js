@@ -98,7 +98,7 @@ function makeFixture(t, npmVersion = '0.1.0-rc.5') {
       'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx': '<TasksSectionHeader onCreate={() => { connectNoDirectory() }} /><GroupSessionRun open={group.expanded} />\n',
       'packages/client/ui-workspace/src/client/locales.ts': "'menu.noDirectory': 'No workspace folder',\n",
       'packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx': 'const noDirectorySession = false\nvoid selectNoDirectory()\n',
-      'packages/client/ui-conversation/src/client/apply.ts': "selectNoDirectory: async () => { await workspaceNavigation.connectNoDirectory() }\nimport { TypingFxRow } from './settings/TypingFxRow.tsx'\nctx.slots.inject('settings.appearance.item', () => {})\ntypingFx: submissionPolicy.typingFx\n",
+      'packages/client/ui-conversation/src/client/apply.ts': "selectNoDirectory: async () => { await workspaceNavigation.openNoDirectory() }\nimport { TypingFxRow } from './settings/TypingFxRow.tsx'\nctx.slots.inject('settings.appearance.item', () => {})\ntypingFx: submissionPolicy.typingFx\n",
       'packages/client/ui-conversation/src/client/locales.ts': "'hero.noDirectory': 'No workspace folder',\n'settings.typingFx.title': '输入特效',\n",
       'packages/api/workspace-controller/tsconfig.host.json': '{"references":[{"path":"../../util/home-paths"}]}\n',
       'packages/api/workspace-controller/package.json': '{"peerDependencies":{"@deepseek-ai/dsh-home-paths":"workspace:^"}}\n',
@@ -204,7 +204,7 @@ test('assertDesktopForks throws when copy-ghostty-assets drops out of package.js
   assert.throws(() => assertDesktopForks(root, '0.1.0-rc.5'), /copy-ghostty-assets/);
 });
 
-test('assertDesktopForks accepts the current vendor tree at alpha.1', () => {
+test('assertDesktopForks accepts the current vendor tree at alpha.2', () => {
   const vendor = path.join(__dirname, '..', '..', 'vendor', 'deepseek-harness');
-  assertDesktopForks(vendor, '0.1.6-alpha.1');
+  assertDesktopForks(vendor, '0.1.6-alpha.2');
 });

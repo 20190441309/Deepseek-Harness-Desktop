@@ -33,7 +33,7 @@ disable 名单对 `dshbot` 别名无效（config 归一化剔除，IPC 返回 `d
 
 ## 宿主契约
 
-Harness 提供通用的插件会话展示契约：`session/presentation` 日志事件记录 `owner` 和 `title`，普通会话列表、搜索和空会话复用排除已归属会话；插件仍通过原 Session ID 打开正常聊天界面。清除展示元数据恢复普通导航，用户显式分叉不继承插件归属。此契约不授予工具权限，也不是访问控制或数据隐藏机制。dshbot 用它对齐固定联系人/群聊会话（`origin: 'dshbot'`、`agentPreset: 'dshbot-room'`），侧栏 `sidebar.nav.tab`/`sidebar.page` 槽位由插件填充出 Bots tab；卸载语义已被内置取代，槽位恒有内容。
+Harness 提供通用的插件会话展示契约：`session/presentation` 日志事件记录 `owner` 和 `title`，普通会话列表、搜索和空会话复用排除已归属会话；插件仍通过原 Session ID 打开正常聊天界面。清除展示元数据恢复普通导航，但这是 release 后的展示导航，不会让曾有插件展示、历史消息、turn 身份或 `session/title` pin 的 Session 重新满足 New Session reuse；旧 pin 保持不变，用户可显式打开该 Session，最终资格由只读 Host `session.blankReuse({ sessionId })` 判定。用户显式分叉不继承插件归属。此契约不授予工具权限，也不是访问控制或数据隐藏机制。dshbot 用它对齐固定联系人/群聊会话（`origin: 'dshbot'`、`agentPreset: 'dshbot-room'`），侧栏 `sidebar.nav.tab`/`sidebar.page` 槽位由插件填充出 Bots tab；卸载语义已被内置取代，槽位恒有内容。
 
 会话展示可显式声明 `composer: 'managed'`，继续使用同一个编辑器，但由插件通过 `conversation.input.managed` 提供资料配置入口，隐藏独立模型和开发配置快捷控制。受管会话保留真实标题和根级面板/窗口控制，同时隐藏普通开发会话的预设、轨迹、Session 日志、Git 分支与 Commit；历史视图状态不会让会话滞留在已隐藏的轨迹页。该字段不改变工具授权。插件应用模型使用 `saveAsDefault: false`，不修改普通会话默认模型。
 
