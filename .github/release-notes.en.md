@@ -19,6 +19,7 @@ DeepSeek Harness on the Windows desktop: conversations, files, web previews, ter
 
 - The installed-package Browser P0 path ships `dshd mini-player`: it reuses the same Browser guest / `previewId`, mounts as a renderer overlay inside the chat viewport, and preserves the current URL and history on restore.
 - The mini-player only moves the guest's presentation bounds; it does not create a second BrowserView, external window, or mini-specific IPC.
+- The LAN pairing landing page (`:3180` static host) gains defense-in-depth headers nosniff / no-referrer / DENY; CSP is deliberately omitted — a same-origin `connect-src` would break the cross-origin relay WebSocket pairing needs.
 
 ## Install and upgrade
 

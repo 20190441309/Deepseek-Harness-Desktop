@@ -19,6 +19,7 @@
 
 - 安装版 Browser 交付 `dshd mini-player` P0 路径：复用同一 Browser guest / `previewId`，挂到聊天可视区内的 renderer 浮层，支持标题栏拖拽与八方向缩放；恢复后保留当前 URL 与 history。
 - mini-player 只迁移 guest 的呈现边界，不创建第二个 BrowserView、外部窗口或 mini 专用 IPC。
+- LAN 配对着陆页（`:3180` 静态托管）补纵深防御响应头 nosniff / no-referrer / DENY；刻意不加 CSP——同源 `connect-src` 会阻断配对所需的跨源中继 WebSocket。
 
 ## 安装与升级
 
