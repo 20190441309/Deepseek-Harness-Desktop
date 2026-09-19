@@ -512,6 +512,9 @@ function openMarketplace() {
   return jumpToMarketplaceTab();
 }
 
+// IPC seam: imported by ipc.js and mocked by ipc.test.js as a named export.
+// Deliberately a thin wrapper over showMain() so the remote entry stays a
+// stable dependency-injection point — do NOT inline (it is not a Middle Man).
 function openRemote() {
   return showMain();
 }

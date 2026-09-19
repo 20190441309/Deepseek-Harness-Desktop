@@ -78,3 +78,9 @@ mobile/android/**/build/
 mobile/android/local.properties
 
 tmp/
+
+# Agent / QA tool dirs (local-only, generated)
+.omc/
+.workbuddy-ai/
+_pin-ws/
+logs/
