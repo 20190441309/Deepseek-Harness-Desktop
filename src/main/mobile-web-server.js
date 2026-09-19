@@ -30,6 +30,14 @@ function createMobileWebServer(options = {}) {
     const headers = {
       'content-type': asset.type,
       'cache-control': /html/.test(asset.type) ? 'no-store' : 'no-cache',
+      // Defense-in-depth for the LAN pairing landing page. NOTE: no CSP here —
+      // the SPA opens a WebSocket to a *different* relay host (the ChisaCode
+      // daemon relay), so a same-origin `connect-src` would break pairing on the
+      // non-secure LAN context. Only universally-safe headers are set. Pairing
+      // secret stays in the `#offer=` fragment and never reaches this server.
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'x-frame-options': 'DENY',
     };
     if (req.method === 'HEAD') {
       res.writeHead(200, headers);
