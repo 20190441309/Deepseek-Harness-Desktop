@@ -36,6 +36,8 @@ New Session keeps the existing entry points, draft canvas, and composer, and reu
 
 The Harness alpha.2 integration retains this document's visual contract. New upstream components reuse the same tokens and primitives; migrations of layout services, slots, or props must preserve the desktop title bar, work surfaces, transparent wallpaper, linked composer width, and typing effects. Surface tab close controls remain to the right of the title; the boot-page exception keeps its existing scope.
 
+Window controls (`window-controls.css`) carry one deliberate system-color exception: minimize/maximize hover uses the `--dsw-alias-interactive-bg-hover` token, but the close button hover uses the Windows system semantic color `#e81123` (red) with a `#fff` foreground — a platform-level "danger/close" convention, not a theme color. This is intentional; do not convert it to a token.
+
 The model control automatically loads the current selection when entering or returning to an existing conversation, without requiring the model menu to open. Sending a message or remounting the control must not turn a saved model into "Select model". Initial synchronization reuses the loading label; a missing catalog display name uses the provider/model id. Controls, styling, and draft-page behavior stay unchanged.
 
 Message editing reuses the resident composer, edit banner, and bubble marker. Confirm always regenerates within the current conversation, including its first message; the sidebar neither adds nor switches conversations, and Chat hides the superseded turn. Cancel and failure retain the existing draft restoration and notice styling.
