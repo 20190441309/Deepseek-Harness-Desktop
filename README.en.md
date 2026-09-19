@@ -33,14 +33,15 @@ This is an independently maintained Electron desktop shell, not an official Deep
 
 ## Features
 
-- **AI conversations**: Organize workspaces and chat history, inspect tool calls, approve actions, and edit and resend messages.
+- **AI conversations**: Organize workspaces and chat history, inspect tool calls, approve actions, and edit and resend messages — with Agent Teams and parallel subagents.
 - **Project tools**: Search and edit files, inspect diffs, preview web pages, and add file or terminal selections to a conversation. Browser previews can move into a chat-area mini-player.
 - **Terminal and Git**: Run commands, switch branches, commit changes, push code, and open pull requests without leaving the app.
-- **Models and extensions**: Configure model providers, manage MCP servers, skills, and plugins, and install extensions from the built-in marketplace.
-- **Usage statistics**: View token usage across sessions, activity heatmaps, and session costs, with data export support.
-- **Appearance**: Light, dark, and transparent themes, a wallpaper gallery, and frosted-glass and pixelation effects.
+- **Models and extensions**: Configure model providers, manage MCP servers, skills, and plugins, and install extensions from the built-in marketplace. A built-in Bots tab orchestrates multi-bot sessions.
+- **Usage statistics**: View token usage across sessions, activity heatmaps, and session costs estimated against peak/valley price windows, with data export support.
+- **Desktop pet** <img src="assets/pet-head.png" width="18" alt="whale-girl pet" />: A Live2D whale-girl lives on the desktop, grows with your token usage, pushes pinned notifications, and supports "take a look", chat, and head-pat interactions.
+- **Appearance**: Light, dark, and transparent themes; a wallpaper gallery (Bing daily, Wallhaven, and custom HTTPS catalogs) with frosted-glass, pixelation, and ambient-gradient backgrounds; independent terminal opacity and button-sheen controls.
 - **Remote access**: Enable remote connections when needed and scan a QR code to access desktop sessions from a mobile browser. Remote listening is off by default.
-- **Desktop integration**: System tray support, app updates, and a launcher for data import and plugin troubleshooting.
+- **Desktop integration**: System tray support, differential updates (only changed installer blocks are downloaded), and a launcher for data import and plugin troubleshooting.
 
 ## How It Works
 
@@ -51,7 +52,7 @@ This is an independently maintained Electron desktop shell, not an official Deep
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="Chat, files, and code diffs" /></td>
+    <td align="center" width="50%"><img src="assets/screenshot-surfaces.jpg" alt="Session and file work surfaces" /></td>
     <td align="center" width="50%"><img src="assets/screenshot-wallpaper.jpg" alt="Custom wallpaper" /></td>
   </tr>
   <tr>
@@ -87,7 +88,7 @@ You need to configure an API key for your chosen model provider. This project do
 
 ### How do I upgrade?
 
-The app checks for updates at startup. You can also download a newer installer and install it over the existing version. Desktop installations normally keep their data during upgrades. Back up your data directory before upgrading.
+The app checks for updates at startup. Upgrades ride a differential channel that downloads only changed installer blocks, falling back to a full download if that fails. You can also install a newer package over the existing version. Desktop installations normally keep their data during upgrades. Back up your data directory before upgrading.
 
 To migrate from the official CLI or an older desktop installation, use Import in the launcher. Do not overwrite databases or copy the entire `profiles` directory. After importing, add the original workspace path again to find its conversations.
 
