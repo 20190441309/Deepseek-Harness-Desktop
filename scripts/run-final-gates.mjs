@@ -106,7 +106,8 @@ for (const gate of selected) {
     env: gate.cmd === 'pnpm' ? gateEnv(PNPM_DIR) : gateEnv(),
   })
   closeSync(fd)
-  // shell:true masks the command's code as 1 on failure; surface the real one.
+  // spawnSync preserves the child's real exit code in `status` (shell:true does
+  // NOT mask it to 1); status is null only on signal/spawn error, then use -1/1.
   const code = child.status ?? (child.error ? -1 : 1)
   const ms = Date.now() - started
   console.log(`[gate] ${gate.name} EXIT=${code} (${(ms / 1000).toFixed(1)}s)`)

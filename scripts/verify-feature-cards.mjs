@@ -51,6 +51,50 @@ export function collect(root) {
           if (!existsSync(join(root, m[1]))) fail(violations, rel, `Decision link missing record ${m[1]}`)
         }
       }
+      // Allowed touch paths must exist — but only for repo-root-anchored paths.
+      // Cards also list package-relative fragments (`boot.css`), RPC endpoints
+      // (`/api/respond`), schemes (`pet://`) and globs (`{a,b}.ts`) that are NOT
+      // resolvable from the repo root; checking those produces noise. We only
+      // verify tokens explicitly rooted at a known top-level dir (src/, scripts/,
+      // mobile/, tools/, vendor/, docs/, assets/, build/, .github/). A path that
+      // is intentionally not yet implemented must carry `(planned)` right after
+      // it, honoured only on `status: proposed` cards — on an `active` card a
+      // missing or `(planned)` path is a card<->code drift violation. Closes the
+      // structural blind spot where a card could list files the gate never saw.
+      const touch = text.split('\n## Allowed touch')[1]?.split('\n## ')[0] ?? ''
+      const isActive = status && status[1] === 'active'
+      // Only desktop-owned repo files are checkable: `src/`, `scripts/`,
+      // `mobile/`, `tools/`, `assets/`, `build/`, `.github/`. Vendor paths are
+      // guarded by `harness-desktop-forks` markers (a stronger mechanism), and
+      // cards heavily use package-relative continuations (`src/client/index.ts`
+      // after a `vendor/.../ui-theme/` anchor) that are NOT root-resolvable —
+      // restricting to desktop-owned files keeps the signal noise-free.
+      const ROOTED = /^(?:\.github|src|scripts|mobile|tools|assets|build)\/[^/]+\//
+      // Cards use `src/client/...`, `src/styles/...`, `src/types.ts` etc. as
+      // package-relative continuations under a vendored package (no such root
+      // path). Desktop-owned files always use a real desktop area (`src/main/`,
+      // `src/shared/`, `src/renderer/`, `src/host/`). Skip the vendored-package
+      // continuation shapes; check everything else that resolves from the root.
+      const PKG_REL = /^src\/(?:client|styles|host|core|common|server)\//
+      for (const m of touch.matchAll(/`([^`]+)`/g)) {
+        const token = m[1].trim()
+        if (!ROOTED.test(token)) continue // vendor / package-relative / basename / endpoint / scheme
+        if (PKG_REL.test(token)) continue // vendored-package continuation, not desktop src/
+        if (/[*{}]|\$\{/.test(token)) continue // glob or template, not literal
+        // Only concrete FILES are checked; bare dirs act as anchors whose
+        // following tokens are package-relative continuations.
+        if (!/\.[A-Za-z0-9]+$/.test(token.replace(/\/+$/, ''))) continue
+        const planned = /\(planned\)/i.test(touch.slice(m.index + m[0].length, m.index + m[0].length + 24))
+        if (planned && !isActive) continue
+        if (planned && isActive) {
+          fail(violations, rel, `Allowed touch lists not-yet-implemented \`${token}\` on an active card (only allowed on status: proposed)`)
+          continue
+        }
+        const abs = join(root, token.endsWith('/') ? token.slice(0, -1) : token)
+        if (!existsSync(abs)) {
+          fail(violations, rel, `Allowed touch path missing: \`${token}\``)
+        }
+      }
       if (id) liveIds.push(id[1])
     }
   }

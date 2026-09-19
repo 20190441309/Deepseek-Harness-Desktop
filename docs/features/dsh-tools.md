@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `dsh-tools` |
 | **status** | `active` |
-| **last verified** | 2026-09-11 — 核心集合 192 文件 / 4462 通过 / 5 跳过；畸形工具调用 keyless dsh 回放通过；修正 compact tool-call fixture 的合法 id/name，保持严格校验与持久化记录契约。真实 API、安装包、双 SDK 快照与逐文件覆盖率未作本次验收。 |
+| **last verified** | 2026-09-19 — 核心集合 192 文件 / 4462 通过 / 5 跳过；畸形工具调用 keyless dsh 回放通过；修正 compact tool-call fixture 的合法 id/name，保持严格校验与持久化记录契约。真实 API、安装包、双 SDK 快照与逐文件覆盖率未作本次验收。 |
 
 ## User paths
 
@@ -24,7 +24,7 @@
 - `vendor/deepseek-harness/packages/llm/` — shared validation, adapters, retry policy, and tests.
 - `vendor/deepseek-harness/packages/core/agent-loop/` — pre-persistence request-failure guard and tests.
 - `vendor/deepseek-harness/packages/core/session/` — poisoned-transcript projection repair and tests.
-- `vendor/deepseek-harness/packages/session/session-persistence-sqlite/src/codec.ts` — exact optional-field reconstruction for persisted tool-call chunks.
+- `vendor/deepseek-harness/packages/session/session-persistence/` — exact optional-field reconstruction for persisted tool-call chunks (the card previously named a `session-persistence-sqlite/src/codec.ts`; that package has since been split/renamed to `session-persistence` + `session-persistence-jsonl`, and the single `codec.ts` module no longer exists).
 - `vendor/deepseek-harness/snapshots/session/malformed-tool-call-retry/` — current keyless dsh snapshot owner for malformed-call recovery.
 - `vendor/deepseek-harness/packages/core/tools/` — registration validation and tests.
 - `vendor/deepseek-harness/packages/extensions/tool-cordis/src/api-catalog.ts` — generated public type catalog.

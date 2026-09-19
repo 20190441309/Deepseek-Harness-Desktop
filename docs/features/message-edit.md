@@ -4,7 +4,7 @@
 | --- | --- |
 | **id** | `message-edit` |
 | **status** | `active` |
-| **last verified** | 2026-09-10 — 同步 `dsh-v0.1.5-rc.1` 后保留同会话编辑语义并修复一处合并引入的静默失败：surface replace op 随上游改 `startSeq/endSeq`、busy guard 改 `inbox.nextTurn/nextStep`；rc.1 把系统提示词移上表面节点 0 且受保护（仅 system/message 单节点事件可改写），编辑走影回溯曾把节点 0 卷入替换范围导致 turn 静默中止 → 回溯遇 `system/message` 即停。message-edit.host.spec 6/6（含身份行容忍断言）、official build、Desktop tests 全过。此前 2026-09-07 — 同步 `dsh-v0.1.3-alpha.1` 并迁移 Session v2 嵌入式 assistant stream 后，当前会话重发语义保留；Host / Client build、含 ui-message-edit、ui-chat 与 ui-conversation 的重点 Client 101 文件 / 1279 项、Desktop tests 1425 passed / 2 skipped。此前 2026-09-06 的 keyless edit e2e 证据仍有效，本次未重跑。 |
+| **last verified** | 2026-09-19 — 同步 `dsh-v0.1.5-rc.1` 后保留同会话编辑语义并修复一处合并引入的静默失败：surface replace op 随上游改 `startSeq/endSeq`、busy guard 改 `inbox.nextTurn/nextStep`；rc.1 把系统提示词移上表面节点 0 且受保护（仅 system/message 单节点事件可改写），编辑走影回溯曾把节点 0 卷入替换范围导致 turn 静默中止 → 回溯遇 `system/message` 即停。message-edit.host.spec 6/6（含身份行容忍断言）、official build、Desktop tests 全过。此前 2026-09-07 — 同步 `dsh-v0.1.3-alpha.1` 并迁移 Session v2 嵌入式 assistant stream 后，当前会话重发语义保留；Host / Client build、含 ui-message-edit、ui-chat 与 ui-conversation 的重点 Client 101 文件 / 1279 项、Desktop tests 1425 passed / 2 skipped。此前 2026-09-06 的 keyless edit e2e 证据仍有效，本次未重跑。 |
 
 ## User paths
 
@@ -39,7 +39,7 @@
 
 - `vendor/deepseek-harness/packages/client/ui-message-edit/` — 插件本体（铅笔、编辑态气泡、store、文案、样式、测试）
 - `vendor/deepseek-harness/packages/client/ui-conversation/src/client/input/`（contract/facade 的编辑会话）、`skeleton/InputBar.tsx|.module.css`（编辑横幅）、`locales.ts`、`src/client/index.ts` 导出与相应测试
-- `vendor/deepseek-harness/packages/client/ui-conversation/src/client/chat/MessageItem.tsx` 与 `contract/slots.ts` 中 `user-actions`/`user-editor` 座位 — 仅在座位契约确需扩展时
+- `vendor/deepseek-harness/packages/client/ui-conversation/src/client/chat/` 消息气泡组件 与 `contract/slots.ts` 中 `user-actions`/`user-editor` 座位 — 仅在座位契约确需扩展时（原 `MessageItem.tsx` 已在上游拆分为更细的气泡组件，不再有单一入口文件）
 - `vendor/deepseek-harness/apps/web/tests/message-edit.e2e.ts` 与其 aria 预期
 - `vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-15-inline-user-message-edit*`、`2026-08-25-message-edit-production-polish*`、`2026-08-25-message-edit-composer-edit-session*` — 事实保鲜
 
