@@ -17,6 +17,7 @@ const {
   COMMIT_TIMEOUT_MS,
   PREPARED_COMMIT_PATCH_MAX_OUTPUT_BYTES,
   RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES,
+  LARGE_FILE_WARNING_BYTES,
   setWorkspaceAuthority,
   gitChildEnv,
   sanitizeProgressText,
@@ -1095,6 +1096,38 @@ async function gitCreateBranch(cwd, name) {
   return ok({ refName: branch });
 }
 
+
+/**
+ * Scan working-tree files (tracked + untracked, not ignored) for blobs over
+ * GitHub's 100 MB limit. Called by the commit dialog before staging so the
+ * user sees the warning before `git add -A` runs.
+ * @param {unknown} cwd
+ * @returns {Promise<object>}
+ */
+async function gitCheckLargeFiles(cwd) {
+  const root = asCwd(cwd);
+  if (!root) return fail('Git status is unavailable.');
+  const listed = await runGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+  if (listed.missing) return fail('Git is unavailable.');
+  if (listed.timedOut) return fail('Git command timed out.');
+  if (listed.code !== 0) return fail(listed.stderr.trim() || 'git status failed.');
+  const entries = parsePorcelainZ(listed.stdout);
+  const large = [];
+  for (const entry of entries) {
+    const filePath = entry.path;
+    if (!filePath || isNtfsReservedGitPath(filePath)) continue;
+    try {
+      const stat = fs.statSync(path.join(root, filePath));
+      if (stat.isFile() && stat.size > LARGE_FILE_WARNING_BYTES) {
+        large.push({ path: filePath, size: stat.size });
+      }
+    } catch {
+      // File vanished between status and stat; skip.
+    }
+  }
+  return ok({ files: large });
+}
+
 module.exports = {
   gitStatus,
   gitFetchForStatus,
@@ -1114,6 +1147,7 @@ module.exports = {
   gitBranchList,
   gitSwitchBranch,
   gitCreateBranch,
+  gitCheckLargeFiles,
   summarizeCommitMessage,
   sanitizeFeatureBranchName,
   uniqueFeatureBranchName,
