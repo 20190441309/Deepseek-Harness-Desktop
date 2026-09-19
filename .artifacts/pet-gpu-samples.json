@@ -1,0 +1,1106 @@
+[
+  {
+    "Time": "2026-09-19T11:00:58.5548843+08:00",
+    "Phase": "live-default",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 71
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:00.1674562+08:00",
+    "Phase": "live-default",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 58
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:01.7328428+08:00",
+    "Phase": "live-default",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 71
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:03.2625903+08:00",
+    "Phase": "live-default",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 47
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:04.8046051+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:06.3352428+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:07.8586464+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 13
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:09.3928097+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 13
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:10.8964590+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:12.3938146+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:13.9191632+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:15.7026959+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 9
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:17.4317854+08:00",
+    "Phase": "same-overlay-inference-paused",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:19.1920756+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 44
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:21.0232909+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 48
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:22.7829331+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 54
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:24.5563126+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 59
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:26.2779285+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 56
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:27.8497685+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 61
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:29.4234751+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 56
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:31.0056040+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 61
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:32.5821143+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 59
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:34.1059424+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  },
+  {
+    "Time": "2026-09-19T11:01:35.6259885+08:00",
+    "Phase": "live-resumed",
+    "Engines": [
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_0_engtype_3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_1_engtype_Copy",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_2_engtype_Compute 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_3_engtype_Compute 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_4_engtype_Timer 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_5_engtype_Security 1",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_6_engtype_High Priority Compute",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_7_engtype_High Priority 3D",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_8_engtype_Video JPEG 0",
+        "UtilizationPercentage": 0
+      },
+      {
+        "Name": "pid_41808_luid_0x00000000_0x00012C45_phys_0_eng_9_engtype_Video Codec 0",
+        "UtilizationPercentage": 0
+      }
+    ]
+  }
+]
