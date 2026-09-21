@@ -136,7 +136,10 @@ export function apply(ctx: Context): void {
             const workspaces = ctx.workspaces as IWorkspaces & WorkspacePathOpener
             const openPath = workspaces.openPath
             if (typeof openPath !== 'function') throw new Error('workspace path opener is unavailable')
-            await openPath.call(workspaces, resolveWorkspacePath(cwd, path), options)
+            await openPath.call(workspaces, resolveWorkspacePath(cwd, path), {
+              ...options,
+              sessionId,
+            })
           },
           openSkill: (name) => {
             const scope = ctx.sessions.scope(sessionId)

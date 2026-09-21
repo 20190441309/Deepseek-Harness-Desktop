@@ -4,13 +4,13 @@
 | --- | --- |
 | **id** | `surfaces-work-loops` |
 | **status** | `active` |
-| **last verified** | 2026-09-11 — 新增 Browser guest 的 `dshd mini-player` renderer 浮层：复用同一 `previewId`，挂载 `shell.overlay`，聊天区域内可拖拽/八方向缩放并可恢复右栏 Browser；未新增 BrowserView/IPC。focused ui-preview、bundle、`npm test`、`smoke:source` 通过；`test:gui` 在功能 revision 全量通过，后续几何回归轮唯一失败为独立 PDF license 打包子进程超时。此前同日 `PresentedFileCard` 原生操作完成后在菜单卸载后的 layout phase 恢复预览按钮焦点；`Menu` 首次打开等待 portal 挂载后再 autofocus，避免 Escape/动作竞态；caption no-drag、模型菜单隔离与工作环契约保持。 |
+| **last verified** | 2026-09-21 — 修复聊天文件点击未进入新版右侧 Sidebar：`ui-surfaces` 的 `workspaces.openPath` 接管层优先调用 `sidebarRight`，Chat 显式携带发起 Session，普通文件走 session-scoped `fileAddressFor(...)`，HTML/HTM/XHTML/PDF 在保留带行号文件资源页后开 token URL 的 Sidebar Browser，根目录走 Sidebar Files；Sidebar 缺失或目标 Session 没有 adopted store / 同 Session live binding 时才保留旧 surfaces 回退，Sidebar 异常与旧 surfaces occupant 缺失均显式失败。原生悬浮文件窗仍只由旧 `ui-files/FilePreview` 工具栏触发，新版 Sidebar DockKit float 是页内浮层。相关源码单测、Sidebar 装配 E2E、治理与文档同步通过。此前 2026-09-20 — C1 性能基线（仅测量，无产品行为变更）。 |
 
 ## User paths
 
 1. `Ctrl+\` 打开右栏 → Files 搜索 / 预览 / 送对话。
-2. 点击对话文件提及、工具路径或产物芯片 → HTML / HTM / XHTML / PDF 进 Browser，其余工作区文件进 Files；点工作区根目录打开 Files 资源管理器。
-3. Files：点预览工具栏的悬浮图标 → 当前文件在单独的置顶只读窗口展示；继续打开文件会复用该窗口。
+2. 点击对话文件提及、工具路径或产物芯片 → 发起点击的 Session 在右栏文档预览打开或聚焦对应文件；HTML / HTM / XHTML / PDF 同时保留文件资源页并由 Browser 承接，其余工作区文件由 Document Preview 展示；点工作区根目录打开 Files 资源管理器。
+3. Files：点旧 `ui-files/FilePreview` 预览工具栏的悬浮图标 → 当前文件在单独的置顶只读原生窗口展示；继续打开文件会复用该窗口。新版 Sidebar DockKit float 只生成页内浮层。
 4. Browser：输入 URL、导航；可选截图 / PiP / 录制。
 5. Browser：点击工具栏 `dshd mini-player` 按钮后，预览浮在聊天可视区内；拖拽标题条或边/角调整大小，点击恢复按钮回到右栏并保留当前 URL / history。
 6. Diff / Agents 按当前 UI 可用。
@@ -29,7 +29,7 @@
 - browser-doc 扩展名单一事实：`{html, htm, xhtml, pdf}`（openPath 双开与 FilePreview 工具栏同集合）；SVG 按图片留在 Files。
 - Files 悬浮预览是工作区权威内的单实例只读窗口：不得绕过 `preview-workspace` token URL，不得把编辑缓冲区或保存队列迁入悬浮窗；HTML 只在 sandbox frame 中运行，图片 / 音视频 / PDF / 文本按浏览器原生只读能力展示。
 - `dshd mini-player` 只改变 Browser guest 的呈现边界：状态为 `surface | mini` 时同一 `previewId` 只能有一个 `previewShow/previewResize` owner；mini 几何限制在聊天可视区并使用 pointer capture，恢复后 URL、history、loading 状态不丢；不得创建第二个 BrowserView、外部窗口或 mini 专用 IPC。
-- 对话 / 产物 / 工具行 / 终端 / 技能的文件打开都走 `workspaces.openPath`；pin 的 Workspace 服务没有该方法时由 ui-surfaces `ensureBaseOpenPath` 补 Host 本体，ui-chat `openFile` 不得绕过它直连 `remote.session.openWorkspacePath`。当前 Session cwd 内的路径由右栏接管；根目录开 Files，浏览器文档在保留 Files Tab 后激活 Browser，其余文件激活 Files。
+- 对话 / 产物 / 工具行 / 终端 / 技能的文件打开都走 `workspaces.openPath`；pin 的 Workspace 服务没有该方法时由 ui-surfaces `ensureBaseOpenPath` 补 Host 本体，ui-chat `openFile` 不得绕过它直连 `remote.session.openWorkspacePath`。桌面接管层优先把发起 Session 内的路径交给右侧 Sidebar 的 `sidebarRight.openResourceIn(sessionId, fileAddressFor(...))`；Sidebar 缺失或目标 Session 没有 adopted store / 同 Session live binding 时才回落到旧 Files / Browser surfaces。根目录开 Files，浏览器文档保留带行号文件资源后激活 Browser，其余文件打开文件资源。Sidebar 异常与旧 surfaces occupant 缺失均显式失败，不得静默改走 Host 打开器。
 - `gitInit` 成功广播 `dshd-git-init`，Diff 门无需切会话即重探。
 - 桌面隐藏 rc.1 新增的会话 header 角位展开钮：`harness-chrome-inject.js` 注入样式 `[data-sidebar-right-expand]{display:none}`——它与 titlebar trailing 既有的面板切换键重复；右栏开合入口统一在 titlebar。
 - Files 保存拒绝任何含 `.git` 段的路径（大小写不敏感，含 `.git` gitlink 本体）；`listDir` 隐藏 `.git` 与之同一契约。`.gitignore` / `.github/**` 等普通 dotfile 照常可存。
@@ -57,7 +57,7 @@
 
 ## Sources
 
-- Decision: none
+- Decision: [聊天文件预览迁移到右侧 Sidebar 资源路由](../decisions/implemented/bug-fix/2026-09-21-chat-file-sidebar-resource-route.md)
 
 - Handbook：[../handbook/modules/surfaces.md](../handbook/modules/surfaces.md)
 - Note：`vendor/deepseek-harness/.agents/notes/implemented/feature/2026-08-16-surfaces-terminal-work-loops.md`

@@ -8,6 +8,9 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, desktopListingAvailable, inject } from '../src/client/index.ts'
 import type { SurfacesRootInjected } from '../src/client/SurfacesRoot.tsx'
 import { SurfacesRoot } from '../src/client/SurfacesRoot.tsx'
+import { createSidebarRightController } from '../../ui-sidebar-right/src/client/service.ts'
+import { SidebarRightTabRegistry } from '../../ui-sidebar-right/src/client/tab-registry.ts'
+import { createSidebarRightStore } from '../../ui-sidebar-right/src/client/stores.ts'
 
 function declare(slots: SlotRegistry): () => void {
   return slots.register({
@@ -55,23 +58,45 @@ function sessionsStub(opts: { mainView?: string; cwd?: string; background?: { id
   }
 }
 
-async function bench(opts: { mainView?: string; cwd?: string; background?: { id: string; cwd: string } } = {}) {
+async function bench(
+  opts: {
+    mainView?: string
+    cwd?: string
+    background?: { id: string; cwd: string }
+    sidebarRight?: {
+      openResource: (address: string, options?: unknown) => void
+      openResourceIn: (sessionId: string, address: string, options?: unknown) => boolean
+      openTab: (kind: string, options?: unknown) => void
+      openTabIn: (sessionId: string, kind: string, options?: unknown) => boolean
+    }
+  } = {},
+) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const slots = ctx.get('slots') as SlotRegistry
   const declaration = declare(slots)
   const layout = { openSurfaces: vi.fn() }
-  const originalOpen = vi.fn(async (_path: string, _options?: { line?: number }) => {})
+  const originalOpen = vi.fn(async (_path: string, _options?: { line?: number; sessionId?: string }) => {})
   const hostOpenPath = vi.fn(async () => ({ ok: true as const, value: { opened: true as const } }))
   const workspaces = { openPath: originalOpen }
   ctx.provide('layout', layout)
   ctx.provide('locale', new LocaleRuntime(ctx))
   ctx.provide('workspaces', workspaces)
   ctx.provide('sessions', sessionsStub(opts))
+  if (opts.sidebarRight !== undefined) ctx.provide('sidebarRight', opts.sidebarRight as never)
   new TestRemote(ctx, { session: { openWorkspacePath: hostOpenPath } })
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   return { ctx, slots, declaration, fiber, layout, workspaces, originalOpen, hostOpenPath }
+}
+
+function sidebarRightStub() {
+  return {
+    openResource: vi.fn(),
+    openResourceIn: vi.fn(() => true),
+    openTab: vi.fn(),
+    openTabIn: vi.fn(() => true),
+  }
 }
 
 function bindOpenFile(
@@ -217,6 +242,271 @@ describe('ui-surfaces apply', () => {
     await b.fiber.dispose()
   })
 
+  it('routes a citation to its originating Session instead of the main-view Session', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({
+      mainView: 'sess-main',
+      cwd: '/tmp/main',
+      background: { id: 'sess-background', cwd: '/tmp/proj' },
+      sidebarRight,
+    })
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('/tmp/proj/src/a.ts', { sessionId: 'sess-background' })
+
+    expect(sidebarRight.openResourceIn).toHaveBeenCalledWith(
+      'sess-background',
+      'dsh-resource://file/session/sess-background/src/a.ts',
+    )
+    expect(openFile).not.toHaveBeenCalled()
+    expect(b.layout.openSurfaces).not.toHaveBeenCalled()
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('carries a line through the right Sidebar resource params', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({ mainView: 'sess-1', sidebarRight })
+    bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('/tmp/proj/src/a.ts', { line: 10 })
+
+    expect(sidebarRight.openResourceIn).toHaveBeenCalledWith(
+      'sess-1',
+      'dsh-resource://file/session/sess-1/src/a.ts',
+      { params: { line: 10 } },
+    )
+    await b.fiber.dispose()
+  })
+
+  it('opens the right Sidebar Files page for the workspace root', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({ mainView: 'sess-1', sidebarRight })
+    const open = vi.fn()
+    bindOpenFile(b.slots, vi.fn(), open)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('/tmp/proj/.')
+
+    expect(sidebarRight.openTabIn).toHaveBeenCalledWith('sess-1', 'files')
+    expect(open).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('keeps browser documents in their file resource while also opening Sidebar Browser', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({ mainView: 'sess-1', sidebarRight })
+    const openFile = bindOpenFile(b.slots)
+    const previewWorkspaceFile = vi.fn(async ({ relativePath }: { relativePath: string }) => ({
+      ok: true as const,
+      url: `http://127.0.0.1:9/tok/${relativePath}`,
+    }))
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile,
+    }
+
+    await b.workspaces.openPath('/tmp/proj/site/index.html', { line: 24 })
+    await b.workspaces.openPath('/tmp/proj/doc.pdf')
+
+    expect(sidebarRight.openResourceIn.mock.calls).toEqual([
+      [
+        'sess-1',
+        'dsh-resource://file/session/sess-1/site/index.html',
+        { params: { line: 24 } },
+      ],
+      [
+        'sess-1',
+        'dsh-resource://file/session/sess-1/doc.pdf',
+      ],
+    ])
+    expect(sidebarRight.openTabIn.mock.calls).toEqual([
+      ['sess-1', 'browser', { params: { url: 'http://127.0.0.1:9/tok/site/index.html' } }],
+      ['sess-1', 'browser', { params: { url: 'http://127.0.0.1:9/tok/doc.pdf' } }],
+    ])
+    expect(openFile).not.toHaveBeenCalled()
+    expect(b.layout.openSurfaces).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('keeps the originating Session when token generation outlives a main-view switch', async () => {
+    const sidebarRight = sidebarRightStub()
+    const sessions: {
+      mainView?: string
+      cwd: string
+      background: { id: string; cwd: string }
+    } = {
+      mainView: 'sess-first-start',
+      cwd: '/tmp/first',
+      background: { id: 'sess-origin', cwd: '/tmp/origin' },
+    }
+    const runtimeOptions = { ...sessions, sidebarRight }
+    const b = await bench(runtimeOptions)
+    bindOpenFile(b.slots)
+    let finishToken: (value: { ok: true; url: string }) => void = () => {}
+    const token = new Promise<{ ok: true; url: string }>((resolve) => { finishToken = resolve })
+    let tokenStarted: () => void = () => {}
+    const waitingForToken = new Promise<void>((resolve) => { tokenStarted = resolve })
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile: async () => {
+        tokenStarted()
+        return token
+      },
+    }
+
+    const opening = b.workspaces.openPath('/tmp/origin/site/index.html', {
+      line: 7,
+      sessionId: 'sess-origin',
+    })
+    await waitingForToken
+    runtimeOptions.mainView = 'sess-second'
+    finishToken({ ok: true, url: 'http://127.0.0.1:9/tok/index.html' })
+    await opening
+
+    expect(sidebarRight.openResourceIn).toHaveBeenCalledWith(
+      'sess-origin',
+      'dsh-resource://file/session/sess-origin/site/index.html',
+      { params: { line: 7 } },
+    )
+    expect(sidebarRight.openTabIn).toHaveBeenCalledWith(
+      'sess-origin',
+      'browser',
+      { params: { url: 'http://127.0.0.1:9/tok/index.html' } },
+    )
+    expect(sidebarRight.openResource).not.toHaveBeenCalled()
+    expect(sidebarRight.openTab).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('keeps a delayed preview in its originating store when the mounted Sidebar session switches', async () => {
+    const registryCtx = new Context()
+    const tabs = new SidebarRightTabRegistry(registryCtx)
+    const disposeFile = tabs.register({
+      id: 'test/file',
+      kind: 'file',
+      patterns: ['dsh-resource://file/**'],
+      title: address => address.slice(address.lastIndexOf('/') + 1),
+    })
+    const disposeBrowser = tabs.register({ id: 'test/browser', kind: 'browser', title: () => 'browser' })
+    const { controller, adopt } = createSidebarRightController(tabs, () => {})
+    const originId = 'sess-origin'
+    const otherId = 'sess-other'
+    const origin = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create()
+    const other = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create()
+    const releaseOrigin = adopt(originId as never, origin)
+    const releaseOther = adopt(otherId as never, other)
+    const releaseOriginBinding = controller.bind({
+      sessionId: originId as never,
+      actions: origin.actions,
+      surfaces: origin.getSnapshot().bySession,
+      canSplitPane: () => true,
+    })
+    const openResource = vi.spyOn(controller, 'openResource')
+    const openTab = vi.spyOn(controller, 'openTab')
+    const b = await bench({
+      mainView: otherId,
+      cwd: '/tmp/other',
+      background: { id: originId, cwd: '/tmp/origin' },
+      sidebarRight: controller as never,
+    })
+    let finishToken: (value: { ok: true; url: string }) => void = () => {}
+    const token = new Promise<{ ok: true; url: string }>((resolve) => { finishToken = resolve })
+    let tokenStarted: () => void = () => {}
+    const waitingForToken = new Promise<void>((resolve) => { tokenStarted = resolve })
+    ;(window as Window & { shell?: unknown }).shell = {
+      listDir: async () => ({ ok: true }),
+      previewWorkspaceFile: async () => {
+        tokenStarted()
+        return token
+      },
+    }
+
+    try {
+      const opening = b.workspaces.openPath('/tmp/origin/site/index.html', {
+        line: 7,
+        sessionId: originId,
+      })
+      await waitingForToken
+      const otherBefore = other.getSnapshot().bySession
+      releaseOriginBinding()
+      const releaseOtherBinding = controller.bind({
+        sessionId: otherId as never,
+        actions: other.actions,
+        surfaces: other.getSnapshot().bySession,
+        canSplitPane: () => true,
+      })
+      try {
+        finishToken({ ok: true, url: 'http://127.0.0.1:9/tok/index.html' })
+        await opening
+      } finally {
+        releaseOtherBinding()
+      }
+
+      const originTabs = Object.values(origin.getSnapshot().bySession[originId]?.layout.tabs ?? {})
+      const file = originTabs.find(tab => tab.kind === 'file')
+      if (file === undefined) throw new Error('expected the file tab in the origin store')
+      expect(controller.tabDomain.occurrence(originId as never, file).navigation.getSnapshot()).toMatchObject({
+        address: 'dsh-resource://file/session/sess-origin/site/index.html',
+        params: { line: 7 },
+      })
+      expect(originTabs.map(tab => tab.kind)).toContain('browser')
+      expect(other.getSnapshot().bySession).toBe(otherBefore)
+      expect(openResource).not.toHaveBeenCalled()
+      expect(openTab).not.toHaveBeenCalled()
+    } finally {
+      await b.fiber.dispose()
+      releaseOther()
+      releaseOrigin()
+      disposeBrowser()
+      disposeFile()
+    }
+  })
+
+  it('rejects an unexpected Sidebar navigation failure instead of falling through', async () => {
+    const sidebarRight = sidebarRightStub()
+    sidebarRight.openResourceIn.mockImplementationOnce(() => {
+      throw new Error('no file viewer')
+    })
+    const b = await bench({ mainView: 'sess-1', sidebarRight })
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await expect(b.workspaces.openPath('/tmp/proj/src/a.ts')).rejects.toThrow('no file viewer')
+
+    expect(openFile).not.toHaveBeenCalled()
+    expect(b.layout.openSurfaces).not.toHaveBeenCalled()
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('falls back to the surfaces column when the right Sidebar has no adopted Session store', async () => {
+    const sidebarRight = sidebarRightStub()
+    sidebarRight.openResourceIn.mockReturnValueOnce(false)
+    const b = await bench({ mainView: 'sess-1', sidebarRight })
+    const openFile = bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('/tmp/proj/src/a.ts', { line: 9 })
+
+    expect(openFile).toHaveBeenCalledWith('sess-1', 'src/a.ts', { revealLine: 9 })
+    expect(b.layout.openSurfaces).toHaveBeenCalledOnce()
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
   it('forwards openPath line into openFile revealLine', async () => {
     const b = await bench({ mainView: 'sess-1' })
     const openFile = bindOpenFile(b.slots)
@@ -273,13 +563,15 @@ describe('ui-surfaces apply', () => {
     await b.fiber.dispose()
   })
 
-  it('falls through when inject has not bound openFile yet', async () => {
+  it('throws when no Files surface is available instead of reaching the Host opener', async () => {
     const b = await bench({ mainView: 'sess-1' })
     ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
       listDir: async () => ({ ok: true }),
     }
-    await b.workspaces.openPath('/tmp/proj/a.ts')
-    expect(b.originalOpen).toHaveBeenCalledWith('/tmp/proj/a.ts')
+    await expect(b.workspaces.openPath('/tmp/proj/a.ts')).rejects.toThrow(
+      'surfaces: file preview is unavailable',
+    )
+    expect(b.originalOpen).not.toHaveBeenCalled()
     await b.fiber.dispose()
   })
 

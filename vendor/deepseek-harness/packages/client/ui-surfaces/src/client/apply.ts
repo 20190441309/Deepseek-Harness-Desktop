@@ -12,7 +12,12 @@ import type { SurfacesRootInjected } from './SurfacesRoot.tsx'
 import { SurfacesRoot } from './SurfacesRoot.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
+// The `file` entry of `SidebarRightResourceParamsMap`, which types `{ params: { line } }` below.
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 
 export type { SurfacesRootInjected, SurfacesRootProps } from './SurfacesRoot.tsx'
 export type { SurfacesKey } from './locales.ts'
@@ -152,22 +157,68 @@ function openPreviewSurface(url: string): void {
 }
 
 /**
+ * Load a browser-renderable workspace file into a token-protected URL.
+ * Missing or failing IPC yields undefined.
+ * @param cwd - Session workspace root.
+ * @param relative - path inside cwd.
+ * @returns the loopback URL, or undefined when the file is not browser-renderable.
+ */
+async function browserDocumentUrl(cwd: string, relative: string): Promise<string | undefined> {
+  const preview = readWindowShell()?.previewWorkspaceFile
+  if (typeof preview !== 'function' || !BROWSER_DOCUMENTS.has(documentExtension(relative))) return undefined
+  try {
+    const result = await preview({ cwd, relativePath: relative })
+    return result?.ok === true && typeof result.url === 'string' && result.url.length > 0
+      ? result.url
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * After Files opens, load a browser-renderable workspace file in Browser.
  * Missing or failing IPC leaves Files in place and does not throw.
  * @param cwd - session workspace root.
  * @param relative - path inside cwd.
  */
 async function previewBrowserDocument(cwd: string, relative: string): Promise<void> {
-  const preview = readWindowShell()?.previewWorkspaceFile
-  if (typeof preview !== 'function' || !BROWSER_DOCUMENTS.has(documentExtension(relative))) return
-  try {
-    const result = await preview({ cwd, relativePath: relative })
-    if (result?.ok === true && typeof result.url === 'string' && result.url.length > 0) {
-      openPreviewSurface(result.url)
-    }
-  } catch {
-    // Files already open; preview is optional.
+  const url = await browserDocumentUrl(cwd, relative)
+  if (url !== undefined) openPreviewSurface(url)
+}
+
+/**
+ * Route a desktop file open to the current right Sidebar.
+ * @returns false when the Sidebar is absent or its Session has no adopted
+ *   store, so the caller falls back to the legacy surfaces column.
+ */
+async function openInRightSidebar(
+  ctx: Context,
+  sessionId: string,
+  cwd: string,
+  relative: string,
+  options?: { line?: number },
+): Promise<boolean> {
+  const sidebarRight = ctx.get('sidebarRight')
+  if (sidebarRight === undefined) return false
+
+  if (relative === '') {
+    return sidebarRight.openTabIn(sessionId as SessionId, 'files')
   }
+
+  const address = fileAddressFor(sessionId, cwd, relative)
+  const opened = options?.line === undefined
+    ? sidebarRight.openResourceIn(sessionId as SessionId, address)
+    : sidebarRight.openResourceIn(sessionId as SessionId, address, { params: { line: options.line } })
+  if (!opened) return false
+
+  if (BROWSER_DOCUMENTS.has(documentExtension(relative))) {
+    const url = await browserDocumentUrl(cwd, relative)
+    if (url !== undefined) {
+      sidebarRight.openTabIn(sessionId as SessionId, 'browser', { params: { url } })
+    }
+  }
+  return true
 }
 
 /**
@@ -255,13 +306,14 @@ export function apply(ctx: Context): void {
         if (typeof cwd !== 'string' || cwd.length === 0) return false
         const relative = relativeTo(cwd, path)
         if (relative === undefined) return false
+        if (await openInRightSidebar(ctx, sessionId, cwd, relative, options)) return true
         if (relative === '') {
-          if (live.open === undefined) return false
+          if (live.open === undefined) throw new Error('surfaces: Files page is unavailable')
           live.open(sessionId, 'files')
           ctx.layout.openSurfaces()
           return true
         }
-        if (live.openFile === undefined) return false
+        if (live.openFile === undefined) throw new Error('surfaces: file preview is unavailable')
         if (options?.line !== undefined) live.openFile(sessionId, relative, { revealLine: options.line })
         else live.openFile(sessionId, relative)
         ctx.layout.openSurfaces()
