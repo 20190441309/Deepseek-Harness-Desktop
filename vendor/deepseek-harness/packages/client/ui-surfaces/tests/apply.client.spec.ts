@@ -267,6 +267,60 @@ describe('ui-surfaces apply', () => {
     await b.fiber.dispose()
   })
 
+  it('routes a no-workspace relative citation through the scratch Session cwd', async () => {
+    const sidebarRight = sidebarRightStub()
+    const cwd = 'C:\\Users\\tester\\AppData\\Roaming\\Deepseek-Harness-Desktop\\dsh-home\\no-workspace'
+    const b = await bench({ mainView: 'sess-1', cwd, sidebarRight })
+    bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath(`${cwd}\\pelican-bike.html`)
+
+    expect(sidebarRight.openResourceIn).toHaveBeenCalledWith(
+      'sess-1',
+      'dsh-resource://file/session/sess-1/pelican-bike.html',
+    )
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('routes a cwd-less absolute citation without inventing a workspace root', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({ mainView: 'sess-1', cwd: '', sidebarRight })
+    bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath(
+      'C:\\Users\\tester\\AppData\\Roaming\\Deepseek-Harness-Desktop\\dsh-home\\no-workspace\\pelican-bike.html',
+    )
+
+    expect(sidebarRight.openResourceIn).toHaveBeenCalledWith(
+      'sess-1',
+      'dsh-resource://file/session/sess-1/C:/Users/tester/AppData/Roaming/Deepseek-Harness-Desktop/dsh-home/no-workspace/pelican-bike.html',
+    )
+    expect(b.originalOpen).not.toHaveBeenCalled()
+    await b.fiber.dispose()
+  })
+
+  it('keeps a cwd-less relative citation on the safe Host fallback', async () => {
+    const sidebarRight = sidebarRightStub()
+    const b = await bench({ mainView: 'sess-1', cwd: '', sidebarRight })
+    bindOpenFile(b.slots)
+    ;(window as Window & { shell?: { listDir: () => Promise<unknown> } }).shell = {
+      listDir: async () => ({ ok: true }),
+    }
+
+    await b.workspaces.openPath('pelican-bike.html')
+
+    expect(sidebarRight.openResourceIn).not.toHaveBeenCalled()
+    expect(b.originalOpen).toHaveBeenCalledWith('pelican-bike.html')
+    await b.fiber.dispose()
+  })
+
   it('carries a line through the right Sidebar resource params', async () => {
     const sidebarRight = sidebarRightStub()
     const b = await bench({ mainView: 'sess-1', sidebarRight })

@@ -461,7 +461,7 @@ export class ConversationNodeAssembler implements ConversationViewSnapshotStore 
     const matchedTargets = new Set<string>()
     let publication: ConversationPublication = 'none'
     for (const definition of this.eventDefinitions.entries()) {
-      const result = definition.match(event)
+      const result = definition.match(event, this.locationIndex.locationOf(event))
       if (result === null) continue
       if (definition.target !== undefined) matchedTargets.add(definition.target)
       publication = maximumPublication(publication, accept(definition, result.id, result.role))
@@ -469,7 +469,7 @@ export class ConversationNodeAssembler implements ConversationViewSnapshotStore 
     const fallback = this.eventDefinitions.fallbackEntry()
     const target = fallback?.target
     if (fallback !== undefined && target !== undefined && !matchedTargets.has(target)) {
-      const result = fallback.match(event)
+      const result = fallback.match(event, this.locationIndex.locationOf(event))
       if (result !== null) {
         publication = maximumPublication(publication, accept(fallback, result.id, result.role))
       }
