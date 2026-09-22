@@ -737,6 +737,48 @@ describe('ConversationNodeAssembler', () => {
       .toEqual({ settled: true })
   })
 
+  it('backfills a previously unmatchable event when prepend resolves its Location', () => {
+    interface State { readonly events: readonly string[] }
+    const definition: ConversationNodeDefinition<State> = {
+      kind: 'location-backfill',
+      match: (event, location) => {
+        if (event.type === 'turn/start') return { id: String(event.data.turn), role: 'start' }
+        if ((event.type as string) === 'ptc/probe'
+          && (location?.kind === 'turn' || location?.kind === 'step')) {
+          return { id: String(location.turn.turn), role: 'update' }
+        }
+        return null
+      },
+      start: () => ({ events: [] }),
+      update: (context, match) => ({
+        events: [...context.state.events, `${match.event.type}:${String(match.event.seq)}`],
+      }),
+      target: 'test',
+      buildViewNode: context => node(context, context.state),
+    }
+    const assembler = new ConversationNodeAssembler(
+      new TestEventDefinitions([definition]),
+      new TestViewDefinitions([testView()]),
+    )
+
+    // A recent page can contain a turn-scoped event without the older turn/start
+    // that gives it its canonical Location.
+    assembler.replaceWindow([input(at(SessionSeq(20), 'ptc/probe', {}))], true)
+    assembler.flush()
+    expect(testSnapshot(assembler)?.nodes.size).toBe(0)
+
+    assembler.prepend([input(at(SessionSeq(1), 'turn/start', { turn: 1 }))], false)
+    assembler.flush()
+    expect([...testSnapshot(assembler)?.nodes.values() ?? []][0]?.data)
+      .toEqual({ events: ['ptc/probe:20'] })
+
+    // A later Location refinement must not duplicate the already-owned Match.
+    assembler.prepend([input(at(SessionSeq(2), 'step/start', { turn: 1, step: 1 }))], false)
+    assembler.flush()
+    expect([...testSnapshot(assembler)?.nodes.values() ?? []][0]?.data)
+      .toEqual({ events: ['ptc/probe:20'] })
+  })
+
   it('rejects a Definition whose declared start follows an update in log order', () => {
     const definition: ConversationNodeDefinition<null> = {
       kind: 'invalid-lifecycle',
