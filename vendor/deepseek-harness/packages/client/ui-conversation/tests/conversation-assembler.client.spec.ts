@@ -779,6 +779,54 @@ describe('ConversationNodeAssembler', () => {
       .toEqual({ events: ['ptc/probe:20'] })
   })
 
+  it('backfills only Definitions that did not already own the event', () => {
+    const always = vi.fn((event: SessionEventLike) => (
+      (event.type as string) === 'ptc/probe' ? { id: String(event.seq), role: 'start' as const } : null
+    ))
+    const located = vi.fn((event: SessionEventLike, location?: { readonly kind: string }) => (
+      (event.type as string) === 'ptc/probe'
+        && (location?.kind === 'turn' || location?.kind === 'step')
+        ? { id: String(event.seq), role: 'update' as const }
+        : null
+    ))
+    const alwaysDefinition: ConversationNodeDefinition<null> = {
+      kind: 'always',
+      target: 'test',
+      match: always,
+      start: () => null,
+      update: context => context.state,
+      buildViewNode: context => node(context, 'always'),
+    }
+    const locatedDefinition: ConversationNodeDefinition<null> = {
+      kind: 'located',
+      target: 'test',
+      match: (event, location) => located(event, location),
+      start: () => null,
+      update: context => context.state,
+      buildViewNode: context => node(context, 'located'),
+    }
+    const assembler = new ConversationNodeAssembler(
+      new TestEventDefinitions([alwaysDefinition, locatedDefinition]),
+      new TestViewDefinitions([testView()]),
+    )
+
+    assembler.replaceWindow([input(at(SessionSeq(20), 'ptc/probe', {}))], true)
+    assembler.flush()
+    expect(always).toHaveBeenCalledTimes(1)
+    expect(located).toHaveBeenCalledTimes(1)
+    expect(testSnapshot(assembler)?.nodes.size).toBe(1)
+
+    assembler.prepend([input(at(SessionSeq(1), 'turn/start', { turn: 1 }))], false)
+    assembler.flush()
+
+    // The already-matched "always" Definition is evaluated once for the fresh
+    // turn/start, but must not be re-collected for the owned ptc/probe event.
+    expect(always.mock.calls.filter(([event]) => event.seq === 20)).toHaveLength(1)
+    // Only the previously-declined Definition is re-evaluated for ptc/probe.
+    expect(located.mock.calls.filter(([event]) => event.seq === 20)).toHaveLength(2)
+    expect(testSnapshot(assembler)?.nodes.size).toBe(2)
+  })
+
   it('rejects a Definition whose declared start follows an update in log order', () => {
     const definition: ConversationNodeDefinition<null> = {
       kind: 'invalid-lifecycle',

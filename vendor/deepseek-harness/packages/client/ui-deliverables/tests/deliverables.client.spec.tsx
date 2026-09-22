@@ -341,6 +341,29 @@ describe('produced-file Turn data', () => {
     expect(deliverablesDefinition.match(event)).toBeNull()
   })
 
+  it('backfills a PTC-produced path when an older page resolves its turn', () => {
+    const recent = [
+      ptcStart(20, 'write', { file_path: 'pelican-bike.html', content: '<html></html>' }),
+      ptc(21, 'write', { file_path: 'pelican-bike.html', content: '<html></html>' }),
+    ]
+    // The recent page has no turn boundary, so nothing may be attributed yet.
+    expect(recent[1]!.event.data).not.toHaveProperty('turn')
+    const value = new ConversationNodeAssembler(new TestEventDefinitions(), new TestViewDefinitions())
+    value.replaceWindow(recent, true)
+    value.activateTarget('test')
+    expect(producedForClosing(deliverablesOf(value))).toEqual([])
+
+    value.prepend([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'turn/end', { turn: 1 }),
+      at(3, 'turn/start', { turn: 2 }),
+    ], false)
+    value.flush()
+
+    expect(producedForClosing(deliverablesOf(value, 1))).toEqual([])
+    expect(producedForClosing(deliverablesOf(value, 2))).toEqual(['pelican-bike.html'])
+  })
+
   it('opens a PTC-produced basename through the complete turn vocabulary', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
